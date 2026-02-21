@@ -744,4 +744,6 @@
     <string name="together_welcome_join_body">Ouvrez le lien partagé ou saisissez le code et appuyez sur Rejoindre. Votre file d\'attente et la lecture suivront celle de l\'hôte.</string>
     <string name="together_welcome_permissions_title">Autorisations et sécurité</string>
     <string name="together_welcome_permissions_body">Les hôtes peuvent décider si les invités peuvent ajouter des titres, contrôler la lecture ou si une approbation est requise pour rejoindre la session.</string>
+    <string name="stream_bypass_proxy">Contourner le proxy pour les flux</string>
+    <string name="stream_bypass_proxy_desc">Utilisez votre adresse IP directe pour la lecture en continu afin d\'éviter les problèmes de correspondance d\'adresses IP</string>
 </resources>
