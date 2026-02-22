@@ -364,7 +364,7 @@ fun SelectionSongMenu(
                     if (allInLibrary) {
                         database.query {
                             songSelection.forEach { song ->
-                                inLibrary(song.id, null)
+                                update(song.song.toggleLibrary())
                             }
                         }
                     } else {
