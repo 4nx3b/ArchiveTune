@@ -33,6 +33,7 @@ import moe.koiverse.archivetune.db.entities.SongEntity
 import moe.koiverse.archivetune.di.DownloadCache
 import moe.koiverse.archivetune.di.PlayerCache
 import moe.koiverse.archivetune.utils.YTPlayerUtils
+import moe.koiverse.archivetune.utils.StreamClientUtils
 import moe.koiverse.archivetune.utils.enumPreference
 import moe.koiverse.archivetune.constants.NetworkMeteredKey
 import moe.koiverse.archivetune.utils.dataStore
@@ -86,36 +87,18 @@ constructor(
                             host.endsWith("youtube-nocookie.com") ||
                             host.endsWith("ytimg.com")
 
-                    if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
 
-                    val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
-                    val isWeb =
-                        clientParam.startsWith("WEB", ignoreCase = true) ||
-                            clientParam.startsWith("WEB_REMIX", ignoreCase = true) ||
-                            preferredStreamClient == PlayerStreamClient.WEB_REMIX ||
-                            request.url.toString().contains("c=WEB", ignoreCase = true)
+                val userAgent = StreamClientUtils.resolveUserAgent(clientParam)
+                val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
-                    val userAgent =
-                        if (isWeb) {
-                            YouTubeClient.USER_AGENT_WEB
-                        } else {
-                            when (preferredStreamClient) {
-                                PlayerStreamClient.IOS -> YouTubeClient.IOS.userAgent
-                                else -> YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
-                            }
-                        }
+                val builder = request.newBuilder().header("User-Agent", userAgent)
+                originReferer.origin?.let { builder.header("Origin", it) }
+                originReferer.referer?.let { builder.header("Referer", it) }
 
-                    val builder = request.newBuilder().header("User-Agent", userAgent)
-                    if (isWeb) {
-                        builder.header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-                        builder.header("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
-                    }
-
-                    chain.proceed(builder.build())
-                }.build()
-            mediaClientPair = current to client
-            return client
-        }
+                chain.proceed(builder.build())
+            }.build()
+    }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 

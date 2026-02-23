@@ -99,6 +99,7 @@ enum class PlayerStreamClient {
     ANDROID_VR,
     WEB_REMIX,
     IOS,
+    TVHTML5,
 }
 
 val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
@@ -423,6 +424,7 @@ val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")
 val LyricsRomanizeJapaneseKey = booleanPreferencesKey("lyricsRomanizeJapanese")
 val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
+val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 
 val PlayerVolumeKey = floatPreferencesKey("playerVolume")
 val RepeatModeKey = intPreferencesKey("repeatMode")

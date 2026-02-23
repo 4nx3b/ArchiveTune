@@ -25,6 +25,8 @@ import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.MOBILE
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.WEB
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
+import moe.koiverse.archivetune.innertube.utils.PoTokenGenerator
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -60,13 +62,14 @@ object YTPlayerUtils {
      */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
         IOS,
-        ANDROID_VR_NO_AUTH,
         MOBILE,
+        TVHTML5,
         ANDROID_CREATOR,
         TVHTML5_SIMPLY_EMBEDDED_PLAYER,
-        TVHTML5,
+        ANDROID_VR_NO_AUTH,
         WEB,
-        WEB_CREATOR
+        WEB_CREATOR,
+        WEB_REMIX
     )
     private data class CachedStreamUrl(
         val url: String,
@@ -166,14 +169,21 @@ object YTPlayerUtils {
                 PlayerStreamClient.ANDROID_VR -> ANDROID_VR_NO_AUTH
                 PlayerStreamClient.WEB_REMIX -> WEB_REMIX
                 PlayerStreamClient.IOS -> IOS
+                PlayerStreamClient.TVHTML5 -> TVHTML5
             }
 
         val metadataClient =
             preferredYouTubeClient.takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR } ?: MAIN_CLIENT
 
+        // Generate poToken for web-type clients
+        val sessionIdentifier = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
+
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
+        val metadataPoToken = if (StreamClientUtils.isWebClient(metadataClient.clientName) && sessionIdentifier != null) {
+            PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
+        } else null
         val metadataPlayerResponse =
-            YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp).getOrThrow()
+            YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp, metadataPoToken).getOrThrow()
         val audioConfig = metadataPlayerResponse.playerConfig?.audioConfig
         val videoDetails = metadataPlayerResponse.videoDetails
         val playbackTracking = metadataPlayerResponse.playbackTracking
@@ -192,14 +202,11 @@ object YTPlayerUtils {
             streamExpiresInSeconds = null
             streamPlayerResponse = null
 
-            val isMain = client == MAIN_CLIENT
-            val isLast = index == streamClients.lastIndex
-
             Timber.tag(logTag).v(
-                "Trying ${if (isMain) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
+                "Trying ${if (client == MAIN_CLIENT) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
             )
 
-            if (!isMain && client.loginRequired && !isLoggedIn) {
+            if (client != MAIN_CLIENT && client.loginRequired && !isLoggedIn) {
                 Timber.tag(logTag).w("Skipping client ${client.clientName} - requires login but user is not logged in")
                 continue
             }
@@ -209,7 +216,10 @@ object YTPlayerUtils {
                     metadataPlayerResponse
                 } else {
                     Timber.tag(logTag).i("Fetching player response for fallback client: ${client.clientName}")
-                    YouTube.player(videoId, playlistId, client, signatureTimestamp).getOrNull()
+                    val clientPoToken = if (StreamClientUtils.isWebClient(client.clientName) && sessionIdentifier != null) {
+                        PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
+                    } else null
+                    YouTube.player(videoId, playlistId, client, signatureTimestamp, clientPoToken).getOrNull()
                 }
 
             if (streamPlayerResponse == null) continue
@@ -243,7 +253,7 @@ object YTPlayerUtils {
                     if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
                         cached.url
                     } else {
-                        findUrlOrNull(candidate, videoId)
+                        findUrlOrNull(candidate, videoId, client)
                     } ?: continue
                 selectedFormat = candidate
                 selectedUrl = candidateUrl
@@ -267,21 +277,17 @@ object YTPlayerUtils {
             Timber.tag(logTag).i("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
             Timber.tag(logTag).v("Stream expires in: $streamExpiresInSeconds seconds")
 
-            streamUrlCache[buildCacheKey(videoId, format.itag)] =
-                CachedStreamUrl(
-                    url = streamUrl!!,
-                    expiresAtMs = System.currentTimeMillis() + (streamExpiresInSeconds * 1000L),
-                )
-
-            if (isLast) {
-                Timber.tag(logTag).i("Using last client without validation: ${client.clientName}")
-                break
-            }
-
-            if (isMain || validateStatus(streamUrl, client.userAgent)) {
+            val valid = validateStatus(streamUrl, client.userAgent)
+            if (valid) {
                 Timber.tag(logTag).i("Stream validated successfully with client: ${client.clientName}")
                 break
             }
+
+            Timber.tag(logTag).w("Stream validation failed with client: ${client.clientName}, trying next fallback")
+            format = null
+            streamUrl = null
+            streamExpiresInSeconds = null
+            streamPlayerResponse = null
         }
 
         if (streamPlayerResponse == null) {
@@ -315,6 +321,13 @@ object YTPlayerUtils {
         }
 
         Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
+
+        streamUrlCache[buildCacheKey(videoId, format.itag)] =
+            CachedStreamUrl(
+                url = streamUrl,
+                expiresAtMs = System.currentTimeMillis() + (streamExpiresInSeconds * 1000L),
+            )
+
         return PlaybackData(
             audioConfig,
             videoDetails,
@@ -459,26 +472,21 @@ object YTPlayerUtils {
     private fun validateStatus(url: String, userAgent: String): Boolean {
         Timber.tag(logTag).v("Validating stream URL status")
         try {
-            val headRequest =
-                okhttp3.Request.Builder()
-                    .head()
-                    .header("User-Agent", userAgent)
-                    .url(url)
-                    .build()
+            val httpUrl = url.toHttpUrlOrNull()
+            val clientParam = httpUrl?.queryParameter("c")?.trim().orEmpty()
 
-            val headOk =
-                currentStreamClient().newCall(headRequest).execute().use { response ->
-                    response.code in 200..399
-                }
-
-            if (headOk) return true
+            val resolvedUserAgent = StreamClientUtils.resolveUserAgent(clientParam).ifEmpty { userAgent }
+            val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
             val rangeRequest =
                 okhttp3.Request.Builder()
                     .get()
-                    .header("User-Agent", userAgent)
+                    .header("User-Agent", resolvedUserAgent)
                     .header("Range", "bytes=0-0")
-                    .url(url)
+                    .apply {
+                        originReferer.origin?.let { header("Origin", it) }
+                        originReferer.referer?.let { header("Referer", it) }
+                    }.url(url)
                     .build()
 
             return currentStreamClient().newCall(rangeRequest).execute().use { response ->
@@ -506,20 +514,29 @@ object YTPlayerUtils {
             .getOrNull()
     }
     /**
-     * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions
+     * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
+     * Also patches cver to match the client version and appends a session poToken for web clients.
      */
     private fun findUrlOrNull(
         format: PlayerResponse.StreamingData.Format,
-        videoId: String
+        videoId: String,
+        client: YouTubeClient? = null,
     ): String? {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
-        return NewPipeUtils.getStreamUrl(format, videoId)
+        var url = NewPipeUtils.getStreamUrl(format, videoId)
             .onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
             .onFailure {
                 Timber.tag(logTag).e(it, "Failed to get stream URL")
                 reportException(it)
             }
-            .getOrNull()
+            .getOrNull() ?: return null
+
+        // Patch cver in the URL to match the client we actually used
+        if (client != null) {
+            url = StreamClientUtils.patchClientVersion(url, client.clientVersion)
+        }
+
+        return url
     }
 
     private fun buildCacheKey(videoId: String, itag: Int): String {

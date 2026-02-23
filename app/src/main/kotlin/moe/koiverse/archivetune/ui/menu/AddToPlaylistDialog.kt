@@ -85,6 +85,17 @@ fun AddToPlaylistDialog(
         }
     }
 
+    LaunchedEffect(isVisible) {
+        if (isVisible) {
+            songIds = null
+            setSelectedPlaylistIds(emptySet())
+            isAddingToPlaylist = false
+            showDuplicateDialog = false
+            playlistsWithDuplicates = emptyList()
+            duplicateSongsMap = emptyMap()
+        }
+    }
+
     if (isVisible) {
         AlertDialog(
             onDismissRequest = onDismiss,
