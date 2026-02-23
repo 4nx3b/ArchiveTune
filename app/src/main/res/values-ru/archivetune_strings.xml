@@ -41,7 +41,6 @@
     <string name="added_to_play_next">Будет воспроизведено следующим</string>
     <string name="added_to_queue">Добавлено в конец очереди</string>
     <string name="remove_from_cache">Удалить с кэша</string>
-    <string name="copy_link">Скопировать ссылку</string>
     <string name="select">Выбрать всё</string>
     <string name="manage_tags">Управлять тегами</string>
     <string name="add_tag">Добавить тег</string>
