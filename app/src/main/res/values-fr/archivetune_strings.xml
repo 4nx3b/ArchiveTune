@@ -41,7 +41,6 @@
     <string name="added_to_play_next">Ajouté à la playlist</string>
     <string name="added_to_queue">Ajouté à la file d\'attente</string>
     <string name="remove_from_cache">Retirer du cache</string>
-    <string name="copy_link">Copier le lien</string>
     <string name="select">Tout sélectionner</string>
     <string name="like_all">Tout aimer</string>
     <string name="dislike_all">Ne pas aimer tout</string>
