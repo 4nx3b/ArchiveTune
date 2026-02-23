@@ -538,6 +538,7 @@ fun SongMenu(
                     },
                     modifier =
                         Modifier.clickable {
+                            onDismiss()
                             database.query {
                                 update(song.song.toggleLibrary())
                             }
@@ -621,8 +622,10 @@ fun SongMenu(
                                                 YouTube.removeFromPlaylist(browseId, map.songId, setVideoId)
                                             }
                                         }
+                                        withContext(Dispatchers.Main) {
+                                            onDismiss()
+                                        }
                                     }
-                                    onDismiss()
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
