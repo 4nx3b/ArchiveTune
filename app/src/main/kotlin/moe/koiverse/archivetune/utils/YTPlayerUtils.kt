@@ -192,14 +192,11 @@ object YTPlayerUtils {
             streamExpiresInSeconds = null
             streamPlayerResponse = null
 
-            val isMain = client == MAIN_CLIENT
-            val isLast = index == streamClients.lastIndex
-
             Timber.tag(logTag).v(
-                "Trying ${if (isMain) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
+                "Trying ${if (client == MAIN_CLIENT) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
             )
 
-            if (!isMain && client.loginRequired && !isLoggedIn) {
+            if (client != MAIN_CLIENT && client.loginRequired && !isLoggedIn) {
                 Timber.tag(logTag).w("Skipping client ${client.clientName} - requires login but user is not logged in")
                 continue
             }
@@ -246,7 +243,7 @@ object YTPlayerUtils {
                     if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
                         cached.url
                     } else {
-                        findUrlOrNull(candidate, videoId, client, sessionIdentifier)
+                        findUrlOrNull(candidate, videoId, client)
                     } ?: continue
                 selectedFormat = candidate
                 selectedUrl = candidateUrl
@@ -264,15 +261,17 @@ object YTPlayerUtils {
             Timber.tag(logTag).i("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
             Timber.tag(logTag).v("Stream expires in: $streamExpiresInSeconds seconds")
 
-            if (isLast) {
-                Timber.tag(logTag).i("Using last client without validation: ${client.clientName}")
-                break
-            }
-
-            if (isMain || validateStatus(streamUrl, client.userAgent)) {
+            val valid = validateStatus(streamUrl, client.userAgent)
+            if (valid) {
                 Timber.tag(logTag).i("Stream validated successfully with client: ${client.clientName}")
                 break
             }
+
+            Timber.tag(logTag).w("Stream validation failed with client: ${client.clientName}, trying next fallback")
+            format = null
+            streamUrl = null
+            streamExpiresInSeconds = null
+            streamPlayerResponse = null
         }
 
         if (streamPlayerResponse == null) {
@@ -463,23 +462,6 @@ object YTPlayerUtils {
             val resolvedUserAgent = StreamClientUtils.resolveUserAgent(clientParam).ifEmpty { userAgent }
             val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
-            val headRequest =
-                okhttp3.Request.Builder()
-                    .head()
-                    .header("User-Agent", resolvedUserAgent)
-                    .apply {
-                        originReferer.origin?.let { header("Origin", it) }
-                        originReferer.referer?.let { header("Referer", it) }
-                    }.url(url)
-                    .build()
-
-            val headOk =
-                httpClient.newCall(headRequest).execute().use { response ->
-                    response.code in 200..399
-                }
-
-            if (headOk) return true
-
             val rangeRequest =
                 okhttp3.Request.Builder()
                     .get()
@@ -523,7 +505,6 @@ object YTPlayerUtils {
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
         client: YouTubeClient? = null,
-        sessionIdentifier: String? = null,
     ): String? {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
         var url = NewPipeUtils.getStreamUrl(format, videoId)
@@ -537,12 +518,6 @@ object YTPlayerUtils {
         // Patch cver in the URL to match the client we actually used
         if (client != null) {
             url = StreamClientUtils.patchClientVersion(url, client.clientVersion)
-        }
-
-        // Append session poToken for web-type clients
-        if (client != null && sessionIdentifier != null && StreamClientUtils.isWebClient(client.clientName)) {
-            val sessionPoToken = PoTokenGenerator.generateSessionToken(sessionIdentifier)
-            url = StreamClientUtils.appendPoToken(url, sessionPoToken)
         }
 
         return url
