@@ -64,28 +64,23 @@ constructor(
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
-    @Volatile private var mediaClientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
+    private val mediaOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient
+            .Builder()
+            .proxy(YouTube.proxy)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val host = request.url.host
+                val isYouTubeMediaHost =
+                    host.endsWith("googlevideo.com") ||
+                        host.endsWith("googleusercontent.com") ||
+                        host.endsWith("youtube.com") ||
+                        host.endsWith("youtube-nocookie.com") ||
+                        host.endsWith("ytimg.com")
 
-    private val mediaOkHttpClient: OkHttpClient
-        get() {
-            val current = YouTube.streamProxy
-            mediaClientPair?.let { (proxy, client) ->
-                if (proxy == current) return client
-            }
-            val client = OkHttpClient
-                .Builder()
-                .proxy(current)
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val host = request.url.host
-                    val isYouTubeMediaHost =
-                        host.endsWith("googlevideo.com") ||
-                            host.endsWith("googleusercontent.com") ||
-                            host.endsWith("youtube.com") ||
-                            host.endsWith("youtube-nocookie.com") ||
-                            host.endsWith("ytimg.com")
+                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
 
                 val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
 
