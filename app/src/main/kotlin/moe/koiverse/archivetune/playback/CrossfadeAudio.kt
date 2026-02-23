@@ -287,10 +287,13 @@ internal class CrossfadeAudio(
             return
         }
 
+        val mainPositionMs = player.currentPosition.coerceAtLeast(0L)
+        val overlapPositionMs = overlap.currentPosition.coerceAtLeast(0L)
+
         handoffActive = true
         handoffSeekIssued = false
         handoffRampStarted = false
-        handoffTargetPositionMs = overlap.currentPosition.coerceAtLeast(0L)
+        handoffTargetPositionMs = maxOf(mainPositionMs, overlapPositionMs)
         handoffStartElapsedMs = android.os.SystemClock.elapsedRealtime()
         handoffDurationMs = 450
         playbackFadeFactor.value = 0f
