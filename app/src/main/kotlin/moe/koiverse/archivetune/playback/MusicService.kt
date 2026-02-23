@@ -88,6 +88,7 @@ import moe.koiverse.archivetune.constants.AudioQualityKey
 import moe.koiverse.archivetune.constants.AutoLoadMoreKey
 import moe.koiverse.archivetune.constants.AutoDownloadOnLikeKey
 import moe.koiverse.archivetune.constants.AutoSkipNextOnErrorKey
+import moe.koiverse.archivetune.constants.InnerTubeCookieKey
 import moe.koiverse.archivetune.constants.DiscordTokenKey
 import moe.koiverse.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.koiverse.archivetune.constants.EqualizerBassBoostEnabledKey
@@ -119,6 +120,7 @@ import moe.koiverse.archivetune.constants.SkipSilenceKey
 import moe.koiverse.archivetune.constants.MaxSongCacheSizeKey
 import moe.koiverse.archivetune.constants.SmartTrimmerKey
 import moe.koiverse.archivetune.constants.StopMusicOnTaskClearKey
+import moe.koiverse.archivetune.constants.YtmSyncKey
 import moe.koiverse.archivetune.db.MusicDatabase
 import moe.koiverse.archivetune.db.entities.Event
 import moe.koiverse.archivetune.db.entities.FormatEntity
@@ -3815,13 +3817,14 @@ class MusicService :
                         ),
                     )
                 } catch (_: SQLException) {
+                }
             }
+
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val song = database.song(mediaItem.mediaId).first()
                         ?: return@launch
-                    
-                    // ListenBrainz scrobbling
+
                     val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
                     val lbToken = dataStore.get(ListenBrainzTokenKey, "")
                     if (lbEnabled && !lbToken.isNullOrBlank()) {
@@ -3833,26 +3836,54 @@ class MusicService :
                             Timber.tag("MusicService").v(ie, "ListenBrainz finished submit failed")
                         }
                     }
-                    
-                    // Last.fm scrobbling - handled by ScrobbleManager
-                    // The old manual scrobbling logic has been replaced with ScrobbleManager
-                    // which properly tracks play time and scrobbles automatically
-                } catch (_: Exception) {}
-            }
-        }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            val playbackUrl = database.format(mediaItem.mediaId).first()?.playbackUrl
-                ?: YTPlayerUtils.playerResponseForMetadata(mediaItem.mediaId, null)
-                    .getOrNull()?.playbackTracking?.videostatsPlaybackUrl?.baseUrl
-            playbackUrl?.let {
-                YouTube.registerPlayback(null, playbackUrl)
-                    .onFailure {
-                        reportException(it)
-                    }
+                } catch (_: Exception) {
                 }
             }
+
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { registerRemoteListeningHistory(mediaItem.mediaId) }
+            }
         }
+    }
+
+    private suspend fun registerRemoteListeningHistory(mediaId: String) {
+        if (!isRemoteHistorySyncAllowed()) return
+
+        val attemptedUrls = LinkedHashSet<String>()
+
+        suspend fun registerTrackingUrl(url: String): Boolean {
+            attemptedUrls += url
+            return YouTube.registerPlayback(playbackTracking = url)
+                .onFailure {
+                    reportException(it)
+                }.isSuccess
+        }
+
+        val cachedPlaybackUrl = database.format(mediaId).first()?.playbackUrl
+        val cachedSuccess = cachedPlaybackUrl?.let { registerTrackingUrl(it) } == true
+        if (cachedSuccess) return
+
+        val playbackTracking =
+            YTPlayerUtils.playerResponseForMetadata(mediaId, null)
+                .getOrNull()
+                ?.playbackTracking
+                ?: return
+
+        for (
+            trackingUrl in listOfNotNull(
+                playbackTracking.videostatsPlaybackUrl?.baseUrl,
+                playbackTracking.videostatsWatchtimeUrl?.baseUrl,
+            )
+        ) {
+            if (trackingUrl.isBlank() || trackingUrl in attemptedUrls) continue
+            registerTrackingUrl(trackingUrl)
+        }
+    }
+
+    private suspend fun isRemoteHistorySyncAllowed(): Boolean {
+        if (!dataStore.getAsync(YtmSyncKey, true)) return false
+        val cookie = dataStore.getAsync(InnerTubeCookieKey, "")
+        return cookie.isNotBlank() && cookie.contains("SAPISID")
     }
 
     // Create a transient Song object from current Player MediaMetadata when the DB doesn't have it.
