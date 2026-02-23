@@ -985,7 +985,6 @@ fun QueueCollapsedContentV4(
     onExpandQueue: () -> Unit,
     onSleepTimerClick: () -> Unit,
     onShowLyrics: () -> Unit,
-    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
