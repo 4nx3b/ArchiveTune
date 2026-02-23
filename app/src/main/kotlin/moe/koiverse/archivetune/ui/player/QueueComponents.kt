@@ -1123,25 +1123,6 @@ fun QueueCollapsedContentV4(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            // Menu button (circle)
-            Box(
-                modifier = Modifier
-                    .size(buttonSize)
-                    .clip(CircleShape)
-                    .background(textButtonColor)
-                    .clickable { onMenuClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.more_vert),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = iconButtonColor
-                )
-            }
         }
     }
 }
