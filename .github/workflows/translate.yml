@@ -1,0 +1,89 @@
+name: Auto Translate PR Create
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'dev'
+    paths:
+      - 'app/src/main/res/values/*.xml'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-translate-pr:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+          push-options: '--force'
+      
+      - name: Check if translate branch exists
+        id: check-branch
+        run: |
+          if git rev-parse --verify translate >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create translate branch if it doesn't exist
+        if: steps.check-branch.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b translate
+          git push origin translate -u
+      
+      - name: Push changes to translate branch
+        if: steps.check-branch.outputs.exists == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Fetch translate branch
+          git fetch origin translate
+          
+          # Check out translate and merge changes
+          git checkout translate
+          git merge ${{ github.ref_name }} --no-edit || echo "No changes to merge or merge already up-to-date"
+          
+          # Force push to translate branch
+          git push origin translate --force
+      
+      - name: Create Pull Request to translate branch
+        if: steps.check-branch.outputs.exists == 'true'
+        run: |
+          # Check if PR already exists from current branch to translate
+          PR_NUMBER=$(gh pr list --base translate --head ${{ github.ref_name }} --json number -q '.[0].number // empty' 2>/dev/null || echo "")
+          
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base translate \
+              --head ${{ github.ref_name }} \
+              --title "Strings update from ${{ github.ref_name }}" \
+              --body "Automated PR to update translation strings from \`${{ github.ref_name }}\` branch.$\n$\nChanges detected in:$\n- \`app/src/main/res/values/*.xml\`"
+            echo "PR created successfully"
+          else
+            echo "PR #$PR_NUMBER already exists"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create initial PR if translate branch was just created
+        if: steps.check-branch.outputs.exists == 'false'
+        run: |
+          gh pr create \
+            --base translate \
+            --head ${{ github.ref_name }} \
+            --title "Initial strings from ${{ github.ref_name }}" \
+            --body "Automated PR to initialize translate branch with strings from \`${{ github.ref_name }}\` branch.$\n$\nThis PR creates the translate branch with the current strings files."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
