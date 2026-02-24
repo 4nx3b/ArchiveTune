@@ -140,7 +140,7 @@ fun AppearanceSettings(
     )
     val (playerDesignStyle, onPlayerDesignStyleChange) = rememberEnumPreference(
         PlayerDesignStyleKey,
-        defaultValue = PlayerDesignStyle.V2
+        defaultValue = PlayerDesignStyle.V4
     )
     val (useNewMiniPlayerDesign, onUseNewMiniPlayerDesignChange) = rememberPreference(
         UseNewMiniPlayerDesignKey,
