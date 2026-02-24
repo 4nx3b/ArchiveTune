@@ -220,24 +220,23 @@ object ComposeToImage {
 
         val outerCornerRadius = cardSize * 0.06f
 
-        if (coverArtBitmap != null) {
-            val scaledArt = ensureSoftwareBitmap(
+        val scaledArt = if (coverArtBitmap != null) {
+            ensureSoftwareBitmap(
                 Bitmap.createScaledBitmap(coverArtBitmap, cardSize, cardSize, true)
             )
-            val blurredArt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                applyStackBlur(scaledArt, 25)
-            } else {
-                scaledArt
-            }
-            val artPath = Path().apply {
-                addRoundRect(
-                    RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat()),
-                    outerCornerRadius, outerCornerRadius,
-                    Path.Direction.CW
-                )
-            }
+        } else null
+
+        val artPath = Path().apply {
+            addRoundRect(
+                RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat()),
+                outerCornerRadius, outerCornerRadius,
+                Path.Direction.CW
+            )
+        }
+
+        if (scaledArt != null) {
             canvas.withClip(artPath) {
-                drawBitmap(blurredArt, 0f, 0f, null)
+                drawBitmap(scaledArt, 0f, 0f, null)
             }
         } else {
             val bgPaint = Paint().apply { color = bgColor; isAntiAlias = true }
@@ -267,6 +266,23 @@ object ComposeToImage {
         val glassHeight = glassBottom - glassTop
         val glassCornerRadius = cardSize * 0.05f
 
+        val glassRect = RectF(glassLeft, glassTop, glassRight, glassBottom)
+        val glassPath = Path().apply {
+            addRoundRect(glassRect, glassCornerRadius, glassCornerRadius, Path.Direction.CW)
+        }
+
+        if (scaledArt != null) {
+            val cropLeft = glassLeft.toInt().coerceIn(0, cardSize - 1)
+            val cropTop = glassTop.toInt().coerceIn(0, cardSize - 1)
+            val cropWidth = glassWidth.toInt().coerceIn(1, cardSize - cropLeft)
+            val cropHeight = glassHeight.toInt().coerceIn(1, cardSize - cropTop)
+            val glassCrop = Bitmap.createBitmap(scaledArt, cropLeft, cropTop, cropWidth, cropHeight)
+            val frostedCrop = scaleBlur(glassCrop, 12)
+            canvas.withClip(glassPath) {
+                drawBitmap(frostedCrop, glassLeft, glassTop, null)
+            }
+        }
+
         val glassBgPaint = Paint().apply {
             color = style.surfaceTint.let {
                 android.graphics.Color.argb(
@@ -278,7 +294,6 @@ object ComposeToImage {
             }
             isAntiAlias = true
         }
-        val glassRect = RectF(glassLeft, glassTop, glassRight, glassBottom)
         canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, glassBgPaint)
 
         val overlayPaint = Paint().apply {
@@ -415,23 +430,13 @@ object ComposeToImage {
         return@withContext bitmap
     }
 
-    private fun applyStackBlur(source: Bitmap, radius: Int): Bitmap {
+    private fun scaleBlur(source: Bitmap, strength: Int): Bitmap {
         val safe = ensureSoftwareBitmap(source)
-        return try {
-            val rs = android.renderscript.RenderScript.create(null as android.content.Context?)
-            val input = android.renderscript.Allocation.createFromBitmap(rs, safe)
-            val output = android.renderscript.Allocation.createTyped(rs, input.type)
-            val script = android.renderscript.ScriptIntrinsicBlur.create(rs, android.renderscript.Element.U8_4(rs))
-            script.setRadius(radius.toFloat().coerceIn(1f, 25f))
-            script.setInput(input)
-            script.forEach(output)
-            val result = safe.copy(Bitmap.Config.ARGB_8888, true)
-            output.copyTo(result)
-            rs.destroy()
-            result
-        } catch (_: Exception) {
-            safe
-        }
+        val factor = (1f / strength.coerceAtLeast(1)).coerceAtLeast(0.02f)
+        val smallW = (safe.width * factor).toInt().coerceAtLeast(1)
+        val smallH = (safe.height * factor).toInt().coerceAtLeast(1)
+        val downscaled = Bitmap.createScaledBitmap(safe, smallW, smallH, true)
+        return Bitmap.createScaledBitmap(downscaled, safe.width, safe.height, true)
     }
 
     private fun AppLogo(
