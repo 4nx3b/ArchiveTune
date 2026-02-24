@@ -295,7 +295,7 @@ object ComposeToImage {
         canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, overlayPaint)
 
         val borderPaint = Paint().apply {
-            style = Paint.Style.STROKE
+            this.style = Paint.Style.STROKE
             strokeWidth = 1.5f
             color = android.graphics.Color.argb(25, 255, 255, 255)
             isAntiAlias = true
