@@ -180,27 +180,29 @@ object ComposeToImage {
         height: Int,
         backgroundColor: Int? = null,
         textColor: Int? = null,
-        secondaryTextColor: Int? = null
+        secondaryTextColor: Int? = null,
+        glassStyle: moe.koiverse.archivetune.ui.component.LyricsGlassStyle? = null
     ): Bitmap = withContext(Dispatchers.Default) {
+        val style = glassStyle ?: moe.koiverse.archivetune.ui.component.LyricsGlassStyle.FrostedDark
         val cardSize = minOf(width, height) - 32
         val bitmap = createBitmap(cardSize, cardSize)
         val canvas = Canvas(bitmap)
 
-        val defaultBackgroundColor = 0xFF121212.toInt()
-        val defaultTextColor = 0xFFFFFFFF.toInt()
-        val defaultSecondaryTextColor = 0xB3FFFFFF.toInt()
-
-        val bgColor = backgroundColor ?: defaultBackgroundColor
-        val mainTextColor = textColor ?: defaultTextColor
-        val secondaryTxtColor = secondaryTextColor ?: defaultSecondaryTextColor
-
-        val backgroundPaint = Paint().apply {
-            color = bgColor
-            isAntiAlias = true
-        }
-        val cornerRadius = 20f
-        val backgroundRect = RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat())
-        canvas.drawRoundRect(backgroundRect, cornerRadius, cornerRadius, backgroundPaint)
+        val mainTextColor = textColor
+            ?: style.textColor.let {
+                ((it.alpha * 255).toInt() shl 24) or
+                ((it.red * 255).toInt() shl 16) or
+                ((it.green * 255).toInt() shl 8) or
+                (it.blue * 255).toInt()
+            }
+        val secondaryTxtColor = secondaryTextColor
+            ?: style.secondaryTextColor.let {
+                ((it.alpha * 255).toInt() shl 24) or
+                ((it.red * 255).toInt() shl 16) or
+                ((it.green * 255).toInt() shl 8) or
+                (it.blue * 255).toInt()
+            }
+        val bgColor = backgroundColor ?: 0xFF121212.toInt()
 
         var coverArtBitmap: Bitmap? = null
         if (coverArtUrl != null) {
@@ -208,7 +210,7 @@ object ComposeToImage {
                 val imageLoader = ImageLoader(context)
                 val request = ImageRequest.Builder(context)
                     .data(coverArtUrl)
-                    .size(256)
+                    .size(512)
                     .allowHardware(false)
                     .build()
                 val result = imageLoader.execute(request)
@@ -216,52 +218,148 @@ object ComposeToImage {
             } catch (_: Exception) {}
         }
 
-        val padding = 32f
-        val imageCornerRadius = 12f
+        val outerCornerRadius = cardSize * 0.06f
 
-        val coverArtSize = cardSize * 0.15f
+        if (coverArtBitmap != null) {
+            val scaledArt = ensureSoftwareBitmap(
+                Bitmap.createScaledBitmap(coverArtBitmap, cardSize, cardSize, true)
+            )
+            val blurredArt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                applyStackBlur(scaledArt, 25)
+            } else {
+                scaledArt
+            }
+            val artPath = Path().apply {
+                addRoundRect(
+                    RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat()),
+                    outerCornerRadius, outerCornerRadius,
+                    Path.Direction.CW
+                )
+            }
+            canvas.withClip(artPath) {
+                drawBitmap(blurredArt, 0f, 0f, null)
+            }
+        } else {
+            val bgPaint = Paint().apply { color = bgColor; isAntiAlias = true }
+            canvas.drawRoundRect(
+                RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat()),
+                outerCornerRadius, outerCornerRadius, bgPaint
+            )
+        }
+
+        val dimPaint = Paint().apply {
+            color = android.graphics.Color.argb(
+                (style.backgroundDimAlpha * 255).toInt(), 0, 0, 0
+            )
+            isAntiAlias = true
+        }
+        canvas.drawRoundRect(
+            RectF(0f, 0f, cardSize.toFloat(), cardSize.toFloat()),
+            outerCornerRadius, outerCornerRadius, dimPaint
+        )
+
+        val glassMargin = cardSize * 0.04f
+        val glassLeft = glassMargin
+        val glassTop = glassMargin
+        val glassRight = cardSize - glassMargin
+        val glassBottom = cardSize - glassMargin
+        val glassWidth = glassRight - glassLeft
+        val glassHeight = glassBottom - glassTop
+        val glassCornerRadius = cardSize * 0.05f
+
+        val glassBgPaint = Paint().apply {
+            color = style.surfaceTint.let {
+                android.graphics.Color.argb(
+                    (style.surfaceAlpha * 255).toInt(),
+                    (it.red * 255).toInt(),
+                    (it.green * 255).toInt(),
+                    (it.blue * 255).toInt()
+                )
+            }
+            isAntiAlias = true
+        }
+        val glassRect = RectF(glassLeft, glassTop, glassRight, glassBottom)
+        canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, glassBgPaint)
+
+        val overlayPaint = Paint().apply {
+            color = style.overlayColor.let {
+                android.graphics.Color.argb(
+                    (style.overlayAlpha * 255).toInt(),
+                    (it.red * 255).toInt(),
+                    (it.green * 255).toInt(),
+                    (it.blue * 255).toInt()
+                )
+            }
+            isAntiAlias = true
+        }
+        canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, overlayPaint)
+
+        val borderPaint = Paint().apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = android.graphics.Color.argb(25, 255, 255, 255)
+            isAntiAlias = true
+        }
+        canvas.drawRoundRect(glassRect, glassCornerRadius, glassCornerRadius, borderPaint)
+
+        val contentPadding = glassWidth * 0.08f
+        val contentLeft = glassLeft + contentPadding
+        val contentTop = glassTop + contentPadding
+        val contentRight = glassRight - contentPadding
+
+        val imageCornerRadius = cardSize * 0.035f
+        val coverSize = glassWidth * 0.16f
+
         coverArtBitmap?.let {
-            val rect = RectF(padding, padding, padding + coverArtSize, padding + coverArtSize)
+            val rect = RectF(contentLeft, contentTop, contentLeft + coverSize, contentTop + coverSize)
             val path = Path().apply {
                 addRoundRect(rect, imageCornerRadius, imageCornerRadius, Path.Direction.CW)
             }
             canvas.withClip(path) {
                 drawBitmap(it, null, rect, null)
             }
+            val artBorderPaint = Paint().apply {
+                this.style = Paint.Style.STROKE
+                strokeWidth = 1f
+                color = android.graphics.Color.argb(38, 255, 255, 255)
+                isAntiAlias = true
+            }
+            canvas.drawRoundRect(rect, imageCornerRadius, imageCornerRadius, artBorderPaint)
         }
 
         val titlePaint = TextPaint().apply {
             color = mainTextColor
-            textSize = cardSize * 0.040f
+            textSize = cardSize * 0.038f
             typeface = Typeface.DEFAULT_BOLD
             isAntiAlias = true
+            letterSpacing = -0.02f
         }
         val artistPaint = TextPaint().apply {
             color = secondaryTxtColor
-            textSize = cardSize * 0.030f
-            typeface = Typeface.DEFAULT
+            textSize = cardSize * 0.028f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             isAntiAlias = true
         }
 
-        val textMaxWidth = cardSize - (padding * 2 + coverArtSize + 16f)
-        val textStartX = padding + coverArtSize + 16f
+        val textMaxWidth = (contentRight - contentLeft - coverSize - cardSize * 0.04f).toInt()
+        val textStartX = contentLeft + coverSize + cardSize * 0.04f
 
-        val titleLayout = StaticLayout.Builder.obtain(songTitle, 0, songTitle.length, titlePaint, textMaxWidth.toInt())
+        val titleLayout = StaticLayout.Builder.obtain(songTitle, 0, songTitle.length, titlePaint, textMaxWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setMaxLines(1)
             .build()
-        val artistLayout = StaticLayout.Builder.obtain(artistName, 0, artistName.length, artistPaint, textMaxWidth.toInt())
+        val artistLayout = StaticLayout.Builder.obtain(artistName, 0, artistName.length, artistPaint, textMaxWidth)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setMaxLines(1)
             .build()
 
-        val imageCenter = padding + coverArtSize / 2f
-        val textBlockHeight = titleLayout.height + artistLayout.height + 8f
+        val imageCenter = contentTop + coverSize / 2f
+        val textBlockHeight = titleLayout.height + artistLayout.height + 6f
         val textBlockY = imageCenter - textBlockHeight / 2f
 
         canvas.withTranslation(textStartX, textBlockY) {
             titleLayout.draw(this)
-            translate(0f, titleLayout.height.toFloat() + 8f)
+            translate(0f, titleLayout.height.toFloat() + 6f)
             artistLayout.draw(this)
         }
 
@@ -269,16 +367,16 @@ object ComposeToImage {
             color = mainTextColor
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             isAntiAlias = true
-            letterSpacing = 0.02f
+            letterSpacing = -0.01f
         }
 
-        val lyricsMaxWidth = (cardSize * 0.85f).toInt()
-        val logoBlockHeight = (cardSize * 0.08f).toInt()
-        val lyricsTop = cardSize * 0.18f
-        val lyricsBottom = cardSize - (logoBlockHeight + 32)
+        val lyricsMaxWidth = (glassWidth * 0.85f).toInt()
+        val logoBlockHeight = (glassHeight * 0.08f).toInt()
+        val lyricsTop = glassTop + glassHeight * 0.22f
+        val lyricsBottom = glassBottom - (logoBlockHeight + contentPadding)
         val availableLyricsHeight = lyricsBottom - lyricsTop
 
-        var lyricsTextSize = cardSize * 0.06f
+        var lyricsTextSize = cardSize * 0.055f
         var lyricsLayout: StaticLayout
         do {
             lyricsPaint.textSize = lyricsTextSize
@@ -287,7 +385,7 @@ object ComposeToImage {
             )
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(false)
-                .setLineSpacing(10f, 1.3f)
+                .setLineSpacing(8f, 1.35f)
                 .setMaxLines(10)
                 .build()
             if (lyricsLayout.height > availableLyricsHeight) {
@@ -295,10 +393,10 @@ object ComposeToImage {
             } else {
                 break
             }
-        } while (lyricsTextSize > 26f)
-        val lyricsYOffset = lyricsTop + (availableLyricsHeight - lyricsLayout.height) / 2f
+        } while (lyricsTextSize > 22f)
 
-        canvas.withTranslation((cardSize - lyricsMaxWidth) / 2f, lyricsYOffset) {
+        val lyricsYOffset = lyricsTop + (availableLyricsHeight - lyricsLayout.height) / 2f
+        canvas.withTranslation(glassLeft + (glassWidth - lyricsMaxWidth) / 2f, lyricsYOffset) {
             lyricsLayout.draw(this)
         }
 
@@ -307,13 +405,33 @@ object ComposeToImage {
             canvas = canvas,
             canvasWidth = cardSize,
             canvasHeight = cardSize,
-            padding = padding,
+            padding = glassLeft + contentPadding,
+            bottomPadding = glassBottom - contentPadding,
             circleColor = secondaryTxtColor,
-            logoTint = bgColor,
+            logoTint = if (style.isDark) 0xDD000000.toInt() else 0xE6FFFFFF.toInt(),
             textColor = secondaryTxtColor,
         )
 
         return@withContext bitmap
+    }
+
+    private fun applyStackBlur(source: Bitmap, radius: Int): Bitmap {
+        val safe = ensureSoftwareBitmap(source)
+        return try {
+            val rs = android.renderscript.RenderScript.create(null as android.content.Context?)
+            val input = android.renderscript.Allocation.createFromBitmap(rs, safe)
+            val output = android.renderscript.Allocation.createTyped(rs, input.type)
+            val script = android.renderscript.ScriptIntrinsicBlur.create(rs, android.renderscript.Element.U8_4(rs))
+            script.setRadius(radius.toFloat().coerceIn(1f, 25f))
+            script.setInput(input)
+            script.forEach(output)
+            val result = safe.copy(Bitmap.Config.ARGB_8888, true)
+            output.copyTo(result)
+            rs.destroy()
+            result
+        } catch (_: Exception) {
+            safe
+        }
     }
 
     private fun AppLogo(
@@ -322,12 +440,13 @@ object ComposeToImage {
         canvasWidth: Int,
         canvasHeight: Int,
         padding: Float,
+        bottomPadding: Float = canvasHeight - padding,
         circleColor: Int,
         logoTint: Int,
         textColor: Int,
     ) {
         val baseSize = minOf(canvasWidth, canvasHeight).toFloat()
-        val logoSize = (baseSize * 0.05f).toInt()
+        val logoSize = (baseSize * 0.045f).toInt()
 
         val rawLogo = context.getDrawable(R.drawable.small_icon)?.toBitmap(logoSize, logoSize)
         val logo = rawLogo?.let { source ->
@@ -344,18 +463,18 @@ object ComposeToImage {
         val appName = context.getString(R.string.app_name)
         val appNamePaint = TextPaint().apply {
             color = textColor
-            textSize = baseSize * 0.030f
+            textSize = baseSize * 0.028f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             isAntiAlias = true
-            letterSpacing = 0.01f
+            letterSpacing = 0.02f
         }
 
         val circleRadius = logoSize * 0.55f
-        val logoX = padding + circleRadius - logoSize / 2f
-        val logoY = canvasHeight - padding - circleRadius - logoSize / 2f
         val circleX = padding + circleRadius
-        val circleY = canvasHeight - padding - circleRadius
-        val textX = padding + circleRadius * 2 + 12f
+        val circleY = bottomPadding - circleRadius
+        val logoX = circleX - logoSize / 2f
+        val logoY = circleY - logoSize / 2f
+        val textX = padding + circleRadius * 2 + 10f
         val textY = circleY + appNamePaint.textSize * 0.3f
 
         val circlePaint = Paint().apply {
