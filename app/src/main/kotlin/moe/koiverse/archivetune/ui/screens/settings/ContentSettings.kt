@@ -82,6 +82,8 @@ fun ContentSettings(
         )
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
+    val (preloadQueueLyricsEnabled, onPreloadQueueLyricsEnabledChange) = rememberPreference(PreloadQueueLyricsEnabledKey, defaultValue = true)
+    val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 1)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
@@ -278,6 +280,24 @@ fun ContentSettings(
             checked = lyricsRomanizeKorean,
             onCheckedChange = onLyricsRomanizeKoreanChange,
         )
+        // Queue lyrics pre-load settings
+        SwitchPreference(
+            title = { Text(stringResource(R.string.preload_queue_lyrics)) },
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = preloadQueueLyricsEnabled,
+            onCheckedChange = onPreloadQueueLyricsEnabledChange,
+        )
+        if (preloadQueueLyricsEnabled) {
+            NumberPickerPreference(
+                title = { Text(stringResource(R.string.queue_lyrics_preload_count)) },
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                value = queueLyricsPreloadCount,
+                onValueChange = onQueueLyricsPreloadCountChange,
+                minValue = 0,
+                maxValue = 10,
+                valueText = { if (it == 0) "Off" else it.toString() },
+            )
+        }
 
         PreferenceGroupTitle(title = stringResource(R.string.misc))
         EditTextPreference(

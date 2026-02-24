@@ -480,6 +480,8 @@
     <string name="disable_screenshot_desc">Khi tùy chọn này được bật, chụp màn hình và chế độ xem ứng dụng trong Ứng dụng gần đây sẽ bị tắt.</string>
     <string name="enable_lrclib">Bật nhà cung cấp lời bài hát LrcLib</string>
     <string name="enable_kugou">Bật nhà cung cấp lời bài hát KuGou</string>
+    <string name="preload_queue_lyrics">Tải trước lời bài hát trong danh sách</string>
+    <string name="queue_lyrics_preload_count">Số lượng bài hát được tải trước</string>
     <string name="hide_explicit">Ẩn nội dung rõ ràng</string>
     <string name="hide_video">Ẩn video âm nhạc</string>
     <string name="backup_restore">Sao lưu và khôi phục</string>
