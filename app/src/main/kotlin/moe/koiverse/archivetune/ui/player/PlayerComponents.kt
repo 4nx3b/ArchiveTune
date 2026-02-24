@@ -632,48 +632,106 @@ fun PlayerSlider(
     onValueChange: (Long) -> Unit,
     onValueChangeFinished: () -> Unit
 ) {
+    StyledPlaybackSlider(
+        sliderStyle = sliderStyle,
+        value = (sliderPosition ?: position).toFloat(),
+        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
+        onValueChange = { onValueChange(it.toLong()) },
+        onValueChangeFinished = onValueChangeFinished,
+        activeColor = textButtonColor,
+        isPlaying = isPlaying,
+        modifier = Modifier.padding(horizontal = PlayerHorizontalPadding)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StyledPlaybackSlider(
+    sliderStyle: SliderStyle,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    activeColor: Color,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier
+) {
     when (sliderStyle) {
-        SliderStyle.DEFAULT -> {
+        SliderStyle.Standard -> {
             Slider(
-                value = (sliderPosition ?: position).toFloat(),
-                valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                onValueChange = { onValueChange(it.toLong()) },
+                value = value,
+                valueRange = valueRange,
+                onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
-                colors = PlayerSliderColors.defaultSliderColors(textButtonColor),
-                modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
+                colors = PlayerSliderColors.standardSliderColors(activeColor),
+                modifier = modifier
             )
         }
 
-        SliderStyle.SQUIGGLY -> {
+        SliderStyle.Wavy -> {
             SquigglySlider(
-                value = (sliderPosition ?: position).toFloat(),
-                valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                onValueChange = { onValueChange(it.toLong()) },
+                value = value,
+                valueRange = valueRange,
+                onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
-                colors = PlayerSliderColors.squigglySliderColors(textButtonColor),
-                modifier = Modifier.padding(horizontal = PlayerHorizontalPadding),
-                squigglesSpec =
-                SquigglySlider.SquigglesSpec(
-                    amplitude = if (isPlaying) (2.dp).coerceAtLeast(2.dp) else 0.dp,
-                    strokeWidth = 3.dp,
-                ),
+                colors = PlayerSliderColors.wavySliderColors(activeColor),
+                modifier = modifier,
+                squigglesSpec = SquigglySlider.SquigglesSpec(
+                    amplitude = if (isPlaying) 2.dp else 0.dp,
+                    strokeWidth = 3.dp
+                )
             )
         }
 
-        SliderStyle.SLIM -> {
+        SliderStyle.Thick -> {
             Slider(
-                value = (sliderPosition ?: position).toFloat(),
-                valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                onValueChange = { onValueChange(it.toLong()) },
+                value = value,
+                valueRange = valueRange,
+                onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
+                colors = PlayerSliderColors.thickSliderColors(activeColor),
+                track = { sliderState ->
+                    PlayerSliderTrack(
+                        sliderState = sliderState,
+                        colors = PlayerSliderColors.thickSliderColors(activeColor),
+                        trackHeight = 12.dp
+                    )
+                },
+                modifier = modifier
+            )
+        }
+
+        SliderStyle.Circular -> {
+            SquigglySlider(
+                value = value,
+                valueRange = valueRange,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                colors = PlayerSliderColors.circularSliderColors(activeColor),
+                modifier = modifier,
+                squigglesSpec = SquigglySlider.SquigglesSpec(
+                    amplitude = if (isPlaying) 2.dp else 0.dp,
+                    strokeWidth = 3.dp
+                )
+            )
+        }
+
+        SliderStyle.Simple -> {
+            Slider(
+                value = value,
+                valueRange = valueRange,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                colors = PlayerSliderColors.simpleSliderColors(activeColor),
                 thumb = { Spacer(modifier = Modifier.size(0.dp)) },
                 track = { sliderState ->
                     PlayerSliderTrack(
                         sliderState = sliderState,
-                        colors = PlayerSliderColors.slimSliderColors(textButtonColor)
+                        colors = PlayerSliderColors.simpleSliderColors(activeColor),
+                        trackHeight = 3.dp
                     )
                 },
-                modifier = Modifier.padding(horizontal = PlayerHorizontalPadding)
+                modifier = modifier
             )
         }
     }

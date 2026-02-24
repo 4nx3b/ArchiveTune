@@ -38,9 +38,11 @@ val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 
 enum class SliderStyle {
-    DEFAULT,
-    SQUIGGLY,
-    SLIM,
+    Standard,
+    Wavy,
+    Thick,
+    Circular,
+    Simple,
 }
 
 const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
