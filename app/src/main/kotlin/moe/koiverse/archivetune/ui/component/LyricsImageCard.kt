@@ -47,7 +47,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.rememberCanvasBackdrop
+import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import moe.koiverse.archivetune.R
 import moe.koiverse.archivetune.models.MediaMetadata
 
