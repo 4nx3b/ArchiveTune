@@ -80,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -901,6 +902,18 @@ fun SettingsScreen(
                     } else {
                         filteredCategories
                     }
+
+                    if (queryText.isNotBlank() && filteredInternalSettings.isNotEmpty()) {
+                        item(key = "internalSearchResults") {
+                            PremiumSettingsSection(
+                                category = internalSettingsCategory,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
+                            )
+                        }
+                    }
+
                     items(
                         count = categoriesToShow.size,
                         key = { categoriesToShow[it].title },
@@ -916,17 +929,6 @@ fun SettingsScreen(
                         ) {
                             PremiumSettingsSection(
                                 category = category,
-
-                    if (queryText.isNotBlank() && filteredInternalSettings.isNotEmpty()) {
-                        item(key = "internalSearchResults") {
-                            PremiumSettingsSection(
-                                category = internalSettingsCategory,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .padding(bottom = 12.dp),
-                            )
-                        }
-                    }
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 12.dp),
