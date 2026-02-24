@@ -349,12 +349,11 @@ private fun AccountSettingsHeader(onClose: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // App Icon
-                Image(
+                Icon(
                     painter = painterResource(R.drawable.about_appbar),
                     contentDescription = null,
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
                 )
 
                 Text(
