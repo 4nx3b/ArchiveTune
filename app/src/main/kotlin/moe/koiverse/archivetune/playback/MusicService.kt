@@ -78,6 +78,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import moe.koiverse.archivetune.innertube.YouTube
 import moe.koiverse.archivetune.innertube.models.YouTubeClient
 import moe.koiverse.archivetune.innertube.models.SongItem
+import moe.koiverse.archivetune.lyrics.LyricsPreloadManager
 import moe.koiverse.archivetune.innertube.models.WatchEndpoint
 import moe.koiverse.archivetune.MainActivity
 import moe.koiverse.archivetune.R
@@ -331,6 +332,7 @@ class MusicService :
     private val crossfadeDurationMs = MutableStateFlow(0)
     private val audioNormalizationEnabled = MutableStateFlow(true)
     private var crossfadeAudio: CrossfadeAudio? = null
+    private var lyricsPreloadManager: LyricsPreloadManager? = null
 
     lateinit var sleepTimer: SleepTimer
 
@@ -706,6 +708,13 @@ class MusicService :
                         .build()
                 },
             ).also { it.start(scope) }
+
+        // Initialize lyrics pre-load manager
+        lyricsPreloadManager = LyricsPreloadManager(
+            context = this,
+            database = database,
+            networkConnectivity = connectivityObserver,
+        )
 
         dataStore.data
             .map(::readEqSettingsFromPrefs)
@@ -2954,6 +2963,14 @@ class MusicService :
     super.onMediaItemTransition(mediaItem, reason)
 
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
+
+    // Pre-load lyrics for upcoming songs in queue
+    val currentIndex = player.currentMediaItemIndex
+    // Convert media items to MediaMetadata for lyrics pre-loading
+    val queue = player.mediaItems.mapNotNull { it.metadata }
+    if (queue.isNotEmpty()) {
+        lyricsPreloadManager?.onSongChanged(currentIndex, queue)
+    }
 
     val joined = togetherSessionState.value as? moe.koiverse.archivetune.together.TogetherSessionState.Joined
     if (joined?.role is moe.koiverse.archivetune.together.TogetherRole.Guest &&

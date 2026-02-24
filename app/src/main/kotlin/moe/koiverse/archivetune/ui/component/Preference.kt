@@ -444,6 +444,82 @@ fun CrossfadeSliderPreference(
 }
 
 @Composable
+fun NumberPickerPreference(
+    modifier: Modifier = Modifier,
+    title: @Composable () -> Unit,
+    icon: (@Composable () -> Unit)? = null,
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    minValue: Int = 0,
+    maxValue: Int = 10,
+    valueText: (Int) -> String = { it.toString() },
+    isEnabled: Boolean = true,
+) {
+    var showDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var sliderValue by remember {
+        mutableFloatStateOf(value.toFloat())
+    }
+
+    if (showDialog) {
+        ActionPromptDialog(
+            titleBar = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    title()
+                }
+            },
+            onDismiss = { showDialog = false },
+            onConfirm = {
+                val rounded = sliderValue.roundToInt().coerceIn(minValue, maxValue)
+                sliderValue = rounded.toFloat()
+                showDialog = false
+                onValueChange.invoke(rounded)
+            },
+            onCancel = {
+                sliderValue = value.toFloat()
+                showDialog = false
+            },
+            onReset = {
+                sliderValue = minValue.toFloat()
+            },
+            content = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val rounded = sliderValue.roundToInt().coerceIn(minValue, maxValue)
+                    Text(
+                        text = valueText(rounded),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = it.coerceIn(minValue.toFloat(), maxValue.toFloat()) },
+                        valueRange = minValue.toFloat()..maxValue.toFloat(),
+                        steps = maxValue - minValue - 1,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        )
+    }
+
+    PreferenceEntry(
+        modifier = modifier,
+        title = title,
+        description = valueText(value),
+        icon = icon,
+        onClick = { if (isEnabled) showDialog = true },
+        isEnabled = isEnabled,
+    )
+}
+
+@Composable
 fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,

@@ -9,6 +9,7 @@
 package moe.koiverse.archivetune.di
 
 import moe.koiverse.archivetune.lyrics.LyricsHelper
+import moe.koiverse.archivetune.lyrics.LyricsPreloadManager
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -17,4 +18,5 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 interface LyricsHelperEntryPoint {
     fun lyricsHelper(): LyricsHelper
+    fun lyricsPreloadManager(): LyricsPreloadManager
 }
