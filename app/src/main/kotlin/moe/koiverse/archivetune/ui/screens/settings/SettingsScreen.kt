@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,10 +78,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -125,6 +122,7 @@ data class PremiumSettingsItem(
     val badge: String? = null,
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
+    val keywords: List<String> = emptyList(),
     val onClick: () -> Unit,
 )
 
@@ -153,13 +151,32 @@ private fun filterSettingsCategories(
             category
         } else {
             val filteredItems = category.items.filter { item ->
-                item.title.contains(query, ignoreCase = true) ||
-                    (item.subtitle?.contains(query, ignoreCase = true) == true) ||
-                    (item.badge?.contains(query, ignoreCase = true) == true)
+                matchesSearchQuery(item, query)
             }
             if (filteredItems.isEmpty()) null else category.copy(items = filteredItems)
         }
     }
+}
+
+private fun matchesSearchQuery(
+    item: PremiumSettingsItem,
+    query: String,
+): Boolean {
+    if (item.title.contains(query, ignoreCase = true)) return true
+    if (item.subtitle?.contains(query, ignoreCase = true) == true) return true
+    if (item.badge?.contains(query, ignoreCase = true) == true) return true
+    return item.keywords.any { keyword ->
+        keyword.contains(query, ignoreCase = true) ||
+            query.contains(keyword, ignoreCase = true)
+    }
+}
+
+private fun filterInternalSettingsItems(
+    items: List<PremiumSettingsItem>,
+    query: String,
+): List<PremiumSettingsItem> {
+    if (query.isBlank()) return emptyList()
+    return items.filter { item -> matchesSearchQuery(item, query) }
 }
 
 private fun filterIntegrations(
@@ -283,13 +300,13 @@ fun SettingsScreen(
             accentColor = Color(0xFF5865F2),
         ),
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.link),
+            icon = painterResource(R.drawable.integration),
             label = stringResource(R.string.integration),
             onClick = { navController.navigate("settings/integration") },
             accentColor = MaterialTheme.colorScheme.secondary,
         ),
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.play),
+            icon = painterResource(R.drawable.fire),
             label = stringResource(R.string.music_together),
             onClick = { navController.navigate("settings/music_together") },
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -312,6 +329,14 @@ fun SettingsScreen(
                         title = stringResource(R.string.appearance),
                         subtitle = stringResource(R.string.dark_theme),
                         accentColor = MaterialTheme.colorScheme.primary,
+                        keywords = listOf(
+                            "theme",
+                            "palette",
+                            "material you",
+                            "dynamic color",
+                            "font",
+                            "ui",
+                        ),
                         onClick = { navController.navigate("settings/appearance") },
                     ),
                 ),
@@ -327,6 +352,14 @@ fun SettingsScreen(
                         title = stringResource(R.string.player_and_audio),
                         subtitle = stringResource(R.string.audio_quality),
                         accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf(
+                            "audio",
+                            "playback",
+                            "volume",
+                            "quality",
+                            "equalizer",
+                            "crossfade",
+                        ),
                         onClick = { navController.navigate("settings/player") },
                     ),
                     PremiumSettingsItem(
@@ -334,6 +367,13 @@ fun SettingsScreen(
                         title = stringResource(R.string.content),
                         subtitle = stringResource(R.string.content_language),
                         accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf(
+                            "language",
+                            "content",
+                            "lyrics",
+                            "translation",
+                            "region",
+                        ),
                         onClick = { navController.navigate("settings/content") },
                     ),
                 ),
@@ -349,6 +389,13 @@ fun SettingsScreen(
                         title = stringResource(R.string.privacy),
                         subtitle = stringResource(R.string.pause_listen_history),
                         accentColor = MaterialTheme.colorScheme.error,
+                        keywords = listOf(
+                            "privacy",
+                            "history",
+                            "tracking",
+                            "security",
+                            "permissions",
+                        ),
                         onClick = { navController.navigate("settings/privacy") },
                     ),
                 ),
@@ -364,6 +411,13 @@ fun SettingsScreen(
                         title = stringResource(R.string.storage),
                         subtitle = stringResource(R.string.cache),
                         accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf(
+                            "storage",
+                            "cache",
+                            "offline",
+                            "downloads",
+                            "cleanup",
+                        ),
                         onClick = { navController.navigate("settings/storage") },
                     ),
                     PremiumSettingsItem(
@@ -371,6 +425,13 @@ fun SettingsScreen(
                         title = stringResource(R.string.backup_restore),
                         subtitle = stringResource(R.string.action_backup),
                         accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf(
+                            "backup",
+                            "restore",
+                            "import",
+                            "export",
+                            "migration",
+                        ),
                         onClick = { navController.navigate("settings/backup_restore") },
                     ),
                 ),
@@ -388,6 +449,12 @@ fun SettingsScreen(
                                 title = stringResource(R.string.default_links),
                                 subtitle = stringResource(R.string.open_supported_links),
                                 accentColor = MaterialTheme.colorScheme.primary,
+                                keywords = listOf(
+                                    "links",
+                                    "deeplink",
+                                    "default",
+                                    "supported links",
+                                ),
                                 onClick = {
                                     try {
                                         val intent = Intent(
@@ -426,6 +493,13 @@ fun SettingsScreen(
                             title = stringResource(R.string.experiment_settings),
                             subtitle = stringResource(R.string.misc),
                             accentColor = MaterialTheme.colorScheme.tertiary,
+                            keywords = listOf(
+                                "experimental",
+                                "debug",
+                                "developer",
+                                "labs",
+                                "internal",
+                            ),
                             onClick = { navController.navigate("settings/misc") },
                         ),
                     )
@@ -444,6 +518,12 @@ fun SettingsScreen(
                             } else {
                                 MaterialTheme.colorScheme.primary
                             },
+                            keywords = listOf(
+                                "update",
+                                "version",
+                                "release",
+                                "changelog",
+                            ),
                             onClick = { navController.navigate("settings/update") },
                         ),
                     )
@@ -453,10 +533,148 @@ fun SettingsScreen(
                             title = stringResource(R.string.about),
                             subtitle = "ArchiveTune",
                             accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            keywords = listOf(
+                                "about",
+                                "app info",
+                                "license",
+                                "contributors",
+                            ),
                             onClick = { navController.navigate("settings/about") },
                         ),
                     )
                 },
+            ),
+        )
+    }
+
+    val internalSettingsItems = buildList {
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.palette),
+                title = stringResource(R.string.theme_creator_title),
+                subtitle = stringResource(R.string.theme_creator_subtitle),
+                accentColor = MaterialTheme.colorScheme.primary,
+                keywords = listOf(
+                    "theme",
+                    "creator",
+                    "seed",
+                    "material",
+                    "palette",
+                    "import",
+                    "export",
+                ),
+                onClick = { navController.navigate("settings/appearance/theme_creator") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.palette),
+                title = stringResource(R.string.customize_colors),
+                subtitle = stringResource(R.string.appearance),
+                accentColor = MaterialTheme.colorScheme.primary,
+                keywords = listOf(
+                    "palette",
+                    "color",
+                    "accent",
+                    "tone",
+                    "dynamic color",
+                ),
+                onClick = { navController.navigate("settings/appearance/palette_picker") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.image),
+                title = stringResource(R.string.customize_background_title),
+                subtitle = stringResource(R.string.appearance),
+                accentColor = MaterialTheme.colorScheme.secondary,
+                keywords = listOf(
+                    "background",
+                    "wallpaper",
+                    "image",
+                    "blur",
+                    "gradient",
+                ),
+                onClick = { navController.navigate("customize_background") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.discord),
+                title = stringResource(R.string.discord_integration),
+                subtitle = stringResource(R.string.integration),
+                accentColor = Color(0xFF5865F2),
+                keywords = listOf(
+                    "discord",
+                    "rpc",
+                    "rich presence",
+                    "status",
+                    "activity",
+                ),
+                onClick = { navController.navigate("settings/discord") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.security),
+                title = stringResource(R.string.advanced_login),
+                subtitle = stringResource(R.string.discord),
+                accentColor = Color(0xFF5865F2),
+                keywords = listOf(
+                    "token",
+                    "login",
+                    "authentication",
+                    "discord login",
+                ),
+                onClick = { navController.navigate("settings/discord/login") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.experiment),
+                title = stringResource(R.string.experimental_features),
+                subtitle = stringResource(R.string.experimental_features_description),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                keywords = listOf(
+                    "experimental",
+                    "labs",
+                    "advanced",
+                    "discord experimental",
+                    "internal",
+                ),
+                onClick = { navController.navigate("settings/discord/experimental") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.integration),
+                title = stringResource(R.string.lastfm_integration),
+                subtitle = stringResource(R.string.integration),
+                accentColor = MaterialTheme.colorScheme.secondary,
+                keywords = listOf(
+                    "lastfm",
+                    "last.fm",
+                    "scrobble",
+                    "listening history",
+                ),
+                onClick = { navController.navigate("settings/lastfm") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.fire),
+                title = stringResource(R.string.music_together),
+                subtitle = stringResource(R.string.integration),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                keywords = listOf(
+                    "together",
+                    "session",
+                    "sync",
+                    "party",
+                    "join",
+                    "host",
+                ),
+                onClick = { navController.navigate("settings/music_together") },
             ),
         )
     }
@@ -480,26 +698,39 @@ fun SettingsScreen(
         )
     }
 
+    val wrappedInternalSettings = internalSettingsItems.map { item ->
+        val originalOnClick = item.onClick
+        item.copy(onClick = { resetSearch(); originalOnClick() })
+    }
+
     val queryText = query.text.trim()
     val showSearchBar = isSearching || queryText.isNotBlank()
 
     val filteredQuickActions = filterQuickActions(wrappedQuickActions, queryText)
     val filteredIntegrations = filterIntegrations(wrappedIntegrations, queryText)
     val filteredCategories = filterSettingsCategories(wrappedCategories, queryText)
+    val filteredInternalSettings = filterInternalSettingsItems(wrappedInternalSettings, queryText)
 
-    val hasSearchResults by remember(filteredQuickActions, filteredCategories, filteredIntegrations) {
+    val hasSearchResults by remember(
+        filteredQuickActions,
+        filteredCategories,
+        filteredIntegrations,
+        filteredInternalSettings,
+    ) {
         derivedStateOf {
             filteredQuickActions.isNotEmpty() ||
                 filteredCategories.isNotEmpty() ||
-                filteredIntegrations.isNotEmpty()
+                filteredIntegrations.isNotEmpty() ||
+                filteredInternalSettings.isNotEmpty()
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        SettingsMeshGradientBackground(
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
+    val internalSettingsCategory = SettingsCategory(
+        title = stringResource(R.string.internal_subcategory_settings),
+        items = filteredInternalSettings,
+    )
 
+    Box(modifier = Modifier.fillMaxSize()) {
         if (!showSearchBar) {
             LazyColumn(
                 state = listState,
@@ -685,6 +916,17 @@ fun SettingsScreen(
                         ) {
                             PremiumSettingsSection(
                                 category = category,
+
+                    if (queryText.isNotBlank() && filteredInternalSettings.isNotEmpty()) {
+                        item(key = "internalSearchResults") {
+                            PremiumSettingsSection(
+                                category = internalSettingsCategory,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
+                            )
+                        }
+                    }
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 12.dp),
@@ -827,6 +1069,17 @@ fun SettingsScreen(
                             }
                         }
 
+                        if (filteredInternalSettings.isNotEmpty()) {
+                            item {
+                                PremiumSettingsSection(
+                                    category = internalSettingsCategory,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 12.dp),
+                                )
+                            }
+                        }
+
                         items(filteredCategories.size) { index ->
                             val category = filteredCategories[index]
                             PremiumSettingsSection(
@@ -841,58 +1094,6 @@ fun SettingsScreen(
             }
         }
     }
-}
-
-@Composable
-private fun SettingsMeshGradientBackground(modifier: Modifier = Modifier) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val secondaryColor = MaterialTheme.colorScheme.secondary
-    val tertiaryColor = MaterialTheme.colorScheme.tertiary
-    val surfaceColor = MaterialTheme.colorScheme.surface
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.45f)
-            .drawWithCache {
-                val width = size.width
-                val height = size.height
-
-                val blob1 = Brush.radialGradient(
-                    colors = listOf(primaryColor.copy(alpha = 0.28f), Color.Transparent),
-                    center = Offset(width * 0.2f, height * 0.15f),
-                    radius = width * 0.55f,
-                )
-                val blob2 = Brush.radialGradient(
-                    colors = listOf(tertiaryColor.copy(alpha = 0.22f), Color.Transparent),
-                    center = Offset(width * 0.8f, height * 0.25f),
-                    radius = width * 0.45f,
-                )
-                val blob3 = Brush.radialGradient(
-                    colors = listOf(secondaryColor.copy(alpha = 0.18f), Color.Transparent),
-                    center = Offset(width * 0.5f, height * 0.55f),
-                    radius = width * 0.5f,
-                )
-                val fadeBrush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        Color.Transparent,
-                        surfaceColor.copy(alpha = 0.3f),
-                        surfaceColor.copy(alpha = 0.7f),
-                        surfaceColor,
-                    ),
-                    startY = height * 0.35f,
-                    endY = height,
-                )
-
-                onDrawBehind {
-                    drawRect(blob1)
-                    drawRect(blob2)
-                    drawRect(blob3)
-                    drawRect(fadeBrush)
-                }
-            },
-    )
 }
 
 @Composable
@@ -1309,7 +1510,7 @@ private fun SettingsQuickActionTile(
         modifier = modifier
             .scale(scale)
             .graphicsLayer { alpha = tileAlpha }
-            .aspectRatio(1.7f),
+            .aspectRatio(1.45f),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         onClick = action.onClick,
@@ -1336,15 +1537,15 @@ private fun SettingsQuickActionTile(
                         radius = 500f,
                     ),
                 )
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(action.accentColor.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center,
@@ -1353,7 +1554,7 @@ private fun SettingsQuickActionTile(
                         painter = action.icon,
                         contentDescription = null,
                         tint = action.accentColor,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
 
@@ -1399,7 +1600,7 @@ private fun SettingsIntegrationsRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.link),
+                        painter = painterResource(R.drawable.integration),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(16.dp),
