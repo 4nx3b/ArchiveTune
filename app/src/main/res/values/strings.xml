@@ -24,6 +24,8 @@
     <string name="new_release_albums">New release albums</string>
     <string name="select_playlist_to_sync">Select Playlist To Sync</string>
     <string name="integration">Integration</string>
+    <string name="integrations">Integrations</string>
+    <string name="search_try_different">Try a different search term</string>
     <!-- History -->
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>
