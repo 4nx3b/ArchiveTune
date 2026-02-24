@@ -558,6 +558,11 @@ val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
 val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")
 
+val GitHubReleasesEtagKey = stringPreferencesKey("github_releases_etag")
+val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json")
+val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at")
+val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint")
+
 val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
 val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
 
