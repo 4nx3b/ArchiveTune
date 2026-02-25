@@ -126,7 +126,6 @@ import moe.koiverse.archivetune.ui.component.ListDialog
 import moe.koiverse.archivetune.ui.component.MenuSurfaceSection
 import moe.koiverse.archivetune.ui.component.NewAction
 import moe.koiverse.archivetune.ui.component.NewActionGrid
-import moe.koiverse.archivetune.ui.component.PlayerSliderTrack
 import moe.koiverse.archivetune.ui.component.TextFieldDialog
 import moe.koiverse.archivetune.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
@@ -752,7 +751,6 @@ private fun PlayerVolumeCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VolumeSliderL(
     value: Float,
@@ -760,73 +758,41 @@ private fun VolumeSliderL(
     modifier: Modifier = Modifier,
 ) {
     val safeValue = value.coerceIn(0f, 1f)
-    val insetIcon = if (safeValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
+    var sliderValue by remember { mutableFloatStateOf(safeValue) }
+    var isDragging by remember { mutableStateOf(false) }
 
-    Surface(
-        shape = RoundedCornerShape(VolumeSliderTrackShape),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = modifier.height(VolumeSliderHandleHeight),
+    LaunchedEffect(safeValue) {
+        if (!isDragging) sliderValue = safeValue
+    }
+
+    val insetIcon = if (sliderValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.height(48.dp),
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.CenterStart,
-        ) {
+
+        Slider(
+            value = sliderValue,
+            onValueChange = { updated ->
+                isDragging = true
+                val coerced = updated.coerceIn(0f, 1f)
+                sliderValue = coerced
+                onValueChange(coerced)
+            },
+            onValueChangeFinished = { isDragging = false },
+            valueRange = 0f..1f,
+            modifier = Modifier.weight(1f),
+            thumb = {
             Icon(
                 painter = painterResource(insetIcon),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier =
-                    Modifier
-                        .padding(start = VolumeSliderHorizontalPadding)
-                        .size(VolumeSliderInsetIconSize),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Slider(
-                value = safeValue,
-                onValueChange = { onValueChange(it.coerceIn(0f, 1f)) },
-                valueRange = 0f..1f,
-                steps = 19,
-                colors =
-                    SliderDefaults.colors(
-                        thumbColor = Color.Transparent,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        activeTickColor = MaterialTheme.colorScheme.onPrimary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer,
-                        inactiveTickColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.26f),
-                    ),
-                thumb = {
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(
-                                    width = VolumeSliderHandleWidth,
-                                    height = VolumeSliderHandleHeight,
-                                ).clip(RoundedCornerShape(VolumeSliderHandleWidth / 2))
-                                .background(MaterialTheme.colorScheme.onPrimary),
-                    )
-                },
-                track = { sliderState ->
-                    PlayerSliderTrack(
-                        sliderState = sliderState,
-                        colors =
-                            SliderDefaults.colors(
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                activeTickColor = MaterialTheme.colorScheme.onPrimary,
-                                inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer,
-                                inactiveTickColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.26f),
-                            ),
-                        trackHeight = VolumeSliderTrackHeight,
-                    )
-                },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = VolumeSliderInsetStart,
-                            end = VolumeSliderHorizontalPadding,
-                        ),
-            )
-        }
+            },
+            colors = SliderDefaults.colors(),
+        )
     }
 }
 
@@ -1152,14 +1118,6 @@ private enum class PitchMode {
     Semitones,
     Multiplier
 }
-
-private val VolumeSliderTrackHeight = 56.dp
-private val VolumeSliderHandleHeight = 68.dp
-private val VolumeSliderHandleWidth = 4.dp
-private val VolumeSliderTrackShape = 16.dp
-private val VolumeSliderInsetIconSize = 24.dp
-private val VolumeSliderHorizontalPadding = 16.dp
-private val VolumeSliderInsetStart = 56.dp
 
 private const val TempoMin = 0.25f
 private const val TempoMax = 2f
