@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +33,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,7 +64,7 @@ fun GlassNavigationBar(
     slideOffset: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = pureBlack || MaterialTheme.colorScheme.background.luminance() < 0.5f
     val glassStyle = GlassEffectDefaults.navigationBarStyle(isDark, pureBlack)
     val navBarHeight = if (slimNav) SlimNavBarHeight else NavigationBarHeight
     val totalHeight = bottomInset + navBarHeight
@@ -167,6 +167,7 @@ private fun GlassNavigationBarContent(
             GlassNavigationBarItem(
                 selected = isSelected,
                 onClick = { onItemClick(screen) },
+                isDark = isDark,
                 icon = {
                     Icon(
                         painter = painterResource(
@@ -211,6 +212,7 @@ private fun GlassNavigationBarContent(
 private fun RowScope.GlassNavigationBarItem(
     selected: Boolean,
     onClick: () -> Unit,
+    isDark: Boolean,
     icon: @Composable () -> Unit,
     label: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
@@ -233,7 +235,7 @@ private fun RowScope.GlassNavigationBarItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        val indicatorColor = if (isSystemInDarkTheme()) Color.White else Color.Black
+        val indicatorColor = if (isDark) Color.White else Color.Black
 
         Box(
             modifier = Modifier
