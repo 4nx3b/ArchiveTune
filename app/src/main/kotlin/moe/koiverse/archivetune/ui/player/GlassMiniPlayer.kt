@@ -23,12 +23,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import moe.koiverse.archivetune.LocalPlayerConnection
 import moe.koiverse.archivetune.constants.MiniPlayerHeight
@@ -45,6 +50,7 @@ fun GlassMiniPlayer(
     pureBlack: Boolean,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
+    val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val coroutineScope = rememberCoroutineScope()
     val swipeSensitivity by rememberPreference(SwipeSensitivityKey, 0.73f)
@@ -54,12 +60,21 @@ fun GlassMiniPlayer(
     val glassStyle = GlassEffectDefaults.miniPlayerStyle(isDark, pureBlack)
     val pillShape = RoundedCornerShape(32.dp)
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
-    val backdrop = rememberCanvasBackdrop {
+    val artworkPainter = rememberAsyncImagePainter(
+        ImageRequest.Builder(context)
+            .data(mediaMetadata?.thumbnailUrl)
+            .crossfade(true)
+            .build()
+    )
+
+    val artworkBackdrop = rememberCanvasBackdrop {
+        drawImage(artworkPainter)
         drawRect(
-            color = Color.Transparent,
+            color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
         )
     }
@@ -83,11 +98,17 @@ fun GlassMiniPlayer(
                 .then(
                     if (supportsBackdrop) {
                         Modifier.drawBackdrop(
-                            backdrop = backdrop,
+                            backdrop = artworkBackdrop,
                             shape = { pillShape },
                             effects = {
                                 if (glassStyle.useVibrancy) vibrancy()
                                 blur(with(density) { glassStyle.blurRadius.toPx() })
+                                if (supportsLens && glassStyle.useLens) {
+                                    lens(
+                                        with(density) { glassStyle.lensHeight.toPx() },
+                                        with(density) { glassStyle.lensAmount.toPx() }
+                                    )
+                                }
                             },
                             onDrawSurface = {
                                 drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha))
