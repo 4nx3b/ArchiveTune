@@ -4,8 +4,6 @@
  * Licensed Under GPL-3.0 | see git history for contributors
  */
 
-
-
 package moe.koiverse.archivetune.ui.screens.settings
 
 import android.Manifest
@@ -27,6 +25,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,9 +36,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,8 +47,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -67,8 +66,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -81,9 +80,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -107,12 +108,12 @@ data class SettingsQuickAction(
     val icon: Painter,
     val label: String,
     val onClick: () -> Unit,
-    val accentColor: Color
+    val accentColor: Color,
 )
 
 data class SettingsCategory(
     val title: String,
-    val items: List<PremiumSettingsItem>
+    val items: List<PremiumSettingsItem>,
 )
 
 data class PremiumSettingsItem(
@@ -121,12 +122,21 @@ data class PremiumSettingsItem(
     val subtitle: String? = null,
     val badge: String? = null,
     val showUpdateIndicator: Boolean = false,
-    val onClick: () -> Unit
+    val accentColor: Color = Color.Unspecified,
+    val keywords: List<String> = emptyList(),
+    val onClick: () -> Unit,
+)
+
+data class SettingsIntegrationAction(
+    val icon: Painter,
+    val label: String,
+    val onClick: () -> Unit,
+    val accentColor: Color,
 )
 
 private fun filterQuickActions(
     actions: List<SettingsQuickAction>,
-    query: String
+    query: String,
 ): List<SettingsQuickAction> {
     if (query.isBlank()) return actions
     return actions.filter { it.label.contains(query, ignoreCase = true) }
@@ -134,7 +144,7 @@ private fun filterQuickActions(
 
 private fun filterSettingsCategories(
     categories: List<SettingsCategory>,
-    query: String
+    query: String,
 ): List<SettingsCategory> {
     if (query.isBlank()) return categories
     return categories.mapNotNull { category ->
@@ -142,13 +152,40 @@ private fun filterSettingsCategories(
             category
         } else {
             val filteredItems = category.items.filter { item ->
-                item.title.contains(query, ignoreCase = true) ||
-                    (item.subtitle?.contains(query, ignoreCase = true) == true) ||
-                    (item.badge?.contains(query, ignoreCase = true) == true)
+                matchesSearchQuery(item, query)
             }
             if (filteredItems.isEmpty()) null else category.copy(items = filteredItems)
         }
     }
+}
+
+private fun matchesSearchQuery(
+    item: PremiumSettingsItem,
+    query: String,
+): Boolean {
+    if (item.title.contains(query, ignoreCase = true)) return true
+    if (item.subtitle?.contains(query, ignoreCase = true) == true) return true
+    if (item.badge?.contains(query, ignoreCase = true) == true) return true
+    return item.keywords.any { keyword ->
+        keyword.contains(query, ignoreCase = true) ||
+            query.contains(keyword, ignoreCase = true)
+    }
+}
+
+private fun filterInternalSettingsItems(
+    items: List<PremiumSettingsItem>,
+    query: String,
+): List<PremiumSettingsItem> {
+    if (query.isBlank()) return emptyList()
+    return items.filter { item -> matchesSearchQuery(item, query) }
+}
+
+private fun filterIntegrations(
+    integrations: List<SettingsIntegrationAction>,
+    query: String,
+): List<SettingsIntegrationAction> {
+    if (query.isBlank()) return integrations
+    return integrations.filter { it.label.contains(query, ignoreCase = true) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -194,7 +231,7 @@ fun SettingsScreen(
     var isNotificationGranted by remember {
         mutableStateOf(
             notificationPermission == null ||
-                    ContextCompat.checkSelfPermission(context, notificationPermission) == PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(context, notificationPermission) == PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -210,10 +247,23 @@ fun SettingsScreen(
     val shouldShowPermissionHint = !isStorageGranted || !isNotificationGranted
     val hasUpdate = latestVersionName != BuildConfig.VERSION_NAME
 
-    var isVisible by remember { mutableStateOf(false) }
+    var heroVisible by remember { mutableStateOf(false) }
+    var bannerVisible by remember { mutableStateOf(false) }
+    var quickActionsVisible by remember { mutableStateOf(false) }
+    var integrationsVisible by remember { mutableStateOf(false) }
+    var categoriesVisible by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         delay(50)
-        isVisible = true
+        heroVisible = true
+        delay(60)
+        bannerVisible = true
+        delay(60)
+        quickActionsVisible = true
+        delay(70)
+        integrationsVisible = true
+        delay(70)
+        categoriesVisible = true
     }
 
     val quickActions = listOf(
@@ -221,26 +271,47 @@ fun SettingsScreen(
             icon = painterResource(R.drawable.palette),
             label = stringResource(R.string.appearance),
             onClick = { navController.navigate("settings/appearance") },
-            accentColor = MaterialTheme.colorScheme.primary
+            accentColor = MaterialTheme.colorScheme.primary,
         ),
         SettingsQuickAction(
             icon = painterResource(R.drawable.play),
             label = stringResource(R.string.player_and_audio),
             onClick = { navController.navigate("settings/player") },
-            accentColor = MaterialTheme.colorScheme.tertiary
+            accentColor = MaterialTheme.colorScheme.tertiary,
         ),
         SettingsQuickAction(
             icon = painterResource(R.drawable.storage),
             label = stringResource(R.string.storage),
             onClick = { navController.navigate("settings/storage") },
-            accentColor = MaterialTheme.colorScheme.secondary
+            accentColor = MaterialTheme.colorScheme.secondary,
         ),
         SettingsQuickAction(
             icon = painterResource(R.drawable.security),
             label = stringResource(R.string.privacy),
             onClick = { navController.navigate("settings/privacy") },
-            accentColor = MaterialTheme.colorScheme.error
-        )
+            accentColor = MaterialTheme.colorScheme.error,
+        ),
+    )
+
+    val integrationActions = listOf(
+        SettingsIntegrationAction(
+            icon = painterResource(R.drawable.discord),
+            label = stringResource(R.string.discord),
+            onClick = { navController.navigate("settings/discord") },
+            accentColor = Color(0xFF5865F2),
+        ),
+        SettingsIntegrationAction(
+            icon = painterResource(R.drawable.integration),
+            label = stringResource(R.string.integration),
+            onClick = { navController.navigate("settings/integration") },
+            accentColor = MaterialTheme.colorScheme.secondary,
+        ),
+        SettingsIntegrationAction(
+            icon = painterResource(R.drawable.fire),
+            label = stringResource(R.string.music_together),
+            onClick = { navController.navigate("settings/music_together") },
+            accentColor = MaterialTheme.colorScheme.tertiary,
+        ),
     )
 
     val resetSearch: () -> Unit = {
@@ -258,10 +329,19 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.palette),
                         title = stringResource(R.string.appearance),
                         subtitle = stringResource(R.string.dark_theme),
-                        onClick = { navController.navigate("settings/appearance") }
-                    )
-                )
-            )
+                        accentColor = MaterialTheme.colorScheme.primary,
+                        keywords = listOf(
+                            "theme",
+                            "palette",
+                            "material you",
+                            "dynamic color",
+                            "font",
+                            "ui",
+                        ),
+                        onClick = { navController.navigate("settings/appearance") },
+                    ),
+                ),
+            ),
         )
 
         add(
@@ -272,16 +352,33 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.play),
                         title = stringResource(R.string.player_and_audio),
                         subtitle = stringResource(R.string.audio_quality),
-                        onClick = { navController.navigate("settings/player") }
+                        accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf(
+                            "audio",
+                            "playback",
+                            "volume",
+                            "quality",
+                            "equalizer",
+                            "crossfade",
+                        ),
+                        onClick = { navController.navigate("settings/player") },
                     ),
                     PremiumSettingsItem(
                         icon = painterResource(R.drawable.language),
                         title = stringResource(R.string.content),
                         subtitle = stringResource(R.string.content_language),
-                        onClick = { navController.navigate("settings/content") }
-                    )
-                )
-            )
+                        accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf(
+                            "language",
+                            "content",
+                            "lyrics",
+                            "translation",
+                            "region",
+                        ),
+                        onClick = { navController.navigate("settings/content") },
+                    ),
+                ),
+            ),
         )
 
         add(
@@ -292,10 +389,18 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.security),
                         title = stringResource(R.string.privacy),
                         subtitle = stringResource(R.string.pause_listen_history),
-                        onClick = { navController.navigate("settings/privacy") }
-                    )
-                )
-            )
+                        accentColor = MaterialTheme.colorScheme.error,
+                        keywords = listOf(
+                            "privacy",
+                            "history",
+                            "tracking",
+                            "security",
+                            "permissions",
+                        ),
+                        onClick = { navController.navigate("settings/privacy") },
+                    ),
+                ),
+            ),
         )
 
         add(
@@ -306,16 +411,32 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.storage),
                         title = stringResource(R.string.storage),
                         subtitle = stringResource(R.string.cache),
-                        onClick = { navController.navigate("settings/storage") }
+                        accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf(
+                            "storage",
+                            "cache",
+                            "offline",
+                            "downloads",
+                            "cleanup",
+                        ),
+                        onClick = { navController.navigate("settings/storage") },
                     ),
                     PremiumSettingsItem(
                         icon = painterResource(R.drawable.restore),
                         title = stringResource(R.string.backup_restore),
                         subtitle = stringResource(R.string.action_backup),
-                        onClick = { navController.navigate("settings/backup_restore") }
-                    )
-                )
-            )
+                        accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf(
+                            "backup",
+                            "restore",
+                            "import",
+                            "export",
+                            "migration",
+                        ),
+                        onClick = { navController.navigate("settings/backup_restore") },
+                    ),
+                ),
+            ),
         )
 
         add(
@@ -328,6 +449,13 @@ fun SettingsScreen(
                                 icon = painterResource(R.drawable.link),
                                 title = stringResource(R.string.default_links),
                                 subtitle = stringResource(R.string.open_supported_links),
+                                accentColor = MaterialTheme.colorScheme.primary,
+                                keywords = listOf(
+                                    "links",
+                                    "deeplink",
+                                    "default",
+                                    "supported links",
+                                ),
                                 onClick = {
                                     try {
                                         val intent = Intent(
@@ -339,24 +467,25 @@ fun SettingsScreen(
                                     } catch (e: Exception) {
                                         when (e) {
                                             is ActivityNotFoundException,
-                                            is SecurityException -> {
+                                            is SecurityException,
+                                            -> {
                                                 Toast.makeText(
                                                     context,
                                                     R.string.open_app_settings_error,
-                                                    Toast.LENGTH_LONG
+                                                    Toast.LENGTH_LONG,
                                                 ).show()
                                             }
                                             else -> {
                                                 Toast.makeText(
                                                     context,
                                                     R.string.open_app_settings_error,
-                                                    Toast.LENGTH_LONG
+                                                    Toast.LENGTH_LONG,
                                                 ).show()
                                             }
                                         }
                                     }
-                                }
-                            )
+                                },
+                            ),
                         )
                     }
                     add(
@@ -364,32 +493,199 @@ fun SettingsScreen(
                             icon = painterResource(R.drawable.experiment),
                             title = stringResource(R.string.experiment_settings),
                             subtitle = stringResource(R.string.misc),
-                            onClick = { navController.navigate("settings/misc") }
-                        )
+                            accentColor = MaterialTheme.colorScheme.tertiary,
+                            keywords = listOf(
+                                "experimental",
+                                "debug",
+                                "developer",
+                                "labs",
+                                "internal",
+                            ),
+                            onClick = { navController.navigate("settings/misc") },
+                        ),
                     )
                     add(
                         PremiumSettingsItem(
                             icon = painterResource(R.drawable.update),
                             title = stringResource(R.string.updates),
-                            subtitle = if (hasUpdate) stringResource(R.string.new_version_available) else BuildConfig.VERSION_NAME,
+                            subtitle = if (hasUpdate) {
+                                stringResource(R.string.new_version_available)
+                            } else {
+                                BuildConfig.VERSION_NAME
+                            },
                             showUpdateIndicator = hasUpdate,
-                            onClick = { navController.navigate("settings/update") }
-                        )
+                            accentColor = if (hasUpdate) {
+                                MaterialTheme.colorScheme.tertiary
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            keywords = listOf(
+                                "update",
+                                "version",
+                                "release",
+                                "changelog",
+                            ),
+                            onClick = { navController.navigate("settings/update") },
+                        ),
                     )
                     add(
                         PremiumSettingsItem(
                             icon = painterResource(R.drawable.info),
                             title = stringResource(R.string.about),
                             subtitle = "ArchiveTune",
-                            onClick = { navController.navigate("settings/about") }
-                        )
+                            accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            keywords = listOf(
+                                "about",
+                                "app info",
+                                "license",
+                                "contributors",
+                            ),
+                            onClick = { navController.navigate("settings/about") },
+                        ),
                     )
-                }
-            )
+                },
+            ),
+        )
+    }
+
+    val internalSettingsItems = buildList {
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.palette),
+                title = stringResource(R.string.theme_creator_title),
+                subtitle = stringResource(R.string.theme_creator_subtitle),
+                accentColor = MaterialTheme.colorScheme.primary,
+                keywords = listOf(
+                    "theme",
+                    "creator",
+                    "seed",
+                    "material",
+                    "palette",
+                    "import",
+                    "export",
+                ),
+                onClick = { navController.navigate("settings/appearance/theme_creator") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.palette),
+                title = stringResource(R.string.customize_colors),
+                subtitle = stringResource(R.string.appearance),
+                accentColor = MaterialTheme.colorScheme.primary,
+                keywords = listOf(
+                    "palette",
+                    "color",
+                    "accent",
+                    "tone",
+                    "dynamic color",
+                ),
+                onClick = { navController.navigate("settings/appearance/palette_picker") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.image),
+                title = stringResource(R.string.customize_background_title),
+                subtitle = stringResource(R.string.appearance),
+                accentColor = MaterialTheme.colorScheme.secondary,
+                keywords = listOf(
+                    "background",
+                    "wallpaper",
+                    "image",
+                    "blur",
+                    "gradient",
+                ),
+                onClick = { navController.navigate("customize_background") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.discord),
+                title = stringResource(R.string.discord_integration),
+                subtitle = stringResource(R.string.integration),
+                accentColor = Color(0xFF5865F2),
+                keywords = listOf(
+                    "discord",
+                    "rpc",
+                    "rich presence",
+                    "status",
+                    "activity",
+                ),
+                onClick = { navController.navigate("settings/discord") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.security),
+                title = stringResource(R.string.advanced_login),
+                subtitle = stringResource(R.string.discord),
+                accentColor = Color(0xFF5865F2),
+                keywords = listOf(
+                    "token",
+                    "login",
+                    "authentication",
+                    "discord login",
+                ),
+                onClick = { navController.navigate("settings/discord/login") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.experiment),
+                title = stringResource(R.string.experimental_features),
+                subtitle = stringResource(R.string.experimental_features_description),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                keywords = listOf(
+                    "experimental",
+                    "labs",
+                    "advanced",
+                    "discord experimental",
+                    "internal",
+                ),
+                onClick = { navController.navigate("settings/discord/experimental") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.integration),
+                title = stringResource(R.string.lastfm_integration),
+                subtitle = stringResource(R.string.integration),
+                accentColor = MaterialTheme.colorScheme.secondary,
+                keywords = listOf(
+                    "lastfm",
+                    "last.fm",
+                    "scrobble",
+                    "listening history",
+                ),
+                onClick = { navController.navigate("settings/lastfm") },
+            ),
+        )
+        add(
+            PremiumSettingsItem(
+                icon = painterResource(R.drawable.fire),
+                title = stringResource(R.string.music_together),
+                subtitle = stringResource(R.string.integration),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                keywords = listOf(
+                    "together",
+                    "session",
+                    "sync",
+                    "party",
+                    "join",
+                    "host",
+                ),
+                onClick = { navController.navigate("settings/music_together") },
+            ),
         )
     }
 
     val wrappedQuickActions = quickActions.map { action ->
+        val originalOnClick = action.onClick
+        action.copy(onClick = { resetSearch(); originalOnClick() })
+    }
+
+    val wrappedIntegrations = integrationActions.map { action ->
         val originalOnClick = action.onClick
         action.copy(onClick = { resetSearch(); originalOnClick() })
     }
@@ -403,15 +699,37 @@ fun SettingsScreen(
         )
     }
 
+    val wrappedInternalSettings = internalSettingsItems.map { item ->
+        val originalOnClick = item.onClick
+        item.copy(onClick = { resetSearch(); originalOnClick() })
+    }
+
     val queryText = query.text.trim()
     val showSearchBar = isSearching || queryText.isNotBlank()
 
     val filteredQuickActions = filterQuickActions(wrappedQuickActions, queryText)
+    val filteredIntegrations = filterIntegrations(wrappedIntegrations, queryText)
     val filteredCategories = filterSettingsCategories(wrappedCategories, queryText)
+    val filteredInternalSettings = filterInternalSettingsItems(wrappedInternalSettings, queryText)
 
-    val hasSearchResults by remember(filteredQuickActions, filteredCategories) {
-        derivedStateOf { filteredQuickActions.isNotEmpty() || filteredCategories.isNotEmpty() }
+    val hasSearchResults by remember(
+        filteredQuickActions,
+        filteredCategories,
+        filteredIntegrations,
+        filteredInternalSettings,
+    ) {
+        derivedStateOf {
+            filteredQuickActions.isNotEmpty() ||
+                filteredCategories.isNotEmpty() ||
+                filteredIntegrations.isNotEmpty() ||
+                filteredInternalSettings.isNotEmpty()
+        }
     }
+
+    val internalSettingsCategory = SettingsCategory(
+        title = stringResource(R.string.internal_subcategory_settings),
+        items = filteredInternalSettings,
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (!showSearchBar) {
@@ -420,11 +738,13 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                        )
                     ),
-                contentPadding = PaddingValues(bottom = 32.dp)
+                contentPadding = PaddingValues(bottom = 32.dp),
             ) {
-                item {
+                item(key = "topSpacer") {
                     Spacer(
                         Modifier.windowInsetsPadding(
                             LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
@@ -432,12 +752,40 @@ fun SettingsScreen(
                     )
                 }
 
+                item(key = "hero") {
+                    AnimatedVisibility(
+                        visible = heroVisible,
+                        enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                            slideInVertically(
+                                initialOffsetY = { it / 5 },
+                                animationSpec = spring(
+                                    stiffness = Spring.StiffnessLow,
+                                    dampingRatio = 0.85f,
+                                ),
+                            ),
+                    ) {
+                        SettingsHeroHeader(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 4.dp, bottom = 14.dp),
+                        )
+                    }
+                }
+
                 if (queryText.isBlank()) {
-                    item {
+                    item(key = "permission") {
                         AnimatedVisibility(
-                            visible = isVisible && shouldShowPermissionHint,
-                            enter = fadeIn(tween(400)) + expandVertically(tween(400)),
-                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300))
+                            visible = bannerVisible && shouldShowPermissionHint,
+                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                                expandVertically(spring(stiffness = Spring.StiffnessLow)) +
+                                slideInVertically(
+                                    initialOffsetY = { -it / 4 },
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessLow,
+                                        dampingRatio = 0.85f,
+                                    ),
+                                ),
+                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
                         ) {
                             PremiumPermissionCard(
                                 onRequestPermission = {
@@ -453,67 +801,137 @@ fun SettingsScreen(
                                 },
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
-                                    .padding(top = 4.dp, bottom = 12.dp)
+                                    .padding(bottom = 14.dp),
                             )
                         }
                     }
 
-                    item {
+                    item(key = "update") {
                         AnimatedVisibility(
-                            visible = isVisible && hasUpdate,
-                            enter = fadeIn(tween(500, 100)) + expandVertically(tween(500, 100)),
-                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300))
+                            visible = bannerVisible && hasUpdate,
+                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                                expandVertically(spring(stiffness = Spring.StiffnessLow)) +
+                                slideInVertically(
+                                    initialOffsetY = { -it / 4 },
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessLow,
+                                        dampingRatio = 0.85f,
+                                    ),
+                                ),
+                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300)),
                         ) {
                             PremiumUpdateCard(
                                 latestVersion = latestVersionName,
                                 onClick = { navController.navigate("settings/update") },
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
-                                    .padding(top = 0.dp, bottom = 16.dp)
+                                    .padding(bottom = 14.dp),
                             )
                         }
                     }
                 }
 
                 if (queryText.isBlank() || filteredQuickActions.isNotEmpty()) {
-                    item {
+                    item(key = "quickActions") {
                         AnimatedVisibility(
-                            visible = isVisible,
-                            enter = fadeIn(tween(400, 150))
+                            visible = quickActionsVisible,
+                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                                slideInVertically(
+                                    initialOffsetY = { it / 6 },
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessLow,
+                                        dampingRatio = 0.85f,
+                                    ),
+                                ),
                         ) {
-                            val actionsToShow = if (queryText.isBlank()) wrappedQuickActions else filteredQuickActions
+                            val actionsToShow = if (queryText.isBlank()) {
+                                wrappedQuickActions
+                            } else {
+                                filteredQuickActions
+                            }
                             SettingsQuickActionsGrid(
                                 title = stringResource(R.string.quick_picks),
                                 actions = actionsToShow,
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
-                                    .padding(top = 0.dp, bottom = 12.dp)
+                                    .padding(bottom = 12.dp),
+                            )
+                        }
+                    }
+                }
+
+                if (queryText.isBlank() || filteredIntegrations.isNotEmpty()) {
+                    item(key = "integrations") {
+                        AnimatedVisibility(
+                            visible = integrationsVisible,
+                            enter = fadeIn(spring(stiffness = Spring.StiffnessLow)) +
+                                slideInVertically(
+                                    initialOffsetY = { it / 6 },
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessLow,
+                                        dampingRatio = 0.85f,
+                                    ),
+                                ),
+                        ) {
+                            val toShow = if (queryText.isBlank()) {
+                                wrappedIntegrations
+                            } else {
+                                filteredIntegrations
+                            }
+                            SettingsIntegrationsRow(
+                                integrations = toShow,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
                             )
                         }
                     }
                 }
 
                 if (queryText.isNotBlank() && !hasSearchResults) {
-                    item {
+                    item(key = "empty") {
                         Spacer(modifier = Modifier.height(24.dp))
                         EmptyResultsCard(
                             title = stringResource(R.string.no_results_found),
-                            modifier = Modifier.padding(horizontal = 16.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp),
                         )
                     }
                 } else {
-                    val categoriesToShow = if (queryText.isBlank()) wrappedCategories else filteredCategories
-                    items(categoriesToShow.size) { index ->
+                    val categoriesToShow = if (queryText.isBlank()) {
+                        wrappedCategories
+                    } else {
+                        filteredCategories
+                    }
+
+                    if (queryText.isNotBlank() && filteredInternalSettings.isNotEmpty()) {
+                        item(key = "internalSearchResults") {
+                            PremiumSettingsSection(
+                                category = internalSettingsCategory,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp),
+                            )
+                        }
+                    }
+
+                    items(
+                        count = categoriesToShow.size,
+                        key = { categoriesToShow[it].title },
+                    ) { index ->
                         val category = categoriesToShow[index]
                         AnimatedVisibility(
-                            visible = isVisible,
-                            enter = fadeIn(tween(400, 200 + (index * 50)))
+                            visible = categoriesVisible,
+                            enter = fadeIn(tween(420, delayMillis = index * 60)) +
+                                slideInVertically(
+                                    initialOffsetY = { it / 5 },
+                                    animationSpec = tween(420, delayMillis = index * 60),
+                                ),
                         ) {
                             PremiumSettingsSection(
                                 category = category,
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
-                                    .padding(top = 0.dp, bottom = 12.dp)
+                                    .padding(bottom = 12.dp),
                             )
                         }
                     }
@@ -524,55 +942,51 @@ fun SettingsScreen(
         if (!showSearchBar) {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = stringResource(R.string.settings),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.settings),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
                 },
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain
+                        onLongClick = navController::backToMain,
                     ) {
                         Icon(
                             painterResource(R.drawable.arrow_back),
-                            contentDescription = null
+                            contentDescription = null,
                         )
                     }
                 },
                 actions = {
                     IconButton(
                         onClick = { isSearching = true },
-                        onLongClick = {}
+                        onLongClick = {},
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.search),
-                            contentDescription = null
+                            contentDescription = null,
                         )
                     }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
-                )
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                ),
             )
         }
 
         AnimatedVisibility(
             visible = showSearchBar,
             enter = fadeIn(tween(durationMillis = 220)),
-            exit = fadeOut(tween(durationMillis = 160))
+            exit = fadeOut(tween(durationMillis = 160)),
         ) {
             TopSearch(
                 query = query,
                 onQueryChange = { query = it },
-                onSearch = {
-                    focusManager.clearFocus()
-                },
+                onSearch = { focusManager.clearFocus() },
                 active = showSearchBar,
                 onActiveChange = { active ->
                     if (active) {
@@ -584,18 +998,16 @@ fun SettingsScreen(
                 placeholder = { Text(text = stringResource(R.string.search)) },
                 leadingIcon = {
                     IconButton(
-                        onClick = {
-                            resetSearch()
-                        },
+                        onClick = { resetSearch() },
                         onLongClick = {
                             if (queryText.isBlank()) {
                                 navController.backToMain()
                             }
-                        }
+                        },
                     ) {
                         Icon(
                             painterResource(R.drawable.arrow_back),
-                            contentDescription = null
+                            contentDescription = null,
                         )
                     }
                 },
@@ -604,11 +1016,11 @@ fun SettingsScreen(
                         if (query.text.isNotBlank()) {
                             IconButton(
                                 onClick = { query = TextFieldValue() },
-                                onLongClick = {}
+                                onLongClick = {},
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.close),
-                                    contentDescription = null
+                                    contentDescription = null,
                                 )
                             }
                         }
@@ -620,28 +1032,54 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(
-                            LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                            )
                         ),
-                    contentPadding = PaddingValues(bottom = 32.dp)
+                    contentPadding = PaddingValues(bottom = 32.dp),
                 ) {
                     if (queryText.isNotBlank() && !hasSearchResults) {
                         item {
                             Spacer(modifier = Modifier.height(24.dp))
                             EmptyResultsCard(
                                 title = stringResource(R.string.no_results_found),
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                         }
                     } else {
-                        item {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            SettingsQuickActionsGrid(
-                                title = stringResource(R.string.quick_picks),
-                                actions = filteredQuickActions,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .padding(top = 8.dp, bottom = 12.dp)
-                            )
+                        if (filteredQuickActions.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                SettingsQuickActionsGrid(
+                                    title = stringResource(R.string.quick_picks),
+                                    actions = filteredQuickActions,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .padding(top = 8.dp, bottom = 12.dp),
+                                )
+                            }
+                        }
+
+                        if (filteredIntegrations.isNotEmpty()) {
+                            item {
+                                SettingsIntegrationsRow(
+                                    integrations = filteredIntegrations,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 12.dp),
+                                )
+                            }
+                        }
+
+                        if (filteredInternalSettings.isNotEmpty()) {
+                            item {
+                                PremiumSettingsSection(
+                                    category = internalSettingsCategory,
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 12.dp),
+                                )
+                            }
                         }
 
                         items(filteredCategories.size) { index ->
@@ -650,7 +1088,7 @@ fun SettingsScreen(
                                 category = category,
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
-                                    .padding(top = 0.dp, bottom = 12.dp)
+                                    .padding(bottom = 12.dp),
                             )
                         }
                     }
@@ -661,46 +1099,118 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun SettingsHeroHeader(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.85f),
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.small_icon),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = "v${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun EmptyResultsCard(
     title: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(48.dp)
+                    .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.search),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp),
                 )
             }
-            Column(modifier = Modifier.weight(1f)) {
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.search),
+                    text = stringResource(R.string.search_try_different),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -710,13 +1220,13 @@ private fun EmptyResultsCard(
 @Composable
 private fun PremiumPermissionCard(
     onRequestPermission: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Box(
             modifier = Modifier
@@ -724,26 +1234,34 @@ private fun PremiumPermissionCard(
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceContainerLow
-                        )
-                    )
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ),
                 )
-                .padding(18.dp)
+                .padding(20.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.security),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp),
                     )
                 }
 
@@ -751,35 +1269,37 @@ private fun PremiumPermissionCard(
                     Text(
                         text = stringResource(R.string.permissions_title),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = stringResource(R.string.permissions_subtitle),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
                 ) {
                     Button(
                         onClick = onRequestPermission,
                         shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        ),
+                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.check),
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(R.string.allow),
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                 }
@@ -792,14 +1312,14 @@ private fun PremiumPermissionCard(
 private fun PremiumUpdateCard(
     latestVersion: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.98f else 1f,
+        targetValue = if (isPressed) 0.97f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "scale"
+        label = "updateScale",
     )
 
     Card(
@@ -809,67 +1329,87 @@ private fun PremiumUpdateCard(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = onClick
+                onClick = onClick,
             ),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.horizontalGradient(
+                    Brush.linearGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.22f),
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceContainerLow
-                        )
-                    )
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.24f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                    ),
                 )
-                .padding(18.dp)
+                .padding(20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.update),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp),
                     )
                 }
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
                         text = stringResource(R.string.new_version_available),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = "v$latestVersion",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
 
-                Icon(
-                    painter = painterResource(R.drawable.arrow_forward),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_forward),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }
@@ -879,48 +1419,65 @@ private fun PremiumUpdateCard(
 private fun SettingsQuickActionsGrid(
     title: String,
     actions: List<SettingsQuickAction>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     if (actions.isEmpty()) return
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                                ),
+                            ),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.star),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 }
+
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
 
             val rows = actions.chunked(2)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 rows.forEach { rowActions ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         rowActions.forEach { action ->
                             SettingsQuickActionTile(
                                 action = action,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
                             )
                         }
                         if (rowActions.size == 1) {
@@ -936,24 +1493,30 @@ private fun SettingsQuickActionsGrid(
 @Composable
 private fun SettingsQuickActionTile(
     action: SettingsQuickAction,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
+        targetValue = if (isPressed) 0.96f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "scale"
+        label = "tileScale",
+    )
+    val tileAlpha by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "tileAlpha",
     )
 
     Surface(
         modifier = modifier
             .scale(scale)
-            .aspectRatio(1.8f),
-        shape = RoundedCornerShape(22.dp),
+            .graphicsLayer { alpha = tileAlpha }
+            .aspectRatio(1.45f),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         onClick = action.onClick,
-        interactionSource = interactionSource
+        interactionSource = interactionSource,
     ) {
         Box(
             modifier = Modifier
@@ -961,38 +1524,49 @@ private fun SettingsQuickActionTile(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            action.accentColor.copy(alpha = 0.14f),
-                            MaterialTheme.colorScheme.surfaceContainerHighest
-                        )
-                    )
+                            action.accentColor.copy(alpha = 0.12f),
+                            MaterialTheme.colorScheme.surfaceContainerHighest,
+                        ),
+                    ),
                 )
-                .padding(14.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            action.accentColor.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(0f, 0f),
+                        radius = 500f,
+                    ),
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
             Column(
-                modifier = Modifier.fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
             ) {
                 Box(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(action.accentColor.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center
+                        .background(action.accentColor.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = action.icon,
                         contentDescription = null,
                         tint = action.accentColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(20.dp),
                     )
                 }
+
                 Text(
                     text = action.label,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -1000,44 +1574,179 @@ private fun SettingsQuickActionTile(
 }
 
 @Composable
-private fun PremiumSettingsSection(
-    category: SettingsCategory,
-    modifier: Modifier = Modifier
+private fun SettingsIntegrationsRow(
+    integrations: List<SettingsIntegrationAction>,
+    modifier: Modifier = Modifier,
 ) {
+    if (integrations.isEmpty()) return
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.integration),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.integrations),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(
+                    count = integrations.size,
+                    key = { integrations[it].label },
+                ) { index ->
+                    IntegrationChip(action = integrations[index])
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntegrationChip(
+    action: SettingsIntegrationAction,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "chipScale",
+    )
+
+    Surface(
+        modifier = modifier.scale(scale),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        onClick = action.onClick,
+        interactionSource = interactionSource,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(action.accentColor.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = action.icon,
+                    contentDescription = null,
+                    tint = action.accentColor,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+
+            Text(
+                text = action.label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PremiumSettingsSection(
+    category: SettingsCategory,
+    modifier: Modifier = Modifier,
+) {
+    val sectionAccent = category.items.firstOrNull()?.let { item ->
+        if (item.accentColor.isSpecified) item.accentColor else null
+    } ?: MaterialTheme.colorScheme.primary
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+                    .height(2.5.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                sectionAccent.copy(alpha = 0.5f),
+                                sectionAccent.copy(alpha = 0.15f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
                         text = category.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(sectionAccent.copy(alpha = 0.5f)),
                     )
                     Text(
-                        text = "${category.items.size} items",
+                        text = "${category.items.size}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
 
-            category.items.forEachIndexed { index, item ->
-                PremiumSettingsItemRow(
-                    item = item,
-                    showDivider = index < category.items.size - 1
-                )
+                category.items.forEachIndexed { index, item ->
+                    PremiumSettingsItemRow(
+                        item = item,
+                        showDivider = index < category.items.size - 1,
+                    )
+                }
             }
         }
     }
@@ -1046,14 +1755,20 @@ private fun PremiumSettingsSection(
 @Composable
 private fun PremiumSettingsItemRow(
     item: PremiumSettingsItem,
-    showDivider: Boolean
+    showDivider: Boolean,
 ) {
+    val effectiveAccent = if (item.accentColor.isSpecified) {
+        item.accentColor
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val alpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.7f else 1f,
-        animationSpec = tween(100),
-        label = "alpha"
+        targetValue = if (isPressed) 0.75f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "rowAlpha",
     )
 
     Column {
@@ -1064,57 +1779,57 @@ private fun PremiumSettingsItemRow(
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
-                    onClick = item.onClick
+                    onClick = item.onClick,
                 )
                 .graphicsLayer { this.alpha = alpha }
                 .padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(
                         if (item.showUpdateIndicator) {
                             Brush.linearGradient(
                                 colors = listOf(
                                     MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                )
+                                    effectiveAccent.copy(alpha = 0.16f),
+                                ),
                             )
                         } else {
                             Brush.linearGradient(
                                 colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                )
+                                    effectiveAccent.copy(alpha = 0.14f),
+                                    effectiveAccent.copy(alpha = 0.08f),
+                                ),
                             )
-                        }
+                        },
                     ),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 if (item.showUpdateIndicator) {
                     BadgedBox(
                         badge = {
                             Badge(
                                 containerColor = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(10.dp)
+                                modifier = Modifier.size(10.dp),
                             )
-                        }
+                        },
                     ) {
                         Icon(
                             painter = item.icon,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            tint = effectiveAccent,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 } else {
                     Icon(
                         painter = item.icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        tint = effectiveAccent,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -1126,20 +1841,20 @@ private fun PremiumSettingsItemRow(
                     text = item.title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 item.subtitle?.let { subtitle ->
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = if (item.showUpdateIndicator) {
-                            MaterialTheme.colorScheme.primary
+                            effectiveAccent
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -1152,9 +1867,9 @@ private fun PremiumSettingsItemRow(
                     label = { Text(text = badge) },
                     colors = AssistChipDefaults.assistChipColors(
                         disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
-                    border = null
+                    border = null,
                 )
             }
 
@@ -1163,16 +1878,16 @@ private fun PremiumSettingsItemRow(
             Icon(
                 painter = painterResource(R.drawable.navigate_next),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp),
             )
         }
 
         if (showDivider) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = 78.dp, end = 18.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                modifier = Modifier.padding(start = 76.dp, end = 18.dp),
+                thickness = 0.4.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
             )
         }
     }

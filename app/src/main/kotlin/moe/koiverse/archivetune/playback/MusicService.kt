@@ -78,6 +78,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import moe.koiverse.archivetune.innertube.YouTube
 import moe.koiverse.archivetune.innertube.models.YouTubeClient
 import moe.koiverse.archivetune.innertube.models.SongItem
+import moe.koiverse.archivetune.lyrics.LyricsPreloadManager
 import moe.koiverse.archivetune.innertube.models.WatchEndpoint
 import moe.koiverse.archivetune.MainActivity
 import moe.koiverse.archivetune.R
@@ -88,6 +89,7 @@ import moe.koiverse.archivetune.constants.AudioQualityKey
 import moe.koiverse.archivetune.constants.AutoLoadMoreKey
 import moe.koiverse.archivetune.constants.AutoDownloadOnLikeKey
 import moe.koiverse.archivetune.constants.AutoSkipNextOnErrorKey
+import moe.koiverse.archivetune.constants.InnerTubeCookieKey
 import moe.koiverse.archivetune.constants.DiscordTokenKey
 import moe.koiverse.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.koiverse.archivetune.constants.EqualizerBassBoostEnabledKey
@@ -119,6 +121,7 @@ import moe.koiverse.archivetune.constants.SkipSilenceKey
 import moe.koiverse.archivetune.constants.MaxSongCacheSizeKey
 import moe.koiverse.archivetune.constants.SmartTrimmerKey
 import moe.koiverse.archivetune.constants.StopMusicOnTaskClearKey
+import moe.koiverse.archivetune.constants.YtmSyncKey
 import moe.koiverse.archivetune.db.MusicDatabase
 import moe.koiverse.archivetune.db.entities.Event
 import moe.koiverse.archivetune.db.entities.FormatEntity
@@ -159,6 +162,7 @@ import moe.koiverse.archivetune.utils.DiscordRPC
 import moe.koiverse.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.koiverse.archivetune.utils.SyncUtils
 import moe.koiverse.archivetune.utils.YTPlayerUtils
+import moe.koiverse.archivetune.utils.StreamClientUtils
 import moe.koiverse.archivetune.utils.dataStore
 import moe.koiverse.archivetune.utils.enumPreference
 import moe.koiverse.archivetune.utils.get
@@ -202,8 +206,10 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import java.io.FileOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
+import java.io.Serializable
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -289,33 +295,13 @@ class MusicService :
                 if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
 
                 val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
-                val isWeb =
-                    clientParam.startsWith("WEB", ignoreCase = true) ||
-                        clientParam.startsWith("WEB_REMIX", ignoreCase = true) ||
-                        preferredStreamClient == PlayerStreamClient.WEB_REMIX ||
-                        request.url.toString().contains("c=WEB", ignoreCase = true)
 
-                val userAgent =
-                    when {
-                        clientParam.startsWith("WEB", ignoreCase = true) ||
-                            clientParam.startsWith("WEB_REMIX", ignoreCase = true) -> YouTubeClient.USER_AGENT_WEB
-
-                        clientParam.startsWith("IOS", ignoreCase = true) -> YouTubeClient.IOS.userAgent
-
-                        clientParam.startsWith("ANDROID_VR", ignoreCase = true) -> YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
-
-                        clientParam.startsWith("ANDROID", ignoreCase = true) -> YouTubeClient.MOBILE.userAgent
-
-                        isWeb -> YouTubeClient.USER_AGENT_WEB
-
-                        else -> YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
-                    }
+                val userAgent = StreamClientUtils.resolveUserAgent(clientParam)
+                val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
                 val builder = request.newBuilder().header("User-Agent", userAgent)
-                if (isWeb) {
-                    builder.header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-                    builder.header("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
-                }
+                originReferer.origin?.let { builder.header("Origin", it) }
+                originReferer.referer?.let { builder.header("Referer", it) }
 
                 chain.proceed(builder.build())
             }.build()
@@ -323,6 +309,7 @@ class MusicService :
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
+    private val persistentStateLock = Any()
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
@@ -348,6 +335,7 @@ class MusicService :
     private val crossfadeDurationMs = MutableStateFlow(0)
     private val audioNormalizationEnabled = MutableStateFlow(true)
     private var crossfadeAudio: CrossfadeAudio? = null
+    private var lyricsPreloadManager: LyricsPreloadManager? = null
 
     lateinit var sleepTimer: SleepTimer
 
@@ -724,6 +712,13 @@ class MusicService :
                 },
             ).also { it.start(scope) }
 
+        // Initialize lyrics pre-load manager
+        lyricsPreloadManager = LyricsPreloadManager(
+            context = this,
+            database = database,
+            networkConnectivity = connectivityObserver,
+        )
+
         dataStore.data
             .map(::readEqSettingsFromPrefs)
             .distinctUntilChanged()
@@ -871,14 +866,9 @@ class MusicService :
 
         scope.launch(Dispatchers.IO) {
             if (dataStore.get(PersistentQueueKey, true)) {
-                runCatching {
-                    filesDir.resolve(PERSISTENT_QUEUE_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
-                        }
-                    }
-                }.onSuccess { queue ->
-                    val restoredQueue = queue.toQueue()
+                readPersistentObject<PersistQueue>(PERSISTENT_QUEUE_FILE)
+                    ?.let { persistedQueue ->
+                    val restoredQueue = persistedQueue.toQueue()
                     withContext(Dispatchers.Main) {
                         playQueue(
                             queue = restoredQueue,
@@ -886,26 +876,16 @@ class MusicService :
                         )
                     }
                 }
-                runCatching {
-                    filesDir.resolve(PERSISTENT_AUTOMIX_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
-                        }
-                    }
-                }.onSuccess { queue ->
-                    val items = queue.items.map { it.toMediaItem() }
+                readPersistentObject<PersistQueue>(PERSISTENT_AUTOMIX_FILE)
+                    ?.let { persistedAutomix ->
+                    val items = persistedAutomix.items.map { it.toMediaItem() }
                     withContext(Dispatchers.Main) {
                         automixItems.value = items
                     }
                 }
                 
-                runCatching {
-                    filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistPlayerState
-                        }
-                    }
-                }.onSuccess { playerState ->
+                readPersistentObject<PersistPlayerState>(PERSISTENT_PLAYER_STATE_FILE)
+                    ?.let { playerState ->
                     delay(1000)
                     withContext(Dispatchers.Main) {
                         player.repeatMode = playerState.repeatMode
@@ -2972,6 +2952,14 @@ class MusicService :
 
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
 
+    // Pre-load lyrics for upcoming songs in queue
+    val currentIndex = player.currentMediaItemIndex
+    // Convert media items to MediaMetadata for lyrics pre-loading
+    val queue = player.mediaItems.mapNotNull { it.metadata }
+    if (queue.isNotEmpty()) {
+        lyricsPreloadManager?.onSongChanged(currentIndex, queue)
+    }
+
     val joined = togetherSessionState.value as? moe.koiverse.archivetune.together.TogetherSessionState.Joined
     if (joined?.role is moe.koiverse.archivetune.together.TogetherRole.Guest &&
         reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
@@ -3834,13 +3822,14 @@ class MusicService :
                         ),
                     )
                 } catch (_: SQLException) {
+                }
             }
+
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val song = database.song(mediaItem.mediaId).first()
                         ?: return@launch
-                    
-                    // ListenBrainz scrobbling
+
                     val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
                     val lbToken = dataStore.get(ListenBrainzTokenKey, "")
                     if (lbEnabled && !lbToken.isNullOrBlank()) {
@@ -3852,26 +3841,54 @@ class MusicService :
                             Timber.tag("MusicService").v(ie, "ListenBrainz finished submit failed")
                         }
                     }
-                    
-                    // Last.fm scrobbling - handled by ScrobbleManager
-                    // The old manual scrobbling logic has been replaced with ScrobbleManager
-                    // which properly tracks play time and scrobbles automatically
-                } catch (_: Exception) {}
-            }
-        }
-
-        CoroutineScope(Dispatchers.IO).launch {
-            val playbackUrl = database.format(mediaItem.mediaId).first()?.playbackUrl
-                ?: YTPlayerUtils.playerResponseForMetadata(mediaItem.mediaId, null)
-                    .getOrNull()?.playbackTracking?.videostatsPlaybackUrl?.baseUrl
-            playbackUrl?.let {
-                YouTube.registerPlayback(null, playbackUrl)
-                    .onFailure {
-                        reportException(it)
-                    }
+                } catch (_: Exception) {
                 }
             }
+
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { registerRemoteListeningHistory(mediaItem.mediaId) }
+            }
         }
+    }
+
+    private suspend fun registerRemoteListeningHistory(mediaId: String) {
+        if (!isRemoteHistorySyncAllowed()) return
+
+        val attemptedUrls = LinkedHashSet<String>()
+
+        suspend fun registerTrackingUrl(url: String): Boolean {
+            attemptedUrls += url
+            return YouTube.registerPlayback(playbackTracking = url)
+                .onFailure {
+                    reportException(it)
+                }.isSuccess
+        }
+
+        val cachedPlaybackUrl = database.format(mediaId).first()?.playbackUrl
+        val cachedSuccess = cachedPlaybackUrl?.let { registerTrackingUrl(it) } == true
+        if (cachedSuccess) return
+
+        val playbackTracking =
+            YTPlayerUtils.playerResponseForMetadata(mediaId, null)
+                .getOrNull()
+                ?.playbackTracking
+                ?: return
+
+        for (
+            trackingUrl in listOfNotNull(
+                playbackTracking.videostatsPlaybackUrl?.baseUrl,
+                playbackTracking.videostatsWatchtimeUrl?.baseUrl,
+            )
+        ) {
+            if (trackingUrl.isBlank() || trackingUrl in attemptedUrls) continue
+            registerTrackingUrl(trackingUrl)
+        }
+    }
+
+    private suspend fun isRemoteHistorySyncAllowed(): Boolean {
+        if (!dataStore.getAsync(YtmSyncKey, true)) return false
+        val cookie = dataStore.getAsync(InnerTubeCookieKey, "")
+        return cookie.isNotBlank() && cookie.contains("SAPISID")
     }
 
     // Create a transient Song object from current Player MediaMetadata when the DB doesn't have it.
@@ -3913,6 +3930,51 @@ class MusicService :
             album = album,
             format = null,
         )
+    }
+
+    private inline fun <reified T> readPersistentObject(fileName: String): T? {
+        val persistentFile = filesDir.resolve(fileName)
+        if (!persistentFile.exists() || !persistentFile.isFile) return null
+
+        return synchronized(persistentStateLock) {
+            runCatching {
+                persistentFile.inputStream().use { fis ->
+                    ObjectInputStream(fis).use { input ->
+                        input.readObject() as? T
+                    }
+                }
+            }.onFailure {
+                Timber.tag("MusicService").w(it, "Failed to read persistent file: $fileName")
+                runCatching { persistentFile.delete() }
+            }.getOrNull()
+        }
+    }
+
+    private fun writePersistentObject(fileName: String, payload: Serializable) {
+        val persistentFile = filesDir.resolve(fileName)
+        val tempFile = filesDir.resolve("$fileName.tmp")
+
+        synchronized(persistentStateLock) {
+            runCatching {
+                FileOutputStream(tempFile).use { fos ->
+                    ObjectOutputStream(fos).use { output ->
+                        output.writeObject(payload)
+                        output.flush()
+                    }
+                    fos.fd.sync()
+                }
+
+                if (persistentFile.exists() && !persistentFile.delete()) {
+                    error("Could not replace $fileName")
+                }
+                if (!tempFile.renameTo(persistentFile)) {
+                    error("Could not atomically move $fileName")
+                }
+            }.onFailure {
+                runCatching { tempFile.delete() }
+                reportException(it)
+            }
+        }
     }
 
     private suspend fun saveQueueToDisk() {
@@ -3957,33 +4019,9 @@ class MusicService :
                 playbackState = playbackState
             )
             
-            runCatching {
-                filesDir.resolve(PERSISTENT_QUEUE_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistQueue)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
-            runCatching {
-                filesDir.resolve(PERSISTENT_AUTOMIX_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistAutomix)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
-            runCatching {
-                filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistPlayerState)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
+            writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
+            writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
+            writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
         }
     }
 
@@ -4018,45 +4056,32 @@ class MusicService :
                 val volume = player.volume
                 val playbackState = player.playbackState
                 val playWhenReady = player.playWhenReady
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val persistQueue = currentQueue.toPersistQueue(
-                            title = queueTitle,
-                            items = mediaItemsSnapshot,
-                            mediaItemIndex = currentMediaItemIndex,
-                            position = currentPosition
-                        )
-                        val persistAutomix = PersistQueue(
-                            title = "automix",
-                            items = automixSnapshot,
-                            mediaItemIndex = 0,
-                            position = 0,
-                        )
-                        val persistPlayerState = PersistPlayerState(
-                            playWhenReady = playWhenReady,
-                            repeatMode = repeatMode,
-                            shuffleModeEnabled = shuffleModeEnabled,
-                            volume = volume,
-                            currentPosition = currentPosition,
-                            currentMediaItemIndex = currentMediaItemIndex,
-                            playbackState = playbackState
-                        )
-                        filesDir.resolve(PERSISTENT_QUEUE_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistQueue)
-                            }
-                        }
-                        filesDir.resolve(PERSISTENT_AUTOMIX_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistAutomix)
-                            }
-                        }
-                        filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistPlayerState)
-                            }
-                        }
-                    } catch (_: Exception) {}
+                runBlocking(Dispatchers.IO) {
+                    val persistQueue = currentQueue.toPersistQueue(
+                        title = queueTitle,
+                        items = mediaItemsSnapshot,
+                        mediaItemIndex = currentMediaItemIndex,
+                        position = currentPosition
+                    )
+                    val persistAutomix = PersistQueue(
+                        title = "automix",
+                        items = automixSnapshot,
+                        mediaItemIndex = 0,
+                        position = 0,
+                    )
+                    val persistPlayerState = PersistPlayerState(
+                        playWhenReady = playWhenReady,
+                        repeatMode = repeatMode,
+                        shuffleModeEnabled = shuffleModeEnabled,
+                        volume = volume,
+                        currentPosition = currentPosition,
+                        currentMediaItemIndex = currentMediaItemIndex,
+                        playbackState = playbackState
+                    )
+
+                    writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
+                    writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
+                    writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
                 }
             }
         } catch (_: Exception) {}

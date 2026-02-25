@@ -41,7 +41,6 @@
     <string name="added_to_play_next">Ajouté à la playlist</string>
     <string name="added_to_queue">Ajouté à la file d\'attente</string>
     <string name="remove_from_cache">Retirer du cache</string>
-    <string name="copy_link">Copier le lien</string>
     <string name="select">Tout sélectionner</string>
     <string name="like_all">Tout aimer</string>
     <string name="dislike_all">Ne pas aimer tout</string>
@@ -265,4 +264,6 @@
     <string name="audio_crossfade_title">Fondu enchaîné</string>
     <string name="audio_crossfade_description">Assurez une transition fluide entre les titres en atténuant progressivement la fin de chaque titre.</string>
     <string name="audio_crossfade_dialog_title">Durée du fondu enchaîné</string>
+    <string name="player_stream_client_ios">iOS</string>
+    <string name="player_stream_client_ios_desc">Utilise le client YouTube iOS. Le plus fiable contre les restrictions YouTube.</string>
 </resources>

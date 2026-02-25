@@ -8,10 +8,19 @@
 
 package moe.koiverse.archivetune.utils
 
+import androidx.datastore.preferences.core.edit
 import moe.koiverse.archivetune.BuildConfig
+import moe.koiverse.archivetune.App
+import moe.koiverse.archivetune.constants.GitHubReleasesEtagKey
+import moe.koiverse.archivetune.constants.GitHubReleasesFingerprintKey
+import moe.koiverse.archivetune.constants.GitHubReleasesJsonKey
+import moe.koiverse.archivetune.constants.GitHubReleasesLastCheckedAtKey
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.headers
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -31,46 +40,104 @@ data class ReleaseInfo(
     val htmlUrl: String
 )
 
+private data class ReleasesNetworkResult(
+    val status: HttpStatusCode,
+    val body: String?,
+    val etag: String?,
+)
+
 object Updater {
     private val client = HttpClient()
+    private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
     var lastCheckTime = -1L
         private set
 
+    private fun parseReleasesJson(
+        json: String,
+    ): List<ReleaseInfo> {
+        val jsonArray = JSONArray(json)
+        val releases = ArrayList<ReleaseInfo>(jsonArray.length())
+        for (i in 0 until jsonArray.length()) {
+            val item = jsonArray.getJSONObject(i)
+            releases.add(
+                ReleaseInfo(
+                    tagName = item.optString("tag_name", ""),
+                    name = item.optString("name", ""),
+                    body = if (item.has("body")) item.optString("body") else null,
+                    publishedAt = item.optString("published_at", ""),
+                    htmlUrl = item.optString("html_url", "")
+                )
+            )
+        }
+        return releases
+    }
+
+    private fun getTopReleaseFingerprint(releases: List<ReleaseInfo>): String {
+        val latest = releases.firstOrNull() ?: return ""
+        return listOf(
+            latest.tagName,
+            latest.name,
+            latest.publishedAt,
+            latest.body.orEmpty(),
+            latest.htmlUrl,
+        ).joinToString("||")
+    }
+
+    private suspend fun fetchReleasesNetwork(
+        perPage: Int,
+        cachedEtag: String?,
+    ): ReleasesNetworkResult {
+        val response: HttpResponse =
+            client.get("https://api.github.com/repos/koiverse/ArchiveTune/releases?per_page=$perPage") {
+                headers {
+                    append("Accept", "application/vnd.github+json")
+                    append("User-Agent", "ArchiveTune")
+                    if (!cachedEtag.isNullOrBlank()) {
+                        append("If-None-Match", cachedEtag)
+                    }
+                }
+            }
+        val etag = response.headers["ETag"]
+        return when (response.status) {
+            HttpStatusCode.NotModified ->
+                ReleasesNetworkResult(
+                    status = response.status,
+                    body = null,
+                    etag = cachedEtag ?: etag,
+                )
+
+            else ->
+                ReleasesNetworkResult(
+                    status = response.status,
+                    body = response.bodyAsText(),
+                    etag = etag,
+                )
+        }
+    }
+
+    suspend fun getCachedReleases(): List<ReleaseInfo> {
+        val cachedJson = App.instance.dataStore.getAsync(GitHubReleasesJsonKey)
+        return cachedJson
+            ?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { parseReleasesJson(it) }.getOrNull() }
+            ?: emptyList()
+    }
+
     suspend fun getLatestVersionName(): Result<String> =
-        runCatching {
-            val response =
-                client.get("https://api.github.com/repos/koiverse/ArchiveTune/releases/latest")
-                    .bodyAsText()
-            val json = JSONObject(response)
-            val versionName = json.getString("name")
-            lastCheckTime = System.currentTimeMillis()
-            versionName
+        getLatestReleaseInfo().map { latest ->
+            latest.name.ifBlank { latest.tagName }
         }
 
     suspend fun getLatestReleaseNotes(): Result<String?> =
-        runCatching {
-            val response =
-                client.get("https://api.github.com/repos/koiverse/ArchiveTune/releases/latest")
-                    .bodyAsText()
-            val json = JSONObject(response)
-            lastCheckTime = System.currentTimeMillis()
-            if (json.has("body")) json.optString("body") else null
-        }
+        getLatestReleaseInfo().map { it.body }
 
     suspend fun getLatestReleaseInfo(): Result<ReleaseInfo> =
         runCatching {
-            val response =
-                client.get("https://api.github.com/repos/koiverse/ArchiveTune/releases/latest")
-                    .bodyAsText()
-            val json = JSONObject(response)
+            val releases = getAllReleases().getOrThrow()
+            val latest = releases.firstOrNull()
+                ?: throw IllegalStateException("No releases found")
             lastCheckTime = System.currentTimeMillis()
-            ReleaseInfo(
-                tagName = json.optString("tag_name", ""),
-                name = json.optString("name", ""),
-                body = if (json.has("body")) json.optString("body") else null,
-                publishedAt = json.optString("published_at", ""),
-                htmlUrl = json.optString("html_url", "")
-            )
+            latest
         }
 
     suspend fun getCommitHistory(count: Int = 20, branch: String = "dev"): Result<List<GitCommit>> =
@@ -107,25 +174,88 @@ object Updater {
         }
     }
 
-    suspend fun getAllReleases(perPage: Int = 30): Result<List<ReleaseInfo>> =
+    suspend fun getAllReleases(
+        perPage: Int = 30,
+        forceRefresh: Boolean = false,
+    ): Result<List<ReleaseInfo>> =
         runCatching {
-            val response =
-                client.get("https://api.github.com/repos/koiverse/ArchiveTune/releases?per_page=$perPage")
-                    .bodyAsText()
-            val jsonArray = JSONArray(response)
-            val releases = mutableListOf<ReleaseInfo>()
-            for (i in 0 until jsonArray.length()) {
-                val json = jsonArray.getJSONObject(i)
-                releases.add(
-                    ReleaseInfo(
-                        tagName = json.optString("tag_name", ""),
-                        name = json.optString("name", ""),
-                        body = if (json.has("body")) json.optString("body") else null,
-                        publishedAt = json.optString("published_at", ""),
-                        htmlUrl = json.optString("html_url", "")
-                    )
-                )
+            val now = System.currentTimeMillis()
+            val cachedJson = App.instance.dataStore.getAsync(GitHubReleasesJsonKey)
+            val cachedEtag = App.instance.dataStore.getAsync(GitHubReleasesEtagKey)
+            val lastCheckedAt = App.instance.dataStore.getAsync(GitHubReleasesLastCheckedAtKey, 0L)
+            val cachedFingerprint = App.instance.dataStore.getAsync(GitHubReleasesFingerprintKey)
+
+            val cachedReleases =
+                cachedJson
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { parseReleasesJson(it) }.getOrNull() }
+
+            val shouldCheckNetwork =
+                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
+
+            if (!shouldCheckNetwork) {
+                lastCheckTime = now
+                return@runCatching cachedReleases ?: emptyList()
             }
-            releases
+
+            val networkResult = runCatching {
+                fetchReleasesNetwork(
+                    perPage = perPage,
+                    cachedEtag = cachedEtag,
+                )
+            }.getOrNull()
+
+            if (networkResult == null) {
+                val fallback = cachedReleases
+                if (fallback != null) {
+                    lastCheckTime = now
+                    return@runCatching fallback
+                }
+                throw IllegalStateException("Failed to fetch releases")
+            }
+
+            when {
+                networkResult.status == HttpStatusCode.NotModified -> {
+                    App.instance.dataStore.edit { settings ->
+                        settings[GitHubReleasesLastCheckedAtKey] = now
+                        networkResult.etag?.let { settings[GitHubReleasesEtagKey] = it }
+                    }
+                    val fallback = cachedReleases
+                    if (fallback != null) {
+                        lastCheckTime = now
+                        return@runCatching fallback
+                    }
+                    throw IllegalStateException("Release cache is empty")
+                }
+
+                networkResult.status.value in 200..299 && !networkResult.body.isNullOrBlank() -> {
+                    val networkBody = networkResult.body
+                    val releases = parseReleasesJson(networkBody)
+                    val newFingerprint = getTopReleaseFingerprint(releases)
+                    val hasPayloadChanged = cachedJson != networkBody
+                    val hasTopReleaseChanged = cachedFingerprint != newFingerprint
+
+                    App.instance.dataStore.edit { settings ->
+                        settings[GitHubReleasesLastCheckedAtKey] = now
+                        networkResult.etag?.let { settings[GitHubReleasesEtagKey] = it }
+                        if (hasPayloadChanged || hasTopReleaseChanged || cachedJson.isNullOrBlank()) {
+                            settings[GitHubReleasesJsonKey] = networkBody
+                            settings[GitHubReleasesFingerprintKey] = newFingerprint
+                        }
+                    }
+                    lastCheckTime = now
+                    releases
+                }
+
+                else -> {
+                    val fallback = cachedReleases
+                    if (fallback != null) {
+                        lastCheckTime = now
+                        fallback
+                    } else {
+                        throw IllegalStateException("Failed to fetch releases: HTTP ${networkResult.status.value}")
+                    }
+                }
+            }
         }
 }

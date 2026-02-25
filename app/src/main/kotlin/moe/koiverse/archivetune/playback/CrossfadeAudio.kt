@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.koiverse.archivetune.db.MusicDatabase
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -51,8 +52,12 @@ internal class CrossfadeAudio(
     private var handoffStartElapsedMs: Long = 0L
     private var handoffDurationMs: Int = 0
     private var handoffTargetPositionMs: Long = 0L
+    private var handoffLastSyncSeekElapsedMs: Long = 0L
     private var handoffSeekIssued = false
     private var handoffRampStarted = false
+    private val handoffReseekMinIntervalMs = 180L
+    private val handoffDriftCorrectionThresholdMs = 220L
+    private val handoffRampStartDriftToleranceMs = 120L
 
     fun start(scope: CoroutineScope) {
         if (loopJob?.isActive == true) return
@@ -213,25 +218,38 @@ internal class CrossfadeAudio(
             (playerVolume.value * overlapNormalizeFactor * audioFocusVolumeFactor.value).coerceIn(0f, 1f)
 
         if (handoffActive) {
-            if (!handoffSeekIssued) {
+            val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
+            val overlapPositionMs = overlap.currentPosition.coerceAtLeast(0L)
+            val mainPositionMs = player.currentPosition.coerceAtLeast(0L)
+            val positionDriftMs = mainPositionMs - overlapPositionMs
+            val shouldResyncMainToOverlap =
+                !handoffSeekIssued ||
+                    (
+                        abs(positionDriftMs) > handoffDriftCorrectionThresholdMs &&
+                            nowElapsedMs - handoffLastSyncSeekElapsedMs >= handoffReseekMinIntervalMs
+                        )
+
+            if (shouldResyncMainToOverlap) {
                 handoffSeekIssued = true
+                handoffTargetPositionMs = overlapPositionMs
                 val currentIndex = player.currentMediaItemIndex
                 if (currentIndex != C.INDEX_UNSET) {
                     player.seekTo(currentIndex, handoffTargetPositionMs)
                     player.prepare()
+                    handoffLastSyncSeekElapsedMs = nowElapsedMs
                 }
+                playbackFadeFactor.value = 0f
+                overlap.volume = baseOverlapVolume
+                return
             }
-
-            val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
 
             if (!handoffRampStarted) {
                 val bufferedMs = player.totalBufferedDuration.coerceAtLeast(0L)
-                val deltaMs = player.currentPosition - handoffTargetPositionMs
                 val mainStable =
                     player.playbackState == Player.STATE_READY &&
                         player.isPlaying &&
                         bufferedMs >= 1200L &&
-                        deltaMs in -200L..900L
+                        abs(positionDriftMs) <= handoffRampStartDriftToleranceMs
 
                 if (!mainStable) {
                     playbackFadeFactor.value = 0f
@@ -287,11 +305,14 @@ internal class CrossfadeAudio(
             return
         }
 
+        val overlapPositionMs = overlap.currentPosition.coerceAtLeast(0L)
+
         handoffActive = true
         handoffSeekIssued = false
         handoffRampStarted = false
-        handoffTargetPositionMs = overlap.currentPosition.coerceAtLeast(0L)
+        handoffTargetPositionMs = overlapPositionMs
         handoffStartElapsedMs = android.os.SystemClock.elapsedRealtime()
+        handoffLastSyncSeekElapsedMs = 0L
         handoffDurationMs = 450
         playbackFadeFactor.value = 0f
     }
@@ -312,6 +333,7 @@ internal class CrossfadeAudio(
         handoffStartElapsedMs = 0L
         handoffDurationMs = 0
         handoffTargetPositionMs = 0L
+        handoffLastSyncSeekElapsedMs = 0L
         handoffSeekIssued = false
         handoffRampStarted = false
 
@@ -338,6 +360,7 @@ internal class CrossfadeAudio(
         handoffStartElapsedMs = 0L
         handoffDurationMs = 0
         handoffTargetPositionMs = 0L
+        handoffLastSyncSeekElapsedMs = 0L
         handoffSeekIssued = false
         handoffRampStarted = false
 

@@ -50,7 +50,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -114,13 +113,10 @@ import moe.koiverse.archivetune.ui.component.Lyrics
 import moe.koiverse.archivetune.ui.component.LyricsV2
 import moe.koiverse.archivetune.constants.UseLyricsV2Key
 import moe.koiverse.archivetune.ui.component.LocalMenuState
-import moe.koiverse.archivetune.ui.component.PlayerSliderTrack
 import moe.koiverse.archivetune.ui.component.BigSeekBar
 import androidx.navigation.NavController
-import me.saket.squiggles.SquigglySlider
 import moe.koiverse.archivetune.ui.menu.LyricsMenu
 import moe.koiverse.archivetune.ui.theme.PlayerColorExtractor
-import moe.koiverse.archivetune.ui.theme.PlayerSliderColors
 import moe.koiverse.archivetune.utils.rememberEnumPreference
 import moe.koiverse.archivetune.utils.rememberPreference
 import moe.koiverse.archivetune.constants.PlayerCustomImageUriKey
@@ -160,7 +156,7 @@ fun LyricsScreen(
     val playerVolume = playerConnection.service.playerVolume.collectAsState()
     
     // slider style preference
-    val sliderStyle by rememberEnumPreference(SliderStyleKey, SliderStyle.DEFAULT)
+    val sliderStyle by rememberEnumPreference(SliderStyleKey, SliderStyle.Standard)
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
     val (useLyricsV2) = rememberPreference(UseLyricsV2Key, defaultValue = false)
 
@@ -441,72 +437,24 @@ fun LyricsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             // Slider
-                            when (sliderStyle) {
-                                SliderStyle.DEFAULT -> {
-                                    Slider(
-                                        value = (sliderPosition ?: position).toFloat(),
-                                        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                        onValueChange = {
-                                            sliderPosition = it.toLong()
-                                        },
-                                        onValueChangeFinished = {
-                                            sliderPosition?.let {
-                                                player.seekTo(it)
-                                                position = it
-                                            }
-                                            sliderPosition = null
-                                        },
-                                        colors = PlayerSliderColors.defaultSliderColors(textBackgroundColor),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                                SliderStyle.SQUIGGLY -> {
-                                    SquigglySlider(
-                                        value = (sliderPosition ?: position).toFloat(),
-                                        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                        onValueChange = {
-                                            sliderPosition = it.toLong()
-                                        },
-                                        onValueChangeFinished = {
-                                            sliderPosition?.let {
-                                                player.seekTo(it)
-                                                position = it
-                                            }
-                                            sliderPosition = null
-                                        },
-                                        colors = PlayerSliderColors.squigglySliderColors(textBackgroundColor),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        squigglesSpec = SquigglySlider.SquigglesSpec(
-                                            amplitude = if (isPlaying) (2.dp).coerceAtLeast(2.dp) else 0.dp,
-                                            strokeWidth = 3.dp,
-                                        )
-                                    )
-                                }
-                                SliderStyle.SLIM -> {
-                                    Slider(
-                                        value = (sliderPosition ?: position).toFloat(),
-                                        valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                        onValueChange = {
-                                            sliderPosition = it.toLong()
-                                        },
-                                        onValueChangeFinished = {
-                                            sliderPosition?.let {
-                                                player.seekTo(it)
-                                                position = it
-                                            }
-                                            sliderPosition = null
-                                        },
-                                        thumb = { Spacer(modifier = Modifier.size(0.dp)) },
-                                        track = { sliderState ->
-                                            PlayerSliderTrack(
-                                                sliderState = sliderState,
-                                                colors = PlayerSliderColors.slimSliderColors(textBackgroundColor)
-                                            )
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
+                            StyledPlaybackSlider(
+                                sliderStyle = sliderStyle,
+                                value = (sliderPosition ?: position).toFloat(),
+                                valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
+                                onValueChange = {
+                                    sliderPosition = it.toLong()
+                                },
+                                onValueChangeFinished = {
+                                    sliderPosition?.let {
+                                        player.seekTo(it)
+                                        position = it
+                                    }
+                                    sliderPosition = null
+                                },
+                                activeColor = textBackgroundColor,
+                                isPlaying = isPlaying,
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
                             // Time display below slider
                             Row(
@@ -779,72 +727,24 @@ fun LyricsScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 48.dp, vertical = 16.dp)
                     ) {
-                        when (sliderStyle) {
-                            SliderStyle.DEFAULT -> {
-                                Slider(
-                                    value = (sliderPosition ?: position).toFloat(),
-                                    valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                    onValueChange = {
-                                        sliderPosition = it.toLong()
-                                    },
-                                    onValueChangeFinished = {
-                                        sliderPosition?.let {
-                                            player.seekTo(it)
-                                            position = it
-                                        }
-                                        sliderPosition = null
-                                    },
-                                    colors = PlayerSliderColors.defaultSliderColors(textBackgroundColor),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                            SliderStyle.SQUIGGLY -> {
-                                SquigglySlider(
-                                    value = (sliderPosition ?: position).toFloat(),
-                                    valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                    onValueChange = {
-                                        sliderPosition = it.toLong()
-                                    },
-                                    onValueChangeFinished = {
-                                        sliderPosition?.let {
-                                            player.seekTo(it)
-                                            position = it
-                                        }
-                                        sliderPosition = null
-                                    },
-                                    colors = PlayerSliderColors.squigglySliderColors(textBackgroundColor),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    squigglesSpec = SquigglySlider.SquigglesSpec(
-                                        amplitude = if (isPlaying) (2.dp).coerceAtLeast(2.dp) else 0.dp,
-                                        strokeWidth = 3.dp,
-                                    )
-                                )
-                            }
-                            SliderStyle.SLIM -> {
-                                Slider(
-                                    value = (sliderPosition ?: position).toFloat(),
-                                    valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
-                                    onValueChange = {
-                                        sliderPosition = it.toLong()
-                                    },
-                                    onValueChangeFinished = {
-                                        sliderPosition?.let {
-                                            player.seekTo(it)
-                                            position = it
-                                        }
-                                        sliderPosition = null
-                                    },
-                                    thumb = { Spacer(modifier = Modifier.size(0.dp)) },
-                                    track = { sliderState ->
-                                        PlayerSliderTrack(
-                                            sliderState = sliderState,
-                                            colors = PlayerSliderColors.slimSliderColors(textBackgroundColor)
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
+                        StyledPlaybackSlider(
+                            sliderStyle = sliderStyle,
+                            value = (sliderPosition ?: position).toFloat(),
+                            valueRange = 0f..(if (duration == C.TIME_UNSET) 0f else duration.toFloat()),
+                            onValueChange = {
+                                sliderPosition = it.toLong()
+                            },
+                            onValueChangeFinished = {
+                                sliderPosition?.let {
+                                    player.seekTo(it)
+                                    position = it
+                                }
+                                sliderPosition = null
+                            },
+                            activeColor = textBackgroundColor,
+                            isPlaying = isPlaying,
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         // Time display below slider
                         Row(

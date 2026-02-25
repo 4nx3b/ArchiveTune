@@ -9,6 +9,7 @@
 package moe.koiverse.archivetune.ui.component
 
 import android.annotation.SuppressLint
+import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,8 +19,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -34,6 +43,11 @@ import androidx.compose.ui.unit.*
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import moe.koiverse.archivetune.R
 import moe.koiverse.archivetune.models.MediaMetadata
 
@@ -124,6 +138,7 @@ fun rememberAdjustedFontSize(
 fun LyricsImageCard(
     lyricText: String,
     mediaMetadata: MediaMetadata,
+    glassStyle: LyricsGlassStyle = LyricsGlassStyle.FrostedDark,
     darkBackground: Boolean = true,
     backgroundColor: Color? = null,
     textColor: Color? = null,
@@ -132,164 +147,264 @@ fun LyricsImageCard(
     val context = LocalContext.current
     val density = LocalDensity.current
 
-    // حجم الكارد المربع (الأقل من العرض/الطول)
-    val cardSizeDp = remember {
-        340.dp // يمكنك تعديله حسب الحاجة أو جعله متغيراً
-    }
-    val cardCornerRadius = 20.dp
-    val padding = 28.dp
-    val coverArtSize = 64.dp
+    val cardSizeDp = 340.dp
+    val glassCornerRadius = 24.dp
+    val glassPadding = 24.dp
+    val coverArtSize = 56.dp
 
-    val backgroundGradient = backgroundColor ?: if (darkBackground) Color(0xFF121212) else Color(0xFFF5F5F5)
-    val mainTextColor = textColor ?: if (darkBackground) Color.White else Color.Black
-    val secondaryColor = secondaryTextColor ?: if (darkBackground) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.7f)
+    val mainTextColor = textColor ?: glassStyle.textColor
+    val secondaryColor = secondaryTextColor ?: glassStyle.secondaryTextColor
 
-    val painter = rememberAsyncImagePainter(
+    val artworkPainter = rememberAsyncImagePainter(
         ImageRequest.Builder(context)
             .data(mediaMetadata.thumbnailUrl)
             .crossfade(true)
             .build()
     )
 
+    val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+    val artworkBackdrop = rememberCanvasBackdrop {
+        drawImage(artworkPainter)
+        drawRect(
+            color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
+            size = size
+        )
+    }
+
     Box(
-        modifier = Modifier
-            .background(backgroundGradient)
-            .fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .size(cardSizeDp)
-                .clip(RoundedCornerShape(cardCornerRadius))
-                .background(backgroundGradient)
-                .border(1.dp, mainTextColor.copy(alpha = 0.09f), RoundedCornerShape(cardCornerRadius)),
+                .clip(RoundedCornerShape(glassCornerRadius)),
             contentAlignment = Alignment.Center
         ) {
-            Column(
+            Image(
+                painter = artworkPainter,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .then(
+                        if (!supportsBackdrop) {
+                            Modifier.blur(20.dp)
+                        } else {
+                            Modifier
+                        }
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = glassStyle.backgroundDimAlpha * 0.8f),
+                                Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
+                                Color.Black.copy(alpha = glassStyle.backgroundDimAlpha * 1.2f),
+                            )
+                        )
+                    )
+            )
+
+            val glassShape = RoundedCornerShape(20.dp)
+
+            Box(
+                modifier = Modifier
+                    .padding(14.dp)
+                    .fillMaxSize()
+                    .then(
+                        if (supportsBackdrop) {
+                            Modifier.drawBackdrop(
+                                backdrop = artworkBackdrop,
+                                shape = { glassShape },
+                                effects = {
+                                    if (glassStyle.useVibrancy) vibrancy()
+                                    blur(with(density) { glassStyle.blurRadius.toPx() })
+                                    if (supportsLens && glassStyle.useLens) {
+                                        lens(
+                                            with(density) { glassStyle.lensHeight.toPx() },
+                                            with(density) { glassStyle.lensAmount.toPx() }
+                                        )
+                                    }
+                                },
+                                onDrawSurface = {
+                                    drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha))
+                                    drawRect(glassStyle.overlayColor.copy(alpha = glassStyle.overlayAlpha))
+                                }
+                            )
+                        } else {
+                            Modifier
+                                .clip(glassShape)
+                                .background(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha + 0.2f))
+                        }
+                    )
+                    .then(
+                        if (!supportsBackdrop) {
+                            Modifier
+                                .drawBehind {
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.08f),
+                                        cornerRadius = CornerRadius(20.dp.toPx()),
+                                        size = Size(size.width, 1.dp.toPx()),
+                                        topLeft = Offset.Zero
+                                    )
+                                }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                // Header: Cover + Title/Artist aligned left
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
+                        .fillMaxSize()
+                        .padding(glassPadding),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .size(coverArtSize)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, mainTextColor.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.Start,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = mediaMetadata.title,
-                            color = mainTextColor,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(bottom = 2.dp)
-                        )
-                        Text(
-                            text = mediaMetadata.artists.joinToString { it.name },
-                            color = secondaryColor,
-                            fontSize = 16.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                // Lyrics text (centered)
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val availableWidth = maxWidth
-                    val availableHeight = maxHeight
-                    val textStyle = TextStyle(
-                        color = mainTextColor,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        letterSpacing = 0.005.em,
-                    )
-
-                    val textMeasurer = rememberTextMeasurer()
-                    val initialSize = when {
-                        lyricText.length < 50 -> 24.sp
-                        lyricText.length < 100 -> 20.sp
-                        lyricText.length < 200 -> 17.sp
-                        lyricText.length < 300 -> 15.sp
-                        else -> 13.sp
-                    }
-
-                    val dynamicFontSize = rememberAdjustedFontSize(
-                        text = lyricText,
-                        maxWidth = availableWidth - 8.dp,
-                        maxHeight = availableHeight - 8.dp,
-                        density = density,
-                        initialFontSize = initialSize,
-                        minFontSize = 18.sp,
-                        style = textStyle,
-                        textMeasurer = textMeasurer
-                    )
-
-                    Text(
-                        text = lyricText,
-                        style = textStyle.copy(
-                            fontSize = dynamicFontSize,
-                            lineHeight = dynamicFontSize.value.sp * 1.2f
-                        ),
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                // Footer
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(secondaryColor),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
                     ) {
                         Image(
-                            painter = painterResource(id = R.drawable.small_icon),
+                            painter = artworkPainter,
                             contentDescription = null,
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .size(16.dp),
-                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(backgroundGradient) // الرمز بلون الخلفية
+                                .size(coverArtSize)
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(
+                                    1.dp,
+                                    Color.White.copy(alpha = 0.15f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.Start,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = mediaMetadata.title,
+                                color = mainTextColor,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(bottom = 2.dp),
+                                style = TextStyle(
+                                    letterSpacing = (-0.02).em
+                                )
+                            )
+                            Text(
+                                text = mediaMetadata.artists.joinToString { it.name },
+                                color = secondaryColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val availableWidth = maxWidth
+                        val availableHeight = maxHeight
+                        val textStyle = TextStyle(
+                            color = mainTextColor,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            letterSpacing = (-0.01).em,
+                        )
+
+                        val textMeasurer = rememberTextMeasurer()
+                        val initialSize = when {
+                            lyricText.length < 50 -> 22.sp
+                            lyricText.length < 100 -> 19.sp
+                            lyricText.length < 200 -> 16.sp
+                            lyricText.length < 300 -> 14.sp
+                            else -> 12.sp
+                        }
+
+                        val dynamicFontSize = rememberAdjustedFontSize(
+                            text = lyricText,
+                            maxWidth = availableWidth - 6.dp,
+                            maxHeight = availableHeight - 6.dp,
+                            density = density,
+                            initialFontSize = initialSize,
+                            minFontSize = 11.sp,
+                            style = textStyle,
+                            textMeasurer = textMeasurer
+                        )
+
+                        Text(
+                            text = lyricText,
+                            style = textStyle.copy(
+                                fontSize = dynamicFontSize,
+                                lineHeight = dynamicFontSize.value.sp * 1.35f
+                            ),
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(secondaryColor.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.small_icon),
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                colorFilter = ColorFilter.tint(
+                                    if (glassStyle.isDark) Color.Black.copy(alpha = 0.85f)
+                                    else Color.White.copy(alpha = 0.9f)
+                                )
+                            )
+                        }
 
-                    Text(
-                        text = context.getString(R.string.app_name),
-                        color = secondaryColor,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = context.getString(R.string.app_name),
+                            color = secondaryColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.02.em
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawImage(
+    painter: androidx.compose.ui.graphics.painter.Painter
+) {
+    with(painter) {
+        draw(size)
     }
 }

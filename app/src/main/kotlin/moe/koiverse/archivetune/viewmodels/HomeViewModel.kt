@@ -41,6 +41,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import timber.log.Timber
 import javax.inject.Inject
 
 @HiltViewModel
@@ -82,6 +83,7 @@ class HomeViewModel @Inject constructor(
     
     // Track if we're currently processing account data
     private var isProcessingAccountData = false
+    private var wasLoggedIn = false
 
     private fun filterHomeChips(chips: List<HomePage.Chip>?): List<HomePage.Chip>? {
         return chips?.filterNot { it.title.contains("podcasts", ignoreCase = true) }
@@ -338,29 +340,6 @@ class HomeViewModel @Inject constructor(
             kotlinx.coroutines.delay(3000)
             
             syncUtils.cleanupDuplicatePlaylists()
-            
-            val cookie = context.dataStore.data
-                .map { it[InnerTubeCookieKey] }
-                .distinctUntilChanged()
-                .first()
-            
-            val isLoggedIn = cookie?.let { "SAPISID" in parseCookieString(it) } ?: false
-            
-            if (isLoggedIn) {
-                val isSyncEnabled = context.dataStore.data
-                    .map { it[YtmSyncKey] ?: true }
-                    .distinctUntilChanged()
-                    .first()
-
-                if (isSyncEnabled) {
-                    try {
-                        syncUtils.performFullSync()
-                    } catch (e: Exception) {
-                        timber.log.Timber.e(e, "Error during sync")
-                        reportException(e)
-                    }
-                }
-            }
         }
         
         viewModelScope.launch(Dispatchers.IO) {
@@ -375,6 +354,8 @@ class HomeViewModel @Inject constructor(
                     
                     try {
                         val isLoggedIn = cookie?.let { "SAPISID" in parseCookieString(it) } ?: false
+                        val loginTransition = isLoggedIn && !wasLoggedIn
+                        wasLoggedIn = isLoggedIn
                         
                         if (isLoggedIn && cookie != null && cookie.isNotEmpty()) {
                             try {
@@ -382,6 +363,19 @@ class HomeViewModel @Inject constructor(
                             } catch (e: Exception) {
                                 timber.log.Timber.e(e, "Failed to set YouTube cookie")
                                 return@collect
+                            }
+
+                            if (loginTransition) {
+                                launch {
+                                    try {
+                                        if (context.dataStore.get(YtmSyncKey, true)) {
+                                            syncUtils.performFullSync()
+                                        }
+                                    } catch (e: Exception) {
+                                        Timber.e(e, "Error during login-triggered sync")
+                                        reportException(e)
+                                    }
+                                }
                             }
                             
                             kotlinx.coroutines.delay(100)

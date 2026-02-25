@@ -36,11 +36,15 @@ val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
+val GlassNavigationBarKey = booleanPreferencesKey("glassNavigationBar")
+val GlassMiniPlayerKey = booleanPreferencesKey("glassMiniPlayer")
 
 enum class SliderStyle {
-    DEFAULT,
-    SQUIGGLY,
-    SLIM,
+    Standard,
+    Wavy,
+    Thick,
+    Circular,
+    Simple,
 }
 
 const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
@@ -56,6 +60,7 @@ val HideVideoKey = booleanPreferencesKey("hideVideo")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyUrlKey = stringPreferencesKey("proxyUrl")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
+val StreamBypassProxyKey = booleanPreferencesKey("streamBypassProxy")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
 val SelectedYtmPlaylistsKey = stringPreferencesKey("ytm_selected_playlists")
 
@@ -98,6 +103,7 @@ enum class PlayerStreamClient {
     ANDROID_VR,
     WEB_REMIX,
     IOS,
+    TVHTML5,
 }
 
 val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
@@ -377,6 +383,7 @@ enum class PlayerDesignStyle {
     V3,
     V4,
     V5,
+    V6,
 }
 
 enum class PlayerBackgroundStyle {
@@ -424,6 +431,10 @@ val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
 val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 
+// Queue lyrics pre-load settings
+val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
+val QueueLyricsPreloadCountKey = intPreferencesKey("queue_lyrics_preload_count")
+
 val PlayerVolumeKey = floatPreferencesKey("playerVolume")
 val RepeatModeKey = intPreferencesKey("repeatMode")
 
@@ -446,6 +457,7 @@ enum class SearchSource {
 val VisitorDataKey = stringPreferencesKey("visitorData")
 val DataSyncIdKey = stringPreferencesKey("dataSyncId")
 val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
+val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
@@ -547,6 +559,11 @@ val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
 val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")
+
+val GitHubReleasesEtagKey = stringPreferencesKey("github_releases_etag")
+val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json")
+val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at")
+val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint")
 
 val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
 val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")

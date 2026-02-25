@@ -49,11 +49,14 @@ data class YouTubeClient(
     )
 
     companion object {
-        const val USER_AGENT_WEB = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
+        const val USER_AGENT_WEB = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 
         const val ORIGIN_YOUTUBE_MUSIC = "https://music.youtube.com"
         const val REFERER_YOUTUBE_MUSIC = "$ORIGIN_YOUTUBE_MUSIC/"
         const val API_URL_YOUTUBE_MUSIC = "$ORIGIN_YOUTUBE_MUSIC/youtubei/v1/"
+
+        const val ORIGIN_YOUTUBE = "https://www.youtube.com"
+        const val REFERER_YOUTUBE_TV = "$ORIGIN_YOUTUBE/tv"
 
         val WEB = YouTubeClient(
             clientName = "WEB",
@@ -104,10 +107,10 @@ data class YouTubeClient(
 
         val IOS = YouTubeClient(
             clientName = "IOS",
-            clientVersion = "21.10.3",
+            clientVersion = "19.29.1",
             clientId = "5",
-            userAgent = "com.google.ios.youtube/21.10.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
-            osVersion = "18.3.2.22D82",
+            userAgent = "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
+            osVersion = "17.5.1.21F90",
         )
 
         val MOBILE = YouTubeClient(
@@ -121,9 +124,14 @@ data class YouTubeClient(
 
         val ANDROID_VR_NO_AUTH = YouTubeClient(
             clientName = "ANDROID_VR",
-            clientVersion = "1.62.20",
+            clientVersion = "1.37",
             clientId = "28",
-            userAgent = "com.google.android.apps.youtube.vr.oculus/1.62.20 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/132.0.6834.79)",
+            userAgent = "com.google.android.apps.youtube.vr.oculus/1.37 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/107.0.5284.2)",
+            osName = "Android",
+            osVersion = "12",
+            deviceMake = "Oculus",
+            deviceModel = "Quest 3",
+            androidSdkVersion = "32",
             loginSupported = false,
             useSignatureTimestamp = false
         )

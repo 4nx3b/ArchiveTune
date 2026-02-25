@@ -97,9 +97,10 @@ class SyncUtils @Inject constructor(
                 }
                 
                 supervisorScope {
+                    syncLikedSongs()
+                    syncLibrarySongs()
+
                     listOf(
-                        async { syncLikedSongs() },
-                        async { syncLibrarySongs() },
                         async { syncLikedAlbums() },
                         async { syncArtistsSubscriptions() },
                     ).awaitAll()
@@ -200,12 +201,6 @@ class SyncUtils @Inject constructor(
                 return@onSuccess
             }
             val baseTimestamp = LocalDateTime.now()
-            val remoteIds = remoteSongs.map { it.id }
-            val localSongs = database.likedSongsByNameAsc().first()
-
-            if (!isSyncStillEnabled(gen)) return@onSuccess
-            localSongs.filterNot { it.id in remoteIds }
-                .forEach { database.update(it.song.localToggleLike()) }
 
             remoteSongs.forEachIndexed { index, song ->
                 val timestamp = likedSongTimestamp(baseTimestamp, index)
@@ -252,7 +247,7 @@ class SyncUtils @Inject constructor(
 
             if (!isSyncStillEnabled(gen)) return@onSuccess
             localSongs.filterNot { it.id in remoteIds }
-                .forEach { database.update(it.song.toggleLibrary()) }
+                .forEach { database.update(it.song.copy(inLibrary = null)) }
 
             remoteSongs.forEach { song ->
                 launch {

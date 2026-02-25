@@ -175,6 +175,8 @@ import moe.koiverse.archivetune.constants.SearchSource
 import moe.koiverse.archivetune.constants.SearchSourceKey
 import moe.koiverse.archivetune.constants.SlimNavBarHeight
 import moe.koiverse.archivetune.constants.SlimNavBarKey
+import moe.koiverse.archivetune.constants.GlassNavigationBarKey
+import moe.koiverse.archivetune.constants.GlassMiniPlayerKey
 import moe.koiverse.archivetune.constants.StopMusicOnTaskClearKey
 import moe.koiverse.archivetune.constants.UseNewMiniPlayerDesignKey
 import moe.koiverse.archivetune.constants.UseSystemFontKey
@@ -195,6 +197,7 @@ import moe.koiverse.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.koiverse.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.koiverse.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.koiverse.archivetune.ui.component.IconButton
+import moe.koiverse.archivetune.ui.component.GlassNavigationBar
 import moe.koiverse.archivetune.ui.component.LocalBottomSheetPageState
 import moe.koiverse.archivetune.ui.component.LocalMenuState
 import moe.koiverse.archivetune.ui.component.StarDialog
@@ -686,6 +689,8 @@ class MainActivity : ComponentActivity() {
 
                     val navigationItems = remember { Screens.MainScreens }
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
+                    val (glassNavigationBar) = rememberPreference(GlassNavigationBarKey, defaultValue = false)
+                    val (glassMiniPlayer) = rememberPreference(GlassMiniPlayerKey, defaultValue = false)
                     val (useNewMiniPlayerDesign) = rememberPreference(UseNewMiniPlayerDesignKey, defaultValue = true)
                     val defaultOpenTab by rememberEnumPreference(DefaultOpenTabKey, NavigationTab.HOME)
                     val pauseSearchHistory by rememberPreference(PauseSearchHistoryKey, defaultValue = false)
@@ -776,7 +781,7 @@ class MainActivity : ComponentActivity() {
                     val playerBottomSheetState =
                         rememberBottomSheetState(
                             dismissedBound = 0.dp,
-                            collapsedBound = bottomInset + getBottomNavPadding() + (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) + MiniPlayerHeight,
+                            collapsedBound = bottomInset + getBottomNavPadding() + (if (useNewMiniPlayerDesign || glassMiniPlayer) MiniPlayerBottomSpacing else 0.dp) + MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
 
@@ -1431,6 +1436,53 @@ class MainActivity : ComponentActivity() {
 
                                         if(useRail) return@Box
 
+                                        val glassNavBarEnabled = glassNavigationBar && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+                                        if (glassNavBarEnabled) {
+                                            val slideOffsetDp = with(LocalDensity.current) {
+                                                if (bottomNavigationBarHeight == 0.dp) {
+                                                    bottomInset + NavigationBarHeight
+                                                } else {
+                                                    val slideOffset =
+                                                        (bottomInset + NavigationBarHeight) *
+                                                                playerBottomSheetState.progress.coerceIn(0f, 1f)
+                                                    val hideOffset =
+                                                        (bottomInset + NavigationBarHeight) * (1 - bottomNavigationBarHeight / NavigationBarHeight)
+                                                    slideOffset + hideOffset
+                                                }
+                                            }
+
+                                            GlassNavigationBar(
+                                                navigationItems = navigationItems,
+                                                currentRoute = navBackStackEntry?.destination?.route,
+                                                isRouteSelected = { screen ->
+                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
+                                                },
+                                                onItemClick = { screen ->
+                                                    if (screen.route == Screens.Search.route) {
+                                                        onActiveChange(true)
+                                                    } else if (navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true) {
+                                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                        coroutineScope.launch {
+                                                            searchBarScrollBehavior.state.resetHeightOffset()
+                                                        }
+                                                    } else {
+                                                        navController.navigate(screen.route) {
+                                                            popUpTo(navController.graph.startDestinationId) {
+                                                                saveState = true
+                                                            }
+                                                            launchSingleTop = true
+                                                            restoreState = true
+                                                        }
+                                                    }
+                                                },
+                                                slimNav = slimNav,
+                                                pureBlack = pureBlack,
+                                                bottomInset = bottomInset,
+                                                slideOffset = slideOffsetDp,
+                                                modifier = Modifier.align(Alignment.BottomCenter),
+                                            )
+                                        } else {
                                         NavigationBar(
                                             modifier = Modifier
                                                 .align(Alignment.BottomCenter)
@@ -1514,6 +1566,7 @@ class MainActivity : ComponentActivity() {
                                                 .align(Alignment.BottomCenter)
                                                 .height(bottomInsetDp)
                                         )
+                                        }
                                     }
                                 },
                                 modifier = Modifier

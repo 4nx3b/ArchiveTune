@@ -105,11 +105,19 @@ object YouTube {
         set(value) {
             innerTube.cookie = value
         }
+    var poToken: String?
+        get() = innerTube.poToken
+        set(value) {
+            innerTube.poToken = value
+        }
     var proxy: Proxy?
         get() = innerTube.proxy
         set(value) {
             innerTube.proxy = value
         }
+    var streamBypassProxy: Boolean = false
+    val streamProxy: Proxy?
+        get() = if (streamBypassProxy) null else proxy
     var useLoginForBrowse: Boolean
         get() = innerTube.useLoginForBrowse
         set(value) {
@@ -547,10 +555,39 @@ object YouTube {
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatching {
         val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums").body<BrowseResponse>()
-        response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()?.gridRenderer?.items
-            ?.mapNotNull { it.musicTwoRowItemRenderer }
-            ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
-            .orEmpty()
+        val contents =
+            response.contents
+                ?.singleColumnBrowseResultsRenderer
+                ?.tabs
+                ?.firstOrNull()
+                ?.tabRenderer
+                ?.content
+                ?.sectionListRenderer
+                ?.contents
+                .orEmpty()
+
+        contents
+            .asSequence()
+            .flatMap { content ->
+                when {
+                    content.gridRenderer?.items != null -> {
+                        content.gridRenderer.items
+                            .asSequence()
+                            .mapNotNull { it.musicTwoRowItemRenderer }
+                            .mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
+                    }
+
+                    content.musicCarouselShelfRenderer?.contents != null -> {
+                        content.musicCarouselShelfRenderer.contents
+                            .asSequence()
+                            .mapNotNull { it.musicTwoRowItemRenderer }
+                            .mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
+                    }
+
+                    else -> emptySequence()
+                }
+            }
+            .toList()
     }
 
     suspend fun moodAndGenres(): Result<List<MoodAndGenres>> = runCatching {
@@ -960,8 +997,8 @@ object YouTube {
         innerTube.deletePlaylist(WEB_REMIX, playlistId)
     }
 
-    suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null): Result<PlayerResponse> = runCatching {
-        innerTube.player(client, videoId, playlistId, signatureTimestamp).body<PlayerResponse>()
+    suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null, poToken: String? = null): Result<PlayerResponse> = runCatching {
+        innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
     }
 
     suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatching {

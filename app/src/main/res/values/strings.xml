@@ -24,6 +24,9 @@
     <string name="new_release_albums">New release albums</string>
     <string name="select_playlist_to_sync">Select Playlist To Sync</string>
     <string name="integration">Integration</string>
+    <string name="integrations">Integrations</string>
+    <string name="internal_subcategory_settings">Internal &amp; subcategory settings</string>
+    <string name="search_try_different">Try a different search term</string>
     <!-- History -->
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>
@@ -378,6 +381,11 @@
     <string name="center">Center</string>
     <string name="right">Right</string>
     <string name="player_slider_style">Player slider style</string>
+    <string name="slider_style_standard">Standard</string>
+    <string name="slider_style_wavy">Wavy</string>
+    <string name="slider_style_thick">Thick</string>
+    <string name="slider_style_circular">Circular</string>
+    <string name="slider_style_simple">Simple</string>
     <string name="default_">Default</string>
     <string name="squiggly">Squiggly</string>
     <string name="misc">Misc</string>
@@ -407,6 +415,8 @@
     <string name="enable_proxy">Enable proxy</string>
     <string name="proxy_type">Proxy type</string>
     <string name="proxy_url">Proxy URL</string>
+    <string name="stream_bypass_proxy">Bypass proxy for streams</string>
+    <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
     <string name="restart_to_take_effect">Restart to take effect</string>
     <string name="enable_betterlyrics">Enable BetterLyrics</string>
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
@@ -489,6 +499,8 @@
     <string name="disable_screenshot_desc">When this option is on, screenshots and the app\'s view in Recents are disabled.</string>
     <string name="enable_lrclib">Enable LrcLib lyrics provider</string>
     <string name="enable_kugou">Enable KuGou lyrics provider</string>
+    <string name="preload_queue_lyrics">Preload queue lyrics</string>
+    <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Hide explicit content</string>
     <string name="hide_video">Hide music videos</string>
     <string name="backup_restore">Backup and restore</string>

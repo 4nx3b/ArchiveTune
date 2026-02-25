@@ -43,14 +43,25 @@ fun ChangelogScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        Updater.getAllReleases().onSuccess { result ->
+    suspend fun loadReleases(forceRefresh: Boolean) {
+        Updater.getAllReleases(forceRefresh = forceRefresh).onSuccess { result ->
             releases = result
-            isLoading = false
+            error = null
         }.onFailure { e ->
-            error = e.message
+            if (releases.isEmpty()) {
+                error = e.message
+            }
+        }
+        isLoading = false
+    }
+
+    LaunchedEffect(Unit) {
+        val cachedReleases = Updater.getCachedReleases()
+        if (cachedReleases.isNotEmpty()) {
+            releases = cachedReleases
             isLoading = false
         }
+        loadReleases(forceRefresh = true)
     }
 
     Scaffold(
@@ -88,7 +99,7 @@ fun ChangelogScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                error != null -> {
+                error != null && releases.isEmpty() -> {
                     Column(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -102,16 +113,10 @@ fun ChangelogScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         TextButton(onClick = {
-                            isLoading = true
+                            isLoading = releases.isEmpty()
                             error = null
                             coroutineScope.launch {
-                                Updater.getAllReleases().onSuccess { result ->
-                                    releases = result
-                                    isLoading = false
-                                }.onFailure { e ->
-                                    error = e.message
-                                    isLoading = false
-                                }
+                                loadReleases(forceRefresh = true)
                             }
                         }) {
                             Text(stringResource(R.string.retry))

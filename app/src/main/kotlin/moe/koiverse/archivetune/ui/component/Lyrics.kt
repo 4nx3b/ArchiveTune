@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -132,6 +133,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.graphics.drawable.toBitmap
@@ -612,9 +614,8 @@ fun Lyrics(
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
 
     var showColorPickerDialog by remember { mutableStateOf(false) }
-    var previewBackgroundColor by remember { mutableStateOf(Color(0xFF242424)) }
-    var previewTextColor by remember { mutableStateOf(Color.White) }
-    var previewSecondaryTextColor by remember { mutableStateOf(Color.White.copy(alpha = 0.7f)) }
+    var selectedGlassStyle by remember { mutableStateOf(LyricsGlassStyle.FrostedDark) }
+    var paletteGlassStyle by remember { mutableStateOf<LyricsGlassStyle?>(null) }
 
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
     val selectedIndices = remember { mutableStateListOf<Int>() }
@@ -2347,33 +2348,6 @@ fun Lyrics(
     if (showColorPickerDialog && shareDialogData != null) {
         val (lyricsText, songTitle, artists) = shareDialogData!!
         val coverUrl = mediaMetadata?.thumbnailUrl
-        val paletteColors = remember { mutableStateListOf<Color>() }
-
-        val previewCardWidth = configuration.screenWidthDp.dp * 0.90f
-        val previewPadding = 20.dp * 2
-        val previewBoxPadding = 28.dp * 2
-        val previewAvailableWidth = previewCardWidth - previewPadding - previewBoxPadding
-        val previewBoxHeight = 340.dp
-        val headerFooterEstimate = (48.dp + 14.dp + 16.dp + 20.dp + 8.dp + 28.dp * 2)
-        val previewAvailableHeight = previewBoxHeight - headerFooterEstimate
-
-        val textStyleForMeasurement = TextStyle(
-            color = previewTextColor,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        val textMeasurer = rememberTextMeasurer()
-
-        rememberAdjustedFontSize(
-            text = lyricsText,
-            maxWidth = previewAvailableWidth,
-            maxHeight = previewAvailableHeight,
-            density = density,
-            initialFontSize = 50.sp,
-            minFontSize = 22.sp,
-            style = textStyleForMeasurement,
-            textMeasurer = textMeasurer
-        )
 
         LaunchedEffect(coverUrl) {
             if (coverUrl != null) {
@@ -2385,100 +2359,145 @@ fun Lyrics(
                         val bmp = result.image?.toBitmap()
                         if (bmp != null) {
                             val palette = Palette.from(bmp).generate()
-                            val swatches = palette.swatches.sortedByDescending { it.population }
-                            val colors = swatches.map { Color(it.rgb) }
-                                .filter { color ->
-                                    val hsv = FloatArray(3)
-                                    android.graphics.Color.colorToHSV(color.toArgb(), hsv)
-                                    hsv[1] > 0.2f
-                                }
-                            paletteColors.clear()
-                            paletteColors.addAll(colors.take(5))
+                            paletteGlassStyle = LyricsGlassStyle.fromPalette(palette)
                         }
                     } catch (_: Exception) {}
                 }
             }
         }
 
+        val availableStyles = remember(paletteGlassStyle) {
+            val base = LyricsGlassStyle.allPresets.toMutableList()
+            paletteGlassStyle?.let { base.add(0, it) }
+            base
+        }
+
         BasicAlertDialog(onDismissRequest = { showColorPickerDialog = false }) {
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(12.dp)
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .verticalScroll(rememberScrollState())
-                        .padding(20.dp)
+                        .padding(horizontal = 20.dp, vertical = 24.dp)
                 ) {
                     Text(
                         text = stringResource(id = R.string.customize_colors),
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.02).em
+                        ),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(340.dp)
-                            .padding(8.dp)
+                            .clip(RoundedCornerShape(20.dp))
                     ) {
                         LyricsImageCard(
                             lyricText = lyricsText,
                             mediaMetadata = mediaMetadata ?: return@Box,
-                            backgroundColor = previewBackgroundColor,
-                            textColor = previewTextColor,
-                            secondaryTextColor = previewSecondaryTextColor
+                            glassStyle = selectedGlassStyle,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                    Text(text = stringResource(id = R.string.background_color), style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                        (paletteColors + listOf(Color(0xFF242424), Color(0xFF121212), Color.White, Color.Black, Color(0xFFF5F5F5))).distinct().take(8).forEach { color ->
+                    Text(
+                        text = stringResource(id = R.string.customize_colors),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        availableStyles.forEach { style ->
+                            val isSelected = selectedGlassStyle == style
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
-                                    .background(color, shape = RoundedCornerShape(8.dp))
-                                    .clickable { previewBackgroundColor = color }
-                                    .border(2.dp, if (previewBackgroundColor == color) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
-                            )
+                                    .size(width = 72.dp, height = 72.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .then(
+                                        if (isSelected) {
+                                            Modifier.border(
+                                                2.5.dp,
+                                                MaterialTheme.colorScheme.primary,
+                                                RoundedCornerShape(16.dp)
+                                            )
+                                        } else {
+                                            Modifier.border(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                                RoundedCornerShape(16.dp)
+                                            )
+                                        }
+                                    )
+                                    .clickable { selectedGlassStyle = style },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    style.surfaceTint.copy(alpha = 0.6f),
+                                                    style.overlayColor.copy(alpha = 0.4f),
+                                                )
+                                            ),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                )
+
+                                Box(
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .fillMaxSize()
+                                        .background(
+                                            style.surfaceTint.copy(alpha = style.surfaceAlpha),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .border(
+                                            0.5.dp,
+                                            Color.White.copy(alpha = 0.15f),
+                                            RoundedCornerShape(10.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Aa",
+                                        color = style.textColor,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    Text(text = stringResource(id = R.string.text_color), style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                        (paletteColors + listOf(Color.White, Color.Black, Color(0xFF1DB954))).distinct().take(8).forEach { color ->
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(color, shape = RoundedCornerShape(8.dp))
-                                    .clickable { previewTextColor = color }
-                                    .border(2.dp, if (previewTextColor == color) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
-                            )
-                        }
-                    }
-
-                    Text(text = stringResource(id = R.string.secondary_text_color), style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                        (paletteColors.map { it.copy(alpha = 0.7f) } + listOf(Color.White.copy(alpha = 0.7f), Color.Black.copy(alpha = 0.7f), Color(0xFF1DB954))).distinct().take(8).forEach { color ->
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(color, shape = RoundedCornerShape(8.dp))
-                                    .clickable { previewSecondaryTextColor = color }
-                                    .border(2.dp, if (previewSecondaryTextColor == color) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Button(
                         onClick = {
@@ -2486,20 +2505,16 @@ fun Lyrics(
                             showProgressDialog = true
                             scope.launch {
                                 try {
-                                    val screenWidth = configuration.screenWidthDp
-                                    val screenHeight = configuration.screenHeightDp
-
+                                    val exportSize = 1080
                                     val image = ComposeToImage.createLyricsImage(
                                         context = context,
                                         coverArtUrl = coverUrl,
                                         songTitle = songTitle,
                                         artistName = artists,
                                         lyrics = lyricsText,
-                                        width = (screenWidth * density.density).toInt(),
-                                        height = (screenHeight * density.density).toInt(),
-                                        backgroundColor = previewBackgroundColor.toArgb(),
-                                        textColor = previewTextColor.toArgb(),
-                                        secondaryTextColor = previewSecondaryTextColor.toArgb(),
+                                        width = exportSize,
+                                        height = exportSize,
+                                        glassStyle = selectedGlassStyle,
                                     )
                                     val timestamp = System.currentTimeMillis()
                                     val filename = "lyrics_$timestamp"
@@ -2517,9 +2532,16 @@ fun Lyrics(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
                     ) {
-                        Text(stringResource(id = R.string.share))
+                        Text(
+                            text = stringResource(id = R.string.share),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        )
                     }
                 }
             }
