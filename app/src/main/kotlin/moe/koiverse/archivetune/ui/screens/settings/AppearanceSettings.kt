@@ -100,6 +100,8 @@ import moe.koiverse.archivetune.constants.ArchiveTuneCanvasKey
 import moe.koiverse.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.koiverse.archivetune.constants.CropThumbnailToSquareKey
 import moe.koiverse.archivetune.constants.DisableBlurKey
+import moe.koiverse.archivetune.constants.GlassNavigationBarKey
+import moe.koiverse.archivetune.constants.GlassMiniPlayerKey
 import moe.koiverse.archivetune.constants.UseLyricsV2Key
 import moe.koiverse.archivetune.ui.component.DefaultDialog
 import moe.koiverse.archivetune.ui.component.EnumListPreference
@@ -211,6 +213,16 @@ fun AppearanceSettings(
 
     val (slimNav, onSlimNavChange) = rememberPreference(
         SlimNavBarKey,
+        defaultValue = false
+    )
+
+    val (glassNavigationBar, onGlassNavigationBarChange) = rememberPreference(
+        GlassNavigationBarKey,
+        defaultValue = false
+    )
+
+    val (glassMiniPlayer, onGlassMiniPlayerChange) = rememberPreference(
+        GlassMiniPlayerKey,
         defaultValue = false
     )
 
@@ -409,6 +421,13 @@ fun AppearanceSettings(
             icon = { Icon(painterResource(R.drawable.nav_bar), null) },
             checked = useNewMiniPlayerDesign,
             onCheckedChange = onUseNewMiniPlayerDesignChange,
+        )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.glass_mini_player)) },
+            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+            checked = glassMiniPlayer,
+            onCheckedChange = onGlassMiniPlayerChange,
         )
 
         SwitchPreference(
@@ -844,6 +863,13 @@ fun AppearanceSettings(
             icon = { Icon(painterResource(R.drawable.nav_bar), null) },
             checked = slimNav,
             onCheckedChange = onSlimNavChange
+        )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.glass_navigation_bar)) },
+            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+            checked = glassNavigationBar,
+            onCheckedChange = onGlassNavigationBarChange,
         )
 
         EnumListPreference(

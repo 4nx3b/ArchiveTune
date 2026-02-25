@@ -36,6 +36,8 @@ val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
+val GlassNavigationBarKey = booleanPreferencesKey("glassNavigationBar")
+val GlassMiniPlayerKey = booleanPreferencesKey("glassMiniPlayer")
 
 enum class SliderStyle {
     Standard,
