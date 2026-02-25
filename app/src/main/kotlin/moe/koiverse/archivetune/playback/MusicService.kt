@@ -3485,6 +3485,7 @@ class MusicService :
             Timber.tag("MusicService").w(
                 "Attempting stream refresh for $currentMediaId (http=$httpStatusCode, code=${error.errorCode})"
             )
+            YTPlayerUtils.markPreferredClientFailed(currentMediaId, preferredStreamClient, httpStatusCode)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
             player.prepare()
