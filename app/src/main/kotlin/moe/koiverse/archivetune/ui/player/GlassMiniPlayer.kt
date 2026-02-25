@@ -2,7 +2,6 @@ package moe.koiverse.archivetune.ui.player
 
 import android.os.Build
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,7 @@ fun GlassMiniPlayer(
     val swipeSensitivity by rememberPreference(SwipeSensitivityKey, 0.73f)
     val swipeThumbnail by rememberPreference(moe.koiverse.archivetune.constants.SwipeThumbnailKey, true)
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = pureBlack || MaterialTheme.colorScheme.background.luminance() < 0.5f
     val glassStyle = GlassEffectDefaults.miniPlayerStyle(isDark, pureBlack)
     val pillShape = RoundedCornerShape(32.dp)
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
