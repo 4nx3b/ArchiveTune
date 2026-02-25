@@ -457,18 +457,7 @@ fun LyricsV2(
                 // Word-synced lines: pass 1f alpha so individual words control their own
                 val wordLineAlpha = if (item.words != null && isSynced) 1f else lineAlpha
 
-                // Scale — active line slightly enlarged with smooth tween
-                val targetScale = if (isActive) 1.0f else 0.97f
-                val lineScale = remember { Animatable(targetScale) }
-                LaunchedEffect(isActive) {
-                    lineScale.animateTo(
-                        targetValue = if (isActive) 1.0f else 0.97f,
-                        animationSpec = androidx.compose.animation.core.tween(
-                            durationMillis = 400,
-                            easing = androidx.compose.animation.core.LinearOutSlowInEasing
-                        )
-                    )
-                }
+
 
                 // Background vocal detection
                 val hasBackgroundWords = item.words?.any { it.isBackground } == true
@@ -483,7 +472,6 @@ fun LyricsV2(
                             top = if (index == 0 || (index == 1 && entriesWithWords[0] == HEAD_LYRICS_ENTRY)) 0.dp else (lyricsLineSpacing * 8).dp,
                             bottom = (lyricsLineSpacing * 8).dp,
                         )
-                        .scale(lineScale.value)
                         .alpha(wordLineAlpha)
                         .then(
                             if (lyricsClick && isSynced && item.time > 0) {
