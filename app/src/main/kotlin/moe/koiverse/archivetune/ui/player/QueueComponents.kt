@@ -89,7 +89,7 @@ fun CurrentSongHeader(
     locked: Boolean,
     songCount: Int,
     queueDuration: Int,
-    similarContentEnabled: Boolean,
+    infiniteQueueEnabled: Boolean,
     backgroundColor: Color,
     onBackgroundColor: Color,
     onToggleLike: () -> Unit,
@@ -97,7 +97,7 @@ fun CurrentSongHeader(
     onRepeatClick: () -> Unit,
     onShuffleClick: () -> Unit,
     onLockClick: () -> Unit,
-    onSimilarContentClick: () -> Unit,
+    onInfiniteQueueClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -272,16 +272,17 @@ fun CurrentSongHeader(
                     .height(48.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(
-                        if (similarContentEnabled) onBackgroundColor.copy(alpha = 0.2f)
+                        if (infiniteQueueEnabled) MaterialTheme.colorScheme.primary
                         else onBackgroundColor.copy(alpha = 0.15f)
                     )
-                    .clickable { onSimilarContentClick() },
+                    .clickable { onInfiniteQueueClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(R.drawable.all_inclusive),
                     contentDescription = stringResource(R.string.similar_content),
-                    tint = onBackgroundColor,
+                    tint = if (infiniteQueueEnabled) MaterialTheme.colorScheme.onPrimary
+                           else onBackgroundColor.copy(alpha = 0.5f),
                     modifier = Modifier.size(22.dp)
                 )
             }

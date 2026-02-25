@@ -118,7 +118,7 @@ import moe.koiverse.archivetune.constants.PlayerDesignStyleKey
 import moe.koiverse.archivetune.constants.PlayerButtonsStyle
 import moe.koiverse.archivetune.constants.PlayerButtonsStyleKey
 import moe.koiverse.archivetune.constants.QueueEditLockKey
-import moe.koiverse.archivetune.constants.SimilarContent
+import moe.koiverse.archivetune.constants.AutoLoadMoreKey
 import moe.koiverse.archivetune.extensions.metadata
 import moe.koiverse.archivetune.extensions.move
 import moe.koiverse.archivetune.extensions.togglePlayPause
@@ -189,7 +189,7 @@ fun Queue(
     }
 
     var locked by rememberPreference(QueueEditLockKey, defaultValue = true)
-    var similarContentEnabled by rememberPreference(SimilarContent, defaultValue = true)
+    var infiniteQueueEnabled by rememberPreference(AutoLoadMoreKey, defaultValue = true)
     val togetherSessionState by playerConnection.service.togetherSessionState.collectAsState()
     val togetherForcesLock =
         togetherSessionState is moe.koiverse.archivetune.together.TogetherSessionState.Joined &&
@@ -571,7 +571,7 @@ fun Queue(
                     locked = effectiveLocked,
                     songCount = queueWindows.size,
                     queueDuration = queueLength,
-                    similarContentEnabled = similarContentEnabled,
+                    infiniteQueueEnabled = infiniteQueueEnabled,
                     backgroundColor = backgroundColor,
                     onBackgroundColor = onBackgroundColor,
                     onToggleLike = {
@@ -607,7 +607,14 @@ fun Queue(
                             locked = !locked
                         }
                     },
-                    onSimilarContentClick = { similarContentEnabled = !similarContentEnabled }
+                    onInfiniteQueueClick = {
+                        infiniteQueueEnabled = !infiniteQueueEnabled
+                        if (infiniteQueueEnabled) {
+                            playerConnection.service.onInfiniteQueueEnabled()
+                        } else {
+                            playerConnection.service.onInfiniteQueueDisabled()
+                        }
+                    }
                 )
 
                 LazyColumn(
@@ -821,7 +828,7 @@ fun Queue(
                     }
                 }
 
-                if (automix.isNotEmpty()) {
+                if (infiniteQueueEnabled && automix.isNotEmpty()) {
                     item {
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),

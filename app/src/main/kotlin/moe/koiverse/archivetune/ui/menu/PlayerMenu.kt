@@ -780,11 +780,11 @@ private fun VolumeSliderL(
             valueRange = 0f..1f,
             modifier = Modifier.height(56.dp),
             thumb = {
-            Icon(
-                painter = painterResource(insetIcon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                Icon(
+                    painter = painterResource(insetIcon),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             colors = SliderDefaults.colors(),
         )
