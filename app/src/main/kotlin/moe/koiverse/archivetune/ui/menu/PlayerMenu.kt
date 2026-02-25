@@ -768,12 +768,6 @@ private fun VolumeSliderL(
 
     val insetIcon = if (sliderValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier.height(48.dp),
-    ) {
-
         Slider(
             value = sliderValue,
             onValueChange = { updated ->
@@ -784,7 +778,7 @@ private fun VolumeSliderL(
             },
             onValueChangeFinished = { isDragging = false },
             valueRange = 0f..1f,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.height(56.dp),
             thumb = {
             Icon(
                 painter = painterResource(insetIcon),
@@ -794,7 +788,6 @@ private fun VolumeSliderL(
             },
             colors = SliderDefaults.colors(),
         )
-    }
 }
 
 @Composable
