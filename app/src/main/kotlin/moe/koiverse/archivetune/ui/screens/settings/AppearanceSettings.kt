@@ -431,6 +431,13 @@ fun AppearanceSettings(
         )
 
         SwitchPreference(
+            title = { Text(stringResource(R.string.glass_navigation_bar)) },
+            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+            checked = glassNavigationBar,
+            onCheckedChange = onGlassNavigationBarChange,
+        )
+
+        SwitchPreference(
             title = { Text(stringResource(R.string.new_library_design)) },
             description = stringResource(R.string.new_library_design_description),
             icon = { Icon(painterResource(R.drawable.grid_view), null) },
@@ -865,12 +872,6 @@ fun AppearanceSettings(
             onCheckedChange = onSlimNavChange
         )
 
-        SwitchPreference(
-            title = { Text(stringResource(R.string.glass_navigation_bar)) },
-            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-            checked = glassNavigationBar,
-            onCheckedChange = onGlassNavigationBarChange,
-        )
 
         EnumListPreference(
             title = { Text(stringResource(R.string.grid_cell_size)) },
