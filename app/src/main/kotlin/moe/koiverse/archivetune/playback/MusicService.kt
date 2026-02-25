@@ -206,8 +206,10 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import java.io.FileOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
+import java.io.Serializable
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -307,6 +309,7 @@ class MusicService :
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
+    private val persistentStateLock = Any()
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
@@ -863,14 +866,9 @@ class MusicService :
 
         scope.launch(Dispatchers.IO) {
             if (dataStore.get(PersistentQueueKey, true)) {
-                runCatching {
-                    filesDir.resolve(PERSISTENT_QUEUE_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
-                        }
-                    }
-                }.onSuccess { queue ->
-                    val restoredQueue = queue.toQueue()
+                readPersistentObject<PersistQueue>(PERSISTENT_QUEUE_FILE)
+                    ?.let { persistedQueue ->
+                    val restoredQueue = persistedQueue.toQueue()
                     withContext(Dispatchers.Main) {
                         playQueue(
                             queue = restoredQueue,
@@ -878,26 +876,16 @@ class MusicService :
                         )
                     }
                 }
-                runCatching {
-                    filesDir.resolve(PERSISTENT_AUTOMIX_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
-                        }
-                    }
-                }.onSuccess { queue ->
-                    val items = queue.items.map { it.toMediaItem() }
+                readPersistentObject<PersistQueue>(PERSISTENT_AUTOMIX_FILE)
+                    ?.let { persistedAutomix ->
+                    val items = persistedAutomix.items.map { it.toMediaItem() }
                     withContext(Dispatchers.Main) {
                         automixItems.value = items
                     }
                 }
                 
-                runCatching {
-                    filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistPlayerState
-                        }
-                    }
-                }.onSuccess { playerState ->
+                readPersistentObject<PersistPlayerState>(PERSISTENT_PLAYER_STATE_FILE)
+                    ?.let { playerState ->
                     delay(1000)
                     withContext(Dispatchers.Main) {
                         player.repeatMode = playerState.repeatMode
@@ -3944,6 +3932,51 @@ class MusicService :
         )
     }
 
+    private inline fun <reified T> readPersistentObject(fileName: String): T? {
+        val persistentFile = filesDir.resolve(fileName)
+        if (!persistentFile.exists() || !persistentFile.isFile) return null
+
+        return synchronized(persistentStateLock) {
+            runCatching {
+                persistentFile.inputStream().use { fis ->
+                    ObjectInputStream(fis).use { input ->
+                        input.readObject() as? T
+                    }
+                }
+            }.onFailure {
+                Timber.tag("MusicService").w(it, "Failed to read persistent file: $fileName")
+                runCatching { persistentFile.delete() }
+            }.getOrNull()
+        }
+    }
+
+    private fun writePersistentObject(fileName: String, payload: Serializable) {
+        val persistentFile = filesDir.resolve(fileName)
+        val tempFile = filesDir.resolve("$fileName.tmp")
+
+        synchronized(persistentStateLock) {
+            runCatching {
+                FileOutputStream(tempFile).use { fos ->
+                    ObjectOutputStream(fos).use { output ->
+                        output.writeObject(payload)
+                        output.flush()
+                    }
+                    fos.fd.sync()
+                }
+
+                if (persistentFile.exists() && !persistentFile.delete()) {
+                    error("Could not replace $fileName")
+                }
+                if (!tempFile.renameTo(persistentFile)) {
+                    error("Could not atomically move $fileName")
+                }
+            }.onFailure {
+                runCatching { tempFile.delete() }
+                reportException(it)
+            }
+        }
+    }
+
     private suspend fun saveQueueToDisk() {
         if (currentQueue == EmptyQueue) return
 
@@ -3986,33 +4019,9 @@ class MusicService :
                 playbackState = playbackState
             )
             
-            runCatching {
-                filesDir.resolve(PERSISTENT_QUEUE_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistQueue)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
-            runCatching {
-                filesDir.resolve(PERSISTENT_AUTOMIX_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistAutomix)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
-            runCatching {
-                filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
-                    ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistPlayerState)
-                    }
-                }
-            }.onFailure {
-                reportException(it)
-            }
+            writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
+            writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
+            writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
         }
     }
 
@@ -4047,45 +4056,32 @@ class MusicService :
                 val volume = player.volume
                 val playbackState = player.playbackState
                 val playWhenReady = player.playWhenReady
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val persistQueue = currentQueue.toPersistQueue(
-                            title = queueTitle,
-                            items = mediaItemsSnapshot,
-                            mediaItemIndex = currentMediaItemIndex,
-                            position = currentPosition
-                        )
-                        val persistAutomix = PersistQueue(
-                            title = "automix",
-                            items = automixSnapshot,
-                            mediaItemIndex = 0,
-                            position = 0,
-                        )
-                        val persistPlayerState = PersistPlayerState(
-                            playWhenReady = playWhenReady,
-                            repeatMode = repeatMode,
-                            shuffleModeEnabled = shuffleModeEnabled,
-                            volume = volume,
-                            currentPosition = currentPosition,
-                            currentMediaItemIndex = currentMediaItemIndex,
-                            playbackState = playbackState
-                        )
-                        filesDir.resolve(PERSISTENT_QUEUE_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistQueue)
-                            }
-                        }
-                        filesDir.resolve(PERSISTENT_AUTOMIX_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistAutomix)
-                            }
-                        }
-                        filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
-                            ObjectOutputStream(fos).use { oos ->
-                                oos.writeObject(persistPlayerState)
-                            }
-                        }
-                    } catch (_: Exception) {}
+                runBlocking(Dispatchers.IO) {
+                    val persistQueue = currentQueue.toPersistQueue(
+                        title = queueTitle,
+                        items = mediaItemsSnapshot,
+                        mediaItemIndex = currentMediaItemIndex,
+                        position = currentPosition
+                    )
+                    val persistAutomix = PersistQueue(
+                        title = "automix",
+                        items = automixSnapshot,
+                        mediaItemIndex = 0,
+                        position = 0,
+                    )
+                    val persistPlayerState = PersistPlayerState(
+                        playWhenReady = playWhenReady,
+                        repeatMode = repeatMode,
+                        shuffleModeEnabled = shuffleModeEnabled,
+                        volume = volume,
+                        currentPosition = currentPosition,
+                        currentMediaItemIndex = currentMediaItemIndex,
+                        playbackState = playbackState
+                    )
+
+                    writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
+                    writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
+                    writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
                 }
             }
         } catch (_: Exception) {}
