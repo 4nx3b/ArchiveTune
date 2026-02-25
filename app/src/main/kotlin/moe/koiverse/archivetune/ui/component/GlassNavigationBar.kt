@@ -73,7 +73,14 @@ fun GlassNavigationBar(
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-    val backdrop = rememberCanvasBackdrop {
+    val softBackdrop = rememberCanvasBackdrop {
+        drawRect(
+            color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha * 0.6f),
+            size = size
+        )
+    }
+
+    val hardBackdrop = rememberCanvasBackdrop {
         drawRect(
             color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
@@ -91,10 +98,42 @@ fun GlassNavigationBar(
                 .fillMaxWidth()
                 .height(totalHeight)
                 .clip(glassShape)
-                .then(
-                    if (supportsBackdrop) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop,
+                .border(
+                    width = 0.5.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha),
+                            Color.Transparent,
+                        )
+                    ),
+                    shape = glassShape
+                )
+        ) {
+            if (supportsBackdrop) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(totalHeight)
+                        .drawBackdrop(
+                            backdrop = softBackdrop,
+                            shape = { glassShape },
+                            effects = {
+                                if (glassStyle.useVibrancy) vibrancy()
+                                blur(with(density) { (glassStyle.blurRadius * 1.7f).toPx() })
+                            },
+                            onDrawSurface = {
+                                drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha * 0.45f))
+                                drawRect(glassStyle.overlayColor.copy(alpha = glassStyle.overlayAlpha * 0.35f))
+                            }
+                        )
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(totalHeight)
+                        .drawBackdrop(
+                            backdrop = hardBackdrop,
                             shape = { glassShape },
                             effects = {
                                 if (glassStyle.useVibrancy) vibrancy()
@@ -109,26 +148,42 @@ fun GlassNavigationBar(
                             onDrawSurface = {
                                 drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha))
                                 drawRect(glassStyle.overlayColor.copy(alpha = glassStyle.overlayAlpha))
+
+                                val highlightAlpha = if (isDark) 0.10f else 0.45f
+                                val shadowAlpha = if (isDark) 0.22f else 0.10f
+
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = highlightAlpha),
+                                            Color.Transparent,
+                                        ),
+                                        endY = size.height * 0.55f,
+                                    )
+                                )
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = shadowAlpha),
+                                        ),
+                                        startY = size.height * 0.55f,
+                                    )
+                                )
                             }
                         )
-                    } else {
-                        Modifier.background(
-                            if (pureBlack) Color.Black
-                            else MaterialTheme.colorScheme.surfaceContainer
-                        )
-                    }
                 )
-                .border(
-                    width = 0.5.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha),
-                            Color.Transparent,
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(totalHeight)
+                        .background(
+                            if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
                         )
-                    ),
-                    shape = glassShape
                 )
-        ) {
+            }
+
             GlassNavigationBarContent(
                 navigationItems = navigationItems,
                 isRouteSelected = isRouteSelected,

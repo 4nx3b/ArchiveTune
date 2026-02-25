@@ -1,6 +1,7 @@
 package moe.koiverse.archivetune.ui.player
 
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -56,7 +57,14 @@ fun GlassMiniPlayer(
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-    val deepGlassBackdrop = rememberCanvasBackdrop {
+    val softBackdrop = rememberCanvasBackdrop {
+        drawRect(
+            color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha * 0.6f),
+            size = size
+        )
+    }
+
+    val hardBackdrop = rememberCanvasBackdrop {
         drawRect(
             color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
@@ -79,10 +87,42 @@ fun GlassMiniPlayer(
                 .height(MiniPlayerHeight)
                 .offset { IntOffset(offsetX.roundToInt(), 0) }
                 .clip(pillShape)
-                .then(
-                    if (supportsBackdrop) {
-                        Modifier.drawBackdrop(
-                            backdrop = deepGlassBackdrop,
+                .border(
+                    width = 0.5.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha),
+                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha * 0.3f),
+                        )
+                    ),
+                    shape = pillShape
+                )
+        ) {
+            if (supportsBackdrop) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(MiniPlayerHeight)
+                        .drawBackdrop(
+                            backdrop = softBackdrop,
+                            shape = { pillShape },
+                            effects = {
+                                if (glassStyle.useVibrancy) vibrancy()
+                                blur(with(density) { (glassStyle.blurRadius * 1.7f).toPx() })
+                            },
+                            onDrawSurface = {
+                                drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha * 0.45f))
+                                drawRect(glassStyle.overlayColor.copy(alpha = glassStyle.overlayAlpha * 0.35f))
+                            }
+                        )
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(MiniPlayerHeight)
+                        .drawBackdrop(
+                            backdrop = hardBackdrop,
                             shape = { pillShape },
                             effects = {
                                 if (glassStyle.useVibrancy) vibrancy()
@@ -97,23 +137,40 @@ fun GlassMiniPlayer(
                             onDrawSurface = {
                                 drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha))
                                 drawRect(glassStyle.overlayColor.copy(alpha = glassStyle.overlayAlpha))
+
+                                val highlightAlpha = if (isDark) 0.10f else 0.45f
+                                val shadowAlpha = if (isDark) 0.22f else 0.10f
+
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = highlightAlpha),
+                                            Color.Transparent,
+                                        ),
+                                        endY = size.height * 0.6f,
+                                    )
+                                )
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = shadowAlpha),
+                                        ),
+                                        startY = size.height * 0.6f,
+                                    )
+                                )
                             }
                         )
-                    } else {
-                        Modifier
-                    }
                 )
-                .border(
-                    width = 0.5.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha),
-                            glassStyle.borderColor.copy(alpha = glassStyle.borderAlpha * 0.3f),
-                        )
-                    ),
-                    shape = pillShape
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(MiniPlayerHeight)
+                        .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer)
                 )
-        ) {
+            }
+
             NewMiniPlayerContent(
                 pureBlack = pureBlack,
                 position = position,
