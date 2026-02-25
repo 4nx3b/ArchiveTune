@@ -14,22 +14,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import coil3.compose.rememberAsyncImagePainter
-import coil3.request.ImageRequest
-import coil3.request.crossfade
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -50,7 +44,6 @@ fun GlassMiniPlayer(
     pureBlack: Boolean,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val context = LocalContext.current
     val layoutDirection = LocalLayoutDirection.current
     val coroutineScope = rememberCoroutineScope()
     val swipeSensitivity by rememberPreference(SwipeSensitivityKey, 0.73f)
@@ -62,17 +55,7 @@ fun GlassMiniPlayer(
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-
-    val artworkPainter = rememberAsyncImagePainter(
-        ImageRequest.Builder(context)
-            .data(mediaMetadata?.thumbnailUrl)
-            .crossfade(true)
-            .build()
-    )
-
-    val artworkBackdrop = rememberCanvasBackdrop {
-        drawImage(artworkPainter)
+    val deepGlassBackdrop = rememberCanvasBackdrop {
         drawRect(
             color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
@@ -98,7 +81,7 @@ fun GlassMiniPlayer(
                 .then(
                     if (supportsBackdrop) {
                         Modifier.drawBackdrop(
-                            backdrop = artworkBackdrop,
+                            backdrop = deepGlassBackdrop,
                             shape = { pillShape },
                             effects = {
                                 if (glassStyle.useVibrancy) vibrancy()
