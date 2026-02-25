@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
+    private const val FAILED_CLIENT_BACKOFF_MS = 10 * 60 * 1000L
 
     @Volatile private var streamClientPair: Pair<java.net.Proxy?, OkHttpClient>? = null
 
@@ -77,10 +78,26 @@ object YTPlayerUtils {
     )
 
     private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
+    private val failedPreferredClientsUntil = ConcurrentHashMap<String, Long>()
 
     fun invalidateCachedStreamUrls(videoId: String) {
         val prefix = "$videoId:"
         streamUrlCache.keys.removeIf { it.startsWith(prefix) }
+    }
+
+    fun markPreferredClientFailed(videoId: String, client: PlayerStreamClient, httpStatusCode: Int?) {
+        if (httpStatusCode != 403) return
+        failedPreferredClientsUntil["$videoId:${client.name}"] = System.currentTimeMillis() + FAILED_CLIENT_BACKOFF_MS
+    }
+
+    private fun isPreferredClientTemporarilyBlocked(videoId: String, client: PlayerStreamClient): Boolean {
+        val key = "$videoId:${client.name}"
+        val until = failedPreferredClientsUntil[key] ?: return false
+        if (until <= System.currentTimeMillis()) {
+            failedPreferredClientsUntil.remove(key)
+            return false
+        }
+        return true
     }
 
     data class PlaybackData(
@@ -191,7 +208,13 @@ object YTPlayerUtils {
 
         val streamClients =
             buildList {
-                add(preferredYouTubeClient)
+                val preferredBlocked = isPreferredClientTemporarilyBlocked(videoId, preferredStreamClient)
+                if (preferredBlocked) {
+                    Timber.tag(logTag).w("Preferred stream client temporarily blocked for $videoId: ${preferredStreamClient.name}")
+                }
+                if (!preferredBlocked) {
+                    add(preferredYouTubeClient)
+                }
                 addAll(orderedFallbackClients)
                 if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
             }.distinct()
@@ -478,20 +501,31 @@ object YTPlayerUtils {
             val resolvedUserAgent = StreamClientUtils.resolveUserAgent(clientParam).ifEmpty { userAgent }
             val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
-            val rangeRequest =
-                okhttp3.Request.Builder()
-                    .get()
-                    .header("User-Agent", resolvedUserAgent)
-                    .header("Range", "bytes=0-0")
-                    .apply {
-                        originReferer.origin?.let { header("Origin", it) }
-                        originReferer.referer?.let { header("Referer", it) }
-                    }.url(url)
-                    .build()
+            val probeRanges =
+                if (StreamClientUtils.isWebClient(clientParam)) {
+                    listOf("bytes=0-0", "bytes=262144-262145", "bytes=1048576-1048577")
+                } else {
+                    listOf("bytes=0-0")
+                }
 
-            return currentStreamClient().newCall(rangeRequest).execute().use { response ->
-                response.code in 200..399
+            for (range in probeRanges) {
+                val rangeRequest =
+                    okhttp3.Request.Builder()
+                        .get()
+                        .header("User-Agent", resolvedUserAgent)
+                        .header("Range", range)
+                        .apply {
+                            originReferer.origin?.let { header("Origin", it) }
+                            originReferer.referer?.let { header("Referer", it) }
+                        }.url(url)
+                        .build()
+
+                val code = currentStreamClient().newCall(rangeRequest).execute().use { response -> response.code }
+                if (code == 403) return false
+                if (code !in 200..399 && code != 416) return false
             }
+
+            return true
         } catch (e: Exception) {
             Timber.tag(logTag).e(e, "Stream URL validation failed with exception")
             reportException(e)
@@ -515,7 +549,7 @@ object YTPlayerUtils {
     }
     /**
      * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
-     * Also patches cver to match the client version and appends a session poToken for web clients.
+     * Also patches cver to match the client version.
      */
     private fun findUrlOrNull(
         format: PlayerResponse.StreamingData.Format,
