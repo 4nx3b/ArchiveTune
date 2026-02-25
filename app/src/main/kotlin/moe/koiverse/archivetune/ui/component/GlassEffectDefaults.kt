@@ -23,35 +23,35 @@ data class GlassSurfaceStyle(
 object GlassEffectDefaults {
 
     val NavigationBarDark = GlassSurfaceStyle(
-        surfaceTint = Color.Black,
-        surfaceAlpha = 0.34f,
-        overlayColor = Color.Black,
-        overlayAlpha = 0.24f,
-        blurRadius = 44.dp,
+        surfaceTint = Color(0xFF0A0A14),
+        surfaceAlpha = 0.52f,
+        overlayColor = Color(0xFF0A0A14),
+        overlayAlpha = 0.35f,
+        blurRadius = 40.dp,
         useVibrancy = true,
         useLens = true,
-        lensHeight = 18.dp,
-        lensAmount = 40.dp,
+        lensHeight = 16.dp,
+        lensAmount = 32.dp,
         borderColor = Color.White,
-        borderAlpha = 0.12f,
-        backgroundDimAlpha = 0.42f,
+        borderAlpha = 0.08f,
+        backgroundDimAlpha = 0.45f,
         backgroundDimColor = Color.Black,
     )
 
     val NavigationBarLight = GlassSurfaceStyle(
         surfaceTint = Color.White,
-        surfaceAlpha = 0.44f,
-        overlayColor = Color.White,
-        overlayAlpha = 0.24f,
-        blurRadius = 52.dp,
+        surfaceAlpha = 0.62f,
+        overlayColor = Color(0xFFF0F0F5),
+        overlayAlpha = 0.45f,
+        blurRadius = 40.dp,
         useVibrancy = true,
         useLens = true,
-        lensHeight = 18.dp,
-        lensAmount = 40.dp,
+        lensHeight = 16.dp,
+        lensAmount = 32.dp,
         borderColor = Color.White,
-        borderAlpha = 0.28f,
-        backgroundDimAlpha = 0.10f,
-        backgroundDimColor = Color.Black,
+        borderAlpha = 0.55f,
+        backgroundDimAlpha = 0.50f,
+        backgroundDimColor = Color.White,
     )
 
     val NavigationBarPureBlack = GlassSurfaceStyle(
@@ -71,35 +71,35 @@ object GlassEffectDefaults {
     )
 
     val MiniPlayerDark = GlassSurfaceStyle(
-        surfaceTint = Color.Black,
-        surfaceAlpha = 0.32f,
-        overlayColor = Color.Black,
-        overlayAlpha = 0.22f,
-        blurRadius = 40.dp,
+        surfaceTint = Color(0xFF0A0A14),
+        surfaceAlpha = 0.48f,
+        overlayColor = Color(0xFF0A0A14),
+        overlayAlpha = 0.32f,
+        blurRadius = 36.dp,
         useVibrancy = true,
         useLens = true,
         lensHeight = 18.dp,
         lensAmount = 36.dp,
         borderColor = Color.White,
-        borderAlpha = 0.14f,
+        borderAlpha = 0.10f,
         backgroundDimAlpha = 0.40f,
         backgroundDimColor = Color.Black,
     )
 
     val MiniPlayerLight = GlassSurfaceStyle(
         surfaceTint = Color.White,
-        surfaceAlpha = 0.40f,
-        overlayColor = Color.White,
-        overlayAlpha = 0.22f,
-        blurRadius = 48.dp,
+        surfaceAlpha = 0.58f,
+        overlayColor = Color(0xFFF0F0F5),
+        overlayAlpha = 0.42f,
+        blurRadius = 36.dp,
         useVibrancy = true,
         useLens = true,
         lensHeight = 18.dp,
         lensAmount = 36.dp,
         borderColor = Color.White,
-        borderAlpha = 0.26f,
-        backgroundDimAlpha = 0.08f,
-        backgroundDimColor = Color.Black,
+        borderAlpha = 0.55f,
+        backgroundDimAlpha = 0.48f,
+        backgroundDimColor = Color.White,
     )
 
     val MiniPlayerPureBlack = GlassSurfaceStyle(
