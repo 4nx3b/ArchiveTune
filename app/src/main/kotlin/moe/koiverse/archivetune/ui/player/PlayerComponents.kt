@@ -678,7 +678,8 @@ fun StyledPlaybackSlider(
                 modifier = modifier,
                 squigglesSpec = SquigglySlider.SquigglesSpec(
                     amplitude = if (isPlaying) 2.dp else 0.dp,
-                    strokeWidth = 3.dp
+                    strokeWidth = 6.dp,
+                    trackHeight = 6.dp
                 )
             )
         }
@@ -712,7 +713,8 @@ fun StyledPlaybackSlider(
                 modifier = modifier,
                 squigglesSpec = SquigglySlider.SquigglesSpec(
                     amplitude = if (isPlaying) 2.dp else 0.dp,
-                    strokeWidth = 3.dp
+                    strokeWidth = 6.dp,
+                    trackHeight = 6.dp
                 )
             )
         }
