@@ -46,6 +46,7 @@ import androidx.compose.ui.util.fastForEach
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import moe.koiverse.archivetune.constants.NavigationBarHeight
 import moe.koiverse.archivetune.constants.SlimNavBarHeight
@@ -70,10 +71,11 @@ fun GlassNavigationBar(
     val glassShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
     val supportsBackdrop = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val supportsLens = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
     val backdrop = rememberCanvasBackdrop {
         drawRect(
-            color = Color.Transparent,
+            color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
         )
     }
@@ -97,6 +99,12 @@ fun GlassNavigationBar(
                             effects = {
                                 if (glassStyle.useVibrancy) vibrancy()
                                 blur(with(density) { glassStyle.blurRadius.toPx() })
+                                if (supportsLens && glassStyle.useLens) {
+                                    lens(
+                                        with(density) { glassStyle.lensHeight.toPx() },
+                                        with(density) { glassStyle.lensAmount.toPx() }
+                                    )
+                                }
                             },
                             onDrawSurface = {
                                 drawRect(glassStyle.surfaceTint.copy(alpha = glassStyle.surfaceAlpha))
