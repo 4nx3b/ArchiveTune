@@ -690,6 +690,7 @@ fun StyledPlaybackSlider(
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.thickSliderColors(activeColor),
+                thumb = { Spacer(modifier = Modifier.size(0.dp)) },
                 track = { sliderState ->
                     PlayerSliderTrack(
                         sliderState = sliderState,
