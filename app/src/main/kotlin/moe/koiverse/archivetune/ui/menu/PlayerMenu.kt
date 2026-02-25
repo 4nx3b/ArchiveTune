@@ -752,6 +752,7 @@ private fun PlayerVolumeCard(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun VolumeSliderL(
     value: Float,
     onValueChange: (Float) -> Unit,
