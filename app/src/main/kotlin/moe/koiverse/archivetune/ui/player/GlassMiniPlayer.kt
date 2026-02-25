@@ -57,7 +57,7 @@ fun GlassMiniPlayer(
 
     val deepGlassBackdrop = rememberCanvasBackdrop {
         drawRect(
-            color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
+            color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
         )
     }

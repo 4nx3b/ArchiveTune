@@ -75,7 +75,7 @@ fun GlassNavigationBar(
 
     val backdrop = rememberCanvasBackdrop {
         drawRect(
-            color = Color.Black.copy(alpha = glassStyle.backgroundDimAlpha),
+            color = glassStyle.backgroundDimColor.copy(alpha = glassStyle.backgroundDimAlpha),
             size = size
         )
     }
@@ -233,13 +233,15 @@ private fun RowScope.GlassNavigationBarItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        val indicatorColor = if (isSystemInDarkTheme()) Color.White else Color.Black
+
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .drawBehind {
                     if (selectedIndicatorAlpha > 0f) {
                         drawRoundRect(
-                            color = Color.White.copy(alpha = selectedIndicatorAlpha),
+                            color = indicatorColor.copy(alpha = selectedIndicatorAlpha),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx()),
                         )
                     }
