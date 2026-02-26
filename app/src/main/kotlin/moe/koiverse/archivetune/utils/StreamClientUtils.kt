@@ -91,7 +91,10 @@ object StreamClientUtils {
             c.equals("WEB_REMIX", ignoreCase = true) ||
             c.equals("WEB_CREATOR", ignoreCase = true) ||
             c.equals("MWEB", ignoreCase = true) ||
-            c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true)
+            c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true) ||
+            c.equals("TVHTML5", ignoreCase = true) ||
+            c.equals("TVHTML5_SIMPLY_EMBEDDED_PLAYER", ignoreCase = true) ||
+            c.equals("TVHTML5_SIMPLY", ignoreCase = true)
     }
 
     /**
