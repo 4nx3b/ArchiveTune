@@ -24,9 +24,9 @@ object GlassEffectDefaults {
 
     val NavigationBarDark = GlassSurfaceStyle(
         surfaceTint = Color.Black,
-        surfaceAlpha = 0.35f,
+        surfaceAlpha = 0.40f,
         overlayColor = Color.Black,
-        overlayAlpha = 0.25f,
+        overlayAlpha = 0.30f,
         blurRadius = 44.dp,
         useVibrancy = true,
         useLens = true,
@@ -40,9 +40,9 @@ object GlassEffectDefaults {
 
     val NavigationBarLight = GlassSurfaceStyle(
         surfaceTint = Color.White,
-        surfaceAlpha = 0.45f,
+        surfaceAlpha = 0.50f,
         overlayColor = Color.White,
-        overlayAlpha = 0.35f,
+        overlayAlpha = 0.40f,
         blurRadius = 52.dp,
         useVibrancy = true,
         useLens = true,
@@ -72,9 +72,9 @@ object GlassEffectDefaults {
 
     val MiniPlayerDark = GlassSurfaceStyle(
         surfaceTint = Color.Black,
-        surfaceAlpha = 0.34f,
+        surfaceAlpha = 0.39f,
         overlayColor = Color.Black,
-        overlayAlpha = 0.24f,
+        overlayAlpha = 0.29f,
         blurRadius = 40.dp,
         useVibrancy = true,
         useLens = true,
@@ -88,9 +88,9 @@ object GlassEffectDefaults {
 
     val MiniPlayerLight = GlassSurfaceStyle(
         surfaceTint = Color.White,
-        surfaceAlpha = 0.44f,
+        surfaceAlpha = 0.49f,
         overlayColor = Color.White,
-        overlayAlpha = 0.34f,
+        overlayAlpha = 0.39f,
         blurRadius = 48.dp,
         useVibrancy = true,
         useLens = true,
