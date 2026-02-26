@@ -43,12 +43,14 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -101,6 +103,8 @@ fun PoTokenScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val tokenState by viewModel.state.collectAsState()
+    var showRegenerateSheet by remember { mutableStateOf(false) }
+    val regenerateSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var (webClientPoTokenEnabled, onWebClientPoTokenEnabledChange) = rememberPreference(
         WebClientPoTokenEnabledKey,
@@ -157,6 +161,15 @@ fun PoTokenScreen(
         }
     }
 
+    val launchExtraction: () -> Unit = {
+        viewModel.resetState()
+        val launchUrl = sourceUrl.takeIf { it.isNotBlank() } ?: DEFAULT_EXTRACT_URL
+        val intent = Intent(context, PoTokenExtractionActivity::class.java).apply {
+            putExtra(PoTokenExtractionActivity.EXTRA_SOURCE_URL, launchUrl)
+        }
+        extractionLauncher.launch(intent)
+    }
+
     val hasCookie = innerTubeCookie.isNotBlank()
 
     LaunchedEffect(tokenState) {
@@ -185,6 +198,60 @@ fun PoTokenScreen(
     val displayVisitorData = when (val s = tokenState) {
         is PoTokenState.Success -> s.visitorData
         else -> storedVisitorData
+    }
+
+    if (showRegenerateSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showRegenerateSheet = false },
+            sheetState = regenerateSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.source_url),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = sourceUrl,
+                    onValueChange = onSourceUrlChange,
+                    label = { Text(stringResource(R.string.source_url)) },
+                    placeholder = { Text(stringResource(R.string.source_url_placeholder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    shape = MaterialTheme.shapes.medium,
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        showRegenerateSheet = false
+                        launchExtraction()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text(stringResource(R.string.regenerate_token))
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+        }
     }
 
     Column(
@@ -307,33 +374,11 @@ fun PoTokenScreen(
                     },
                 )
 
-                OutlinedTextField(
-                    value = sourceUrl,
-                    onValueChange = onSourceUrlChange,
-                    label = { Text(stringResource(R.string.source_url)) },
-                    placeholder = { Text(stringResource(R.string.source_url_placeholder)) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    shape = MaterialTheme.shapes.medium,
-                )
-
                 Spacer(Modifier.height(12.dp))
 
                 Button(
                     onClick = {
-                        viewModel.resetState()
-                        val launchUrl = sourceUrl.takeIf { it.isNotBlank() } ?: DEFAULT_EXTRACT_URL
-                        val intent = Intent(context, PoTokenExtractionActivity::class.java).apply {
-                            putExtra(PoTokenExtractionActivity.EXTRA_SOURCE_URL, launchUrl)
-                        }
-                        extractionLauncher.launch(intent)
+                        showRegenerateSheet = true
                     },
                     modifier = Modifier
                         .fillMaxWidth()
