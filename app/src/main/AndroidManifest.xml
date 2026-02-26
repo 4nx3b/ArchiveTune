@@ -186,6 +186,11 @@
             android:process=":crash"
             android:theme="@style/Theme.ArchiveTune">
         </activity>
+
+        <activity
+            android:name=".ui.screens.settings.PoTokenExtractionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ArchiveTune" />
     </application>
 
 </manifest>

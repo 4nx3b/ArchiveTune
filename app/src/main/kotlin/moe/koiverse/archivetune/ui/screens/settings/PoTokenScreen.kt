@@ -6,13 +6,11 @@
 
 package moe.koiverse.archivetune.ui.screens.settings
 
-import android.annotation.SuppressLint
-import android.view.ViewGroup
-import android.webkit.JavascriptInterface
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.app.Activity
+import android.content.Intent
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -22,14 +20,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -70,7 +66,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.koiverse.archivetune.LocalPlayerAwareWindowInsets
@@ -82,7 +77,6 @@ import moe.koiverse.archivetune.constants.PoTokenSourceUrlKey
 import moe.koiverse.archivetune.constants.UseVisitorDataKey
 import moe.koiverse.archivetune.constants.VisitorDataKey
 import moe.koiverse.archivetune.constants.WebClientPoTokenEnabledKey
-import moe.koiverse.archivetune.innertube.utils.PoTokenGenerator
 import moe.koiverse.archivetune.ui.component.IconButton
 import moe.koiverse.archivetune.ui.component.PreferenceGroupTitle
 import moe.koiverse.archivetune.ui.component.SwitchPreference
@@ -97,7 +91,6 @@ private val SUPPORTED_CLIENTS = listOf(
     "web", "mweb", "web_safari", "web_embedded", "web_creator", "web_music"
 )
 
-@SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PoTokenScreen(
@@ -108,9 +101,6 @@ fun PoTokenScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val tokenState by viewModel.state.collectAsState()
-
-    var showWebView by remember { mutableStateOf(false) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
     var (webClientPoTokenEnabled, onWebClientPoTokenEnabledChange) = rememberPreference(
         WebClientPoTokenEnabledKey,
@@ -141,6 +131,32 @@ fun PoTokenScreen(
         defaultValue = ""
     )
 
+    val extractionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val gvsToken = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_GVS_TOKEN).orEmpty()
+            val playerToken = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_PLAYER_TOKEN).orEmpty()
+            val visitorData = data?.getStringExtra(PoTokenExtractionActivity.EXTRA_VISITOR_DATA).orEmpty()
+
+            if (gvsToken.isNotBlank() && playerToken.isNotBlank() && visitorData.isNotBlank()) {
+                viewModel.onTokensExtracted(
+                    visitorData = visitorData,
+                    poToken = gvsToken,
+                    playerToken = playerToken,
+                )
+            } else {
+                viewModel.onExtractionError(context.getString(R.string.token_generation_failed))
+            }
+        } else {
+            val error = result.data?.getStringExtra(PoTokenExtractionActivity.EXTRA_ERROR).orEmpty()
+            if (error.isNotBlank()) {
+                viewModel.onExtractionError(error)
+            }
+        }
+    }
+
     val hasCookie = innerTubeCookie.isNotBlank()
 
     LaunchedEffect(tokenState) {
@@ -169,139 +185,6 @@ fun PoTokenScreen(
     val displayVisitorData = when (val s = tokenState) {
         is PoTokenState.Success -> s.visitorData
         else -> storedVisitorData
-    }
-
-    if (showWebView) {
-        BackHandler {
-            webViewRef?.let { wv ->
-                if (wv.canGoBack()) {
-                    wv.goBack()
-                } else {
-                    wv.stopLoading()
-                    wv.loadUrl("about:blank")
-                    showWebView = false
-                }
-            } ?: run { showWebView = false }
-        }
-
-        fun triggerTokenExtraction() {
-            val webView = webViewRef ?: return
-            val currentUrl = webView.url.orEmpty()
-            if (!currentUrl.contains("youtube.com/account")) {
-                Toast.makeText(context, R.string.open_account_before_extract, Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            extractedVisitorData = null
-            extractedPoToken = null
-
-            webView.loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-            webView.loadUrl(
-                "javascript:void((function(){" +
-                    "try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');" +
-                    "if(t){Android.onRetrievePoToken(t);return}}}" +
-                    "catch(e){}" +
-                    "try{var s=document.querySelectorAll('script');" +
-                    "for(var i=0;i<s.length;i++){" +
-                    "var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);" +
-                    "if(m){Android.onRetrievePoToken(m[1]);return}}}" +
-                    "catch(e){}})())"
-            )
-
-            webView.postDelayed({
-                if (showWebView && (extractedVisitorData.isNullOrBlank() || extractedPoToken.isNullOrBlank())) {
-                    viewModel.onExtractionError(context.getString(R.string.token_generation_failed))
-                }
-            }, 2500L)
-        }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            AndroidView(
-                modifier = Modifier
-                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-                    .fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.setSupportZoom(true)
-                        settings.builtInZoomControls = true
-                        settings.displayZoomControls = false
-
-                        addJavascriptInterface(object {
-                            @JavascriptInterface
-                            fun onRetrieveVisitorData(newVisitorData: String?) {
-                                if (!newVisitorData.isNullOrBlank()) {
-                                    extractedVisitorData = newVisitorData
-                                    tryCompleteExtraction(viewModel) {
-                                        showWebView = false
-                                    }
-                                }
-                            }
-
-                            @JavascriptInterface
-                            fun onRetrievePoToken(newPoToken: String?) {
-                                if (!newPoToken.isNullOrBlank()) {
-                                    extractedPoToken = newPoToken
-                                    tryCompleteExtraction(viewModel) {
-                                        showWebView = false
-                                    }
-                                }
-                            }
-                        }, "Android")
-
-                        webViewClient = object : WebViewClient()
-
-                        extractedVisitorData = null
-                        extractedPoToken = null
-
-                        val targetUrl = sourceUrl.takeIf { it.isNotBlank() } ?: DEFAULT_EXTRACT_URL
-                        loadUrl(targetUrl)
-                        webViewRef = this
-                    }
-                }
-            )
-
-            TopAppBar(
-                title = { Text(stringResource(R.string.extracting_from_url)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            webViewRef?.stopLoading()
-                            webViewRef?.loadUrl("about:blank")
-                            showWebView = false
-                        },
-                        onLongClick = {
-                            webViewRef?.stopLoading()
-                            webViewRef?.loadUrl("about:blank")
-                            showWebView = false
-                        }
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { triggerTokenExtraction() },
-                        onLongClick = { triggerTokenExtraction() }
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.done),
-                            contentDescription = null
-                        )
-                    }
-                }
-            )
-        }
-        return
     }
 
     Column(
@@ -446,7 +329,11 @@ fun PoTokenScreen(
                 Button(
                     onClick = {
                         viewModel.resetState()
-                        showWebView = true
+                        val launchUrl = sourceUrl.takeIf { it.isNotBlank() } ?: DEFAULT_EXTRACT_URL
+                        val intent = Intent(context, PoTokenExtractionActivity::class.java).apply {
+                            putExtra(PoTokenExtractionActivity.EXTRA_SOURCE_URL, launchUrl)
+                        }
+                        extractionLauncher.launch(intent)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -488,29 +375,6 @@ fun PoTokenScreen(
             }
         }
     )
-}
-
-private var extractedVisitorData: String? = null
-private var extractedPoToken: String? = null
-
-private fun tryCompleteExtraction(
-    viewModel: PoTokenViewModel,
-    onComplete: () -> Unit,
-) {
-    val visitorData = extractedVisitorData ?: return
-    val poToken = extractedPoToken ?: return
-
-    val playerToken = PoTokenGenerator.generateColdStartToken(visitorData, "player")
-
-    viewModel.onTokensExtracted(
-        visitorData = visitorData,
-        poToken = poToken,
-        playerToken = playerToken,
-    )
-
-    extractedVisitorData = null
-    extractedPoToken = null
-    onComplete()
 }
 
 @Composable
