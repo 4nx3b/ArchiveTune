@@ -143,7 +143,7 @@ fun LibraryPlaylistsScreen(
         true
     )
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
-    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, true)
+    val useNewLibraryDesign by rememberPreference(UseNewLibraryDesignKey, false)
 
 
     val (selectedTagsFilter, onSelectedTagsFilterChange) = rememberPreference(PlaylistTagsFilterKey, "")
