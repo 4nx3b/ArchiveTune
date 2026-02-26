@@ -608,8 +608,9 @@ fun Queue(
                         }
                     },
                     onInfiniteQueueClick = {
-                        infiniteQueueEnabled = !infiniteQueueEnabled
-                        if (infiniteQueueEnabled) {
+                        val nextInfiniteQueueEnabled = !infiniteQueueEnabled
+                        infiniteQueueEnabled = nextInfiniteQueueEnabled
+                        if (nextInfiniteQueueEnabled) {
                             playerConnection.service.onInfiniteQueueEnabled()
                         } else {
                             playerConnection.service.onInfiniteQueueDisabled()
