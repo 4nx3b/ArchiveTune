@@ -67,7 +67,7 @@ constructor(
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
-            .proxy(YouTube.proxy)
+            .proxy(YouTube.streamProxy)
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
