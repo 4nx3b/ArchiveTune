@@ -93,7 +93,7 @@ object NewPipeUtils {
         YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
     }
 
-    fun getStreamUrl(format: PlayerResponse.StreamingData.Format, videoId: String): Result<String> =
+    fun getStreamUrl(format: PlayerResponse.StreamingData.Format, videoId: String, client: YouTubeClient? = null): Result<String> =
         runCatching {
             val url = format.url ?: run {
                 val cipherString = format.signatureCipher ?: format.cipher
@@ -114,7 +114,7 @@ object NewPipeUtils {
                 url.toString()
             }
 
-            runCatching {
+            val resolvedUrl = runCatching {
                 retryWithBackoff(
                     maxAttempts = 3,
                     initialDelayMs = 250L,
@@ -123,6 +123,8 @@ object NewPipeUtils {
                     YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
                 }
             }.getOrElse { url }
+
+            YouTube.appendGvsPoToken(resolvedUrl, client)
         }
 
     private inline fun <T> retryWithBackoff(

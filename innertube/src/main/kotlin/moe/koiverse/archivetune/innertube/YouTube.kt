@@ -66,6 +66,7 @@ import moe.koiverse.archivetune.innertube.pages.SearchResult
 import moe.koiverse.archivetune.innertube.pages.SearchSuggestionPage
 import moe.koiverse.archivetune.innertube.pages.SearchSummary
 import moe.koiverse.archivetune.innertube.pages.SearchSummaryPage
+import moe.koiverse.archivetune.innertube.utils.PoTokenGenerator
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 
@@ -76,6 +77,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.Proxy
+import java.util.Locale
 import kotlin.random.Random
 
 /**
@@ -125,6 +127,37 @@ object YouTube {
         set(value) {
             innerTube.useLoginForBrowse = value
         }
+
+    private fun isWebClient(client: YouTubeClient): Boolean {
+        val name = client.clientName.uppercase(Locale.US)
+        return name == "WEB" ||
+            name == "WEB_REMIX" ||
+            name == "WEB_CREATOR" ||
+            name == "MWEB" ||
+            name == "WEB_EMBEDDED_PLAYER"
+    }
+
+    private fun resolvePlayerPoToken(client: YouTubeClient, videoId: String, explicitPoToken: String?): String? {
+        val explicit = explicitPoToken?.takeIf { it.isNotBlank() }
+        if (explicit != null) return explicit
+        if (!isWebClient(client)) return null
+
+        val generated = poTokenPlayer?.takeIf { it.isNotBlank() }
+        if (generated != null) return generated
+
+        val sessionIdentifier = dataSyncId?.takeIf { it.isNotBlank() } ?: visitorData?.takeIf { it.isNotBlank() }
+        return sessionIdentifier?.let { PoTokenGenerator.generateContentToken(it, videoId) }
+    }
+
+    internal fun appendGvsPoToken(url: String, client: YouTubeClient? = null): String {
+        val token = poTokenGvs?.takeIf { it.isNotBlank() } ?: poToken?.takeIf { it.isNotBlank() }
+        if (token.isNullOrBlank()) return url
+        if (client != null && !isWebClient(client)) return url
+        if (url.contains("pot=")) return url
+
+        val separator = if (url.contains("?")) "&" else "?"
+        return "$url${separator}pot=$token"
+    }
 
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = runCatching {
         val response = innerTube.getSearchSuggestions(WEB_REMIX, query).body<GetSearchSuggestionsResponse>()
@@ -1000,7 +1033,8 @@ object YouTube {
     }
 
     suspend fun player(videoId: String, playlistId: String? = null, client: YouTubeClient, signatureTimestamp: Int? = null, poToken: String? = null): Result<PlayerResponse> = runCatching {
-        innerTube.player(client, videoId, playlistId, signatureTimestamp, poToken).body<PlayerResponse>()
+        val resolvedPoToken = resolvePlayerPoToken(client, videoId, poToken)
+        innerTube.player(client, videoId, playlistId, signatureTimestamp, resolvedPoToken).body<PlayerResponse>()
     }
 
     suspend fun registerPlayback(playlistId: String? = null, playbackTracking: String) = runCatching {

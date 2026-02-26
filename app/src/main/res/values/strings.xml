@@ -767,6 +767,7 @@ ArchiveTune will only extract your token, and everything else is stored locally.
     <string name="use_visitor_data_desc">Use visitor data for token generation. Requires cookies to be disabled.</string>
     <string name="cookies_must_be_disabled">Cookies must be disabled to use visitor data</string>
     <string name="regenerate">Re-generate</string>
+    <string name="regenerate_token">Regenerate Token</string>
     <string name="regenerate_desc">Refresh all tokens</string>
     <string name="source_url">Source URL</string>
     <string name="source_url_placeholder">https://youtube.com/account</string>

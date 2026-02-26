@@ -25,7 +25,6 @@ import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.MOBILE
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.WEB
 import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
-import moe.koiverse.archivetune.innertube.utils.PoTokenGenerator
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
@@ -192,16 +191,9 @@ object YTPlayerUtils {
         val metadataClient =
             preferredYouTubeClient.takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR } ?: MAIN_CLIENT
 
-        // Generate poToken for web-type clients
-        val sessionIdentifier = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
-
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
-        val metadataPoToken = if (StreamClientUtils.isWebClient(metadataClient.clientName) && sessionIdentifier != null) {
-            YouTube.poTokenPlayer
-                ?: PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
-        } else null
         val metadataPlayerResponse =
-            YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp, metadataPoToken).getOrThrow()
+            YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp).getOrThrow()
         val audioConfig = metadataPlayerResponse.playerConfig?.audioConfig
         val videoDetails = metadataPlayerResponse.videoDetails
         val playbackTracking = metadataPlayerResponse.playbackTracking
@@ -240,11 +232,7 @@ object YTPlayerUtils {
                     metadataPlayerResponse
                 } else {
                     Timber.tag(logTag).i("Fetching player response for fallback client: ${client.clientName}")
-                    val clientPoToken = if (StreamClientUtils.isWebClient(client.clientName) && sessionIdentifier != null) {
-                        YouTube.poTokenPlayer
-                            ?: PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
-                    } else null
-                    YouTube.player(videoId, playlistId, client, signatureTimestamp, clientPoToken).getOrNull()
+                    YouTube.player(videoId, playlistId, client, signatureTimestamp).getOrNull()
                 }
 
             if (streamPlayerResponse == null) continue
@@ -292,12 +280,6 @@ object YTPlayerUtils {
             streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
 
             if (streamExpiresInSeconds == null) continue
-
-            val currentPoToken = YouTube.poTokenGvs ?: YouTube.poToken
-            if (isLoggedIn && !currentPoToken.isNullOrBlank() && streamUrl != null) {
-                val separator = if ("?" in streamUrl!!) "&" else "?"
-                streamUrl = "${streamUrl}${separator}pot=${currentPoToken}"
-            }
 
             Timber.tag(logTag).i("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
             Timber.tag(logTag).v("Stream expires in: $streamExpiresInSeconds seconds")
@@ -559,7 +541,7 @@ object YTPlayerUtils {
         client: YouTubeClient? = null,
     ): String? {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
-        var url = NewPipeUtils.getStreamUrl(format, videoId)
+        var url = NewPipeUtils.getStreamUrl(format, videoId, client)
             .onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
             .onFailure {
                 Timber.tag(logTag).e(it, "Failed to get stream URL")
