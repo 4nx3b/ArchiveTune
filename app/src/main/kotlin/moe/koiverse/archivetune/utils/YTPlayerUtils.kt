@@ -28,6 +28,7 @@ import moe.koiverse.archivetune.innertube.models.YouTubeClient.Companion.WEB_CRE
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 object YTPlayerUtils {
@@ -77,26 +78,43 @@ object YTPlayerUtils {
     )
 
     private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
-    private val failedPreferredClientsUntil = ConcurrentHashMap<String, Long>()
+    private val failedStreamClientsUntil = ConcurrentHashMap<String, Long>()
 
     fun invalidateCachedStreamUrls(videoId: String) {
         val prefix = "$videoId:"
         streamUrlCache.keys.removeIf { it.startsWith(prefix) }
     }
 
-    fun markPreferredClientFailed(videoId: String, client: PlayerStreamClient, httpStatusCode: Int?) {
+    fun markStreamClientFailed(videoId: String, clientKey: String?, httpStatusCode: Int?) {
         if (httpStatusCode != 403) return
-        failedPreferredClientsUntil["$videoId:${client.name}"] = System.currentTimeMillis() + FAILED_CLIENT_BACKOFF_MS
+        val normalizedClientKey = normalizeStreamClientKey(clientKey)
+        if (normalizedClientKey.isEmpty()) return
+        failedStreamClientsUntil[buildFailedClientKey(videoId, normalizedClientKey)] =
+            System.currentTimeMillis() + FAILED_CLIENT_BACKOFF_MS
     }
 
-    private fun isPreferredClientTemporarilyBlocked(videoId: String, client: PlayerStreamClient): Boolean {
-        val key = "$videoId:${client.name}"
-        val until = failedPreferredClientsUntil[key] ?: return false
+    fun markPreferredClientFailed(videoId: String, client: PlayerStreamClient, httpStatusCode: Int?) {
+        markStreamClientFailed(videoId, client.name, httpStatusCode)
+    }
+
+    private fun isStreamClientTemporarilyBlocked(videoId: String, clientKey: String?): Boolean {
+        val normalizedClientKey = normalizeStreamClientKey(clientKey)
+        if (normalizedClientKey.isEmpty()) return false
+        val key = buildFailedClientKey(videoId, normalizedClientKey)
+        val until = failedStreamClientsUntil[key] ?: return false
         if (until <= System.currentTimeMillis()) {
-            failedPreferredClientsUntil.remove(key)
+            failedStreamClientsUntil.remove(key)
             return false
         }
         return true
+    }
+
+    private fun normalizeStreamClientKey(clientKey: String?): String {
+        return clientKey?.trim()?.takeIf { it.isNotBlank() }?.uppercase(Locale.US).orEmpty()
+    }
+
+    private fun buildFailedClientKey(videoId: String, clientKey: String): String {
+        return "$videoId:${normalizeStreamClientKey(clientKey)}"
     }
 
     data class PlaybackData(
@@ -201,16 +219,16 @@ object YTPlayerUtils {
 
         val streamClients =
             buildList {
-                val preferredBlocked = isPreferredClientTemporarilyBlocked(videoId, preferredStreamClient)
-                if (preferredBlocked) {
-                    Timber.tag(logTag).w("Preferred stream client temporarily blocked for $videoId: ${preferredStreamClient.name}")
-                }
-                if (!preferredBlocked) {
-                    add(preferredYouTubeClient)
-                }
+                add(preferredYouTubeClient)
                 addAll(orderedFallbackClients)
                 if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
-            }.distinct()
+            }.distinct().filterNot { client ->
+                val blocked = isStreamClientTemporarilyBlocked(videoId, client.clientName)
+                if (blocked) {
+                    Timber.tag(logTag).w("Temporarily blocked stream client for $videoId: ${client.clientName}")
+                }
+                blocked
+            }
 
         for ((index, client) in streamClients.withIndex()) {
             format = null
