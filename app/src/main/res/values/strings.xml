@@ -773,6 +773,7 @@ ArchiveTune will only extract your token, and everything else is stored locally.
     <string name="generating_tokens">Generating tokens…</string>
     <string name="tokens_generated">Tokens generated successfully</string>
     <string name="token_generation_failed">Token generation failed</string>
+    <string name="open_account_before_extract">Open and sign in on youtube.com/account before extracting</string>
     <string name="token_copied">Token copied to clipboard</string>
     <string name="no_visitor_data">No visitor data available. Tokens cannot be generated.</string>
     <string name="extracting_from_url">Extracting tokens from URL…</string>

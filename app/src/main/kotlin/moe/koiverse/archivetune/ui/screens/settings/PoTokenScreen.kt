@@ -184,6 +184,37 @@ fun PoTokenScreen(
             } ?: run { showWebView = false }
         }
 
+        fun triggerTokenExtraction() {
+            val webView = webViewRef ?: return
+            val currentUrl = webView.url.orEmpty()
+            if (!currentUrl.contains("youtube.com/account")) {
+                Toast.makeText(context, R.string.open_account_before_extract, Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            extractedVisitorData = null
+            extractedPoToken = null
+
+            webView.loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
+            webView.loadUrl(
+                "javascript:void((function(){" +
+                    "try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');" +
+                    "if(t){Android.onRetrievePoToken(t);return}}}" +
+                    "catch(e){}" +
+                    "try{var s=document.querySelectorAll('script');" +
+                    "for(var i=0;i<s.length;i++){" +
+                    "var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);" +
+                    "if(m){Android.onRetrievePoToken(m[1]);return}}}" +
+                    "catch(e){}})())"
+            )
+
+            webView.postDelayed({
+                if (showWebView && (extractedVisitorData.isNullOrBlank() || extractedPoToken.isNullOrBlank())) {
+                    viewModel.onExtractionError(context.getString(R.string.token_generation_failed))
+                }
+            }, 2500L)
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 modifier = Modifier
@@ -224,22 +255,7 @@ fun PoTokenScreen(
                             }
                         }, "Android")
 
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView, url: String?) {
-                                view.loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-                                view.loadUrl(
-                                    "javascript:void((function(){" +
-                                        "try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');" +
-                                        "if(t){Android.onRetrievePoToken(t);return}}}" +
-                                        "catch(e){}" +
-                                        "try{var s=document.querySelectorAll('script');" +
-                                        "for(var i=0;i<s.length;i++){" +
-                                        "var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);" +
-                                        "if(m){Android.onRetrievePoToken(m[1]);return}}}" +
-                                        "catch(e){}})())"
-                                )
-                            }
-                        }
+                        webViewClient = object : WebViewClient()
 
                         extractedVisitorData = null
                         extractedPoToken = null
@@ -268,6 +284,17 @@ fun PoTokenScreen(
                     ) {
                         Icon(
                             painterResource(R.drawable.arrow_back),
+                            contentDescription = null
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { triggerTokenExtraction() },
+                        onLongClick = { triggerTokenExtraction() }
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.done),
                             contentDescription = null
                         )
                     }
