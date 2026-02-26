@@ -215,6 +215,7 @@ class InnerTube {
         url: String,
         cpn: String,
         playlistId: String?,
+        poToken: String? = null,
         client: YouTubeClient = YouTubeClient.WEB_REMIX,
     ) = withRetry {
         httpClient.get(url) {
@@ -222,6 +223,10 @@ class InnerTube {
             parameter("ver", "2")
             parameter("c", client.clientName)
             parameter("cpn", cpn)
+
+            if (!poToken.isNullOrBlank()) {
+                parameter("pot", poToken)
+            }
 
             if (playlistId != null) {
                 parameter("list", playlistId)
