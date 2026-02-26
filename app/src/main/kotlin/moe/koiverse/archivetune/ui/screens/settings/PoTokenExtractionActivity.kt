@@ -13,10 +13,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -79,6 +84,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
         val context = LocalContext.current
         var webView by remember { mutableStateOf<WebView?>(null) }
         var currentUrl by remember { mutableStateOf(targetUrl) }
+        var isExtracting by remember { mutableStateOf(false) }
 
         fun parseJsResult(raw: String?): String {
             val text = raw?.trim().orEmpty()
@@ -100,6 +106,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
         }
 
         fun closeCanceled(error: String? = null) {
+            isExtracting = false
             val data = Intent().apply {
                 if (!error.isNullOrBlank()) {
                     putExtra(EXTRA_ERROR, error)
@@ -112,6 +119,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
         fun completeIfReady() {
             val visitorData = extractedVisitorData ?: return
             val gvsToken = extractedGvsToken ?: return
+            isExtracting = false
 
             val playerToken = PoTokenGenerator.generateColdStartToken(visitorData, "player")
 
@@ -127,11 +135,14 @@ class PoTokenExtractionActivity : ComponentActivity() {
         }
 
         fun triggerExtraction() {
+            if (isExtracting) return
             val current = currentUrl
             if (!current.contains("youtube.com/account")) {
                 Toast.makeText(context, R.string.open_account_before_extract, Toast.LENGTH_SHORT).show()
                 return
             }
+
+            isExtracting = true
 
             extractedVisitorData = null
             extractedGvsToken = null
@@ -165,6 +176,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
                     return@postDelayed
                 }
                 if (extractedVisitorData.isNullOrBlank() || extractedGvsToken.isNullOrBlank()) {
+                    isExtracting = false
                     Toast.makeText(context, R.string.token_generation_failed, Toast.LENGTH_SHORT).show()
                 }
             }, 4000L)
@@ -252,13 +264,25 @@ class PoTokenExtractionActivity : ComponentActivity() {
                 },
                 actions = {
                     IconButton(
-                        onClick = { triggerExtraction() },
-                        onLongClick = { triggerExtraction() }
+                        onClick = { if (!isExtracting) triggerExtraction() },
+                        onLongClick = { if (!isExtracting) triggerExtraction() },
+                        enabled = !isExtracting,
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.done),
-                            contentDescription = null,
-                        )
+                        if (isExtracting) {
+                            Row {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.generating_tokens))
+                            }
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.done),
+                                contentDescription = null,
+                            )
+                        }
                     }
                 }
             )
