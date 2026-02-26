@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -79,6 +80,25 @@ class PoTokenExtractionActivity : ComponentActivity() {
         var webView by remember { mutableStateOf<WebView?>(null) }
         var currentUrl by remember { mutableStateOf(targetUrl) }
 
+        fun parseJsResult(raw: String?): String {
+            val text = raw?.trim().orEmpty()
+            if (text.isBlank() || text == "null") return ""
+            val unwrapped =
+                if (text.length >= 2 && text.first() == '"' && text.last() == '"') {
+                    text.substring(1, text.length - 1)
+                } else {
+                    text
+                }
+            return unwrapped
+                .replace("\\\\", "\\")
+                .replace("\\\"", "\"")
+                .replace("\\n", "\n")
+                .replace("\\u003C", "<")
+                .replace("\\u003E", ">")
+                .replace("\\u0026", "&")
+                .trim()
+        }
+
         fun closeCanceled(error: String? = null) {
             val data = Intent().apply {
                 if (!error.isNullOrBlank()) {
@@ -116,24 +136,38 @@ class PoTokenExtractionActivity : ComponentActivity() {
             extractedVisitorData = null
             extractedGvsToken = null
 
-            webView?.loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-            webView?.loadUrl(
-                "javascript:void((function(){" +
-                    "try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');" +
-                    "if(t){Android.onRetrievePoToken(t);return}}}" +
-                    "catch(e){}" +
-                    "try{var s=document.querySelectorAll('script');" +
-                    "for(var i=0;i<s.length;i++){" +
-                    "var m=s[i].textContent.match(/\\\"PO_TOKEN\\\":\\\"([^\\\"]+)\\\"/);" +
-                    "if(m){Android.onRetrievePoToken(m[1]);return}}}" +
-                    "catch(e){}})())"
-            )
+            webView?.evaluateJavascript(
+                "(function(){try{return window.yt?.config_?.VISITOR_DATA || window.ytcfg?.get?.('VISITOR_DATA') || '';}catch(e){return '';}})();"
+            ) { result ->
+                val visitor = parseJsResult(result)
+                if (visitor.isNotBlank()) {
+                    extractedVisitorData = visitor
+                    completeIfReady()
+                }
+            }
+
+            webView?.evaluateJavascript(
+                "(function(){try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');if(t)return t;}var s=document.querySelectorAll('script');for(var i=0;i<s.length;i++){var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);if(m)return m[1];}return '';}catch(e){return '';}})();"
+            ) { result ->
+                val gvs = parseJsResult(result)
+                if (gvs.isNotBlank()) {
+                    extractedGvsToken = gvs
+                    completeIfReady()
+                }
+            }
 
             webView?.postDelayed({
-                if (!isFinishing && (extractedVisitorData.isNullOrBlank() || extractedGvsToken.isNullOrBlank())) {
+                if (isFinishing) return@postDelayed
+                val visitor = extractedVisitorData
+                if (!visitor.isNullOrBlank() && extractedGvsToken.isNullOrBlank()) {
+                    extractedGvsToken = PoTokenGenerator.generateSessionToken(visitor)
+                    completeIfReady()
+                    return@postDelayed
+                }
+                if (extractedVisitorData.isNullOrBlank() || extractedGvsToken.isNullOrBlank()) {
                     Toast.makeText(context, R.string.token_generation_failed, Toast.LENGTH_SHORT).show()
                 }
-            }, 2500L)
+            }, 4000L)
         }
 
         BackHandler {
@@ -152,6 +186,16 @@ class PoTokenExtractionActivity : ComponentActivity() {
                     .windowInsetsPadding(WindowInsets.systemBars),
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        val cookieManager = CookieManager.getInstance()
+                        cookieManager.removeAllCookies(null)
+                        cookieManager.flush()
+                        cookieManager.setAcceptCookie(true)
+                        cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                        clearHistory()
+                        clearFormData()
+                        clearCache(true)
+
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.setSupportZoom(true)
