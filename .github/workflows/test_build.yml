@@ -95,7 +95,7 @@ jobs:
           find "$OUTPUT_DIR" -name "*-signed.apk" -o -name "*-unsigned-signed.apk" | xargs -I{} mv {} "$OUTPUT_DIR/out/app-universal-test-release.apk"
 
       - name: Upload Signed APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: app-universal-test-release
           path: app/build/outputs/apk/universal/release/out/*

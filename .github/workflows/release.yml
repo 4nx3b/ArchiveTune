@@ -244,7 +244,7 @@ jobs:
           fi
   
       - name: Upload Signed APKs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.abi == 'universal' && 'ArchiveTune' || format('app-{0}-release', matrix.abi) }}
           path: ${{ steps.release_dir.outputs.release_dir }}/out/${{ matrix.abi == 'universal' && 'ArchiveTune.apk' || format('app-{0}-release.apk', matrix.abi) }}
@@ -262,7 +262,7 @@ jobs:
           fetch-depth: 0
       
       - name: Download all APKs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: downloaded_artifacts/
 
