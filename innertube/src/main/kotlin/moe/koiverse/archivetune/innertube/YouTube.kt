@@ -128,19 +128,22 @@ object YouTube {
             innerTube.useLoginForBrowse = value
         }
 
-    private fun isWebClient(client: YouTubeClient): Boolean {
+    private fun needsServiceIntegrity(client: YouTubeClient): Boolean {
         val name = client.clientName.uppercase(Locale.US)
         return name == "WEB" ||
             name == "WEB_REMIX" ||
             name == "WEB_CREATOR" ||
             name == "MWEB" ||
-            name == "WEB_EMBEDDED_PLAYER"
+            name == "WEB_EMBEDDED_PLAYER" ||
+            name == "TVHTML5" ||
+            name == "TVHTML5_SIMPLY_EMBEDDED_PLAYER" ||
+            name == "TVHTML5_SIMPLY"
     }
 
     private fun resolvePlayerPoToken(client: YouTubeClient, videoId: String, explicitPoToken: String?): String? {
         val explicit = explicitPoToken?.takeIf { it.isNotBlank() }
         if (explicit != null) return explicit
-        if (!isWebClient(client)) return null
+        if (!needsServiceIntegrity(client)) return null
 
         val generated = poTokenPlayer?.takeIf { it.isNotBlank() }
         if (generated != null) return generated
@@ -149,10 +152,13 @@ object YouTube {
         return sessionIdentifier?.let { PoTokenGenerator.generateContentToken(it, videoId) }
     }
 
+    internal fun resolveGvsPoToken(): String? {
+        return poTokenGvs?.takeIf { it.isNotBlank() }
+            ?: poToken?.takeIf { it.isNotBlank() }
+    }
+
     internal fun appendGvsPoToken(url: String, client: YouTubeClient? = null): String {
-        val token = poTokenGvs?.takeIf { it.isNotBlank() } ?: poToken?.takeIf { it.isNotBlank() }
-        if (token.isNullOrBlank()) return url
-        if (client != null && !isWebClient(client)) return url
+        val token = resolveGvsPoToken() ?: return url
         if (url.contains("pot=")) return url
 
         val separator = if (url.contains("?")) "&" else "?"
@@ -1053,7 +1059,8 @@ object YouTube {
         innerTube.registerPlayback(
             url = playbackUrl,
             playlistId = playlistId,
-            cpn = cpn
+            cpn = cpn,
+            poToken = resolveGvsPoToken()
         )
     }
 
