@@ -377,6 +377,21 @@ fun SettingsScreen(
                         ),
                         onClick = { navController.navigate("settings/content") },
                     ),
+                    PremiumSettingsItem(
+                        icon = painterResource(R.drawable.token),
+                        title = stringResource(R.string.po_token_generation),
+                        subtitle = stringResource(R.string.po_token_generation_subtitle),
+                        accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf(
+                            "po token",
+                            "token",
+                            "web client",
+                            "visitor data",
+                            "gvs",
+                            "player",
+                        ),
+                        onClick = { navController.navigate("settings/po_token") },
+                    ),
                 ),
             ),
         )

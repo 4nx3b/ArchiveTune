@@ -79,6 +79,7 @@ import moe.koiverse.archivetune.ui.screens.settings.LastFMSettings
 import moe.koiverse.archivetune.ui.screens.settings.MusicTogetherScreen
 import moe.koiverse.archivetune.ui.screens.settings.PalettePickerScreen
 import moe.koiverse.archivetune.ui.screens.settings.PlayerSettings
+import moe.koiverse.archivetune.ui.screens.settings.PoTokenScreen
 import moe.koiverse.archivetune.ui.screens.settings.PrivacySettings
 import moe.koiverse.archivetune.ui.screens.settings.SettingsScreen
 import moe.koiverse.archivetune.ui.screens.settings.StorageSettings
@@ -357,6 +358,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/about") {
         AboutScreen(navController, scrollBehavior)
+    }
+    composable("settings/po_token") {
+        PoTokenScreen(navController, scrollBehavior)
     }
     composable("customize_background") {
         CustomizeBackground(navController)

@@ -461,6 +461,12 @@ val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
 val UseLoginForBrowse = booleanPreferencesKey("useLoginForBrowse")
 
+val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
+val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")
+val PoTokenPlayerKey = stringPreferencesKey("poTokenPlayer")
+val UseVisitorDataKey = booleanPreferencesKey("useVisitorData")
+val PoTokenSourceUrlKey = stringPreferencesKey("poTokenSourceUrl")
+
 val LanguageCodeToName =
     mapOf(
         "en" to "English (US)",

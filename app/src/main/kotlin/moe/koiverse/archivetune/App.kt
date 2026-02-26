@@ -242,6 +242,22 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
+                .map { it[PoTokenGvsKey] }
+                .distinctUntilChanged()
+                .collect { token ->
+                    YouTube.poTokenGvs = token?.takeIf { it.isNotBlank() }
+                }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[PoTokenPlayerKey] }
+                .distinctUntilChanged()
+                .collect { token ->
+                    YouTube.poTokenPlayer = token?.takeIf { it.isNotBlank() }
+                }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
                 .map { it[LastFMSessionKey] }
                 .distinctUntilChanged()
                 .collect { sessionKey ->

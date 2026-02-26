@@ -219,5 +219,40 @@ data class YouTubeClient(
             packageName = "com.google.ios.youtube"
         )
 
+        val MWEB = YouTubeClient(
+            clientName = "MWEB",
+            clientVersion = "2.20260114.00.00",
+            clientId = "2",
+            userAgent = "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
+            friendlyName = "Mobile Web",
+        )
+
+        val WEB_SAFARI = YouTubeClient(
+            clientName = "WEB",
+            clientVersion = "2.20260114.00.00",
+            clientId = "1",
+            userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
+            friendlyName = "Web (Safari)",
+        )
+
+        val WEB_EMBEDDED = YouTubeClient(
+            clientName = "WEB_EMBEDDED_PLAYER",
+            clientVersion = "1.20260114.00.00",
+            clientId = "56",
+            userAgent = USER_AGENT_WEB,
+            friendlyName = "Web Embedded Player",
+            isEmbedded = true,
+        )
+
+        val WEB_MUSIC = YouTubeClient(
+            clientName = "WEB_REMIX",
+            clientVersion = "1.20260114.01.00",
+            clientId = "67",
+            userAgent = USER_AGENT_WEB,
+            friendlyName = "Web Music (YouTube Music)",
+            loginSupported = true,
+            useSignatureTimestamp = true,
+        )
+
     }
 }

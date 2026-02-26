@@ -110,6 +110,8 @@ object YouTube {
         set(value) {
             innerTube.poToken = value
         }
+    var poTokenGvs: String? = null
+    var poTokenPlayer: String? = null
     var proxy: Proxy?
         get() = innerTube.proxy
         set(value) {

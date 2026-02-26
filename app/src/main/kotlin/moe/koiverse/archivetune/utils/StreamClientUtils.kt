@@ -90,7 +90,8 @@ object StreamClientUtils {
         return c.equals("WEB", ignoreCase = true) ||
             c.equals("WEB_REMIX", ignoreCase = true) ||
             c.equals("WEB_CREATOR", ignoreCase = true) ||
-            c.equals("MWEB", ignoreCase = true)
+            c.equals("MWEB", ignoreCase = true) ||
+            c.equals("WEB_EMBEDDED_PLAYER", ignoreCase = true)
     }
 
     /**

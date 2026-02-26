@@ -197,7 +197,8 @@ object YTPlayerUtils {
 
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
         val metadataPoToken = if (StreamClientUtils.isWebClient(metadataClient.clientName) && sessionIdentifier != null) {
-            PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
+            YouTube.poTokenPlayer
+                ?: PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
         } else null
         val metadataPlayerResponse =
             YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp, metadataPoToken).getOrThrow()
@@ -240,7 +241,8 @@ object YTPlayerUtils {
                 } else {
                     Timber.tag(logTag).i("Fetching player response for fallback client: ${client.clientName}")
                     val clientPoToken = if (StreamClientUtils.isWebClient(client.clientName) && sessionIdentifier != null) {
-                        PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
+                        YouTube.poTokenPlayer
+                            ?: PoTokenGenerator.generateContentToken(sessionIdentifier, videoId)
                     } else null
                     YouTube.player(videoId, playlistId, client, signatureTimestamp, clientPoToken).getOrNull()
                 }
@@ -291,7 +293,7 @@ object YTPlayerUtils {
 
             if (streamExpiresInSeconds == null) continue
 
-            val currentPoToken = YouTube.poToken
+            val currentPoToken = YouTube.poTokenGvs ?: YouTube.poToken
             if (isLoggedIn && !currentPoToken.isNullOrBlank() && streamUrl != null) {
                 val separator = if ("?" in streamUrl!!) "&" else "?"
                 streamUrl = "${streamUrl}${separator}pot=${currentPoToken}"
