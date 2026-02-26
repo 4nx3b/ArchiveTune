@@ -273,6 +273,10 @@ class MusicService :
     )
     private val playbackUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
     private val streamRecoveryState = ConcurrentHashMap<String, Pair<Int, Long>>()
+    @Volatile
+    private var pendingStreamRefreshValidationMediaId: String? = null
+    @Volatile
+    private var refreshValidatedPlayingMediaId: String? = null
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
@@ -1564,6 +1568,7 @@ class MusicService :
         clearAutomix()
         currentQueue = EmptyQueue
         queueTitle = null
+        clearStreamRefreshGuards()
         waitingForNetworkConnection.value = false
         currentMediaMetadata.value = null
         player.playWhenReady = false
@@ -3001,6 +3006,13 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
     super.onMediaItemTransition(mediaItem, reason)
 
+    clearStreamRefreshGuards(
+        mediaItem?.mediaId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: player.currentMediaItem?.mediaId
+    )
+
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
 
     // Pre-load lyrics for upcoming songs in queue
@@ -3141,6 +3153,21 @@ class MusicService :
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
+
+    val activeMediaId = player.currentMediaItem?.mediaId
+    clearStreamRefreshGuards(activeMediaId)
+    if (
+        playbackState == Player.STATE_READY &&
+        player.playWhenReady &&
+        player.isPlaying &&
+        activeMediaId != null &&
+        pendingStreamRefreshValidationMediaId == activeMediaId
+    ) {
+        refreshValidatedPlayingMediaId = activeMediaId
+        pendingStreamRefreshValidationMediaId = null
+        streamRecoveryState.remove(activeMediaId)
+        Timber.tag("MusicService").i("Stream refresh validated and playback resumed for $activeMediaId")
+    }
 
     scope.launch {
         val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
@@ -3532,6 +3559,15 @@ class MusicService :
             }
         }
 
+        if (shouldAttemptStreamRefresh && currentMediaId != null && shouldSkipRedundantStreamRefresh(currentMediaId)) {
+            Timber.tag("MusicService").w(
+                "Skipping redundant stream refresh for $currentMediaId after validated recovery; resuming playback without URL refresh"
+            )
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
+
         if (shouldAttemptStreamRefresh && currentMediaId != null && markAndCheckRecoveryAllowance(currentMediaId)) {
             val failingStreamClientKey =
                 playbackUrlCache[currentMediaId]
@@ -3547,6 +3583,7 @@ class MusicService :
             YTPlayerUtils.markPreferredClientFailed(currentMediaId, preferredStreamClient, httpStatusCode)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             playbackUrlCache.remove(currentMediaId)
+            pendingStreamRefreshValidationMediaId = currentMediaId
             player.prepare()
             player.playWhenReady = true
             return
@@ -3769,8 +3806,10 @@ class MusicService :
 
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
+        clearStreamRefreshGuards(mediaId)
         YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
         playbackUrlCache.remove(mediaId)
+        pendingStreamRefreshValidationMediaId = mediaId
         player.prepare()
         player.playWhenReady = true
     }
@@ -3791,6 +3830,26 @@ class MusicService :
         if (nextCount > 2) return false
         streamRecoveryState[mediaId] = nextCount to now
         return true
+    }
+
+    private fun shouldSkipRedundantStreamRefresh(mediaId: String): Boolean {
+        if (refreshValidatedPlayingMediaId != mediaId) return false
+        val expiresAt = playbackUrlCache[mediaId]?.second ?: return false
+        if (expiresAt <= System.currentTimeMillis()) {
+            refreshValidatedPlayingMediaId = null
+            return false
+        }
+        return true
+    }
+
+    private fun clearStreamRefreshGuards(activeMediaId: String? = null) {
+        val normalizedActiveMediaId = activeMediaId?.trim()?.takeIf { it.isNotBlank() }
+        if (normalizedActiveMediaId == null || refreshValidatedPlayingMediaId != normalizedActiveMediaId) {
+            refreshValidatedPlayingMediaId = null
+        }
+        if (normalizedActiveMediaId == null || pendingStreamRefreshValidationMediaId != normalizedActiveMediaId) {
+            pendingStreamRefreshValidationMediaId = null
+        }
     }
 
     private fun deviceSupportsMimeType(mimeType: String): Boolean {
