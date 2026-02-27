@@ -47,8 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -106,7 +104,6 @@ fun CurrentSongHeader(
             .background(backgroundColor)
             .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .bottomSheetDraggable(sheetState)
-            .pointerInput(Unit) { detectTapGestures { } } // Block clicks while allowing drag
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         // Drag handle
