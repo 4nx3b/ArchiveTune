@@ -220,6 +220,9 @@
     <string name="settings_section_storage">Storage &amp; Data</string>
     <string name="settings_section_system">System &amp; About</string>
     <string name="similar_content">Similar content</string>
+    <string name="error_no_song_playing">No song is currently playing</string>
+    <string name="error_no_similar_songs">No similar songs found</string>
+    <string name="error_automix_failed">Failed to load similar songs</string>
     <string name="year_in_music">Year in Music</string>
     <string name="your_year_in_music">Your %d Year in Music</string>
     <string name="total_listening_time">Total Listening Time</string>
