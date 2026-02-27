@@ -1553,39 +1553,39 @@ class MusicService :
         automixLoading.value = true
         automixError.value = null
 
-        automixJob = scope.launch(Dispatchers.IO) {
+        val existingQueueIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+
+        automixJob = scope.launch {
             try {
-                val existingQueueIds = withContext(Dispatchers.Main) {
-                    (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                val nextResult = withContext(Dispatchers.IO) {
+                    YouTube.next(WatchEndpoint(videoId = currentMeta.id))
                 }
 
-                YouTube
-                    .next(WatchEndpoint(videoId = currentMeta.id))
-                    .onSuccess { nextResult ->
+                nextResult
+                    .onSuccess { result ->
                         if (suppressAutoPlayback || player.playbackState == STATE_IDLE || player.mediaItemCount == 0) {
                             automixLoading.value = false
                             return@onSuccess
                         }
-                        val radioItems = nextResult.items
+                        val radioItems = result.items
                             .map { it.toMediaItem() }
                             .filter { it.mediaId !in existingQueueIds }
                             .filterExplicit(dataStore.get(HideExplicitKey, false))
                             .filterVideo(dataStore.get(HideVideoKey, false))
 
                         if (radioItems.isNotEmpty()) {
-                            withContext(Dispatchers.Main) {
-                                player.addMediaItems(radioItems)
-                            }
+                            player.addMediaItems(radioItems)
                             radioItems.forEach { autoAddedMediaIds.add(it.mediaId) }
 
-                            YouTube
-                                .next(WatchEndpoint(playlistId = nextResult.endpoint.playlistId))
-                                .onSuccess { automixResult ->
-                                    if (suppressAutoPlayback || player.playbackState == STATE_IDLE) return@onSuccess
-                                    automixItems.value = automixResult.items
-                                        .map { it.toMediaItem() }
-                                        .filter { it.mediaId !in existingQueueIds }
-                                }
+                            val automixResult = withContext(Dispatchers.IO) {
+                                YouTube.next(WatchEndpoint(playlistId = result.endpoint.playlistId))
+                            }
+                            automixResult.onSuccess { amResult ->
+                                if (suppressAutoPlayback || player.playbackState == STATE_IDLE) return@onSuccess
+                                automixItems.value = amResult.items
+                                    .map { it.toMediaItem() }
+                                    .filter { it.mediaId !in existingQueueIds }
+                            }
                         } else {
                             automixError.value = getString(R.string.error_no_similar_songs)
                         }
