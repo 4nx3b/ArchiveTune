@@ -1568,19 +1568,46 @@ class MusicService :
                             automixLoading.value = false
                             return@onSuccess
                         }
-                        val queueIdsBefore = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-                        val radioItems = result.items
-                            .map { it.toMediaItem() }
-                            .filter { it.mediaId !in queueIdsBefore }
-                            .filterExplicit(hideExplicit)
-                            .filterVideo(hideVideo)
+                        val initialQueueIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                        val filteredFromNext =
+                            result.items
+                                .map { it.toMediaItem() }
+                                .filter { it.mediaId !in initialQueueIds }
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
 
-                        if (radioItems.isNotEmpty()) {
-                            player.addMediaItems(radioItems)
-                            radioItems.forEach { autoAddedMediaIds.add(it.mediaId) }
+                        val addedNow = ArrayList<MediaItem>(32)
+
+                        if (filteredFromNext.isNotEmpty()) {
+                            val toAdd = filteredFromNext.take(25)
+                            player.addMediaItems(toAdd)
+                            toAdd.forEach { autoAddedMediaIds.add(it.mediaId) }
+                            addedNow.addAll(toAdd)
                         }
 
-                        val queueIdsAfter = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                        val queueIdsAfterNext = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                        val relatedCandidates =
+                            result.relatedEndpoint?.let { relatedEndpoint ->
+                                withContext(Dispatchers.IO) {
+                                    YouTube.related(relatedEndpoint)
+                                }.getOrNull()?.songs.orEmpty()
+                            }.orEmpty()
+
+                        val filteredRelated =
+                            relatedCandidates
+                                .map { it.toMediaItem() }
+                                .filter { it.mediaId !in queueIdsAfterNext }
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
+
+                        if (addedNow.isEmpty() && filteredRelated.isNotEmpty()) {
+                            val toAdd = filteredRelated.take(25)
+                            player.addMediaItems(toAdd)
+                            toAdd.forEach { autoAddedMediaIds.add(it.mediaId) }
+                            addedNow.addAll(toAdd)
+                        }
+
+                        val queueIdsAfterAdds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
                         val playlistId = result.endpoint.playlistId
                         val automixCandidates =
                             if (playlistId.isNullOrBlank()) {
@@ -1591,15 +1618,25 @@ class MusicService :
                                 }.getOrNull()?.items.orEmpty()
                             }
 
-                        val filteredAutomix = automixCandidates
-                            .map { it.toMediaItem() }
-                            .filter { it.mediaId !in queueIdsAfter }
-                            .filterExplicit(hideExplicit)
-                            .filterVideo(hideVideo)
+                        val filteredAutomix =
+                            automixCandidates
+                                .map { it.toMediaItem() }
+                                .filter { it.mediaId !in queueIdsAfterAdds }
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
 
-                        automixItems.value = filteredAutomix
+                        val addedIds = addedNow.map { it.mediaId }.toSet()
+                        val pool =
+                            (filteredFromNext + filteredRelated + filteredAutomix)
+                                .asSequence()
+                                .distinctBy { it.mediaId }
+                                .filter { it.mediaId !in addedIds }
+                                .take(75)
+                                .toList()
 
-                        if (radioItems.isEmpty() && filteredAutomix.isEmpty()) {
+                        automixItems.value = pool
+
+                        if (addedNow.isEmpty() && pool.isEmpty()) {
                             automixError.value = getString(R.string.error_no_similar_songs)
                         }
                         automixLoading.value = false
