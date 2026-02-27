@@ -24,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -288,12 +289,15 @@ class PoTokenExtractionActivity : ComponentActivity() {
             )
 
             ExtendedFloatingActionButton(
-                onClick = { triggerExtraction() },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(16.dp),
-                expanded = true,
+                text = {
+                    Text(
+                        if (isExtracting) {
+                            stringResource(R.string.generating_tokens)
+                        } else {
+                            stringResource(R.string.regenerate_token)
+                        }
+                    )
+                },
                 icon = {
                     if (isExtracting) {
                         CircularProgressIndicator(
@@ -307,16 +311,26 @@ class PoTokenExtractionActivity : ComponentActivity() {
                         )
                     }
                 },
-                text = {
-                    Text(
-                        if (isExtracting) {
-                            stringResource(R.string.generating_tokens)
-                        } else {
-                            stringResource(R.string.done)
-                        }
-                    )
+                onClick = {
+                    if (canExtract) {
+                        triggerExtraction()
+                    }
                 },
-                enabled = canExtract,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.systemBars)
+                    .padding(16.dp),
+                expanded = true,
+                containerColor = if (canExtract) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+                contentColor = if (canExtract) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
     }
