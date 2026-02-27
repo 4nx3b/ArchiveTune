@@ -1553,7 +1553,8 @@ class MusicService :
         automixLoading.value = true
         automixError.value = null
 
-        val existingQueueIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+        val hideExplicit = dataStore.get(HideExplicitKey, false)
+        val hideVideo = dataStore.get(HideVideoKey, false)
 
         automixJob = scope.launch {
             try {
@@ -1567,26 +1568,38 @@ class MusicService :
                             automixLoading.value = false
                             return@onSuccess
                         }
+                        val queueIdsBefore = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
                         val radioItems = result.items
                             .map { it.toMediaItem() }
-                            .filter { it.mediaId !in existingQueueIds }
-                            .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideo(dataStore.get(HideVideoKey, false))
+                            .filter { it.mediaId !in queueIdsBefore }
+                            .filterExplicit(hideExplicit)
+                            .filterVideo(hideVideo)
 
                         if (radioItems.isNotEmpty()) {
                             player.addMediaItems(radioItems)
                             radioItems.forEach { autoAddedMediaIds.add(it.mediaId) }
+                        }
 
-                            val automixResult = withContext(Dispatchers.IO) {
-                                YouTube.next(WatchEndpoint(playlistId = result.endpoint.playlistId))
+                        val queueIdsAfter = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                        val playlistId = result.endpoint.playlistId
+                        val automixCandidates =
+                            if (playlistId.isNullOrBlank()) {
+                                emptyList()
+                            } else {
+                                withContext(Dispatchers.IO) {
+                                    YouTube.next(WatchEndpoint(playlistId = playlistId))
+                                }.getOrNull()?.items.orEmpty()
                             }
-                            automixResult.onSuccess { amResult ->
-                                if (suppressAutoPlayback || player.playbackState == STATE_IDLE) return@onSuccess
-                                automixItems.value = amResult.items
-                                    .map { it.toMediaItem() }
-                                    .filter { it.mediaId !in existingQueueIds }
-                            }
-                        } else {
+
+                        val filteredAutomix = automixCandidates
+                            .map { it.toMediaItem() }
+                            .filter { it.mediaId !in queueIdsAfter }
+                            .filterExplicit(hideExplicit)
+                            .filterVideo(hideVideo)
+
+                        automixItems.value = filteredAutomix
+
+                        if (radioItems.isEmpty() && filteredAutomix.isEmpty()) {
                             automixError.value = getString(R.string.error_no_similar_songs)
                         }
                         automixLoading.value = false
@@ -3153,11 +3166,13 @@ class MusicService :
                         YouTube.next(WatchEndpoint(videoId = currentMediaMetadata.id))
                     }.onSuccess { nextResult ->
                         if (suppressAutoPlayback || player.playbackState == STATE_IDLE || player.mediaItemCount == 0) return@onSuccess
+                        val hideExplicit = dataStore.get(HideExplicitKey, false)
+                        val hideVideo = dataStore.get(HideVideoKey, false)
                         val radioItems = nextResult.items
                             .map { it.toMediaItem() }
                             .filter { it.mediaId !in queueIds }
-                            .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideo(dataStore.get(HideVideoKey, false))
+                            .filterExplicit(hideExplicit)
+                            .filterVideo(hideVideo)
 
                         if (radioItems.isNotEmpty()) {
                             player.addMediaItems(radioItems)
@@ -3170,6 +3185,8 @@ class MusicService :
                                 automixItems.value = automixResult.items
                                     .map { it.toMediaItem() }
                                     .filter { it.mediaId !in queueIds }
+                                    .filterExplicit(hideExplicit)
+                                    .filterVideo(hideVideo)
                             }
                         }
                     }
@@ -3248,11 +3265,13 @@ class MusicService :
                         YouTube.next(WatchEndpoint(videoId = lastMediaMetadata.id))
                     }.onSuccess { nextResult ->
                         if (suppressAutoPlayback || player.playbackState == STATE_IDLE || player.mediaItemCount == 0) return@onSuccess
+                        val hideExplicit = dataStore.get(HideExplicitKey, false)
+                        val hideVideo = dataStore.get(HideVideoKey, false)
                         val radioItems = nextResult.items
                             .map { it.toMediaItem() }
                             .filter { it.mediaId != lastMediaMetadata.id }
-                            .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideo(dataStore.get(HideVideoKey, false))
+                            .filterExplicit(hideExplicit)
+                            .filterVideo(hideVideo)
 
                         if (radioItems.isNotEmpty()) {
                             autoAddedMediaIds.clear()
@@ -3268,6 +3287,8 @@ class MusicService :
                                 automixItems.value = automixResult.items
                                     .map { it.toMediaItem() }
                                     .filter { it.mediaId != lastMediaMetadata.id }
+                                    .filterExplicit(hideExplicit)
+                                    .filterVideo(hideVideo)
                             }
                         }
                     }
