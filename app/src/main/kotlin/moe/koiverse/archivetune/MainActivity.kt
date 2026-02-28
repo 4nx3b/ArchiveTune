@@ -934,6 +934,8 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(playerConnection) {
                         val player = playerConnection?.player ?: return@LaunchedEffect
+                        val connection = playerConnection ?: return@LaunchedEffect
+                        connection.queueRestoreCompleted.first { it }
                         if (player.currentMediaItem == null) {
                             if (!playerBottomSheetState.isDismissed) {
                                 playerBottomSheetState.dismiss()
