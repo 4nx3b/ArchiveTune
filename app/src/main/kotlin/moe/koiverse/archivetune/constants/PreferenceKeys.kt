@@ -104,6 +104,7 @@ enum class PlayerStreamClient {
     WEB_REMIX,
     IOS,
     TVHTML5,
+    ANDROID_MUSIC,
 }
 
 val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
