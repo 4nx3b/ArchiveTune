@@ -321,6 +321,7 @@ class MusicService :
     private var lastPresenceUpdateTime = 0L
 
     val currentMediaMetadata = MutableStateFlow<moe.koiverse.archivetune.models.MediaMetadata?>(null)
+    val queueRestoreCompleted = MutableStateFlow(false)
     private val currentSong =
         currentMediaMetadata
             .flatMapLatest { mediaMetadata ->
@@ -912,6 +913,9 @@ class MusicService :
                     }
                 }
             }
+            withContext(Dispatchers.Main) {
+                queueRestoreCompleted.value = true
+            }
         }
 
         // Save queue periodically to prevent queue loss from crash or force kill
@@ -1320,6 +1324,7 @@ class MusicService :
         }
         
         clearAutomix()
+        automixSeedMediaId = null
         autoAddedMediaIds.clear()
         if (queue.preloadItem != null) {
             player.setMediaItem(queue.preloadItem!!.toMediaItem())
@@ -1541,7 +1546,7 @@ class MusicService :
         val currentMeta = player.currentMetadata ?: return
         val seedMediaId = currentMeta.id.trim().ifBlank { return }
 
-        if (!force && automixSeedMediaId == seedMediaId && automixItems.value.isNotEmpty()) return
+        if (!force && automixSeedMediaId == seedMediaId && automixItems.value.isNotEmpty() && automixJob?.isActive == true) return
 
         automixJob?.cancel()
         automixJob = null
@@ -3326,7 +3331,6 @@ class MusicService :
         }
     }
     
-    // Auto-play recommendations when approaching end of queue
     if (!suppressAutoPlayback &&
         !timelineEmpty &&
         dataStore.get(AutoLoadMoreKey, true) &&
@@ -3359,36 +3363,7 @@ class MusicService :
                 clearAutomix()
             } else {
                 if (currentMediaMetadata != null) {
-                    automixSeedMediaId = currentMediaMetadata.id.trim().ifBlank { null }
-                    withContext(Dispatchers.IO) {
-                        YouTube.next(WatchEndpoint(videoId = currentMediaMetadata.id))
-                    }.onSuccess { nextResult ->
-                        if (suppressAutoPlayback || player.playbackState == STATE_IDLE || player.mediaItemCount == 0) return@onSuccess
-                        val hideExplicit = dataStore.get(HideExplicitKey, false)
-                        val hideVideo = dataStore.get(HideVideoKey, false)
-                        val radioItems = nextResult.items
-                            .map { it.toMediaItem() }
-                            .filter { it.mediaId !in queueIds }
-                            .filterExplicit(hideExplicit)
-                            .filterVideo(hideVideo)
-
-                        if (radioItems.isNotEmpty()) {
-                            player.addMediaItems(radioItems)
-                            radioItems.forEach { autoAddedMediaIds.add(it.mediaId) }
-
-                            withContext(Dispatchers.IO) {
-                                YouTube.next(WatchEndpoint(playlistId = nextResult.endpoint.playlistId))
-                            }.onSuccess { automixResult ->
-                                if (suppressAutoPlayback || player.playbackState == STATE_IDLE) return@onSuccess
-                                automixItems.value = automixResult.items
-                                    .map { it.toMediaItem() }
-                                    .filter { it.mediaId !in queueIds }
-                                    .filterExplicit(hideExplicit)
-                                    .filterVideo(hideVideo)
-                                automixSeedMediaId = currentMediaMetadata.id.trim().ifBlank { null }
-                            }
-                        }
-                    }
+                    refreshAutomixForCurrentMedia(force = true)
                 }
             }
         }
@@ -4357,8 +4332,9 @@ class MusicService :
     private suspend fun saveQueueToDisk() {
         if (currentQueue == EmptyQueue) return
 
-        // Capture state on Main Thread
         val mediaItemsSnapshot = player.mediaItems.mapNotNull { it.metadata }
+        if (mediaItemsSnapshot.isEmpty()) return
+
         val currentMediaItemIndex = player.currentMediaItemIndex
         val currentPosition = player.currentPosition
         val automixSnapshot = automixItems.value.mapNotNull { it.metadata }
@@ -4528,6 +4504,9 @@ class MusicService :
                 }
 
                 if (stopMusicOnTaskClearEnabled) {
+                    if (dataStore.get(PersistentQueueKey, true) && player.mediaItemCount > 0) {
+                        runBlocking { saveQueueToDisk() }
+                    }
                     runCatching { stopAndClearPlayback() }
                     runCatching {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
