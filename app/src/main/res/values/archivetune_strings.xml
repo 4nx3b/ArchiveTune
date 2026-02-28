@@ -213,6 +213,8 @@
     <string name="player_stream_client_ios_desc">Uses the iOS YouTube client. Most reliable against YouTube restrictions.</string>
     <string name="player_stream_client_tvhtml5">TV HTML5</string>
     <string name="player_stream_client_tvhtml5_desc">Uses the Smart TV YouTube client. Good fallback when other clients are blocked.</string>
+    <string name="player_stream_client_android_music">Android Music</string>
+    <string name="player_stream_client_android_music_desc">Uses the Android YouTube Music client. Does not require PoToken and is resistant to bot detection.</string>
     <string name="settings_section_ui">User Interface</string>
     <string name="settings_section_privacy">Privacy &amp; Security</string>
     <string name="settings_section_player">Player &amp; Media</string>

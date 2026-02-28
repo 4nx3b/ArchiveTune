@@ -195,6 +195,7 @@ fun PlayerSettings(
                                 PlayerStreamClient.WEB_REMIX -> stringResource(R.string.player_stream_client_web_remix)
                                 PlayerStreamClient.IOS -> stringResource(R.string.player_stream_client_ios)
                                 PlayerStreamClient.TVHTML5 -> stringResource(R.string.player_stream_client_tvhtml5)
+                                PlayerStreamClient.ANDROID_MUSIC -> stringResource(R.string.player_stream_client_android_music)
                             },
                             style = MaterialTheme.typography.bodyLarge,
                         )
@@ -206,6 +207,7 @@ fun PlayerSettings(
                                 PlayerStreamClient.WEB_REMIX -> stringResource(R.string.player_stream_client_web_remix_desc)
                                 PlayerStreamClient.IOS -> stringResource(R.string.player_stream_client_ios_desc)
                                 PlayerStreamClient.TVHTML5 -> stringResource(R.string.player_stream_client_tvhtml5_desc)
+                                PlayerStreamClient.ANDROID_MUSIC -> stringResource(R.string.player_stream_client_android_music_desc)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.secondary,
@@ -256,6 +258,7 @@ fun PlayerSettings(
                 PlayerStreamClient.WEB_REMIX -> stringResource(R.string.player_stream_client_web_remix)
                 PlayerStreamClient.IOS -> stringResource(R.string.player_stream_client_ios)
                 PlayerStreamClient.TVHTML5 -> stringResource(R.string.player_stream_client_tvhtml5)
+                PlayerStreamClient.ANDROID_MUSIC -> stringResource(R.string.player_stream_client_android_music)
             },
             icon = { Icon(painterResource(R.drawable.integration), null) },
             onClick = { showPlayerStreamClientDialog = true }
