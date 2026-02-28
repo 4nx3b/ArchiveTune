@@ -3777,6 +3777,21 @@ class MusicService :
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
+
+        if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
+            if (markAndCheckRecoveryAllowance(currentMediaId)) {
+                Timber.tag("MusicService").w(
+                    "Bot detection error for $currentMediaId — clearing caches and retrying with fresh stream"
+                )
+                YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+                playbackUrlCache.remove(currentMediaId)
+                pendingStreamRefreshValidationMediaId = currentMediaId
+                player.prepare()
+                player.playWhenReady = true
+                return
+            }
+        }
+
         val shouldAttemptStreamRefresh =
             currentMediaId != null && (
                 error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
