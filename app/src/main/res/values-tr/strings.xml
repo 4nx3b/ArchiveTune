@@ -8,13 +8,13 @@
     <string name="playlists">Çalma listeleri</string>
     <!-- Top bar -->
     <plurals name="n_selected">
-        <item quantity="one"/>
+        <item quantity="one">%d seçildi</item>
         <item quantity="other">%d seçildi</item>
     </plurals>
     <!-- Home -->
     <string name="history">Tarih</string>
     <string name="stats">İstatistikler</string>
-    <string name="mood_and_genres">Ruh Hali ve Türler</string>
+    <string name="mood_and_genres">Ruh Hali &amp; Türler</string>
     <string name="account">Hesap</string>
     <string name="quick_picks">Hızlı seçimler</string>
     <string name="quick_picks_empty">Hızlı seçimlerinizi oluşturmak için şarkıları dinleyin</string>
@@ -120,7 +120,7 @@
     <string name="bitrate">Bit hızı</string>
     <string name="sample_rate">Örnekleme oranı</string>
     <string name="loudness">Ses yüksekliği</string>
-    <string name="volume">Hacim</string>
+    <string name="volume">Ses seviyesi</string>
     <string name="file_size">Dosya boyutu</string>
     <string name="unknown">Bilinmiyor</string>
     <string name="copied">Panoya kopyalandı</string>
@@ -159,8 +159,8 @@
         <item quantity="other">%d albüm</item>
     </plurals>
     <plurals name="n_playlist">
-        <item quantity="one">%d oynatma listesi</item>
-        <item quantity="other">%d oynatma listesi</item>
+        <item quantity="one">%d çalma listesi</item>
+        <item quantity="other">%d çalma listesi</item>
     </plurals>
     <plurals name="n_week">
         <item quantity="one">%d hafta</item>
@@ -460,7 +460,7 @@
     <string name="clear_search_history">Arama geçmişini temizle</string>
     <string name="clear_search_history_confirm">Tüm arama geçmişini temizlemek istediğinizden emin misiniz?</string>
     <string name="use_login_for_browse">İçeriğe göz atmak için giriş bilgilerini kullanın</string>
-    <string name="use_login_for_browse_desc">Bu, göreceğiniz içeriği etkileyebilir ve örneğin Premium hesapla oturum açtıysanız yalnızca premium albümlerin gösterilmesini sağlayabilir.</string>
+    <string name="use_login_for_browse_desc">Bu, gördüğünüz içeriği etkileyebilir ve örneğin Premium hesapla giriş yaptıysanız yalnızca Premium üyelere özel albümleri gösterir</string>
     <string name="disable_screenshot">Ekran görüntüsünü devre dışı bırak</string>
     <string name="disable_screenshot_desc">Bu seçenek açıkken ekran görüntüleri ve uygulamanın Son Kullanılanlar\'daki görünümü devre dışı bırakılır.</string>
     <string name="enable_lrclib">LrcLib şarkı sözü sağlayıcısını etkinleştir</string>
@@ -474,8 +474,8 @@
     <string name="backup_create_success">Yedekleme başarıyla oluşturuldu</string>
     <string name="backup_create_failed">Yedekleme oluşturulamadı</string>
     <string name="restore_failed">Yedekleme geri yüklenemedi</string>
-    <string name="discord_integration">Anlaşmazlık Entegrasyonu</string>
-    <string name="discord_information">ArchiveTune uses the KizzyRPC library to set your Discord account\'s status. This involves using the Discord Gateway connection, which may be considered a violation of Discord\'s TOS. However, there are no known cases of user accounts being suspended for this reason. Use at your own risk. ArchiveTune will only extract your token, and everything else is stored locally.</string>
+    <string name="discord_integration">Discord Entegrasyonu</string>
+    <string name="discord_information">ArchiveTune, Discord hesabınızın durumunu ayarlamak için KizzyRPC kütüphanesini kullanır. Bu, Discord\'un Hizmet Şartları\'nın ihlali olarak değerlendirilebilecek Discord Ağ Geçidi bağlantısını kullanılır. Bununla birlikte, bu nedenle kullanıcı hesaplarının askıya alındığı bilinen bir durum bulunmuyor. Kullanım riski size aittir. ArchiveTune yalnızca token\'ınızı çıkaracak ve geri kalan her şey yerel olarak saklanacaktır.</string>
     <string name="dismiss">Reddet</string>
     <string name="options">Seçenekler</string>
     <string name="preview">Önizleme</string>
@@ -484,7 +484,7 @@
     <string name="scrobbling">Skrobling</string>
     <string name="lastfm_integration">Last.fm Entegrasyonu</string>
     <string name="enable_scrobbling">Scrobbling\'i Etkinleştir</string>
-    <string name="lastfm_now_playing">Güncelle Şimdi Yürütülüyor</string>
+    <string name="lastfm_now_playing">Şimdi Oynatılıyor Güncellemesi</string>
     <string name="scrobbling_configuration">Scrobbling Yapılandırması</string>
     <string name="scrobble_min_track_duration">Minimum Parça Süresi</string>
     <string name="scrobble_delay_percent">Scrobble Gecikme Yüzdesi</string>
@@ -548,7 +548,7 @@
     <string name="show_small_image">Küçük resmi göster</string>
     <string name="description_show_small_image">Etkinleştirildiğinde, Zengin Durum önizlemesinde küçük bir dairesel resim gösterilir ve varsa Discord\'a gönderilir</string>
     <string name="logout_confirm_title">Oturumu kapatmayı onaylayın</string>
-    <string name="logout_confirm_message">Discord\'dan çıkış yapmak istediğinden emin misin?</string>
+    <string name="logout_confirm_message">Discord\'dan çıkış yapmak istediğinden emin misin?.</string>
     <string name="logout_confirm_yes">Oturumu kapat</string>
     <string name="logout_confirm_no">İptal</string>
     <!--Misc settings additions-->
@@ -564,11 +564,11 @@
     <string name="open">Açık</string>
     <string name="reset_to_default_levels">Varsayılana sıfırla</string>
     <string name="no_logs">Günlük Yok</string>
-    <string name="show_nerd_stats">İnek istatistiklerini göster</string>
+    <string name="show_nerd_stats">Meraklısı için istatistikleri göster</string>
     <string name="description_show_nerd_stats">Gerçek zamanlı oynatma istatistiklerini görüntüleyin (codec, bit hızı, arabellek)</string>
     <string name="display_codec_on_player">Codec\'i Player\'da Görüntüle</string>
     <string name="description_display_codec_on_player">Geçerli ses codec bileşeni bilgilerini oynatıcıda göster</string>
-    <string name="nerd_stats">İnek İstatistikleri</string>
+    <string name="nerd_stats">Meraklısı için İstatistikler</string>
     <string name="track_label">Parça</string>
     <string name="no_track_playing">Parça çalınmıyor</string>
     <string name="codec_label">Kodlayıcı</string>
@@ -580,7 +580,7 @@
     <string name="content_length_label">İçerik Uzunluğu</string>
     <string name="unknown_content_length">Bilinmeyen içerik uzunluğu</string>
     <string name="format_label">Biçim</string>
-    <string name="loading_format">Format yükleniyor...</string>
+    <string name="loading_format">Biçim yükleniyor…</string>
     <string name="buffer_health_label">Tampon Sağlığı</string>
     <string name="playback_speed_label">Oynatma Hızı</string>
     <string name="state_label">Eyalet</string>
@@ -592,13 +592,13 @@
     <string name="clear_translation_models">Çeviri modellerini temizle</string>
     <string name="updates">Güncellemeler</string>
     <string name="current_version">Güncel Sürüm</string>
-    <string name="latest_version_format">Latest: %s</string>
+    <string name="latest_version_format">En son: %s</string>
     <string name="notification_settings">Bildirim</string>
     <string name="enable_update_notification">Güncelleme Bildirimini Etkinleştir</string>
     <string name="enable_update_notification_desc">Yeni bir kararlı sürüm yayınlandığında bildirim alın</string>
     <string name="update_channel">Kanalı Güncelle</string>
     <string name="channel_stable">Kararlı</string>
-    <string name="channel_nightly">her gece</string>
+    <string name="channel_nightly">Gecelik</string>
     <string name="commit_history">Geliştirme</string>
     <string name="recent_commits">Son Taahhütler</string>
     <string name="update_notification_channel_name">Uygulama Güncellemeleri</string>
@@ -618,11 +618,16 @@
     <string name="next">Sonraki</string>
     <string name="next_song">Sonraki Şarkı</string>
     <string name="allow">İzin ver</string>
-    <string name="mood_and_genres_supporting">Duygular, an veya enerjiye göre çal</string>
+    <string name="mood_and_genres_supporting">Duyguya, döneme veya enerjiye göre çal</string>
     <string name="mood_and_genres_count">%d seçimleri</string>
     <string name="speed_dial">Hızlı Seçimler</string>
     <string name="speed_dial_random">Hızlı seçimlerden rastgele oynat</string>
-    <string name="integrations">İçeri aktarılanlar</string>
+    <string name="integrations">Entegrasyonlar</string>
     <string name="internal_subcategory_settings">Yerel ve ya Kategori ayarları</string>
-    <string name="search_try_different">Başka bir arama yapın.</string>
+    <string name="search_try_different">Farklı bir arama terimi deneyin</string>
+    <string name="view_changelog">Değişiklik Günlüğünü Görüntüle</string>
+    <string name="disable_animations">Animasyonları devre dışı bırak</string>
+    <string name="disable_animations_desc">Çoğu uygulama animasyonunu devre dışı bırakın. Düşük özellikli cihazlar için önerilir</string>
+    <string name="music_recognition">Müzik Tanıma</string>
+    <string name="pause_on_device_mute">Cihaz ses seviyesi 0 olduğunda duraklat</string>
 </resources>
