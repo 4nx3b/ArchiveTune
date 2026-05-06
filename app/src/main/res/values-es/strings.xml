@@ -824,4 +824,12 @@
     <string name="total_requests">Solicitudes totales</string>
     <string name="success_rate">Tasa de éxito</string>
     <string name="providers">Proveedores</string>
+    <string name="aod_mode">Pantalla siempre encendida</string>
+    <string name="aod_mode_exit">Desactivar pantalla siempre encendida</string>
+    <string name="error_malformed_stream">Error en la fuente</string>
+    <string name="support_development_title">Apoyar el desarrollo</string>
+    <string name="support_development_message">¡Hola! Soy Koiverse, el desarrollador de ArchiveTune. Si ArchiveTune se ha ganado un hueco en tu rutina diaria de música, puedes ayudar a que siga adelante haciendo una donación o marcando el proyecto como favorito en GitHub. Gracias por apoyar el trabajo que hay detrás de la aplicación.</string>
+    <string name="support_development_donate">Haz una donación para apoyar el desarrollo</string>
+    <string name="support_development_star">Marcar como favorito en GitHub</string>
+    <string name="later">Más tarde</string>
 </resources>
