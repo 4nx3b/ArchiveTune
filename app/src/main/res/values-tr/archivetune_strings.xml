@@ -60,10 +60,10 @@
     <string name="sort_by_last_updated">Tarih güncellendi</string>
     <string name="link_copied">Bağlantı panoya kopyalandı</string>
     <string name="starting_radio">Radyoyu başlatıyorum</string>
-    <string name="now_playing">Şimdi Oynanıyor</string>
+    <string name="now_playing">Şimdi Oynatılıyor</string>
     <string name="close">Kapat</string>
-    <string name="minimum_volume">Minimum Hacim</string>
-    <string name="maximum_volume">Maksimum Hacim</string>
+    <string name="minimum_volume">Minimum Ses</string>
+    <string name="maximum_volume">Maksimum Ses</string>
     <string name="hide_player_thumbnail">Oyuncu Küçük Resmini Gizle</string>
     <string name="hide_player_thumbnail_desc">Albüm resmini oynatıcıdaki uygulama logosuyla değiştirin</string>
     <string name="show_tags_in_library">Etiketleri kitaplıkta göster</string>
@@ -74,8 +74,8 @@
         <item quantity="other">%d öğe</item>
     </plurals>
     <plurals name="n_time">
-        <item quantity="one">%d kez</item>
-        <item quantity="other">%d kez</item>
+        <item quantity="one">%d kere</item>
+        <item quantity="other">%d kere</item>
     </plurals>
     <string name="seek_backward">5 saniye geri</string>
     <string name="seek_forward">5 saniye ileri</string>
@@ -93,7 +93,7 @@
     <string name="player_design_v2">Çağdaş</string>
     <string name="player_design_v3">Asgari</string>
     <string name="player_design_v4">Sinematik</string>
-    <string name="player_design_v5">Küçük</string>
+    <string name="player_design_v5">Ufak</string>
     <string name="player_background_blur">Bulanıklaştırma</string>
     <string name="coloring">Boyama</string>
     <string name="blur_gradient">Bulanık Degrade</string>
@@ -116,7 +116,7 @@
     <string name="show_top_playlist">\"En iyi\" oynatma listesini göster</string>
     <string name="show_cached_playlist">\"Önbelleğe Alınmış\" oynatma listesini göster</string>
     <string name="google">Google</string>
-    <string name="discord">Anlaşmazlık</string>
+    <string name="discord">Discord</string>
     <string name="advanced_login">Token ile giriş yap</string>
     <string name="token_hidden">Jeton göstermek için dokunun</string>
     <string name="token_shown">Kopyalamak veya düzenlemek için tekrar dokunun</string>
@@ -181,7 +181,7 @@
     <string name="empty_playlist">Boş Oynatma Listesi</string>
     <string name="empty_playlist_desc">Bu şarkı listesi hiç şarkı içermiyor</string>
     <plurals name="seconds">
-        <item quantity="one">1 second</item>
+        <item quantity="one">1 saniye</item>
         <item quantity="other">%d saniye</item>
     </plurals>
     <string name="disable_load_more_when_repeat_all">Tümünü tekrarladığınızda daha fazla yüklemeyi devre dışı bırakın</string>
@@ -235,24 +235,24 @@
     <string name="theme_preview_primary_action">Birincil Eylem</string>
     <string name="theme_preview_secondary_action">İkincil Eylem</string>
     <string name="copy">Kopyala</string>
-    <string name="music_recognition_tap_to_listen">Dinlemek için dokun.</string>
-    <string name="music_recognition_listening">Dinleniyor.…</string>
+    <string name="music_recognition_tap_to_listen">Dinlemek için dokun</string>
+    <string name="music_recognition_listening">Dinleniyor…</string>
     <string name="music_recognition_processing">İşleniyor…</string>
     <string name="music_recognition_listen_again">Tekrar dinle</string>
-    <string name="music_recognition_no_match">Eşleşme bulunamadı.</string>
-    <string name="music_recognition_signature_failed">İmza yaratılamadı.</string>
-    <string name="music_recognition_recognition_failed">Eşleşme yapılamadı</string>
+    <string name="music_recognition_no_match">Eşleşme bulunamadı</string>
+    <string name="music_recognition_signature_failed">İmza oluşturulamadı</string>
+    <string name="music_recognition_recognition_failed">Tanıma başarısız oldu</string>
     <string name="music_recognition_open_shazam">Shazam\'ı aç</string>
-    <string name="music_recognition_lyrics_preview">Şarkı sözleri ön izlemesi</string>
+    <string name="music_recognition_lyrics_preview">Şarkı sözü ön izlemesi</string>
     <string name="music_recognition_permission_title">Mikrofon izni</string>
     <string name="music_recognition_permission_desc">Yakındaki müzikleri bulmak için mikrofona izin ver.</string>
     <string name="music_recognition_permission_action">İzin</string>
-    <string name="music_recognition_error">Birşeyler ters gitti</string>
+    <string name="music_recognition_error">Bir şeyler ters gitti</string>
     <string name="history_local_summary">Bu cihazda oynatıldı</string>
     <string name="history_remote_summary">YouTube Music\'ten senkronize edildi</string>
-    <string name="history_local_empty_title">Yerel Geçmiş henüz yok</string>
-    <string name="history_local_empty_desc">Bu cihazda oynattığınız şarkılar burda gözükecektir.</string>
-    <string name="history_remote_empty_desc">Senkronize edilmiş izleme geçmişiniz YouTube Music\'ten dinledikten sonra burda gözükecektir.</string>
+    <string name="history_local_empty_title">Henüz yerel geçmiş yok</string>
+    <string name="history_local_empty_desc">Bu cihazda çaldığınız şarkılar burada görünecektir.</string>
+    <string name="history_remote_empty_desc">YouTube Music\'te dinledikten sonra senkronize edilmiş izleme geçmişiniz burada görünecektir.</string>
     <string name="history_remote_error_desc">Birazdan tekrar deneyin.</string>
     <string name="history_no_results_title">Eşleşen şarkı yok</string>
     <string name="history_no_results_desc">Başka bir şarkı ya da sanatçı adı deneyin.</string>
@@ -261,7 +261,7 @@
     <string name="scanning_device">Cihaz Taranıyor…</string>
     <string name="local_songs_ready_desc">Bu cihazda ki yerel şarkıları oynat.</string>
     <string name="local_songs_permission_body">Cihazda ki ses dosyalarını taramak için depolama izni verin.</string>
-    <string name="local_songs_empty_title">Yerel şarkı bulunamadı.</string>
+    <string name="local_songs_empty_title">Yerel şarkı bulunamadı</string>
     <string name="local_songs_empty_desc">Üst çubuktan ayarları açın ve bu cihazda çevrimdışı ses bulmak için bir cihaz taraması yapın.</string>
-    <string name="local_songs_scan_failed">Bu cihazın taraması bitirilemedi.</string>
+    <string name="local_songs_scan_failed">Bu cihazın taraması tamamlanamadı.</string>
 </resources>
