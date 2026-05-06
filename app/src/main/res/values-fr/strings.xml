@@ -872,4 +872,12 @@
     <string name="total_requests">Nombre total de demandes</string>
     <string name="success_rate">Taux de réussite</string>
     <string name="providers">Fournisseurs</string>
+    <string name="aod_mode">Mode AOD</string>
+    <string name="aod_mode_exit">Quitter AOD</string>
+    <string name="error_malformed_stream">Erreur source</string>
+    <string name="support_development_title">Soutenir le développement</string>
+    <string name="support_development_message">Salut ! Je m\'appelle Koiverse, je suis le développeur d\'ArchiveTune. Si ArchiveTune fait désormais partie de vos habitudes d\'écoute quotidiennes, vous pouvez contribuer à son développement en faisant un don ou en ajoutant le projet à vos favoris sur GitHub. Merci de soutenir le travail qui se cache derrière cette application.</string>
+    <string name="support_development_donate">Faites un don pour soutenir le développement</string>
+    <string name="support_development_star">Ajouter à vos favoris sur GitHub</string>
+    <string name="later">Plus tard</string>
 </resources>
