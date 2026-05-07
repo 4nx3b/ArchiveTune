@@ -863,4 +863,12 @@ ArchiveTune sẽ chỉ trích xuất token của bạn, và mọi thứ khác đ
     <string name="playlist_suggestion_source_title">Danh sách nhạc tiêu đề</string>
     <string name="playlist_suggestion_source_content">Nội dung danh sách nhạc</string>
     <string name="playlist_suggestion_source_both">Danh sách phát tiêu đề và nội dung</string>
+    <string name="aod_mode">Chế độ AOD</string>
+    <string name="aod_mode_exit">Thoát AOD</string>
+    <string name="error_malformed_stream">Lỗi nguồn</string>
+    <string name="support_development_title">Hỗ trợ phát triển</string>
+    <string name="support_development_message">Chào mọi người! Tôi là Koiverse, nhà phát triển của ArchiveTune. Nếu ArchiveTune đã trở thành một phần trong danh sách nghe nhạc hàng ngày của bạn, bạn có thể giúp dự án tiếp tục phát triển bằng cách quyên góp hoặc đánh dấu sao trên GitHub. Cảm ơn vì đã ủng hộ công sức của chúng tôi trong việc phát triển ứng dụng.</string>
+    <string name="support_development_donate">Quyên góp để hỗ trợ phát triển</string>
+    <string name="support_development_star">Sao trên GitHub</string>
+    <string name="later">Để sau</string>
 </resources>
