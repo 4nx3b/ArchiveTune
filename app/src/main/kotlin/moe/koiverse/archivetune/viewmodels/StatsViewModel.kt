@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import moe.koiverse.archivetune.innertube.YouTube
 import moe.koiverse.archivetune.constants.statToPeriod
 import moe.koiverse.archivetune.db.MusicDatabase
+import moe.koiverse.archivetune.db.entities.ListeningSummary
 import moe.koiverse.archivetune.ui.screens.OptionStats
 import moe.koiverse.archivetune.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,98 +42,92 @@ constructor(
     val selectedOption = MutableStateFlow(OptionStats.CONTINUOUS)
     val indexChips = MutableStateFlow(0)
 
+    fun onOptionSelected(option: OptionStats) {
+        selectedOption.value = option
+        indexChips.value = 0
+    }
+
+    fun onChipIndexChanged(index: Int) {
+        indexChips.value = index
+    }
+
+    private fun periodPair() = combine(selectedOption, indexChips) { opt, idx -> Pair(opt, idx) }
+
+    private fun toTimestamp(selection: OptionStats, t: Int): Long =
+        if (selection == OptionStats.CONTINUOUS || t == 0) {
+            LocalDateTime.now().toInstant(ZoneOffset.UTC).toEpochMilli()
+        } else {
+            statToPeriod(selection, t - 1)
+        }
+
     val mostPlayedSongsStats =
-        combine(
-            selectedOption,
-            indexChips,
-        ) { first, second -> Pair(first, second) }
+        periodPair()
             .flatMapLatest { (selection, t) ->
-                database
-                    .mostPlayedSongsStats(
-                        fromTimeStamp = statToPeriod(selection, t),
-                        limit = -1,
-                        toTimeStamp =
-                        if (selection == OptionStats.CONTINUOUS || t == 0) {
-                            LocalDateTime
-                                .now()
-                                .toInstant(
-                                    ZoneOffset.UTC,
-                                ).toEpochMilli()
-                        } else {
-                            statToPeriod(selection, t - 1)
-                        },
-                    )
+                database.mostPlayedSongsStats(
+                    fromTimeStamp = statToPeriod(selection, t),
+                    limit = -1,
+                    toTimeStamp = toTimestamp(selection, t),
+                )
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val mostPlayedSongs =
-        combine(
-            selectedOption,
-            indexChips,
-        ) { first, second -> Pair(first, second) }
+        periodPair()
             .flatMapLatest { (selection, t) ->
-                database
-                    .mostPlayedSongs(
-                        fromTimeStamp = statToPeriod(selection, t),
-                        limit = -1,
-                        toTimeStamp =
-                        if (selection == OptionStats.CONTINUOUS || t == 0) {
-                            LocalDateTime
-                                .now()
-                                .toInstant(
-                                    ZoneOffset.UTC,
-                                ).toEpochMilli()
-                        } else {
-                            statToPeriod(selection, t - 1)
-                        },
-                    )
+                database.mostPlayedSongs(
+                    fromTimeStamp = statToPeriod(selection, t),
+                    limit = -1,
+                    toTimeStamp = toTimestamp(selection, t),
+                )
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val mostPlayedArtists =
-        combine(
-            selectedOption,
-            indexChips,
-        ) { first, second -> Pair(first, second) }
+        periodPair()
             .flatMapLatest { (selection, t) ->
-                database
-                    .mostPlayedArtists(
-                        statToPeriod(selection, t),
-                        limit = -1,
-                        toTimeStamp =
-                        if (selection == OptionStats.CONTINUOUS || t == 0) {
-                            LocalDateTime
-                                .now()
-                                .toInstant(
-                                    ZoneOffset.UTC,
-                                ).toEpochMilli()
-                        } else {
-                            statToPeriod(selection, t - 1)
-                        },
-                    ).map { artists ->
-                        artists.filter { it.artist.isYouTubeArtist }
-                    }
+                database.mostPlayedArtists(
+                    statToPeriod(selection, t),
+                    limit = -1,
+                    toTimeStamp = toTimestamp(selection, t),
+                ).map { artists -> artists.filter { it.artist.isYouTubeArtist } }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val mostPlayedAlbums =
-        combine(
-            selectedOption,
-            indexChips,
-        ) { first, second -> Pair(first, second) }
+        periodPair()
             .flatMapLatest { (selection, t) ->
                 database.mostPlayedAlbums(
                     statToPeriod(selection, t),
                     limit = -1,
-                    toTimeStamp =
-                    if (selection == OptionStats.CONTINUOUS || t == 0) {
-                        LocalDateTime
-                            .now()
-                            .toInstant(
-                                ZoneOffset.UTC,
-                            ).toEpochMilli()
-                    } else {
-                        statToPeriod(selection, t - 1)
-                    },
+                    toTimeStamp = toTimestamp(selection, t),
                 )
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val listeningByHour =
+        periodPair()
+            .flatMapLatest { (selection, t) ->
+                database.listeningByHour(
+                    fromTimestamp = statToPeriod(selection, t),
+                    toTimestamp = toTimestamp(selection, t),
+                )
+            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val listeningByDayOfWeek =
+        periodPair()
+            .flatMapLatest { (selection, t) ->
+                database.listeningByDayOfWeek(
+                    fromTimestamp = statToPeriod(selection, t),
+                    toTimestamp = toTimestamp(selection, t),
+                )
+            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val listeningSummary =
+        combine(mostPlayedSongsStats, mostPlayedArtists, mostPlayedAlbums) { songs, artists, albums ->
+            ListeningSummary(
+                totalPlayCount = songs.sumOf { it.songCountListened },
+                totalTimeListened = songs.sumOf { it.timeListened ?: 0L },
+                uniqueSongsCount = songs.size,
+                uniqueArtistsCount = artists.size,
+                uniqueAlbumsCount = albums.size,
+            )
+        }.stateIn(viewModelScope, SharingStarted.Lazily, ListeningSummary(0, 0L, 0, 0, 0))
 
     val firstEvent =
         database
