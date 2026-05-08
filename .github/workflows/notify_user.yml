@@ -27,7 +27,7 @@ jobs:
             | grep -oE '#[0-9]+' \
             | tr -d '#' \
             | sort -u \
-            | paste -sd "," -)
+            | paste -sd "," -) || true
 
           echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
 
