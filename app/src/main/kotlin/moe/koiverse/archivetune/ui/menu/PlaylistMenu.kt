@@ -157,16 +157,13 @@ fun PlaylistMenu(
     if (showEditDialog) {
         EditPlaylistDialog(
             initialName = playlist.playlist.name,
-            initialThumbnailUrl = playlist.playlist.thumbnailUrl,
-            fallbackThumbnails = playlist.songThumbnails.filterNotNull(),
             onDismiss = { showEditDialog = false },
-            onSave = { name, thumbnailUrl ->
+            onSave = { name ->
                 onDismiss()
                 database.query {
                     update(
                         playlist.playlist.copy(
                             name = name,
-                            thumbnailUrl = thumbnailUrl,
                             lastUpdateTime = LocalDateTime.now(),
                         )
                     )

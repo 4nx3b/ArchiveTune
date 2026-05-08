@@ -45,7 +45,6 @@
     <string name="local_songs_scan_folders_title">Excluded folders</string>
     <string name="local_songs_scan_folders_desc">Skip songs stored in folders that match any of these paths.</string>
     <string name="local_songs_scan_folders_empty">No folders excluded yet.</string>
-    <string name="local_songs_scan_folders_hint">Examples: Music/Ringtones or Download/Voice Notes</string>
     <string name="local_songs_scan_folders_add">Add folder</string>
     <string name="local_songs_scan_folders_dialog_title">Exclude folder</string>
     <string name="local_songs_scan_folders_dialog_placeholder">Music/Ringtones</string>
@@ -188,6 +187,10 @@
     <string name="show_downloaded_playlist">Show \"Downloaded\" playlist</string>
     <string name="show_top_playlist">Show \"Top\" playlist</string>
     <string name="show_cached_playlist">Show \"Cached\" playlist</string>
+    <string name="card_and_list">Card &amp; List</string>
+    <string name="quick_picks_display_mode">Quick Picks display mode</string>
+    <string name="quick_picks_display_mode_card">Card</string>
+    <string name="quick_picks_display_mode_list">List</string>
     <string name="google">Google</string>
     <string name="discord">Discord</string>
     <string name="advanced_login">Login with token</string>

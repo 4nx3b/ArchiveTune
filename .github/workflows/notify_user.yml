@@ -1,36 +1,82 @@
-name: Notify Issue Author
+name: Comment when commit references issue
 
-on: [push]
+on:
+  push: 
+    branches:
+      - main
+      - dev
 
 jobs:
-  notify-author:
+  notify-issue:
     runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+      contents: read
+
     steps:
-      - name: Extract issue number from commit message
-        id: extract_issue
+      - name: Extract issue numbers
+        id: extract
         shell: bash
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          message="${{ github.event.head_commit.message }}"
-          if [[ "$message" =~ \#([0-9]+) ]]; then
-            echo "issue_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "Commit message:"
+          echo "$MESSAGE"
+          ISSUES=$(echo "$MESSAGE" \
+            | grep -oE '#[0-9]+' \
+            | tr -d '#' \
+            | sort -u \
+            | paste -sd "," -)
 
-      - name: Comment on issue
-        if: ${{ steps.extract_issue.outputs.issue_number != '' }}
-        uses: peter-evans/create-or-update-comment@v5
+          echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on referenced issues
+        if: steps.extract.outputs.issues != ''
+        uses: actions/github-script@v7
+        env:
+          ISSUES: ${{ steps.extract.outputs.issues }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ steps.extract_issue.outputs.issue_number }}
-          body: |
-            Hello, and thank you for your report.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issues = process.env.ISSUES
+              .split(",")
+              .filter(Boolean);
 
-            A new commit that may address this issue has been pushed:
-            ${{ github.event.head_commit.url }}
+            for (const issue_number of issues) {
+              try {
+                const issue = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: Number(issue_number)
+                });
 
-            Please try the latest nightly build once it becomes available and check whether the issue is resolved.
+                const author = issue.data.user.login;
 
-            If the issue is fixed in the nightly build, please close this issue. If it is still reproducible, leave a comment with any updated details so we can continue investigating.
+                const commitUrl = context.payload.head_commit.url;
+                const commitSha =
+                  context.payload.head_commit.id.substring(0, 7);
 
-      - name: Skip when no issue number is present
-        if: ${{ steps.extract_issue.outputs.issue_number == '' }}
-        run: echo "No issue reference found in the head commit message; skipping comment."
+                const body = [
+                  `Hey @${author}, This issue was referenced on commit [\`${commitSha}\`](${commitUrl}).`,
+                  "",
+                  "Make sure to try the latest nightly version:",
+                  "",
+                  "https://nightly.link/koiverse/ArchiveTune/workflows/build/dev/app-mobile-universal-release",
+                  "",
+                  "If this issue is resolved in the nightly build, please close this issue quickly 🚀"
+                ].join("\n");
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: Number(issue_number),
+                  body
+                });
+
+              } catch (error) {
+                console.log(
+                  `Failed for issue #${issue_number}: ${error.message}`
+                );
+              }
+            }
