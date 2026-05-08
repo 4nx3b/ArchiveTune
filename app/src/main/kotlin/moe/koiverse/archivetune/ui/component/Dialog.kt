@@ -12,10 +12,6 @@
 
 package moe.koiverse.archivetune.ui.component
 
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -54,7 +50,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -432,53 +427,14 @@ fun TextFieldDialog(
 @Composable
 fun EditPlaylistDialog(
     initialName: String,
-    initialThumbnailUrl: String?,
-    fallbackThumbnails: List<String>,
     onDismiss: () -> Unit,
-    onSave: (name: String, thumbnailUrl: String?) -> Unit,
+    onSave: (name: String) -> Unit,
 ) {
-    val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     var nameField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(initialName, TextRange(initialName.length)))
     }
-    var thumbnailUrl by rememberSaveable { mutableStateOf(initialThumbnailUrl) }
-
-    val previewThumbnails by remember(thumbnailUrl, fallbackThumbnails) {
-        derivedStateOf {
-            val custom = thumbnailUrl
-            if (!custom.isNullOrBlank()) listOf(custom) else fallbackThumbnails
-        }
-    }
-
-    fun releasePersistablePermissionIfPossible(uriString: String?) {
-        if (uriString.isNullOrBlank()) return
-        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return
-        if (uri.scheme != "content") return
-        runCatching {
-            context.contentResolver.releasePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
-    }
-
-    val pickCoverLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
-            val old = thumbnailUrl
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            if (old != null && old != uri.toString()) {
-                releasePersistablePermissionIfPossible(old)
-            }
-            thumbnailUrl = uri.toString()
-        }
 
     val canSave by remember {
         derivedStateOf { nameField.text.isNotBlank() }
@@ -497,7 +453,7 @@ fun EditPlaylistDialog(
                 enabled = canSave,
                 onClick = {
                     keyboardController?.hide()
-                    onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
+                    onSave(nameField.text.trim())
                     onDismiss()
                 },
                 shapes = ButtonDefaults.shapes(),
@@ -506,86 +462,22 @@ fun EditPlaylistDialog(
             }
         },
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            BoxWithConstraints(modifier = Modifier.size(140.dp)) {
-                val thumbnailSize = maxWidth
-                val badgeSize = (thumbnailSize * 0.34f).coerceIn(36.dp, 48.dp)
-                val badgePadding = (thumbnailSize * 0.06f).coerceIn(4.dp, 10.dp)
-                val iconSize = (badgeSize * 0.46f).coerceIn(18.dp, 24.dp)
-
-                PlaylistThumbnail(
-                    thumbnails = previewThumbnails,
-                    size = thumbnailSize,
-                    placeHolder = {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.queue_music),
-                                contentDescription = null,
-                                tint = LocalContentColor.current.copy(alpha = 0.8f),
-                                modifier = Modifier.size(thumbnailSize / 2),
-                            )
-                        }
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                )
-
-                Surface(
-                    onClick = { pickCoverLauncher.launch(arrayOf("image/*")) },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(badgePadding)
-                        .size(badgeSize),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.edit),
-                            contentDescription = stringResource(R.string.change_playlist_cover),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(iconSize),
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (!thumbnailUrl.isNullOrBlank()) {
-                Button(
-                    onClick = {
-                        releasePersistablePermissionIfPossible(thumbnailUrl)
-                        thumbnailUrl = null
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(R.string.remove_playlist_cover))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            TextField(
-                value = nameField,
-                onValueChange = { nameField = it },
-                placeholder = { Text(text = stringResource(R.string.playlist_name)) },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        if (!canSave) return@KeyboardActions
-                        keyboardController?.hide()
-                        onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
-                        onDismiss()
-                    },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        TextField(
+            value = nameField,
+            onValueChange = { nameField = it },
+            placeholder = { Text(text = stringResource(R.string.playlist_name)) },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (!canSave) return@KeyboardActions
+                    keyboardController?.hide()
+                    onSave(nameField.text.trim())
+                    onDismiss()
+                },
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

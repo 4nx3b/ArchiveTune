@@ -11,7 +11,11 @@
 package moe.koiverse.archivetune.ui.screens.playlist
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -304,21 +308,51 @@ fun LocalPlaylistScreen(
         }
     }
 
+    val pickCoverLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val oldUriString = playlist?.playlist?.thumbnailUrl
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        if (!oldUriString.isNullOrBlank() && oldUriString != uri.toString()) {
+            val oldUri = runCatching { Uri.parse(oldUriString) }.getOrNull()
+            if (oldUri?.scheme == "content") {
+                runCatching {
+                    context.contentResolver.releasePersistableUriPermission(
+                        oldUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+        }
+        val newUriString = uri.toString()
+        playlist?.let { p ->
+            database.query {
+                update(
+                    p.playlist.copy(
+                        thumbnailUrl = newUriString,
+                        lastUpdateTime = LocalDateTime.now(),
+                    )
+                )
+            }
+        }
+    }
+
     var showEditDialog by remember { mutableStateOf(false) }
 
     if (showEditDialog) {
         playlist?.let { playlistData ->
             EditPlaylistDialog(
                 initialName = playlistData.playlist.name,
-                initialThumbnailUrl = playlistData.playlist.thumbnailUrl,
-                fallbackThumbnails = playlistData.songThumbnails.filterNotNull(),
                 onDismiss = { showEditDialog = false },
-                onSave = { name, thumbnailUrl ->
+                onSave = { name ->
                     database.query {
                         update(
                             playlistData.playlist.copy(
                                 name = name,
-                                thumbnailUrl = thumbnailUrl,
                                 lastUpdateTime = LocalDateTime.now(),
                             )
                         )
@@ -756,6 +790,28 @@ fun LocalPlaylistScreen(
                                                     contentDescription = null,
                                                     modifier = Modifier.size(80.dp),
                                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (editable) {
+                                        Surface(
+                                            onClick = { pickCoverLauncher.launch(arrayOf("image/*")) },
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            shadowElevation = 6.dp,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(8.dp)
+                                                .size(40.dp),
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.edit),
+                                                    contentDescription = stringResource(R.string.change_playlist_cover),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(20.dp),
                                                 )
                                             }
                                         }
