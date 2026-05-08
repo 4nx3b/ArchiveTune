@@ -96,6 +96,7 @@ import moe.koiverse.archivetune.ui.component.ListItem
 import moe.koiverse.archivetune.ui.component.MenuSurfaceSection
 import moe.koiverse.archivetune.ui.component.NewAction
 import moe.koiverse.archivetune.ui.component.NewActionGrid
+import moe.koiverse.archivetune.ui.utils.resize
 import moe.koiverse.archivetune.ui.component.SongListItem
 import moe.koiverse.archivetune.utils.SpeedDialPin
 import moe.koiverse.archivetune.utils.SpeedDialPinType
@@ -289,8 +290,9 @@ fun AlbumMenu(
                         contentAlignment = Alignment.Center,
                     ) {
                         AsyncImage(
-                            model = splitArtist.originalArtist?.thumbnailUrl,
+                            model = splitArtist.originalArtist?.thumbnailUrl?.resize(200, 200),
                             contentDescription = null,
+                            contentScale = ContentScale.Crop,
                             modifier =
                             Modifier
                                 .size(ListThumbnailSize)
