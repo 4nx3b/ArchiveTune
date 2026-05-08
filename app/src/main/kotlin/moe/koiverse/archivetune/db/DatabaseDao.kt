@@ -54,6 +54,7 @@ import moe.koiverse.archivetune.db.entities.Song
 import moe.koiverse.archivetune.db.entities.SongAlbumMap
 import moe.koiverse.archivetune.db.entities.SongArtistMap
 import moe.koiverse.archivetune.db.entities.SongEntity
+import moe.koiverse.archivetune.db.entities.ListeningBySlot
 import moe.koiverse.archivetune.db.entities.SongWithStats
 import moe.koiverse.archivetune.db.entities.TagEntity
 import moe.koiverse.archivetune.db.entities.PlaylistTagMap
@@ -1189,6 +1190,36 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId DESC")
     fun events(): Flow<List<EventWithSong>>
+
+    @Query(
+        """
+        SELECT CAST(strftime('%H', datetime(timestamp / 1000, 'unixepoch', 'localtime')) AS INTEGER) AS slot,
+               SUM(playTime) AS timeListened
+        FROM event
+        WHERE timestamp > :fromTimestamp AND timestamp <= :toTimestamp
+        GROUP BY slot
+        ORDER BY slot
+        """,
+    )
+    fun listeningByHour(
+        fromTimestamp: Long,
+        toTimestamp: Long,
+    ): Flow<List<ListeningBySlot>>
+
+    @Query(
+        """
+        SELECT CAST(strftime('%w', datetime(timestamp / 1000, 'unixepoch', 'localtime')) AS INTEGER) AS slot,
+               SUM(playTime) AS timeListened
+        FROM event
+        WHERE timestamp > :fromTimestamp AND timestamp <= :toTimestamp
+        GROUP BY slot
+        ORDER BY slot
+        """,
+    )
+    fun listeningByDayOfWeek(
+        fromTimestamp: Long,
+        toTimestamp: Long,
+    ): Flow<List<ListeningBySlot>>
 
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId ASC LIMIT 1")
