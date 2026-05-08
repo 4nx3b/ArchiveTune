@@ -905,8 +905,10 @@ fun Queue(
                                                 if (!selection) {
                                                     selection = true
                                                 }
-                                                selectedSongs.clear() // Clear all selections
-                                                selectedSongs.add(trackMetadata) // Select current item
+                                                selectedSongs.clear()
+                                                selectedItems.clear()
+                                                selectedSongs.add(trackMetadata)
+                                                selectedItems.add(currentItem)
                                             },
                                         ),
                                 )
