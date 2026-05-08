@@ -34,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -153,6 +154,18 @@ private fun CrashReportScaffold(
     val scrollState = rememberScrollState()
 
     Scaffold(
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onShareAll,
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.share),
+                        contentDescription = null,
+                    )
+                },
+                text = { Text("Share Logs") },
+            )
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -167,12 +180,6 @@ private fun CrashReportScaffold(
                     IconButton(onClick = onCopyAll) {
                         Icon(
                             painter = painterResource(R.drawable.select_all),
-                            contentDescription = null,
-                        )
-                    }
-                    IconButton(onClick = onShareAll) {
-                        Icon(
-                            painter = painterResource(R.drawable.share),
                             contentDescription = null,
                         )
                     }
