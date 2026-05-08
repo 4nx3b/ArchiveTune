@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -108,6 +109,7 @@ import moe.koiverse.archivetune.ui.component.NewActionGrid
 import moe.koiverse.archivetune.ui.component.SongListItem
 import moe.koiverse.archivetune.ui.component.TextFieldDialog
 import moe.koiverse.archivetune.ui.utils.ShowMediaInfo
+import moe.koiverse.archivetune.ui.utils.resize
 import moe.koiverse.archivetune.utils.SpeedDialPin
 import moe.koiverse.archivetune.utils.SpeedDialPinType
 import moe.koiverse.archivetune.utils.parseSpeedDialPins
@@ -329,8 +331,9 @@ fun SongMenu(
                     },
                     leadingContent = {
                         AsyncImage(
-                            model = splitArtist.originalArtist?.thumbnailUrl,
+                            model = splitArtist.originalArtist?.thumbnailUrl?.resize(200, 200),
                             contentDescription = null,
+                            contentScale = ContentScale.Crop,
                             modifier =
                                 Modifier
                                     .size(40.dp)
