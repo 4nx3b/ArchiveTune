@@ -1075,7 +1075,7 @@ fun Lyrics(
                         val reduceMotionDuringScroll =
                             isSelectionModeActive
 
-                        if (effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE) {
+                        if (effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE && hasWordTimings) {
                             val isCjk = remember(item.text) {
                                 isChinese(item.text) || isJapanese(item.text) || isKorean(item.text)
                             }
@@ -1783,6 +1783,42 @@ fun Lyrics(
                                     scaleX = 1f
                                     scaleY = 1f
                                 }
+                            )
+                        } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.KARAOKE && !reduceMotionDuringScroll) {
+
+                            val nextLineTime = remember(index, lines.size) {
+                                lines.getOrNull(index + 1)?.time ?: (item.time + 5000L).coerceAtLeast(item.time + 1000L)
+                            }
+                            val lineDuration = (nextLineTime - item.time).coerceAtLeast(100L)
+                            val timeElapsed = (currentPlaybackPosition - item.time).coerceAtLeast(0L)
+                            val fillProgress = (timeElapsed.toFloat() / lineDuration.toFloat()).coerceIn(0f, 1f)
+
+                            val slideBrush = rtlAwareHorizontalGradient(
+                                isRtl = lineIsRtl,
+                                0.0f to lyricsBaseColor,
+                                (fillProgress * 0.95f).coerceIn(0f, 1f) to lyricsBaseColor,
+                                fillProgress.coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.9f),
+                                (fillProgress + 0.02f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.5f),
+                                (fillProgress + 0.08f).coerceIn(0f, 1f) to lyricsBaseColor.copy(alpha = 0.35f),
+                                1.0f to lyricsBaseColor.copy(alpha = 0.35f)
+                            )
+
+                            val styledText = buildAnnotatedString {
+                                withStyle(
+                                    style = SpanStyle(
+                                        brush = slideBrush,
+                                        fontWeight = if (hasRomanization) FontWeight.Bold else FontWeight.ExtraBold
+                                    )
+                                ) {
+                                    append(item.text)
+                                }
+                            }
+
+                            Text(
+                                text = styledText,
+                                fontSize = lyricsTextSize.sp,
+                                textAlign = alignment,
+                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp
                             )
                         } else if (isActiveLine && effectiveAnimationStyle == LyricsAnimationStyle.APPLE && !reduceMotionDuringScroll) {
 
