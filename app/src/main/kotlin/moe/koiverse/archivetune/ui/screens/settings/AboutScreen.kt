@@ -355,9 +355,23 @@ fun AboutScreen(
             discord = "https://discord.com/users/840839409640800258"
         ),
         TeamMember(
+            avatarUrl = "https://avatars.githubusercontent.com/u/89002922?v=4",
+            name = "Miko",
+            position = "Contributor Team",
+            profileUrl = "https://github.com/mikooochi",
+            github = "https://github.com/mikooochi"
+        ),
+        TeamMember(
+            avatarUrl = "https://avatars.githubusercontent.com/u/80249864?v=4",
+            name = "sang765",
+            position = "Contributor Team",
+            profileUrl = "https://github.com/sang765",
+            github = "https://github.com/sang765"
+        ),
+        TeamMember(
             avatarUrl = "https://avatars.githubusercontent.com/u/80542861?v=4",
             name = "MO AGAMY",
-            position = "Metrolist Dev",
+            position = "Base Framework | Metrolist",
             profileUrl = "https://github.com/mostafaalagamy",
             github = "https://github.com/mostafaalagamy",
             website = null,
