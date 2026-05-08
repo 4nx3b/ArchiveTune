@@ -377,7 +377,6 @@
     <string name="system_default">系统默认</string>
     <string name="enable_proxy">启用代理</string>
     <string name="proxy_type">代理类型</string>
-    <string name="proxy_url">代理网址</string>
     <string name="eq_import_failed">无效配置文件数据</string>
     <string name="eq_output_gain">输出增益</string>
     <string name="eq_bass_boost">低音增强</string>

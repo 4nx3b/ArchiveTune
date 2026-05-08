@@ -702,7 +702,7 @@ private fun StatsHighlightsSection(
             StatsHighlightCard(
                 title = stringResource(R.string.stats_favourite_song),
                 mainText = topSong.title,
-                subText = "${topSong.songCountListened} ${stringResource(R.plurals.n_time, topSong.songCountListened).substringAfter(' ')} • ${makeTimeString(topSong.timeListened)}",
+                subText = "${pluralStringResource(R.plurals.n_time, topSong.songCountListened, topSong.songCountListened)} • ${makeTimeString(topSong.timeListened)}",
                 imageUrl = topSong.thumbnailUrl,
                 useCircleShape = false,
                 onClick = {},

@@ -409,7 +409,6 @@
     <string name="system_default">Налаштування системи</string>
     <string name="enable_proxy">Увімкнути проксі</string>
     <string name="proxy_type">Тип проксі</string>
-    <string name="proxy_url">URL проксі</string>
     <string name="stream_bypass_proxy">Обходити проксі для потоків</string>
     <string name="stream_bypass_proxy_desc">Використовуйте свою пряму IP-адресу для відтворення, щоб уникнути невідповідності IP-адрес</string>
     <string name="restart_to_take_effect">Щоб зміни набули чинності, потрібно перезапустити систему</string>

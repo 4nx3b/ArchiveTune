@@ -248,7 +248,6 @@
     <string name="system_default">Süsteemi vaikeväärtus</string>
     <string name="enable_proxy">Kasuta proksiserverit</string>
     <string name="proxy_type">Proksiserveri tüüp</string>
-    <string name="proxy_url">Proksiserveri aadress</string>
     <string name="restart_to_take_effect">Muudatuse jõustamiseks käivita rakendus uuesti</string>
     <string name="artist_separators_desc">Mitme esitaja eraldamiseks kasutatavad sümbolid</string>
     <string name="add_symbol">Lisa sümbol</string>
