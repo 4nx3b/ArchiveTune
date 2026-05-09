@@ -4299,6 +4299,15 @@ class MusicService :
     } else {
         ensurePresenceManager()
     }
+
+    // Persist queue on play/pause so a force-stop right after pausing still restores the correct position
+    if (events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED) && player.mediaItemCount > 0) {
+        scope.launch(SilentHandler) {
+            if (withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }) {
+                saveQueueToDisk()
+            }
+        }
+    }
   }
 
 
@@ -4947,7 +4956,7 @@ class MusicService :
                 }
             }.onFailure {
                 Timber.tag(TAG).w(it, "Failed to read persistent file: $fileName")
-            }.getOrThrow()
+            }.getOrNull()
         }
     }
 
