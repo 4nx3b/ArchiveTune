@@ -376,7 +376,6 @@
     <string name="system_default">Predeterminado del sistema</string>
     <string name="enable_proxy">Activar proxy</string>
     <string name="proxy_type">Tipo de proxy</string>
-    <string name="proxy_url">URL de proxy</string>
     <string name="restart_to_take_effect">Reinicia para que tome efecto</string>
     <string name="enable_betterlyrics">Activar BetterLyrics</string>
     <string name="enable_simpmusic_lyrics">Activar letras de SimpMusic</string>

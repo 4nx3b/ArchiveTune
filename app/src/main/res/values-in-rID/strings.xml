@@ -435,7 +435,6 @@
     <string name="system_default">Bawaan sistem</string>
     <string name="enable_proxy">Aktifkan proksi</string>
     <string name="proxy_type">Jenis proxy</string>
-    <string name="proxy_url">URL proksi</string>
     <string name="stream_bypass_proxy">Lewati proxy untuk streaming</string>
     <string name="stream_bypass_proxy_desc">Gunakan IP langsung Anda untuk pemutaran streaming guna menghindari ketidakcocokan IP</string>
     <string name="restart_to_take_effect">Mulai ulang agar berlaku</string>

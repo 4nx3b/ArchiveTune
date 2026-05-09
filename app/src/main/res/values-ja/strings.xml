@@ -435,7 +435,6 @@
     <string name="system_default">システムのデフォルト</string>
     <string name="enable_proxy">プロキシを有効にする</string>
     <string name="proxy_type">プロキシの種類</string>
-    <string name="proxy_url">プロキシ URL</string>
     <string name="stream_bypass_proxy">ストリームのプロキシをバイパスする</string>
     <string name="stream_bypass_proxy_desc">IP の不一致を避けるためにストリーム再生には直接 IP を使用してください</string>
     <string name="restart_to_take_effect">再起動して有効にします</string>

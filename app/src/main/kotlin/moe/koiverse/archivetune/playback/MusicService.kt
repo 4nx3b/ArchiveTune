@@ -4369,7 +4369,9 @@ class MusicService :
         val isLocalMedia = currentMediaId.isLocalMediaId()
 
         val isFullyCachedMedia = runCatching {
-            val cachedInDownload = downloadCache.getContentMetadata(currentMediaId).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) > 0L
+            val cachedInDownload =
+                downloadCache.getContentMetadata(currentMediaId).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) > 0L
+                    || downloadCache.getCachedSpans(currentMediaId).isNotEmpty()
             val cachedInPlayer = playerCache.getContentMetadata(currentMediaId).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) > 0L
             cachedInDownload || cachedInPlayer
         }.getOrDefault(false)
@@ -4515,6 +4517,11 @@ class MusicService :
                 playerCache
                     .getContentMetadata(mediaId)
                     .get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+            }.getOrNull()?.takeIf { it > 0L } ?: runCatching {
+                // Fallback: derive content length from cached download spans so that
+                // fully-downloaded songs can short-circuit even when cache metadata
+                // did not record KEY_CONTENT_LENGTH (e.g. chunked YouTube responses).
+                downloadCache.getCachedSpans(mediaId).takeIf { it.isNotEmpty() }?.sumOf { it.length }
             }.getOrNull()?.takeIf { it > 0L }
 
         knownContentLength?.let { contentLengthCache[mediaId] = it }
@@ -4536,6 +4543,15 @@ class MusicService :
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                 return dataSpec
             }
+        }
+
+        // Safety net: if content length is still unknown but the song has data in
+        // downloadCache, return the original dataSpec and let CacheDataSource handle
+        // it. This prevents a network call for songs that are fully downloaded but
+        // whose content length could not be determined from any metadata source.
+        if (allowCacheShortCircuit && requiredCachedLength == null && downloadCache.keys.contains(mediaId)) {
+            scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+            return dataSpec
         }
 
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint

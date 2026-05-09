@@ -384,7 +384,6 @@
     <string name="system_default">Sistem varsayılanı</string>
     <string name="enable_proxy">Proxy\'yi etkinleştir</string>
     <string name="proxy_type">Vekil türü</string>
-    <string name="proxy_url">Proxy URL\'si</string>
     <string name="restart_to_take_effect">Etkili olması için yeniden başlatın</string>
     <string name="enable_betterlyrics">BetterLyrics\'i etkinleştir</string>
     <string name="enable_simpmusic_lyrics">SimpMusic şarkı sözlerini etkinleştir</string>

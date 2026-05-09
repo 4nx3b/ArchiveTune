@@ -34,16 +34,19 @@ import moe.koiverse.archivetune.extensions.filterExplicitAlbums
 import moe.koiverse.archivetune.utils.dataStore
 import moe.koiverse.archivetune.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val artistId = savedStateHandle.get<String>("artistId")!!
@@ -89,6 +92,12 @@ class ArtistViewModel @Inject constructor(
                         }
 
                     artistPage = page.copy(sections = filteredSections)
+
+                    withContext(Dispatchers.IO) {
+                        database.artist(artistId).firstOrNull()?.artist?.let { artistEntity ->
+                            database.update(artistEntity, page)
+                        }
+                    }
                 }.onFailure {
                     reportException(it)
                 }

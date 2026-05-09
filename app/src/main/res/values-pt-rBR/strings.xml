@@ -353,7 +353,6 @@
     <string name="system_default">Padrão do sistema</string>
     <string name="enable_proxy">Ativar proxy</string>
     <string name="proxy_type">Tipo de proxy</string>
-    <string name="proxy_url">URL do proxy</string>
     <string name="restart_to_take_effect">Reinicie o app para aplicar as alterações</string>
     <string name="enable_betterlyrics">Ativar BetterLyrics</string>
     <string name="enable_simpmusic_lyrics">Ativar letras da SimpMusic</string>

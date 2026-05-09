@@ -138,11 +138,8 @@ import moe.koiverse.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FO
 import moe.koiverse.archivetune.lyrics.LyricsEntry
 import moe.koiverse.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.koiverse.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
-import moe.koiverse.archivetune.lyrics.LyricsUtils.isChinese
 import moe.koiverse.archivetune.lyrics.LyricsUtils.romanizeLyricsLine
 import moe.koiverse.archivetune.lyrics.LyricsUtils.shouldRomanizeLyricsLine
-import moe.koiverse.archivetune.lyrics.LyricsUtils.isJapanese
-import moe.koiverse.archivetune.lyrics.LyricsUtils.isKorean
 import moe.koiverse.archivetune.lyrics.LyricsUtils.isTtml
 import moe.koiverse.archivetune.lyrics.LyricsUtils.parseLyrics
 import moe.koiverse.archivetune.lyrics.LyricsUtils.parseTtml
@@ -294,90 +291,7 @@ fun LyricsV2(
         }
     }
 
-    // ── Synthesize word timings for LRC entries that lack them ──
-    val entriesWithWords: List<LyricsEntry> = remember(lyricsEntries) {
-        if (lyricsEntries.isEmpty()) return@remember emptyList()
-        lyricsEntries.mapIndexed { index, entry ->
-            if (entry.words != null || entry.time < 0 || entry.text.isBlank()) {
-                entry // Already has word timings (TTML) or is non-synced
-            } else {
-                // Synthesize word-level timings for this LRC line
-                val nextEntryTime = if (index < lyricsEntries.lastIndex) {
-                    lyricsEntries[index + 1].time
-                } else {
-                    entry.time + 5000L // 5s fallback for last line
-                }
-                val lineDurationMs = (nextEntryTime - entry.time).coerceAtLeast(500L)
-                val lineStartSec = entry.time / 1000.0
-
-                val isCjkText = isJapanese(entry.text) || isChinese(entry.text) || isKorean(entry.text)
-                val tokens = if (isCjkText) {
-                    val chars = mutableListOf<String>()
-                    var currentWord = StringBuilder()
-                    entry.text.forEach { char ->
-                        if (char.isWhitespace()) {
-                            if (currentWord.isNotEmpty()) {
-                                chars.add(currentWord.toString())
-                                currentWord.clear()
-                            }
-                            chars.add(char.toString())
-                        } else if (isJapanese(char.toString()) || isChinese(char.toString()) || isKorean(char.toString())) {
-                            if (currentWord.isNotEmpty()) {
-                                chars.add(currentWord.toString())
-                                currentWord.clear()
-                            }
-                            chars.add(char.toString())
-                        } else {
-                            currentWord.append(char)
-                        }
-                    }
-                    if (currentWord.isNotEmpty()) {
-                        chars.add(currentWord.toString())
-                    }
-
-                    // Group spaces onto the preceding word
-                    val groupedTokens = mutableListOf<String>()
-                    var tempStr = StringBuilder()
-                    chars.forEachIndexed { i, c ->
-                        if (c.isBlank()) {
-                            if (groupedTokens.isNotEmpty()) {
-                                groupedTokens[groupedTokens.lastIndex] = groupedTokens.last() + c
-                            }
-                        } else {
-                            groupedTokens.add(c)
-                        }
-                    }
-                    groupedTokens
-                } else {
-                    entry.text.split(Regex("\\s+"))
-                }
-                if (tokens.isEmpty()) return@mapIndexed entry
-
-                // Weight each token by character count for proportional distribution
-                val totalChars = tokens.sumOf { it.length }.coerceAtLeast(1)
-                val words = mutableListOf<WordTimestamp>()
-                var currentOffsetMs = 0.0
-
-                tokens.forEachIndexed { wordIdx, token ->
-                    val weight = token.length.toDouble() / totalChars
-                    val wordDurMs = lineDurationMs * weight
-                    val wordStartSec = lineStartSec + (currentOffsetMs / 1000.0)
-                    val wordEndSec = wordStartSec + (wordDurMs / 1000.0)
-
-                    val wordText = if (wordIdx < tokens.lastIndex && !isCjkText) "$token " else token
-                    words.add(
-                        WordTimestamp(
-                            text = wordText,
-                            startTime = wordStartSec,
-                            endTime = wordEndSec,
-                        )
-                    )
-                    currentOffsetMs += wordDurMs
-                }
-                entry.copy(words = words)
-            }
-        }
-    }
+    val entriesWithWords: List<LyricsEntry> = lyricsEntries
 
     // ── Romanization ──
     LaunchedEffect(entriesWithWords, romanizationPreferences) {

@@ -385,7 +385,6 @@
     <string name="system_default">Valeurs du système</string>
     <string name="enable_proxy">Activer le proxy</string>
     <string name="proxy_type">Type de proxy</string>
-    <string name="proxy_url">URL du proxy</string>
     <string name="restart_to_take_effect">Redémarrez pour que cela prenne effet</string>
     <string name="enable_betterlyrics">Activer BetterLyrics</string>
     <string name="player_and_audio">Lecteur &amp; Audio</string>
