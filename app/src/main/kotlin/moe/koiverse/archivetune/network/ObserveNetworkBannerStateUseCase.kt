@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.transformLatest
 
 private const val OfflineBannerDebounceMillis = 750L
+private const val OfflineBannerDurationMillis = 3000L
 private const val BackOnlineBannerDurationMillis = 2500L
 
 internal fun Flow<Boolean>.asNetworkBannerUiState(
     offlineDebounceMillis: Long = OfflineBannerDebounceMillis,
+    offlineBannerDurationMillis: Long = OfflineBannerDurationMillis,
     backOnlineBannerDurationMillis: Long = BackOnlineBannerDurationMillis,
 ): Flow<NetworkBannerUiState> {
     var hasReceivedInitialValue = false
@@ -32,6 +34,8 @@ internal fun Flow<Boolean>.asNetworkBannerUiState(
                 delay(offlineDebounceMillis)
                 hasShownOfflineBanner = true
                 emit(NetworkBannerUiState.Offline)
+                delay(offlineBannerDurationMillis)
+                emit(NetworkBannerUiState.Hidden)
             }
             return@transformLatest
         }
@@ -40,6 +44,8 @@ internal fun Flow<Boolean>.asNetworkBannerUiState(
             delay(offlineDebounceMillis)
             hasShownOfflineBanner = true
             emit(NetworkBannerUiState.Offline)
+            delay(offlineBannerDurationMillis)
+            emit(NetworkBannerUiState.Hidden)
             return@transformLatest
         }
 
