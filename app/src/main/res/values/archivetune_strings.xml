@@ -368,4 +368,12 @@
     <string name="restore_step_restoring_settings">Restoring settings</string>
     <string name="restore_step_restoring_file">Restoring %1$s</string>
     <string name="restore_step_restarting">Restarting app</string>
+    <string name="backup_options_title">What to back up?</string>
+    <string name="restore_options_title">What to restore?</string>
+    <string name="backup_category_library">Library Data</string>
+    <string name="backup_category_library_desc">Playlists, songs, history &amp; artists</string>
+    <string name="backup_category_settings">App Settings</string>
+    <string name="backup_category_settings_desc">Appearance, playback &amp; preferences</string>
+    <string name="backup_category_account">Account Details</string>
+    <string name="backup_category_account_desc">YouTube, Last.fm, Discord &amp; proxy credentials</string>
 </resources>
