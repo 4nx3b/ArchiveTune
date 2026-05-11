@@ -15,6 +15,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
+import androidx.media3.common.C
 import androidx.media3.common.util.NotificationUtil
 import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.offline.Download
@@ -56,34 +57,44 @@ class ExoDownloadService : DownloadService(
         downloads: MutableList<Download>,
         notMetRequirements: Int
     ): Notification {
-        val progressNotification = downloadUtil.downloadNotificationHelper.buildProgressNotification(
-            this,
-            R.drawable.download,
-            null,
-            if (downloads.size == 1) Util.fromUtf8Bytes(downloads[0].request.data)
-            else resources.getQuantityString(R.plurals.n_song, downloads.size, downloads.size),
-            downloads,
-            notMetRequirements
-        )
-        progressNotification.actions = emptyArray<Notification.Action>()
-
-        return Notification.Builder.recoverBuilder(
-            this,
-            progressNotification
-        ).addAction(
-            Notification.Action.Builder(
-                Icon.createWithResource(this, R.drawable.close),
-                getString(android.R.string.cancel),
-                PendingIntent.getService(
-                    this,
-                    0,
-                    Intent(this, ExoDownloadService::class.java).setAction(
-                        REMOVE_ALL_PENDING_DOWNLOADS
-                    ),
-                    PendingIntent.FLAG_IMMUTABLE
-                )
-            ).build()
-        ).build()
+        val activeDownloads = downloads.filter { it.state != Download.STATE_REMOVING }
+        val totalPercentage = activeDownloads.sumOf { download ->
+            if (download.getPercentDownloaded() != C.PERCENTAGE_UNSET) {
+                download.getPercentDownloaded().toDouble()
+            } else {
+                0.0
+            }
+        }.toInt()
+        val hasKnownProgress = activeDownloads.any { it.getPercentDownloaded() != C.PERCENTAGE_UNSET }
+        val contentText = if (downloads.size == 1) {
+            Util.fromUtf8Bytes(downloads[0].request.data)
+        } else {
+            resources.getQuantityString(R.plurals.n_song, downloads.size, downloads.size)
+        }
+        return Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.download)
+            .setContentTitle(getString(R.string.downloading))
+            .setContentText(contentText)
+            .setProgress(
+                100 * activeDownloads.size,
+                totalPercentage,
+                !hasKnownProgress && activeDownloads.isNotEmpty()
+            )
+            .setOngoing(true)
+            .setShowWhen(false)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.close),
+                    getString(android.R.string.cancel),
+                    PendingIntent.getService(
+                        this,
+                        0,
+                        Intent(this, ExoDownloadService::class.java).setAction(REMOVE_ALL_PENDING_DOWNLOADS),
+                        PendingIntent.FLAG_IMMUTABLE
+                    )
+                ).build()
+            )
+            .build()
     }
 
 
