@@ -66,6 +66,12 @@ data class BackupRestoreProgressUi(
     val indeterminate: Boolean,
 )
 
+enum class BackupCategory {
+    LIBRARY,
+    ACCOUNT,
+    SETTINGS,
+}
+
 internal fun readCsvRecords(reader: Reader): Sequence<List<String>> =
     sequence {
         val pushbackReader = if (reader is PushbackReader) reader else PushbackReader(reader, 1)
@@ -165,20 +171,27 @@ class BackupRestoreViewModel @Inject constructor(
             )
     }
 
-    fun backup(context: Context, uri: Uri) {
+    fun backup(context: Context, uri: Uri, categories: Set<BackupCategory>) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = context.getString(R.string.backup_in_progress)
             try {
+                val includeSettings = BackupCategory.SETTINGS in categories
+                val includeAccount = BackupCategory.ACCOUNT in categories
+                val includeLibrary = BackupCategory.LIBRARY in categories
+                val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREF_KEYS
                 val dbFile = context.getDatabasePath(InternalDatabase.DB_NAME)
-                val dbFiles =
+                val dbFiles = if (includeLibrary) {
                     listOf(
                         dbFile,
                         dbFile.resolveSibling("${InternalDatabase.DB_NAME}-wal"),
                         dbFile.resolveSibling("${InternalDatabase.DB_NAME}-shm"),
                         dbFile.resolveSibling("${InternalDatabase.DB_NAME}-journal"),
                     ).filter { it.exists() }
+                } else {
+                    emptyList()
+                }
 
-                val totalUnits = 2 + dbFiles.size
+                val totalUnits = (if (includeSettings) 1 else 0) + (if (includeLibrary) 1 else 0) + dbFiles.size
                 val unitSpan = 100f / totalUnits.coerceAtLeast(1)
                 var completedUnits = 0
                 var lastPercent = -1
@@ -203,42 +216,46 @@ class BackupRestoreViewModel @Inject constructor(
 
                 context.applicationContext.contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.buffered().zipOutputStream().use { zipStream ->
-                        emit(context.getString(R.string.backup_step_export_settings), indeterminate = true)
-                        zipStream.putNextEntry(ZipEntry(SETTINGS_XML_FILENAME))
-                        writeSettingsToXml(context, zipStream)
-                        zipStream.closeEntry()
-                        completedUnits++
-
-                        emit(context.getString(R.string.backup_step_checkpoint_database), indeterminate = true)
-                        database.awaitIdle()
-                        database.checkpoint()
-                        completedUnits++
-
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        dbFiles.forEach { file ->
-                            val fileSize = file.length().coerceAtLeast(1L)
-                            var bytesCopied = 0L
-                            emit(
-                                context.getString(R.string.backup_step_copying_file, file.name),
-                                unitFraction = 0f,
-                                indeterminate = false,
-                            )
-                            zipStream.putNextEntry(ZipEntry(file.name))
-                            FileInputStream(file).use { input ->
-                                while (true) {
-                                    val read = input.read(buffer)
-                                    if (read <= 0) break
-                                    zipStream.write(buffer, 0, read)
-                                    bytesCopied += read
-                                    emit(
-                                        context.getString(R.string.backup_step_copying_file, file.name),
-                                        unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
-                                        indeterminate = false,
-                                    )
-                                }
-                            }
+                        if (includeSettings) {
+                            emit(context.getString(R.string.backup_step_export_settings), indeterminate = true)
+                            zipStream.putNextEntry(ZipEntry(SETTINGS_XML_FILENAME))
+                            writeSettingsToXml(context, zipStream, settingsExcludedKeys)
                             zipStream.closeEntry()
                             completedUnits++
+                        }
+
+                        if (includeLibrary) {
+                            emit(context.getString(R.string.backup_step_checkpoint_database), indeterminate = true)
+                            database.awaitIdle()
+                            database.checkpoint()
+                            completedUnits++
+
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            dbFiles.forEach { file ->
+                                val fileSize = file.length().coerceAtLeast(1L)
+                                var bytesCopied = 0L
+                                emit(
+                                    context.getString(R.string.backup_step_copying_file, file.name),
+                                    unitFraction = 0f,
+                                    indeterminate = false,
+                                )
+                                zipStream.putNextEntry(ZipEntry(file.name))
+                                FileInputStream(file).use { input ->
+                                    while (true) {
+                                        val read = input.read(buffer)
+                                        if (read <= 0) break
+                                        zipStream.write(buffer, 0, read)
+                                        bytesCopied += read
+                                        emit(
+                                            context.getString(R.string.backup_step_copying_file, file.name),
+                                            unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
+                                            indeterminate = false,
+                                        )
+                                    }
+                                }
+                                zipStream.closeEntry()
+                                completedUnits++
+                            }
                         }
                     }
                 } ?: throw IllegalStateException("Failed to open output stream")
@@ -258,10 +275,14 @@ class BackupRestoreViewModel @Inject constructor(
         }
     }
 
-    fun restore(context: Context, uri: Uri) {
+    fun restore(context: Context, uri: Uri, categories: Set<BackupCategory>) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = context.getString(R.string.restore_in_progress)
             try {
+                val includeSettings = BackupCategory.SETTINGS in categories
+                val includeAccount = BackupCategory.ACCOUNT in categories
+                val includeLibrary = BackupCategory.LIBRARY in categories
+                val settingsExcludedKeys = if (includeAccount) emptySet() else ACCOUNT_PREF_KEYS
                 emitProgress(
                     title = title,
                     step = context.getString(R.string.restore_step_verifying),
@@ -281,19 +302,20 @@ class BackupRestoreViewModel @Inject constructor(
                         }
                     }
                 }
-                if (!hasDb) throw IllegalStateException("Backup missing database")
+                if (includeLibrary && !hasDb) throw IllegalStateException("Backup missing database")
 
                 val restoreEntries =
                     entryNames.filter { name ->
-                        name == SETTINGS_XML_FILENAME ||
-                            name == SETTINGS_FILENAME ||
-                            name == InternalDatabase.DB_NAME ||
-                            name == "${InternalDatabase.DB_NAME}-wal" ||
-                            name == "${InternalDatabase.DB_NAME}-shm" ||
-                            name == "${InternalDatabase.DB_NAME}-journal"
+                        (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
+                            (includeLibrary && (
+                                name == InternalDatabase.DB_NAME ||
+                                name == "${InternalDatabase.DB_NAME}-wal" ||
+                                name == "${InternalDatabase.DB_NAME}-shm" ||
+                                name == "${InternalDatabase.DB_NAME}-journal"
+                            ))
                     }
 
-                val totalUnits = 1 + 1 + restoreEntries.size
+                val totalUnits = 1 + (if (includeLibrary) 1 else 0) + restoreEntries.size
                 val unitSpan = 100f / totalUnits.coerceAtLeast(1)
                 var completedUnits = 0
 
@@ -303,12 +325,14 @@ class BackupRestoreViewModel @Inject constructor(
                 }
 
                 completedUnits++
-                emit(context.getString(R.string.restore_step_stopping_playback), indeterminate = true)
-                runCatching { context.stopService(Intent(context, MusicService::class.java)) }
-                runCatching { database.awaitIdle() }
-                runCatching { database.checkpoint() }
-                runCatching { database.close() }
-                completedUnits++
+                if (includeLibrary) {
+                    emit(context.getString(R.string.restore_step_stopping_playback), indeterminate = true)
+                    runCatching { context.stopService(Intent(context, MusicService::class.java)) }
+                    runCatching { database.awaitIdle() }
+                    runCatching { database.checkpoint() }
+                    runCatching { database.close() }
+                    completedUnits++
+                }
 
                 context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
                     stream.zipInputStream().use { zip ->
@@ -322,7 +346,7 @@ class BackupRestoreViewModel @Inject constructor(
                             when (name) {
                                 SETTINGS_XML_FILENAME -> {
                                     emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
-                                    restoreSettingsFromXml(context, zip)
+                                    restoreSettingsFromXml(context, zip, settingsExcludedKeys)
                                 }
                                 SETTINGS_FILENAME -> {
                                     emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
@@ -379,7 +403,11 @@ class BackupRestoreViewModel @Inject constructor(
         }
     }
 
-    private suspend fun writeSettingsToXml(context: Context, outputStream: java.io.OutputStream) {
+    private suspend fun writeSettingsToXml(
+        context: Context,
+        outputStream: java.io.OutputStream,
+        excludedKeyNames: Set<String> = emptySet(),
+    ) {
         val prefs = context.dataStore.data.first().asMap()
         val serializer = android.util.Xml.newSerializer()
         serializer.setOutput(outputStream, "UTF-8")
@@ -388,6 +416,7 @@ class BackupRestoreViewModel @Inject constructor(
         serializer.startTag(null, "Settings")
 
         for ((key, value) in prefs) {
+            if (key.name in excludedKeyNames) continue
             val tagName = when (value) {
                 is Boolean -> "boolean"
                 is Int -> "int"
@@ -419,7 +448,11 @@ class BackupRestoreViewModel @Inject constructor(
         serializer.flush()
     }
 
-    private suspend fun restoreSettingsFromXml(context: Context, inputStream: java.io.InputStream) {
+    private suspend fun restoreSettingsFromXml(
+        context: Context,
+        inputStream: java.io.InputStream,
+        excludedKeyNames: Set<String> = emptySet(),
+    ) {
         val content = inputStream.readBytes().toString(Charsets.UTF_8)
         if (content.isBlank()) return
 
@@ -439,7 +472,7 @@ class BackupRestoreViewModel @Inject constructor(
                 val name = parser.name
                 val keyName = parser.getAttributeValue(null, "name")
 
-                if (keyName != null) {
+                if (keyName != null && keyName !in excludedKeyNames) {
                     when (name) {
                         "boolean" -> {
                             val value = parser.getAttributeValue(null, "value")?.toBoolean()
@@ -651,5 +684,28 @@ class BackupRestoreViewModel @Inject constructor(
     companion object {
         const val SETTINGS_FILENAME = "settings.preferences_pb"
         const val SETTINGS_XML_FILENAME = "settings.xml"
+
+        val ACCOUNT_PREF_KEYS: Set<String> = setOf(
+            "innerTubeCookie",
+            "visitorData",
+            "dataSyncId",
+            "poToken",
+            "poTokenGvs",
+            "poTokenPlayer",
+            "poTokenSourceUrl",
+            "webClientPoTokenEnabled",
+            "accountName",
+            "accountEmail",
+            "accountChannelHandle",
+            "useLoginForBrowse",
+            "lastfmSession",
+            "lastfmUsername",
+            "listenbrainz_token",
+            "discordToken",
+            "discordUsername",
+            "discordName",
+            "proxyUsername",
+            "proxyPassword",
+        )
     }
 }
