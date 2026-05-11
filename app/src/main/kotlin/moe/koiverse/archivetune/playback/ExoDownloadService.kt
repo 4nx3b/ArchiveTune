@@ -59,13 +59,13 @@ class ExoDownloadService : DownloadService(
     ): Notification {
         val activeDownloads = downloads.filter { it.state != Download.STATE_REMOVING }
         val totalPercentage = activeDownloads.sumOf { download ->
-            if (download.getPercentDownloaded() != C.PERCENTAGE_UNSET) {
+            if (download.getPercentDownloaded() != C.PERCENTAGE_UNSET.toFloat()) {
                 download.getPercentDownloaded().toDouble()
             } else {
                 0.0
             }
         }.toInt()
-        val hasKnownProgress = activeDownloads.any { it.getPercentDownloaded() != C.PERCENTAGE_UNSET }
+        val hasKnownProgress = activeDownloads.any { it.getPercentDownloaded() != C.PERCENTAGE_UNSET.toFloat() }
         val contentText = if (downloads.size == 1) {
             Util.fromUtf8Bytes(downloads[0].request.data)
         } else {
