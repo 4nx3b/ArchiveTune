@@ -200,8 +200,16 @@ fun ActionPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .imePadding()
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.Center,
+        ) {
         Surface(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.heightIn(max = maxHeight),
             shape = AlertDialogDefaults.shape,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -261,6 +269,7 @@ fun ActionPromptDialog(
                 }
             }
         }
+        }
     }
 }
 
@@ -274,8 +283,16 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp)
+                .imePadding()
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.Center,
+        ) {
         Surface(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.heightIn(max = maxHeight),
             shape = AlertDialogDefaults.shape,
             color = AlertDialogDefaults.containerColor,
             tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -286,6 +303,7 @@ fun ListDialog(
             ) {
                 LazyColumn(content = content)
             }
+        }
         }
     }
 }
