@@ -1058,6 +1058,13 @@ interface DatabaseDao {
         customOrder: Int?,
     )
 
+    @Query("UPDATE playlist SET songSortType = :sortType, songSortDescending = :descending WHERE id = :playlistId")
+    fun updatePlaylistSortPreference(
+        playlistId: String,
+        sortType: String?,
+        descending: Boolean?,
+    )
+
     @Query("SELECT MAX(customOrder) FROM playlist WHERE bookmarkedAt IS NOT NULL")
     fun maxPlaylistCustomOrder(): Int?
 

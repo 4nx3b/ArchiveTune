@@ -105,7 +105,7 @@ fun YouTubeArtistMenu(
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val dividerModifier = Modifier.padding(start = 56.dp)
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        userScrollEnabled = true,
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

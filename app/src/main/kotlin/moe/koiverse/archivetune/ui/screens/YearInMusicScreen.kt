@@ -233,6 +233,7 @@ fun YearInMusicScreen(
             playerConnection = playerConnection,
             coroutineScope = coroutineScope,
             isShareCaptureMode = isShareCaptureMode,
+            showShareFab = topSongsStats.isNotEmpty() || topArtists.isNotEmpty() || topAlbums.isNotEmpty(),
             onPagerStateChanged = { current, last ->
                 recapCurrentPage = current
                 recapLastPage = last
@@ -945,6 +946,7 @@ private fun YearInMusicStoryPager(
     playerConnection: moe.koiverse.archivetune.playback.PlayerConnection,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     isShareCaptureMode: Boolean,
+    showShareFab: Boolean,
     onPagerStateChanged: (currentPage: Int, lastPage: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1112,7 +1114,12 @@ private fun YearInMusicStoryPager(
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                     )
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(
+                        start = 16.dp,
+                        end = if (showShareFab && currentPage == lastPage) 88.dp else 16.dp,
+                        top = 16.dp,
+                        bottom = 16.dp,
+                    )
             )
         }
     }
@@ -1674,7 +1681,10 @@ private fun PremiumSummaryStoryCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .windowInsetsPadding(
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
+                )
+                .padding(top = 72.dp, start = 24.dp, end = 24.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

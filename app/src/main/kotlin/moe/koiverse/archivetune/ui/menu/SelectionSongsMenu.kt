@@ -209,7 +209,7 @@ fun SelectionSongMenu(
     val dividerModifier = Modifier.padding(start = 56.dp)
 
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        userScrollEnabled = true,
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,
@@ -704,7 +704,7 @@ fun SelectionMediaMetadataMenu(
     val dividerModifier = Modifier.padding(start = 56.dp)
 
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        userScrollEnabled = true,
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

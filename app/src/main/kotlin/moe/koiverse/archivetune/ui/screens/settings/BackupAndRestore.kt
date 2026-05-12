@@ -25,10 +25,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,8 +38,11 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -47,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.ripple
@@ -66,10 +72,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -80,15 +90,18 @@ import androidx.navigation.NavController
 import moe.koiverse.archivetune.LocalPlayerAwareWindowInsets
 import moe.koiverse.archivetune.R
 import moe.koiverse.archivetune.db.entities.Song
+import moe.koiverse.archivetune.ui.component.DefaultDialog
 import moe.koiverse.archivetune.ui.component.IconButton
 import moe.koiverse.archivetune.ui.menu.AddToPlaylistDialogOnline
 import moe.koiverse.archivetune.ui.menu.LoadingScreen
 import moe.koiverse.archivetune.ui.utils.backToMain
+import moe.koiverse.archivetune.viewmodels.BackupCategory
 import moe.koiverse.archivetune.viewmodels.BackupRestoreViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.floor
 
 private val CardShape = RoundedCornerShape(28.dp)
 private val InnerTileShape = RoundedCornerShape(22.dp)
@@ -132,19 +145,25 @@ fun BackupAndRestore(
     var progressPercentage by rememberSaveable {
         mutableIntStateOf(0)
     }
+
+    var showBackupOptionsDialog by rememberSaveable { mutableStateOf(false) }
+    var showRestoreOptionsDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingBackupCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
+    var pendingRestoreCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
+
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             if (uri != null) {
-                viewModel.backup(context, uri)
+                viewModel.backup(context, uri, pendingBackupCategories)
             }
         }
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
-                viewModel.restore(context, uri)
+                viewModel.restore(context, uri, pendingRestoreCategories)
             }
         }
     val importPlaylistFromCsv =
@@ -231,17 +250,8 @@ fun BackupAndRestore(
 
             item {
                 ActionTilesRow(
-                    onBackupClick = {
-                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-                        backupLauncher.launch(
-                            "${context.getString(R.string.app_name)}_${
-                                LocalDateTime.now().format(formatter)
-                            }.backup"
-                        )
-                    },
-                    onRestoreClick = {
-                        restoreLauncher.launch(arrayOf("application/octet-stream"))
-                    },
+                    onBackupClick = { showBackupOptionsDialog = true },
+                    onRestoreClick = { showRestoreOptionsDialog = true },
                 )
             }
 
@@ -252,6 +262,35 @@ fun BackupAndRestore(
                 )
             }
         }
+    }
+
+    if (showBackupOptionsDialog) {
+        BackupOptionsDialog(
+            title = stringResource(R.string.backup_options_title),
+            confirmLabel = stringResource(R.string.action_backup),
+            onConfirm = { categories ->
+                pendingBackupCategories = categories
+                showBackupOptionsDialog = false
+                val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                backupLauncher.launch(
+                    "${context.getString(R.string.app_name)}_${LocalDateTime.now().format(formatter)}.backup"
+                )
+            },
+            onDismiss = { showBackupOptionsDialog = false },
+        )
+    }
+
+    if (showRestoreOptionsDialog) {
+        BackupOptionsDialog(
+            title = stringResource(R.string.restore_options_title),
+            confirmLabel = stringResource(R.string.action_restore),
+            onConfirm = { categories ->
+                pendingRestoreCategories = categories
+                showRestoreOptionsDialog = false
+                restoreLauncher.launch(arrayOf("application/octet-stream"))
+            },
+            onDismiss = { showRestoreOptionsDialog = false },
+        )
     }
 
     AddToPlaylistDialogOnline(
@@ -621,4 +660,115 @@ private fun SectionDivider() {
         thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
     )
+}
+
+@Composable
+private fun BackupOptionsDialog(
+    title: String,
+    confirmLabel: String,
+    onConfirm: (Set<BackupCategory>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(BackupCategory.entries.toSet()) }
+    val density = LocalDensity.current
+    val cbStrokeWidthPx = remember(density) { with(density) { floor(CheckboxDefaults.StrokeWidth.toPx()) } }
+    val cbCheckmarkStroke = remember(cbStrokeWidthPx) {
+        Stroke(width = cbStrokeWidthPx, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    }
+    val cbOutlineStroke = remember(cbStrokeWidthPx) { Stroke(width = cbStrokeWidthPx) }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        title = { Text(title) },
+        buttons = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+            TextButton(
+                onClick = { onConfirm(selected) },
+                shapes = ButtonDefaults.shapes(),
+                enabled = selected.isNotEmpty(),
+            ) {
+                Text(confirmLabel)
+            }
+        },
+    ) {
+        Spacer(Modifier.height(8.dp))
+        BackupCategory.entries.forEach { category ->
+            val isChecked = category in selected
+            val labelRes = when (category) {
+                BackupCategory.LIBRARY -> R.string.backup_category_library
+                BackupCategory.ACCOUNT -> R.string.backup_category_account
+                BackupCategory.SETTINGS -> R.string.backup_category_settings
+            }
+            val descRes = when (category) {
+                BackupCategory.LIBRARY -> R.string.backup_category_library_desc
+                BackupCategory.ACCOUNT -> R.string.backup_category_account_desc
+                BackupCategory.SETTINGS -> R.string.backup_category_settings_desc
+            }
+            val iconRes = when (category) {
+                BackupCategory.LIBRARY -> R.drawable.library_music
+                BackupCategory.ACCOUNT -> R.drawable.account
+                BackupCategory.SETTINGS -> R.drawable.settings
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(),
+                    ) {
+                        selected = if (isChecked) selected - category else selected + category
+                    }
+                    .padding(horizontal = 4.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            painter = painterResource(iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = stringResource(labelRes),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = stringResource(descRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Checkbox(
+                    checked = isChecked,
+                    onCheckedChange = { checked ->
+                        selected = if (checked) selected + category else selected - category
+                    },
+                    checkmarkStroke = cbCheckmarkStroke,
+                    outlineStroke = cbOutlineStroke,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
 }

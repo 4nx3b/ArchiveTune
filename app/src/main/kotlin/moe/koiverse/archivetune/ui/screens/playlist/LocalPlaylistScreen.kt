@@ -139,9 +139,7 @@ import moe.koiverse.archivetune.R
 import moe.koiverse.archivetune.constants.AppBarHeight
 import moe.koiverse.archivetune.constants.DisableBlurKey
 import moe.koiverse.archivetune.constants.PlaylistEditLockKey
-import moe.koiverse.archivetune.constants.PlaylistSongSortDescendingKey
 import moe.koiverse.archivetune.constants.PlaylistSongSortType
-import moe.koiverse.archivetune.constants.PlaylistSongSortTypeKey
 import moe.koiverse.archivetune.constants.SwipeToSongKey
 import moe.koiverse.archivetune.db.entities.Playlist
 import moe.koiverse.archivetune.db.entities.PlaylistSong
@@ -179,7 +177,6 @@ import moe.koiverse.archivetune.ui.utils.ItemWrapper
 import moe.koiverse.archivetune.ui.utils.backToMain
 import moe.koiverse.archivetune.ui.utils.formatCompactCount
 import moe.koiverse.archivetune.utils.makeTimeString
-import moe.koiverse.archivetune.utils.rememberEnumPreference
 import moe.koiverse.archivetune.utils.rememberPreference
 import moe.koiverse.archivetune.viewmodels.LocalPlaylistViewModel
 import com.valentinilk.shimmer.shimmer
@@ -212,14 +209,10 @@ fun LocalPlaylistScreen(
     val playlistLength = remember(songs) {
         songs.fastSumBy { it.song.song.duration }
     }
-    val (sortType, onSortTypeChange) = rememberEnumPreference(
-        PlaylistSongSortTypeKey,
-        PlaylistSongSortType.CUSTOM
-    )
-    val (sortDescending, onSortDescendingChange) = rememberPreference(
-        PlaylistSongSortDescendingKey,
-        true
-    )
+    val sortType by viewModel.sortType.collectAsState()
+    val sortDescending by viewModel.sortDescending.collectAsState()
+    val onSortTypeChange: (PlaylistSongSortType) -> Unit = { viewModel.updateSortPreference(it, sortDescending) }
+    val onSortDescendingChange: (Boolean) -> Unit = { viewModel.updateSortPreference(sortType, it) }
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
     val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
     val (disableBlur) = rememberPreference(DisableBlurKey, false)

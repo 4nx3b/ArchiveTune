@@ -34,11 +34,9 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
-import moe.koiverse.archivetune.constants.PlaylistSongSortDescendingKey
 import moe.koiverse.archivetune.constants.PlaylistSuggestionSource
 import moe.koiverse.archivetune.constants.PlaylistSuggestionSourceKey
 import moe.koiverse.archivetune.constants.PlaylistSongSortType
-import moe.koiverse.archivetune.constants.PlaylistSongSortTypeKey
 import moe.koiverse.archivetune.constants.HideExplicitKey
 import moe.koiverse.archivetune.constants.HideVideoKey
 import moe.koiverse.archivetune.R
@@ -80,15 +78,25 @@ constructor(
         database
             .playlist(playlistId)
             .stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    val sortType: StateFlow<PlaylistSongSortType> =
+        playlist
+            .map { it?.playlist?.songSortType.toEnum(PlaylistSongSortType.CUSTOM) }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, PlaylistSongSortType.CUSTOM)
+
+    val sortDescending: StateFlow<Boolean> =
+        playlist
+            .map { it?.playlist?.songSortDescending ?: true }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     val playlistSongs: StateFlow<List<PlaylistSong>> =
         combine(
             database.playlistSongs(playlistId),
-            context.dataStore.data
-                .map {
-                    it[PlaylistSongSortTypeKey].toEnum(PlaylistSongSortType.CUSTOM) to (it[PlaylistSongSortDescendingKey]
-                        ?: true)
-                }.distinctUntilChanged(),
-        ) { songs, (sortType, sortDescending) ->
+            sortType,
+            sortDescending,
+        ) { songs, sortType, sortDescending ->
             when (sortType) {
                 PlaylistSongSortType.CUSTOM -> songs
                 PlaylistSongSortType.CREATE_DATE -> songs.sortedBy { it.map.id }
@@ -105,10 +113,19 @@ constructor(
                             }
                         }
                 }
-
                 PlaylistSongSortType.PLAY_TIME -> songs.sortedBy { it.song.song.totalPlayTime }
             }.reversed(sortDescending && sortType != PlaylistSongSortType.CUSTOM)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun updateSortPreference(newSortType: PlaylistSongSortType, newSortDescending: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.updatePlaylistSortPreference(
+                playlistId = playlistId,
+                sortType = newSortType.name,
+                descending = newSortDescending,
+            )
+        }
+    }
     
     private val _viewCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val viewCounts = _viewCounts.asStateFlow()
