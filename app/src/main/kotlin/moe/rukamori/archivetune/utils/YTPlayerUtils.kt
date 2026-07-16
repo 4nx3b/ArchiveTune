@@ -149,6 +149,7 @@ object YTPlayerUtils {
     private data class PlaybackDataCacheKey(
         val videoId: String,
         val audioQuality: AudioQuality,
+        val preferredStreamClient: PlayerStreamClient,
         val networkMetered: Boolean,
         val authFingerprint: String,
     )
@@ -367,7 +368,7 @@ object YTPlayerUtils {
             }
 
             PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
-                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
+                WEB_REMIX
             }
 
             PlayerStreamClient.HI_RES_LOSSLESS -> {
@@ -410,6 +411,14 @@ object YTPlayerUtils {
             }
 
         return buildList {
+            if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
+                // The local HQ profile always starts with the premium-capable Web Remix response.
+                // MoriCipher/NewPipe resolve its URLs fully on-device; remaining clients are only
+                // stability fallbacks and never receive ArchiveTune/Koiiverse traffic.
+                add(WEB_REMIX)
+                addAll(orderedFallbackClients)
+                return@buildList
+            }
             lastSuccessfulClient?.let { add(it) }
             if (authState.hasPlaybackLoginContext && hasCompleteWebPlaybackPoToken(authState)) {
                 add(WEB_REMIX)
@@ -452,6 +461,7 @@ object YTPlayerUtils {
             buildPlaybackDataCacheKey(
                 videoId = videoId,
                 audioQuality = audioQuality,
+                preferredStreamClient = preferredStreamClient,
                 networkMetered = isMetered,
                 authFingerprint = YouTube.currentPlaybackAuthState().fingerprint,
             )
@@ -463,6 +473,7 @@ object YTPlayerUtils {
                 buildPlaybackDataCacheKey(
                     videoId = videoId,
                     audioQuality = audioQuality,
+                    preferredStreamClient = preferredStreamClient,
                     networkMetered = isMetered,
                     authFingerprint = YouTube.currentPlaybackAuthState().fingerprint,
                 )
@@ -549,12 +560,14 @@ object YTPlayerUtils {
     private fun buildPlaybackDataCacheKey(
         videoId: String,
         audioQuality: AudioQuality,
+        preferredStreamClient: PlayerStreamClient,
         networkMetered: Boolean,
         authFingerprint: String,
     ): PlaybackDataCacheKey =
         PlaybackDataCacheKey(
             videoId = videoId,
             audioQuality = audioQuality,
+            preferredStreamClient = preferredStreamClient,
             networkMetered = networkMetered,
             authFingerprint = authFingerprint,
         )

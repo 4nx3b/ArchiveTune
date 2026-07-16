@@ -319,6 +319,19 @@ future sessions (or contributors) can pick up with full context.
   now used only for direct Google/YouTube requests. Mori cipher refresh obtains
   the player script directly from YouTube and does not use an ArchiveTune server.
 
+## Local high-quality YouTube extractor (2026-07-17)
+
+- The legacy `ARCHIVETUNE_EXTRACTOR` preference value is now a local-only
+  "Local HQ Extractor" profile. The serialized name is retained so existing
+  settings migrate safely, but there is no backend module or service endpoint.
+- The profile follows the stable Metrolist-style approach already present in the
+  fork: Web Remix first, direct Google/YouTube player requests, MoriCipher
+  on-device deciphering with NewPipe's local JavaScript manager as fallback,
+  then the existing direct YouTube client fallback chain.
+- Local HQ forces the highest available audio format unless Low Data Mode is
+  active. Playback cache keys include the selected profile so switching sources
+  cannot reuse a stream resolved under a different client policy.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
