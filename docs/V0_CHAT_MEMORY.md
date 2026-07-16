@@ -288,13 +288,26 @@ future sessions (or contributors) can pick up with full context.
   artifact instead of the ordinary `build.yml` release artifact. New Canary
   APKs also embed their commit hash for reliable build identity.
 
+## Remote gatekeeper removal (2026-07-17)
+
+- The fork no longer contains a dormant or neutralized gatekeeper. Removed the
+  app startup retry loop and injection, repository/use case/result model, UI
+  ViewModel/toast path, remote data-server URL, bearer-token BuildConfig fields
+  and workflow secrets, related resource, and `DataServer.txt`.
+- Removed `NetworkGatekeeper` and its OkHttp interceptor registration from
+  `vossgraves/core`; ArchiveTune pins that removal commit. Future upstream merges
+  must not restore any of these files or remote build-verification hooks.
+- Remaining process exits were audited and are unrelated: the uncaught-crash
+  handler terminates after opening diagnostics, while storage relocation and
+  backup restore intentionally restart the app after changing on-disk state.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
   content filtering, playlist-cover synchronization, pull-to-refresh/library
   improvements, updater improvements, translations, and metadata updates.
-- Merged the matching `rukamori/core` changes into `vossgraves/core` while
-  retaining the fork's neutralized official-build network gatekeeper. Fork
+- Merged the matching `rukamori/core` changes into `vossgraves/core`. The
+  official-build network gatekeeper was subsequently removed in full. Fork
   update URLs and all fork-specific playback, Source Pool, Android Auto, and
   Language Packs features were preserved.
 - Canary update detection uses a 15-minute release cache and 30-minute
