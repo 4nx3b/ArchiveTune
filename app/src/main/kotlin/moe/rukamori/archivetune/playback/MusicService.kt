@@ -7871,15 +7871,12 @@ class MusicService :
                 retryWithoutPlaybackLoginContext {
                     YTPlayerUtils.playerResponseForPlayback(
                         mediaId,
-                        audioQuality =
-                            when {
-                                lowDataModeActive -> AudioQuality.LOW
-                                preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
-                                    AudioQuality.HIGHEST
-                                else -> audioQuality
-                            },
+                        audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
                         connectivityManager = connectivityManager,
-                        preferredStreamClient = preferredStreamClient,
+                        preferredStreamClient =
+                            preferredStreamClient.takeUnless {
+                                it == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
+                            } ?: PlayerStreamClient.WEB_REMIX,
                         networkMetered = lowDataModeActive,
                     )
                 }.recoverCatching { youtubeFailure ->

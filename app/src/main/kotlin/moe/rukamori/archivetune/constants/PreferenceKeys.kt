@@ -260,8 +260,6 @@ val PlayerStreamClientKey = stringPreferencesKey("playerStreamClient")
 enum class PlayerStreamClient {
     ANDROID_VR,
     WEB_REMIX,
-    // Serialized name retained for compatibility. This is now a fully local high-quality profile;
-    // it must never be wired back to an ArchiveTune/Koiiverse playback service.
     ARCHIVETUNE_EXTRACTOR,
     HI_RES_LOSSLESS,
     IOS,

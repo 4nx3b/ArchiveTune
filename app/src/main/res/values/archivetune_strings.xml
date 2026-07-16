@@ -430,8 +430,6 @@
     <string name="player_stream_client_desc">Controls which playback source is used to fetch streams</string>
     <string name="player_stream_client_web_remix">Web Remix</string>
     <string name="player_stream_client_web_remix_desc">Extended format support at the cost of speed. JavaScript signature decryption introduces a ~5–10 second startup delay.</string>
-    <string name="player_stream_client_local_hq">Local HQ Extractor</string>
-    <string name="player_stream_client_local_hq_desc">No playback server. Requests Google and YouTube directly, selects the highest available audio format, deciphers streams on-device, and falls back locally when a client fails.</string>
     <string name="player_stream_client_archivetune_extractor">ArchiveTune Extractor</string>
     <string name="player_stream_client_archivetune_extractor_desc">Uses the ArchiveTune backend extractor for playback streams. Prefer Auto High Quality Audio.</string>
     <string name="player_stream_client_archivetune_extractor_login_required">You Must Login Using Google Account and PoToken in Settings to use this</string>
