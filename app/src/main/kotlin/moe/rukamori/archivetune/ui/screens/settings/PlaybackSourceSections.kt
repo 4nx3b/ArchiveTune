@@ -67,6 +67,7 @@ import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.InfoLabel
+import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -111,12 +112,22 @@ fun PlaybackSourceSections(navController: NavController) {
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
+    val playerStreamClients =
+        remember { listOf(PlayerStreamClient.WEB_REMIX, PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) }
+    val selectedPlayerStreamClient =
+        playerStreamClient.takeIf { it in playerStreamClients } ?: PlayerStreamClient.WEB_REMIX
 
-    // Migrate installs that had selected the removed remote backend extractor. Keeping the legacy
-    // enum value allows DataStore to deserialize it safely, but it is never offered or used.
-    LaunchedEffect(playerStreamClient) {
-        if (playerStreamClient != PlayerStreamClient.WEB_REMIX) {
-            onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
+    LaunchedEffect(playerStreamClient, selectedPlayerStreamClient) {
+        if (playerStreamClient != selectedPlayerStreamClient) {
+            onPlayerStreamClientChange(selectedPlayerStreamClient)
+        }
+    }
+    LaunchedEffect(selectedPlayerStreamClient, ytAudioQuality) {
+        if (
+            selectedPlayerStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR &&
+            ytAudioQuality != AudioQuality.HIGHEST
+        ) {
+            onYtAudioQualityChange(AudioQuality.HIGHEST)
         }
     }
     val (qobuzQuality, onQobuzQualityChange) =
@@ -172,13 +183,38 @@ fun PlaybackSourceSections(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 selectedValue = ytAudioQuality,
                 onValueSelected = onYtAudioQualityChange,
-                isEnabled = true,
+                isEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR,
                 valueText = {
                     when (it) {
                         AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
                         AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
                         AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
                         AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
+                    }
+                },
+            )
+        }
+
+        item {
+            ListPreference(
+                title = { Text(stringResource(R.string.player_stream_client)) },
+                description = stringResource(R.string.player_stream_client_desc),
+                icon = { Icon(painterResource(R.drawable.integration), null) },
+                selectedValue = selectedPlayerStreamClient,
+                values = playerStreamClients,
+                onValueSelected = onPlayerStreamClientChange,
+                valueText = {
+                    when (it) {
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            stringResource(R.string.player_stream_client_local_hq)
+                        else -> stringResource(R.string.player_stream_client_web_remix)
+                    }
+                },
+                valueDescription = {
+                    when (it) {
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            stringResource(R.string.player_stream_client_local_hq_desc)
+                        else -> stringResource(R.string.player_stream_client_web_remix_desc)
                     }
                 },
             )
