@@ -229,6 +229,30 @@ future sessions (or contributors) can pick up with full context.
 - The database URL and GitHub token pasted into chat must be treated as
   compromised and rotated; they are not recorded in this memory file.
 
+## Encryption hardening (2026-07-17)
+
+- ArchiveTune wraps its Preferences DataStore with Android Keystore-backed
+  AES-256-GCM encryption for token-, secret-, password-, and cookie-like string
+  values plus explicitly sensitive account/session fields. Each value gets a
+  random IV and uses its preference name as authenticated additional data.
+  Existing plaintext values are migrated in place; an invalid or unrestorable
+  ciphertext is discarded so it can never be mistaken for a usable token.
+- The settings DataStore is excluded from Android cloud backup and device
+  transfer. Source Pool Tidal/Qobuz accounts are memory-only, and legacy disk
+  caches are deleted. ArchiveTune rejects a Source Pool feed unless the server
+  declares it encrypted and the matching client key is configured; GCM
+  authentication failures also fail closed.
+- ArchivePool now requires at-rest encryption before accepting account ingest
+  or processing account health checks. Its credential feed returns 503 without
+  a valid client-encryption key and always requires a header-based read key;
+  URL query keys were removed to prevent leakage into history and logs. Health
+  sweeps re-encrypt legacy plaintext rows after keys are configured.
+- Deployment still requires separate random `POOL_ENCRYPTION_KEY` and
+  `POOL_CLIENT_KEY` values plus a provisioned read key. The app must be built
+  with the matching client/read keys. An APK-embedded shared client key remains
+  extractable by a determined user; true per-user secrecy would require a
+  server-side playback proxy or per-device key provisioning.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI

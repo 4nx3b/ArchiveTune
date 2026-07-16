@@ -31,9 +31,9 @@ import javax.crypto.spec.SecretKeySpec
  * The 16-byte GCM auth tag is appended to the ciphertext, which is exactly what
  * `AES/GCM/NoPadding` expects here.
  *
- * All methods are best-effort: a blank key, malformed blob, or auth failure returns the input
- * unchanged (for [maybeDecrypt]) or null (for [decrypt]), so a misconfiguration never crashes
- * playback — it simply leaves the value as-is.
+ * All methods are best-effort: malformed blobs and authentication failures return null. Plaintext
+ * input is returned only when it was never marked as encrypted; the account manager independently
+ * rejects feeds whose top-level `encrypted` flag is not true.
  */
 object PoolCrypto {
     private const val PREFIX = "enc:1:"
@@ -79,13 +79,13 @@ object PoolCrypto {
     }
 
     /**
-     * Decrypts [value] if it is an encrypted blob; otherwise returns it unchanged. Useful for
-     * fields that may or may not be encrypted depending on whether the pool has E2E enabled. On a
-     * decryption failure the original value is returned so callers degrade gracefully.
+     * Decrypts [value] if it is an encrypted blob; otherwise returns it unchanged. Encrypted input
+     * is never returned on authentication failure, preventing ciphertext from being used as a
+     * credential after a key mismatch.
      */
     fun maybeDecrypt(value: String?): String? {
         if (value == null) return null
         if (!value.startsWith(PREFIX)) return value
-        return decrypt(value) ?: value
+        return decrypt(value)
     }
 }
