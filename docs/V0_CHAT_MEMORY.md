@@ -34,7 +34,7 @@ future sessions (or contributors) can pick up with full context.
 - **Per-song "Play from" override:** the resolver honors a per-song source
   override (`SongSourceOverrideKey`, `songId=SOURCE;…`, a Settings-backup key,
   encoded/decoded by `SongSourceOverride` in `AudioSourceConfig.kt`). An override
-  forces just that one source (still subject to the 95% title-match gate);
+  forces just that one source (still subject to the metadata match gate);
   `YOUTUBE` means "always play this song from YouTube" (skip lossless entirely);
   no override = follow the global order. `MusicService` records which sources
   passed the gate per media id (`resolvedSourcesByMediaId`) and exposes
@@ -252,6 +252,21 @@ future sessions (or contributors) can pick up with full context.
   with the matching client/read keys. An APK-embedded shared client key remains
   extractable by a determined user; true per-user secrecy would require a
   server-side playback proxy or per-device key provisioning.
+
+## Cross-catalog song identification (2026-07-17)
+
+- Replaced the final 95%-title-only Tidal/Qobuz playback gate with a
+  Stash-inspired metadata matcher. It combines Unicode-safe Jaro-Winkler title
+  similarity, artist agreement, duration closeness, and album similarity.
+- Different version markers (live/remix/acoustic/instrumental/cover/tempo edits)
+  and known duration differences above 15 seconds are hard rejections. An exact
+  title by the wrong artist is also rejected. A provider lacking artist metadata
+  must pass a conservative 95% title-only fallback; missing matched metadata is
+  no longer silently treated as an exact match.
+- Qobuz, public Tidal, signed-in Tidal, and pooled Tidal resolution paths now
+  carry the selected catalog track's artist, album, and duration through to the
+  shared playback gate. Unit coverage includes same-title/wrong-artist, version,
+  duration, missing metadata, valid catalog metadata, and CJK titles.
 
 ## Upstream sync (2026-07-17)
 
