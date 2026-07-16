@@ -268,6 +268,16 @@ future sessions (or contributors) can pick up with full context.
   shared playback gate. Unit coverage includes same-title/wrong-artist, version,
   duration, missing metadata, valid catalog metadata, and CJK titles.
 
+## Crossfade clock alignment (2026-07-17)
+
+- The fade duration is recalculated after the incoming renderer actually starts,
+  using the outgoing player's current remaining time. This prevents renderer
+  startup latency from making the fade loop overrun the last seconds of song one.
+- During the final handoff, the primary player is kept muted and conditionally
+  re-seeked against the still-audible secondary clock until their positions are
+  within 180 ms (up to three attempts). This prevents the primary from resuming
+  seconds behind and briefly repeating the beginning of song two.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
