@@ -37,9 +37,10 @@ import moe.rukamori.archivetune.constants.HistoryDuration
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.extensions.toEnum
+import java.util.WeakHashMap
 import kotlin.properties.ReadOnlyProperty
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+private val Context.rawDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "settings",
     produceMigrations = { _ ->
         listOf(
@@ -76,9 +77,28 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
+            object : DataMigration<Preferences> {
+                override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+                    SensitivePreferenceCrypto.needsMigration(currentData)
+
+                override suspend fun migrate(currentData: Preferences): Preferences =
+                    SensitivePreferenceCrypto.encrypt(currentData)
+
+                override suspend fun cleanUp() {}
+            },
         )
     },
 )
+
+private val secureDataStores = WeakHashMap<DataStore<Preferences>, DataStore<Preferences>>()
+
+val Context.dataStore: DataStore<Preferences>
+    get() {
+        val raw = applicationContext.rawDataStore
+        return synchronized(secureDataStores) {
+            secureDataStores.getOrPut(raw) { SecurePreferencesDataStore(raw) }
+        }
+    }
 
 object PreferenceStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

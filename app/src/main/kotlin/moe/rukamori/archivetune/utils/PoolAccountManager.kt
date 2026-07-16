@@ -33,15 +33,14 @@ import java.util.concurrent.TimeUnit
  *
  * Security model:
  *  - The pool exposes account tokens as AES-256-GCM ciphertext (E2E). We decrypt locally with
- *    [PoolCrypto], which uses `BuildConfig.POOL_CLIENT_KEY`. When the pool has no client key
- *    configured the values arrive in plaintext and [PoolCrypto.maybeDecrypt] passes them through.
+ *    [PoolCrypto], which uses `BuildConfig.POOL_CLIENT_KEY`. A plaintext response, missing client
+ *    key, or authentication failure rejects the whole feed rather than falling back to plaintext.
  *  - When the pool enforces read keys, we present `BuildConfig.SOURCE_PROVIDER_KEY` as a bearer.
  *
  * Behaviour:
  *  - Disabled entirely when no `SOURCE_PROVIDER_URL` is baked in (mirrors instance discovery).
- *  - Results are cached in memory for the resolvers (synchronous getters) and persisted to the
- *    DataStore so accounts are available immediately on the next cold start, before the network
- *    refresh completes.
+ *  - Results are cached in memory only. Shared account credentials are deliberately not persisted
+ *    to disk; a cold start fetches a fresh encrypted feed before using pool accounts.
  *  - [refresh] is throttled so it hits the network at most once per [MIN_REFRESH_INTERVAL_MS]
  *    unless `force` is set.
  */
@@ -110,28 +109,24 @@ object PoolAccountManager {
     fun hasAccounts(): Boolean = tidalCache.isNotEmpty() || qobuzCache.isNotEmpty()
 
     /**
-     * Loads the persisted account cache into memory (cheap, no network). Safe to call repeatedly;
-     * only reads the DataStore once. Call early on startup so resolvers have data before the first
-     * network [refresh] finishes.
+     * Removes caches written by older builds. Pool credentials are memory-only now, so this method
+     * performs a one-time privacy migration rather than restoring secrets from disk.
      */
     suspend fun loadCached(context: Context) {
         if (loadedFromDisk) return
         withContext(Dispatchers.IO) {
             runCatching {
-                context.dataStore.getAsync(CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    tidalCache = parseTidal(JSONArray(it))
-                }
-                context.dataStore.getAsync(CACHE_QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    qobuzCache = parseQobuz(JSONArray(it))
+                context.dataStore.edit { preferences ->
+                    preferences.remove(CACHE_TIDAL_KEY)
+                    preferences.remove(CACHE_QOBUZ_KEY)
                 }
                 loadedFromDisk = true
-                Timber.tag(TAG).d("Loaded cached accounts: tidal=%d qobuz=%d", tidalCache.size, qobuzCache.size)
-            }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
+            }.onFailure { Timber.tag(TAG).w(it, "Failed to remove legacy pool account cache") }
         }
     }
 
     /**
-     * Fetches `/api/sources`, decrypts credentials, and refreshes the in-memory + persisted caches.
+     * Fetches `/api/sources`, decrypts credentials, and refreshes the in-memory cache.
      * Returns true when the cache is populated (either freshly fetched or already warm). Throttled
      * unless [force] is set. Never throws.
      */
@@ -165,55 +160,23 @@ object PoolAccountManager {
                             return@withLock hasAccounts()
                         }
                         val root = JSONObject(response.body?.string().orEmpty())
+                        if (!root.optBoolean("encrypted", false) || !PoolCrypto.isConfigured) {
+                            Timber.tag(TAG).e("Rejected pool account feed without configured end-to-end encryption")
+                            tidalCache = emptyList()
+                            qobuzCache = emptyList()
+                            return@withLock false
+                        }
                         val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
                         val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
                         tidalCache = tidal
                         qobuzCache = qobuz
                         lastRefreshAt = System.currentTimeMillis()
-                        persist(context, tidal, qobuz)
                         Timber.tag(TAG).i("Pool accounts refreshed: tidal=%d qobuz=%d", tidal.size, qobuz.size)
                     }
                 }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
                 hasAccounts()
             }
         }
-
-    private suspend fun persist(
-        context: Context,
-        tidal: List<TidalPoolAccount>,
-        qobuz: List<QobuzPoolAccount>,
-    ) {
-        val tidalJson =
-            JSONArray().apply {
-                tidal.forEach {
-                    put(
-                        JSONObject()
-                            .put("token", it.token)
-                            .put("refreshToken", it.refreshToken)
-                            .put("countryCode", it.countryCode)
-                            .put("premium", it.premium),
-                    )
-                }
-            }.toString()
-        val qobuzJson =
-            JSONArray().apply {
-                qobuz.forEach {
-                    put(
-                        JSONObject()
-                            .put("token", it.token)
-                            .put("appId", it.appId)
-                            .put("appSecret", it.appSecret)
-                            .put("premium", it.premium),
-                    )
-                }
-            }.toString()
-        runCatching {
-            context.dataStore.edit { prefs ->
-                prefs[CACHE_TIDAL_KEY] = tidalJson
-                prefs[CACHE_QOBUZ_KEY] = qobuzJson
-            }
-        }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
-    }
 
     /** Decrypts a sensitive field. Empty/blank blobs and decrypt failures yield null. */
     private fun field(obj: JSONObject, key: String): String? {
