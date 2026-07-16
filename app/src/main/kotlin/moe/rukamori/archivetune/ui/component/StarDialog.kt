@@ -68,7 +68,7 @@ fun StarDialog(
 
             Button(
                 onClick = {
-                    uriHandler.openUri("https://koiiverse.cloud/donate")
+                    uriHandler.openUri("https://github.com/vossgraves/ArchiveTune")
                     onSupport()
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -84,7 +84,7 @@ fun StarDialog(
 
             FilledTonalButton(
                 onClick = {
-                    uriHandler.openUri("https://github.com/rukamori/ArchiveTune")
+                    uriHandler.openUri("https://github.com/vossgraves/ArchiveTune")
                     onSupport()
                 },
                 modifier = Modifier.fillMaxWidth(),

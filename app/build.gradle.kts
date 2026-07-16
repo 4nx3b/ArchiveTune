@@ -128,23 +128,7 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
 
-        val togetherBearerToken =
-            localProperties.getProperty("TOGETHER_BEARER_TOKEN")
-                ?: System.getenv("TOGETHER_BEARER_TOKEN")
-                ?: ""
-        buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"$togetherBearerToken\"")
-
-        val canvasBearerToken =
-            localProperties.getProperty("CANVAS_BEARER_TOKEN")
-                ?: System.getenv("CANVAS_BEARER_TOKEN")
-                ?: ""
-        buildConfigField("String", "CANVAS_BEARER_TOKEN", "\"$canvasBearerToken\"")
-
-        val extractorBearer =
-            localProperties.getProperty("EXTRACTOR_BEARER")
-                ?: System.getenv("EXTRACTOR_BEARER")
-                ?: ""
-        buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
+        buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"\"")
 
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
         // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
@@ -447,7 +431,6 @@ dependencies {
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))
     implementation(project(":spotifycore"))
-    implementation(project(":moriextractor"))
     implementation(project(":morideobfuscator"))
     implementation("com.materialkolor:material-kolor:5.0.0-alpha07")
 

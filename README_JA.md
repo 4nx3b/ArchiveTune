@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/icon.png" width="160" height="160" alt="ArchiveTune Logo" style="border-radius: 22%">
+  <img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/icon.png" width="160" height="160" alt="ArchiveTune Logo" style="border-radius: 22%">
 
   <h1>ArchiveTune</h1>
 
@@ -20,19 +20,19 @@
   </p>
 
   <p align="center">
-    <a href="https://archivetune.koiiverse.cloud"><b>公式サイト</b></a> •
+    <a href="https://github.com/vossgraves/ArchiveTune"><b>リポジトリ</b></a> •
     <a href="#features"><b>機能</b></a> •
-    <a href="https://archivetune.koiiverse.cloud/privacy"><b>プライバシー</b></a> •
+    <a href="PRIVACY.md"><b>プライバシー</b></a> •
     <a href="#download-now"><b>ダウンロード</b></a> •
     <a href="#screenshots"><b>スクリーンショット</b></a> •
-    <a href="https://github.com/rukamori/ArchiveTune/issues/new/choose"><b>サポート</b></a>
+    <a href="https://github.com/vossgraves/ArchiveTune/issues/new/choose"><b>サポート</b></a>
   </p>
 
   <div align="center">
-    <img src="https://img.shields.io/github/v/release/archivetuneapp/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="最新バージョン" />
-    <img src="https://img.shields.io/github/downloads/archivetuneapp/ArchiveTune/total?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="ダウンロード数" />
-    <img src="https://img.shields.io/github/stars/archivetuneapp/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="スター数" />
-    <img src="https://img.shields.io/github/license/archivetuneapp/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e" alt="ライセンス" />
+    <img src="https://img.shields.io/github/v/release/vossgraves/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="最新バージョン" />
+    <img src="https://img.shields.io/github/downloads/vossgraves/ArchiveTune/total?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="ダウンロード数" />
+    <img src="https://img.shields.io/github/stars/vossgraves/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e&logo=github" alt="スター数" />
+    <img src="https://img.shields.io/github/license/vossgraves/ArchiveTune?style=for-the-badge&color=6366f1&labelColor=1e1e2e" alt="ライセンス" />
     <img src="https://img.shields.io/badge/Architecture-MVVM-6366f1?style=for-the-badge&labelColor=1e1e2e&logo=kotlin" alt="MVVMアーキテクチャ" />
     <img src="https://img.shields.io/badge/Language-Kotlin-7f52ff?style=for-the-badge&logo=kotlin&color=6366f1&labelColor=1e1e2e" alt="Kotlin言語" />
     <img src="https://img.shields.io/badge/Toolkit-Jetpack_Compose-4285f4?style=for-the-badge&logo=jetpack-compose&color=6366f1&labelColor=1e1e2e" alt="Jetpack Compose" />
@@ -64,14 +64,14 @@
 
 <div align="center">
 
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_1.jpg" alt="ブラウズ" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_2.jpg" alt="ライブ歌詞" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_3.jpg" alt="テーマカスタマイズ" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_4.jpg" alt="統計情報" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_5.jpg" alt="アーティスト" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_6.jpg" alt="アルバム" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_7.jpg" alt="プレイヤー" width="30%" />
-<img src="https://github.com/rukamori/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_8.jpg" alt="設定" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_1.jpg" alt="ブラウズ" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_2.jpg" alt="ライブ歌詞" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_3.jpg" alt="テーマカスタマイズ" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_4.jpg" alt="統計情報" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_5.jpg" alt="アーティスト" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_6.jpg" alt="アルバム" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_7.jpg" alt="プレイヤー" width="30%" />
+<img src="https://github.com/vossgraves/ArchiveTune/blob/main/fastlane/metadata/android/en-US/images/phoneScreenshots/screenshot_8.jpg" alt="設定" width="30%" />
 
 </div>
 
@@ -223,8 +223,8 @@ ArchiveTuneは独立したサードパーティクライアントです。
 ---
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/archivetuneapp/ArchiveTune/refs/heads/dev/fastlane/metadata/android/en-US/images/ArchiveTuneFull.png" alt="ArchiveTune Banner" style="width: 100%; max-width: 500px;">
+  <img src="https://raw.githubusercontent.com/vossgraves/ArchiveTune/refs/heads/dev/fastlane/metadata/android/en-US/images/ArchiveTuneFull.png" alt="ArchiveTune Banner" style="width: 100%; max-width: 500px;">
   <p><b>ArchiveTuneで音楽体験が向上したなら、ぜひ⭐をお願いします</b></p>
   <br />
-  <img src="https://raw.githubusercontent.com/archivetuneapp/ArchiveTune/refs/heads/dev/assets/badge_part.png" alt="ArchiveTune Banner" style="width: 160px">
+  <img src="https://raw.githubusercontent.com/vossgraves/ArchiveTune/refs/heads/dev/assets/badge_part.png" alt="ArchiveTune Banner" style="width: 160px">
 </div>

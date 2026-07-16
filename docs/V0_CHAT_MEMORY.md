@@ -301,6 +301,24 @@ future sessions (or contributors) can pick up with full context.
   handler terminates after opening diagnostics, while storage relocation and
   backup restore intentionally restart the app after changing on-disk state.
 
+## Upstream remote-control surface removal (2026-07-17)
+
+- Removed the ArchiveTune backend extractor completely. It sent the user's
+  YouTube login cookie and player/GVS PO tokens to an upstream-controlled
+  Koiiverse server and trusted the returned stream URL. The submodule, build
+  secret, CI secret wiring, playback resolver/cache/routing code, and settings
+  choice are gone. A legacy enum value remains only so existing DataStore values
+  deserialize safely; it is immediately migrated and handled as local Web Remix.
+- Disabled the upstream-controlled online Music Together endpoint discovery,
+  deleted its server pointer file, and stopped CI from embedding Together and
+  canvas service secrets. Local/LAN Together code remains available.
+- Removed all Koiiverse/ArchiveTune website runtime URLs. News metadata now
+  comes from the fork (initially an empty feed), artwork no longer calls the
+  Koiiverse host, and user-facing repository/update links point to the fork.
+- The remaining YouTube credential path was audited: cookies and PO tokens are
+  now used only for direct Google/YouTube requests. Mori cipher refresh obtains
+  the player script directly from YouTube and does not use an ArchiveTune server.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
