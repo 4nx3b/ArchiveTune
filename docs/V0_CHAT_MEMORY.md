@@ -278,6 +278,16 @@ future sessions (or contributors) can pick up with full context.
   within 180 ms (up to three attempts). This prevents the primary from resuming
   seconds behind and briefly repeating the beginning of song two.
 
+## Post-install updater equality (2026-07-17)
+
+- Canary release names must never be compared to the installed display version
+  as SemVer. The manual update sheet now uses the same embedded `at-build`
+  versionCode comparison as background checks, so installing build N stops that
+  same build from being offered again.
+- The emergency workflow fallback now targets `nightly.yml` and its `-nightly`
+  artifact instead of the ordinary `build.yml` release artifact. New Canary
+  APKs also embed their commit hash for reliable build identity.
+
 ## Upstream sync (2026-07-17)
 
 - Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
