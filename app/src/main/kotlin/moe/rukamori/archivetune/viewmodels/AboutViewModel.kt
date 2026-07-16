@@ -415,13 +415,13 @@ class AboutViewModel
                             id = "github",
                             iconResId = R.drawable.github,
                             labelResId = R.string.about_content_desc_github,
-                            url = "https://github.com/rukamori/ArchiveTune",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                         AboutLinkUiModel(
                             id = "website",
                             iconResId = R.drawable.website,
                             labelResId = R.string.about_content_desc_website,
-                            url = "https://archivetune.koiiverse.cloud",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                         AboutLinkUiModel(
                             id = "telegram",
@@ -433,7 +433,7 @@ class AboutViewModel
                             id = "donate",
                             iconResId = R.drawable.coffee,
                             labelResId = R.string.about_content_desc_donate,
-                            url = "https://koiiverse.cloud/donate",
+                            url = "https://github.com/vossgraves/ArchiveTune",
                         ),
                         AboutLinkUiModel(
                             id = "discord",
@@ -445,7 +445,7 @@ class AboutViewModel
                             id = "privacy_policy",
                             iconResId = R.drawable.lock,
                             labelResId = R.string.privacy,
-                            url = "https://archivetune.koiiverse.cloud/privacy",
+                            url = "https://github.com/vossgraves/ArchiveTune/blob/dev/PRIVACY.md",
                         ),
                     ),
                 leadDeveloper =
@@ -466,7 +466,7 @@ class AboutViewModel
                                     id = "website",
                                     iconResId = R.drawable.website,
                                     labelResId = R.string.about_content_desc_website,
-                                    url = "https://koiiverse.cloud",
+                                    url = "https://github.com/rukamori",
                                 ),
                                 AboutLinkUiModel(
                                     id = "discord",
@@ -617,6 +617,6 @@ class AboutViewModel
         private companion object {
             const val MaxDisplayedContributors = 20
             const val DebugBuildBadge = "DEBUG"
-            const val ContributorsReadMoreUrl = "https://github.com/rukamori/ArchiveTune/graphs/contributors"
+            const val ContributorsReadMoreUrl = "https://github.com/vossgraves/ArchiveTune/graphs/contributors"
         }
     }

@@ -113,8 +113,8 @@ This file should be reviewed whenever ArchiveTune changes its permissions, stora
 
 For questions or corrections, use the project repository and issue tracker.
 
-- Repository: [https://github.com/rukamori/ArchiveTune](https://github.com/rukamori/ArchiveTune)
-- Issues: [https://github.com/rukamori/ArchiveTune/issues](https://github.com/rukamori/ArchiveTune/issues)
+- Repository: [https://github.com/vossgraves/ArchiveTune](https://github.com/vossgraves/ArchiveTune)
+- Issues: [https://github.com/vossgraves/ArchiveTune/issues](https://github.com/vossgraves/ArchiveTune/issues)
 
 ## Technical Appendix
 
@@ -127,8 +127,8 @@ This appendix maps the main statements above to concrete implementation surfaces
 | Settings and tokens stored locally | DataStore preference keys include UI settings, proxy settings, history toggles, Together values, YouTube session values, account name or email fields, Last.fm session values, ListenBrainz token values, Discord values, and update-cache keys. | `app/src/main/kotlin/moe/archivetuneapp/archivetune/constants/PreferenceKeys.kt` |
 | YouTube signed-in state | The Innertube layer exposes visitor data, data sync ID, cookie, PO token values, proxy state, and login-for-browse behavior as part of the current playback auth state. | `innertube/src/main/kotlin/moe/archivetuneapp/archivetune/innertube/YouTube.kt` |
 | Manual backup export | The backup view model writes app settings plus database files into a ZIP archive chosen by the user. | `app/src/main/kotlin/moe/archivetuneapp/archivetune/viewmodels/BackupRestoreViewModel.kt` |
-| External network integrations | Build configuration defines keys for Last.fm, Together, and canvas services. The updater fetches release information and caches related metadata in app preferences. | `app/build.gradle.kts`, `app/src/main/kotlin/moe/archivetuneapp/archivetune/utils/Updater.kt` |
-| Canvas service requests | The canvas module sends song and artist names, album IDs, or album URLs to `https://artwork-archivetune.koiiverse.cloud/` and can attach a bearer token. | `canvas/src/main/kotlin/moe/archivetuneapp/archivetune/canvas/ArchiveTuneCanvas.kt` |
+| External network integrations | Build configuration defines keys for Last.fm and the fork-operated Source Pool. The updater fetches release information only from the fork and caches related metadata in app preferences. | `app/build.gradle.kts`, `app/src/main/kotlin/moe/archivetuneapp/archivetune/utils/Updater.kt` |
+| Canvas service requests | The canvas module can send song and artist names, album IDs, or album URLs to its artwork provider and Apple Music fallback. It does not attach a Koiiverse bearer token. | `canvas/src/main/kotlin/moe/archivetuneapp/archivetune/canvas/ArchiveTuneCanvas.kt` |
 | Public feature claims | The repository README and store metadata describe privacy, YouTube integration, lyrics, music recognition, Last.fm, ListenBrainz, Discord Rich Presence, and other network-backed features that must stay aligned with this notice. | `README.md`, `fastlane/metadata/android/en-US/full_description.txt` |
 | Current dependency posture | The current Android dependency declarations show Compose, Room, Hilt, Ktor, Media3, Coil, Timber, and related libraries. They do not currently show Firebase, Crashlytics, Sentry, mobile ad SDKs, or mobile analytics SDKs in the Android app dependency definitions reviewed for this notice. | `app/build.gradle.kts`, `gradle/libs.versions.toml` |
 
@@ -136,7 +136,7 @@ This appendix maps the main statements above to concrete implementation surfaces
 
 The following areas should be documented carefully in the future if the project wants stronger privacy claims.
 
-- Whether any self-hosted or official Together deployment logs IP addresses, user agents, or participant history outside the Android app itself.
+- How a future fork-operated online Together deployment handles IP addresses, user agents, or participant history outside the Android app itself.
 - Whether all network endpoints used by optional features are always HTTPS in real deployments, since the Android manifest allows cleartext traffic.
 - Whether local app storage is encrypted at rest on all supported devices and configurations.
 - Whether canvas, lyrics, or future service providers apply their own independent retention or profiling practices.

@@ -26,15 +26,8 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 object ArchiveTuneCanvas {
-    private const val BASE_URL = "https://artwork-archivetune.koiiverse.cloud/"
-    private const val FALLBACK_URL = "https://artwork.boidu.dev/"
-
-    @Volatile
-    private var bearerToken: String? = null
-
-    fun initialize(bearerToken: String?) {
-        this.bearerToken = bearerToken?.trim()?.takeIf { it.isNotEmpty() }
-    }
+    private const val BASE_URL = "https://artwork.boidu.dev/"
+    private const val FALLBACK_URL = BASE_URL
 
     private val json =
         Json {
@@ -58,7 +51,6 @@ object ArchiveTuneCanvas {
             install(HttpCache)
             defaultRequest {
                 url(BASE_URL)
-                // bearerToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
             }
             expectSuccess = false
         }

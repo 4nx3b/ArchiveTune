@@ -32,7 +32,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.ads.SupportAdsInitializer
-import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.extensions.*
 import moe.rukamori.archivetune.innertube.YouTube
@@ -135,7 +134,6 @@ class App :
         )
         MoriCipherUpdateScheduler.schedule(this)
         CanvasArtworkPlaybackCache.init(this)
-        ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
 
         val locale = Locale.getDefault()

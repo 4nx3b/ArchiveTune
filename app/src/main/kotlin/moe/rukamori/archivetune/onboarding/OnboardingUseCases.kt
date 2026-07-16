@@ -198,7 +198,7 @@ class BuildOnboardingUiStateUseCase
                         titleResId = R.string.support_development_star,
                         descriptionResId = R.string.onboarding_community_github_desc,
                         iconResId = R.drawable.github,
-                        url = "https://github.com/rukamori/ArchiveTune",
+                        url = "https://github.com/vossgraves/ArchiveTune",
                     ),
                     OnboardingCommunityActionUiModel(
                         id = "discord",
@@ -219,7 +219,7 @@ class BuildOnboardingUiStateUseCase
                         titleResId = R.string.about_content_desc_donate,
                         descriptionResId = R.string.onboarding_community_donate_desc,
                         iconResId = R.drawable.coffee,
-                        url = "https://koiiverse.cloud/donate",
+                        url = "https://github.com/vossgraves/ArchiveTune",
                     ),
                 )
         }
