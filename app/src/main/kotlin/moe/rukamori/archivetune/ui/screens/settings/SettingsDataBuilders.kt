@@ -65,7 +65,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.settings_playback_title),
             subtitle = stringResource(R.string.settings_playback_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless"),
+            keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless", "flac", "lossless", "hi-res", "sample rate", "bitrate"),
             onClick = { navController.navigate("settings/player") },
         )
     val sources =
@@ -75,7 +75,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming"),
+            keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
         )
     val lyrics =
@@ -165,7 +165,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.storage),
             subtitle = stringResource(R.string.settings_storage_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
-            keywords = listOf("storage", "download", "cache", "disk", "space", "memory", "path", "location"),
+            keywords = listOf("storage", "download", "cache", "disk", "space", "memory", "path", "location", "export", "export songs", "local storage", "save songs"),
             onClick = { navController.navigate("settings/storage") },
         )
     val backupRestore =

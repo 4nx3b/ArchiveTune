@@ -181,6 +181,11 @@
     <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
+    <string name="export_songs_to_local">Export songs to local storage</string>
+    <string name="export_songs_to_local_description">Export all downloaded songs to a folder on your device. Files are saved in their original format (FLAC, OPUS, M4A, etc.).</string>
+    <string name="export_all_songs_progress">Exporting songs… (%1$d of %2$d)</string>
+    <string name="export_all_songs_complete">Exported %1$d song(s) successfully%2$s</string>
+    <string name="export_all_songs_no_downloads">No downloaded songs to export</string>
     <string name="import_playlist">Import playlist</string>
     <string name="import_failed">Import failed</string>
     <string name="update_button">Update</string>
@@ -663,6 +668,8 @@
     <string name="max_cache_size">Max cache size</string>
     <string name="unlimited">Unlimited</string>
     <string name="clear_all_downloads">Clear all downloads</string>
+    <string name="export_downloaded_songs">Export downloaded songs</string>
+    <string name="export_downloaded_songs_description">Save a copy of all downloaded songs to a chosen folder in their original audio format</string>
     <string name="max_image_cache_size">Max image cache size</string>
     <string name="clear_image_cache">Clear image cache</string>
     <string name="max_song_cache_size">Max song cache size</string>
