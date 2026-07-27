@@ -92,8 +92,6 @@ import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
-import moe.rukamori.archivetune.db.entities.exportMimeType
-import moe.rukamori.archivetune.db.entities.fileExtension
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -148,10 +146,7 @@ fun SongMenu(
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
     // The MIME type and file extension are resolved from the cached FormatEntity
     // so that lossless FLAC tracks export as .flac (not .mp3).
-    val database = LocalDatabase.current
-    val songFormat by produceState<moe.rukamori.archivetune.db.entities.FormatEntity?>(null, song.id) {
-        database.query { format(song.id)?.let { value = it } }
-    }
+    val songFormat by database.format(song.id).collectAsState(initial = null)
     val exportMimeType = songFormat?.exportMimeType() ?: "audio/mpeg"
     val exportToDownloadsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMimeType)) { destUri ->

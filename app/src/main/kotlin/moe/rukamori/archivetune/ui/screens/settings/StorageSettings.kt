@@ -66,6 +66,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -215,11 +216,11 @@ fun StorageSettings(
                         for (songId in keys) {
                             val spans = cache.getCachedSpans(songId)
                             if (spans.isEmpty()) continue
-                            val formatInfo = database.query { format(songId) }
+                            val formatInfo = database.format(songId).first()
                             val ext = formatInfo?.fileExtension() ?: "mp3"
                             val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
                             // Try to get song title from the database for a meaningful filename
-                            val songEntity = database.query { getSongByIdBlocking(songId)?.song }
+                            val songEntity = database.query { getSongByIdBlocking(songId) }
                             val safeTitle = songEntity?.title?.trim()
                                 ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                 ?.ifBlank { "audio" } ?: "audio_$songId"
