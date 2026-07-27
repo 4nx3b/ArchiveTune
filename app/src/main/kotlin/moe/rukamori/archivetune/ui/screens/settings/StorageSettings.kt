@@ -30,9 +30,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -60,15 +62,21 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.annotation.ExperimentalCoilApi
 import coil3.imageLoader
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -76,6 +84,8 @@ import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
+import moe.rukamori.archivetune.db.entities.exportMimeType
+import moe.rukamori.archivetune.db.entities.fileExtension
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -182,6 +192,66 @@ fun StorageSettings(
         (screenState as? StorageSettingsScreenState.Success)
             ?.model
             ?.cacheClear != null
+
+    val downloadUtil = LocalDownloadUtil.current
+    val database = LocalDatabase.current
+    val coroutineScope = rememberCoroutineScope()
+    var isExporting by remember { mutableStateOf(false) }
+
+    // SAF folder picker for exporting all downloaded songs to local storage.
+    val exportDownloadedSongsLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            isExporting = true
+            coroutineScope.launch {
+                var exported = 0
+                var failed = 0
+                try {
+                    withContext(Dispatchers.IO) {
+                        // Iterate all keys in the download cache and export each song
+                        // in its original audio format.
+                        val cache = downloadUtil.downloadCache
+                        val keys = cache.keys.toList()
+                        for (songId in keys) {
+                            val spans = cache.getCachedSpans(songId)
+                            if (spans.isEmpty()) continue
+                            val formatInfo = database.query { format(songId) }
+                            val ext = formatInfo?.fileExtension() ?: "mp3"
+                            val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
+                            // Try to get song title from the database for a meaningful filename
+                            val songEntity = database.query { getSongByIdBlocking(songId)?.song }
+                            val safeTitle = songEntity?.title?.trim()
+                                ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                                ?.ifBlank { "audio" } ?: "audio_$songId"
+                            val destUri = android.provider.DocumentsContract.createDocument(
+                                context.contentResolver,
+                                treeUri,
+                                mime,
+                                "$safeTitle.$ext",
+                            ) ?: run { failed++; continue }
+                            runCatching {
+                                context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+                                    spans.sortedBy { it.position }.forEach { span ->
+                                        java.io.FileInputStream(span.file).use { input ->
+                                            input.copyTo(output)
+                                        }
+                                    }
+                                    output.flush()
+                                }
+                            }.onSuccess { exported++ }.onFailure { failed++ }
+                        }
+                    }
+                } finally {
+                    isExporting = false
+                }
+                val failedMsg = if (failed > 0) ", $failed failed" else ""
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.export_all_songs_complete, exported, failedMsg),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
 
     val maxImageCacheSizeBytes =
         if (maxImageCacheSize > 0) {
@@ -349,6 +419,40 @@ fun StorageSettings(
                         },
                         onClick = { clearDownloads = true },
                     )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.export_downloaded_songs)) },
+                        description = stringResource(R.string.export_downloaded_songs_description),
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.send),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = { exportDownloadedSongsLauncher.launch(null) },
+                    )
+                }
+                if (isExporting) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(R.string.export_songs_to_local_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 
