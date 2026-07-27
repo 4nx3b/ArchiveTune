@@ -220,7 +220,7 @@ fun StorageSettings(
                             val ext = formatInfo?.fileExtension() ?: "mp3"
                             val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
                             // Try to get song title from the database for a meaningful filename
-                            val songEntity = getSongByIdBlocking(songId)
+                            val songEntity = database.getSongByIdBlocking(songId)
                             val safeTitle = songEntity?.title?.trim()
                                 ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                 ?.ifBlank { "audio" } ?: "audio_$songId"
