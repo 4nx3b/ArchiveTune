@@ -27,6 +27,42 @@ data class FormatEntity(
 
 fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substringBefore(";").uppercase()
 
+/**
+ * Returns the appropriate file extension for this format's audio codec.
+ * Used when exporting cached songs so lossless FLAC files get a .flac
+ * extension instead of the generic .mp3 that was previously hardcoded.
+ */
+fun FormatEntity.fileExtension(): String {
+    val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.lowercase()
+    val rawMime = mimeType.substringAfter("/").substringBefore(";").lowercase()
+    return when {
+        rawCodec.contains("flac") || rawCodec.contains("alac") -> "flac"
+        rawCodec.contains("opus") || rawMime.contains("opus") -> "opus"
+        rawCodec.contains("aac") || rawCodec.contains("mp4a") || rawMime.contains("mp4") -> "m4a"
+        rawCodec.contains("vorbis") -> "ogg"
+        rawCodec.contains("mp3") || rawMime.contains("mpeg") -> "mp3"
+        rawMime.contains("wav") || rawCodec.contains("pcm") -> "wav"
+        else -> "bin"
+    }
+}
+
+/**
+ * Returns the MIME type corresponding to this format's audio codec,
+ * suitable for use with SAF DocumentsContract.createDocument().
+ */
+fun FormatEntity.exportMimeType(): String {
+    val ext = fileExtension()
+    return when (ext) {
+        "flac" -> "audio/flac"
+        "opus" -> "audio/opus"
+        "m4a" -> "audio/mp4"
+        "ogg" -> "audio/ogg"
+        "wav" -> "audio/wav"
+        "mp3" -> "audio/mpeg"
+        else -> "application/octet-stream"
+    }
+}
+
 fun FormatEntity.codecLabel(): String {
     val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.uppercase()
     val rawMime = mimeType.substringAfter("/").substringBefore(";").uppercase()
