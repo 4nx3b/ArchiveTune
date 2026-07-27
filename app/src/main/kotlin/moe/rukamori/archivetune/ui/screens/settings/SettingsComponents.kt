@@ -801,3 +801,84 @@ fun SettingsFlatItem(
         }
     }
 }
+
+
+/**
+ * A single search result row shown in the settings search list.
+ * Displays the setting title and its parent category, with a chevron
+ * indicating that clicking will navigate to the sub-screen.
+ */
+@Composable
+fun SettingsSearchResultItem(
+    result: SearchResultItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveAccent =
+        if (result.parentAccentColor.isSpecified) {
+            result.parentAccentColor
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+
+    Card(
+        onClick = onClick,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(effectiveAccent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = result.parentIcon,
+                    contentDescription = null,
+                    tint = effectiveAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = result.parentTitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
