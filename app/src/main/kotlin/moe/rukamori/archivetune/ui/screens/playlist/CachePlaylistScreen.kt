@@ -74,9 +74,12 @@ import moe.rukamori.archivetune.R
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.db.entities.exportMimeType
+import moe.rukamori.archivetune.db.entities.fileExtension
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.SongSortTypeKey
@@ -117,14 +120,17 @@ fun CachePlaylistScreen(
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
 
-    // SAF folder picker for "Export all"
+    // SAF folder picker for "Export all".
+    // Exports songs in their original audio format (FLAC, OPUS, M4A, etc.)
+    // based on the FormatEntity codec metadata, instead of hardcoded .mp3.
+    val database = LocalDatabase.current
     val exportAllLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri == null) return@rememberLauncherForActivityResult
             coroutineScope.launch {
                 var exported = 0
                 var failed = 0
-                for (song in cachedSongs) {
+                for ((index, song) in cachedSongs.withIndex()) {
                     val result = runCatching {
                         withContext(Dispatchers.IO) {
                             val cache = downloadUtil.downloadCache
@@ -134,11 +140,18 @@ fun CachePlaylistScreen(
                             }
                             val safeTitle = song.title.trim()
                                 .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                            // Resolve the correct file extension and MIME type from
+                            // the FormatEntity so lossless FLAC tracks export as .flac.
+                            val formatInfo = database.query {
+                                format(song.id)
+                            }
+                            val ext = formatInfo?.fileExtension() ?: "mp3"
+                            val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
                             val destUri = android.provider.DocumentsContract.createDocument(
                                 context.contentResolver,
                                 treeUri,
-                                "audio/mpeg",
-                                "$safeTitle.mp3",
+                                mime,
+                                "$safeTitle.$ext",
                             ) ?: throw IllegalStateException("Could not create file")
                             context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
                                 spans.sortedBy { it.position }.forEach { span ->
