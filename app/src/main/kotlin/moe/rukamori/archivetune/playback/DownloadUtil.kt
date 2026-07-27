@@ -82,8 +82,9 @@ class DownloadUtil
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
@@ -364,6 +365,6 @@ class DownloadUtil
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 32
             private const val MAX_DOWNLOAD_HTTP_REQUESTS = 64
             private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 5L
-            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 1024 * 1024
+            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 4 * 1024 * 1024  // 4MB — larger buffer reduces I/O syscalls for faster downloads
         }
     }
