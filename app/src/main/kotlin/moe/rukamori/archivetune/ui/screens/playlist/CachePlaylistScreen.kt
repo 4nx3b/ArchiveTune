@@ -101,6 +101,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
@@ -143,9 +144,7 @@ fun CachePlaylistScreen(
                                 .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
                             // Resolve the correct file extension and MIME type from
                             // the FormatEntity so lossless FLAC tracks export as .flac.
-                            val formatInfo = database.query {
-                                format(song.id)
-                            }
+                            val formatInfo = database.format(song.id).first()
                             val ext = formatInfo?.fileExtension() ?: "mp3"
                             val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
                             val destUri = android.provider.DocumentsContract.createDocument(
