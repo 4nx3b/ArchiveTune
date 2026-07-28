@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.exportMimeType
 import moe.rukamori.archivetune.db.entities.fileExtension
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -146,10 +147,25 @@ fun SongMenu(
     val downloadUtil = LocalDownloadUtil.current
 
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
-    // The MIME type and file extension are resolved from the cached FormatEntity
-    // so that lossless FLAC tracks export as .flac (not .mp3).
+    // The MIME type hint is resolved from the cached FormatEntity, but the actual
+    // file extension is detected from the cached audio data's magic bytes to
+    // avoid exporting lossy data with a .flac extension.
     val songFormat by database.format(song.id).collectAsState(initial = null)
     val exportMimeType = songFormat?.exportMimeType() ?: "audio/mpeg"
+    // Detect the real audio format from the download cache so the exported
+    // file always gets the correct extension (e.g. .opus instead of .flac).
+    val detectedExt by produceState(
+        initialValue = songFormat?.fileExtension() ?: "mp3",
+        song.id,
+    ) {
+        withContext(Dispatchers.IO) {
+            val cache = downloadUtil.downloadCache
+            val spans = getCachedSpansForKey(cache, song.id)
+            if (spans.isNotEmpty()) {
+                value = detectAudioExtensionFromSpans(spans)
+            }
+        }
+    }
     val exportToDownloadsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMimeType)) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
@@ -887,7 +903,7 @@ fun SongMenu(
                             if (download?.state == Download.STATE_COMPLETED) {
                                 val safeTitle = song.song.title.trim()
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
-                                val ext = songFormat?.fileExtension() ?: "mp3"
+                                val ext = detectedExt
                                 ListItem(
                                     headlineContent = {
                                         Text(text = stringResource(R.string.export))
