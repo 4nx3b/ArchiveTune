@@ -211,8 +211,11 @@ fun LastFmDashboardScreen(
             return@Scaffold
         }
 
-        val recent = recentTracks?.getOrNull().orEmpty()
+        val recent = remember(recentTracks) {
+            recentTracks?.getOrNull().orEmpty().dedupeNowPlayingEchoes()
+        }
         val top = topTracks?.getOrNull().orEmpty()
+        val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -263,6 +266,7 @@ fun LastFmDashboardScreen(
                                 track = track,
                                 rank = index + 1,
                                 playCount = track.playcount,
+                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
                             )
                         }
                     }
@@ -528,6 +532,26 @@ private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.User
         ?.lastOrNull()
         ?.text
 
+private fun RecentTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
+
+private fun TopTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
+
+private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
+    mapNotNull { track -> bestArtwork(track.image)?.let { track.trackArtworkKey() to it } }.toMap()
+
+private fun List<RecentTrack>.dedupeNowPlayingEchoes(): List<RecentTrack> {
+    val nowPlayingKeys = filter { it.isNowPlaying }.mapTo(mutableSetOf()) { it.trackArtworkKey() }
+    val emittedNowPlaying = mutableSetOf<String>()
+    return filter { track ->
+        val key = track.trackArtworkKey()
+        when {
+            track.isNowPlaying -> emittedNowPlaying.add(key)
+            key in nowPlayingKeys -> false
+            else -> true
+        }
+    }
+}
+
 /**
  * A card-style track row matching the History page design.
  * Uses a rounded card with larger album art (56 dp), bold title,
@@ -649,8 +673,9 @@ private fun DashboardTrackCard(
     track: TopTrack,
     rank: Int? = null,
     playCount: Int? = null,
+    fallbackArtworkUrl: String? = null,
 ) {
-    val artworkUrl = bestArtwork(track.image)
+    val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
 
     Surface(
         modifier = Modifier
