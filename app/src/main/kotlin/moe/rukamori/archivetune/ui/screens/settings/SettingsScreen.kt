@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.utils.Updater
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
     val route =
         when (parentKey) {
+            "account" -> "settings/account"
             "appearance" -> "settings/appearance"
             "playback" -> "settings/player"
             "sources" -> "settings/sources"
@@ -93,7 +94,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
         }
     // About / developer-options screens intentionally don't participate in auto-scroll
     // (their contents are mostly static links). All other screens honor ?scrollTo=.
-    val supportsScroll = parentKey !in setOf("developer_options", "about", "po_token")
+    val supportsScroll = parentKey !in setOf("developer_options", "about", "po_token", "account")
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
 
@@ -158,27 +159,42 @@ fun SettingsScreen(
     //
     // Per product decision: settings that ship with an inline switch control
     // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
-    // Skip silence, Audio normalization, Audio offload, Persistent queue, etc.)
-    // are EXCLUDED from search results — they already expose their toggle in the
-    // parent screen, and showing them as search rows that don't auto-scroll was
-    // confusing. Every non-switch setting must be both searchable AND auto-scroll
-    // to its position when tapped.
+    // Persistent queue, etc.) ARE included in search results — the switch is
+    // rendered inline so the user can toggle directly from the results.
+    // Switchless settings navigate to the parent screen and auto-scroll to
+    // the setting's position when tapped.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) emptyList()
         else {
-            val query = searchQuery.trim().lowercase()
-            allSettingsGroups.flatMap { group ->
-                group.items.flatMap { item ->
-                    item.children
-                        .filter { child -> child.switchControl == null }
-                        .mapNotNull { child ->
-                            val matchesTitle = child.title.lowercase().contains(query)
-                            val matchesKeywords = child.keywords.any { it.lowercase().contains(query) }
-                            val matchesParent =
-                                item.title.lowercase().contains(query) ||
-                                    item.subtitle?.lowercase()?.contains(query) == true ||
-                                    item.keywords.any { it.lowercase().contains(query) }
-                            if (matchesTitle || matchesKeywords || matchesParent) {
+            // Split the query into individual words and require every word to
+            // appear in at least one of (title, keywords, parent title).
+            // This makes "low data" match "Low data mode" (both words present in
+            // the title) and "persistent queue" match "Persistent queue".
+            val queryWords =
+                searchQuery.trim().lowercase().split("\\s+".toRegex())
+                    .filter { it.isNotBlank() }
+            if (queryWords.isEmpty()) emptyList()
+            else {
+                allSettingsGroups.flatMap { group ->
+                    group.items.flatMap { item ->
+                        item.children.mapNotNull { child ->
+                            val titleTokens = listOf(child.title.lowercase())
+                            val keywordTokens = child.keywords.map { it.lowercase() }
+                            val parentTokens =
+                                buildList {
+                                    add(item.title.lowercase())
+                                    item.subtitle?.lowercase()?.let(::add)
+                                    addAll(item.keywords.map { it.lowercase() })
+                                }
+                            val titleMatches = queryWords.all { q -> titleTokens.any { it.contains(q) } }
+                            val keywordMatches = queryWords.all { q -> keywordTokens.any { it.contains(q) } }
+                            val parentMatches = queryWords.all { q -> parentTokens.any { it.contains(q) } }
+                            // Also accept the looser "any word matches the title's first word"
+                            // case so a query like "crossfade" still surfaces a setting titled
+                            // "Crossfade gapless" when the user only types one word.
+                            val anyWordInTitle = queryWords.any { q -> titleTokens.any { it.contains(q) } }
+                            val matches = titleMatches || keywordMatches || parentMatches || anyWordInTitle
+                            if (matches) {
                                 SearchResultItem(
                                     title = child.title,
                                     parentTitle = item.title,
@@ -188,15 +204,21 @@ fun SettingsScreen(
                                     parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
                                     scrollKey = child.scrollKey,
                                     onClick = item.onClick,
-                                    switchControl = null,
+                                    switchControl = child.switchControl,
                                 )
                             } else null
                         }.ifEmpty {
-                            // If the parent matches but has no non-switch children,
-                            // show the parent itself as a single result.
-                            if (item.title.lowercase().contains(query) ||
-                                item.subtitle?.lowercase()?.contains(query) == true ||
-                                item.keywords.any { it.lowercase().contains(query) }
+                            // If the parent matches but has no children, show the
+                            // parent itself as a single result so top-level items
+                            // (e.g. "Statistics") remain searchable.
+                            val parentTokens =
+                                buildList {
+                                    add(item.title.lowercase())
+                                    item.subtitle?.lowercase()?.let(::add)
+                                    addAll(item.keywords.map { it.lowercase() })
+                                }
+                            if (queryWords.all { q -> parentTokens.any { it.contains(q) } } ||
+                                queryWords.any { q -> parentTokens.any { it.contains(q) } }
                             ) {
                                 listOf(
                                     SearchResultItem(
@@ -212,6 +234,7 @@ fun SettingsScreen(
                                 )
                             } else emptyList()
                         }
+                    }
                 }
             }
         }

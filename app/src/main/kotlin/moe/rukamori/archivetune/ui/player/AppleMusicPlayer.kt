@@ -440,7 +440,7 @@ private fun AppleMusicControlsColumn(
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
                 iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
-                tint = if (currentSongLiked) Color(0xFFFFD700) else Color.White,
+                tint = Color.White,
                 contentDescription = null,
                 onClick = playerConnection::toggleLike,
             )
