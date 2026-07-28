@@ -695,6 +695,7 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 // Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
 // Android 12+; a translucent surface fallback below that.
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")

@@ -78,6 +78,7 @@ import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
@@ -223,6 +224,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (navigationBarFrostedBlur, onNavigationBarFrostedBlurChange) =
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
+    val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
+        rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
     val (playerButtonsStyle, onPlayerButtonsStyleChange) =
         rememberEnumPreference(
             PlayerButtonsStyleKey,
@@ -971,6 +974,18 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         checked = navigationBarFrostedBlur,
                         onCheckedChange = onNavigationBarFrostedBlurChange,
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("hide_navigation_bar_labels")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.hide_navigation_bar_labels)) },
+                            description = stringResource(R.string.hide_navigation_bar_labels_desc),
+                            icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                            checked = hideNavigationBarLabels,
+                            onCheckedChange = onHideNavigationBarLabelsChange,
+                        )
+                    }
                 }
 
                 item {

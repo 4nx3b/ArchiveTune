@@ -40,16 +40,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DownloadSourceKey
+import moe.rukamori.archivetune.constants.QobuzAudioQuality
+import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
+import moe.rukamori.archivetune.constants.TidalAudioQuality
+import moe.rukamori.archivetune.constants.TidalAudioQualityKey
+import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.enumPreference
+import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import okhttp3.ConnectionPool
@@ -73,6 +84,7 @@ class DownloadUtil
     ) {
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
+        private val downloadSource by enumPreference(context, DownloadSourceKey, AudioSourceType.YOUTUBE)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
         private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
@@ -161,6 +173,7 @@ class DownloadUtil
                         return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
                     }
                 }
+                resolvePreferredDownloadDataSpec(mediaId, dataSpec)?.let { return@Factory it }
                 val lowDataModeActive = context.isLowDataModeActive()
                 val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
                 val streamCacheKey = buildSongUrlCacheKey(mediaId, requestedAudioQuality)
@@ -274,6 +287,34 @@ class DownloadUtil
         }
 
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
+
+        private fun resolvePreferredDownloadDataSpec(mediaId: String, dataSpec: DataSpec): DataSpec? {
+            if (downloadSource == AudioSourceType.YOUTUBE) return null
+            val song = database.getSongByIdBlocking(mediaId) ?: return null
+            val queryTitle = song.song.title.takeIf { it.isNotBlank() } ?: return null
+            val artists = song.artists.map { it.name }.filter { it.isNotBlank() }
+            val album = song.album?.title ?: song.song.albumName
+            val durationMs = song.song.duration.takeIf { it > 0 }?.times(1000L)
+            return runCatching {
+                when (downloadSource) {
+                    AudioSourceType.QOBUZ -> {
+                        val quality = context.dataStore.get(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
+                        QobuzAudioProvider.resolve(
+                            QobuzAudioProvider.Query(mediaId, queryTitle, artists, album, durationMs),
+                            quality.toFormatId(),
+                        )?.let { resolved -> dataSpec.buildUpon().setUri(resolved.uri.toUri()).setKey("qobuz:$mediaId").build() }
+                    }
+                    AudioSourceType.TIDAL -> {
+                        val quality = context.dataStore.get(TidalAudioQualityKey, TidalAudioQuality.FLAC)
+                        TidalAudioProvider.resolve(
+                            query = TidalAudioProvider.Query(mediaId, queryTitle, artists, album, null, durationMs),
+                            audioQuality = quality,
+                        ).let { resolved -> dataSpec.buildUpon().setUri(resolved.mediaUri.toUri()).setKey("tidal:$mediaId").build() }
+                    }
+                    AudioSourceType.YOUTUBE -> null
+                }
+            }.getOrNull()
+        }
 
         private fun resolveDownloadAudioQuality(lowDataModeActive: Boolean): AudioQuality =
             if (lowDataModeActive) AudioQuality.LOW else audioQuality
