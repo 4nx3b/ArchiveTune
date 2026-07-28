@@ -14,12 +14,46 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
+import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
+import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
+import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
+import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.DynamicThemeKey
+import moe.rukamori.archivetune.constants.LowDataModeKey
+import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
+import moe.rukamori.archivetune.constants.PermanentShuffleKey
+import moe.rukamori.archivetune.constants.PersistentQueueKey
+import moe.rukamori.archivetune.constants.PureBlackKey
+import moe.rukamori.archivetune.constants.SeekExtraSeconds
+import moe.rukamori.archivetune.constants.SkipSilenceKey
+import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
+import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
+import moe.rukamori.archivetune.constants.WakelockKey
+import moe.rukamori.archivetune.utils.rememberPreference
+
+@Composable
+private fun SearchResultSwitch(
+    key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
+    defaultValue: Boolean,
+) {
+    val (checked, onCheckedChange) = rememberPreference(key, defaultValue)
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+    )
+}
 
 @Composable
 fun buildSettingsGroups(
@@ -58,12 +92,12 @@ fun buildSettingsGroups(
             keywords = listOf("appearance", "theme", "dark", "light", "color", "palette", "style", "design"),
             onClick = { navController.navigate("settings/appearance") },
             children = listOf(
-                SettingsChild("Dynamic theme", "dynamic_theme", listOf("dynamic theme", "material you", "material you", "dynamic color")),
+                SettingsChild("Dynamic theme", "dynamic_theme", listOf("dynamic theme", "material you", "material you", "dynamic color")) { SearchResultSwitch(DynamicThemeKey, false) },
                 SettingsChild("Dark theme", "dark_theme", listOf("dark", "dark theme", "night", "amoled")),
-                SettingsChild("Pure black", "pure_black", listOf("pure black", "amoled", "oled", "black background")),
+                SettingsChild("Pure black", "pure_black", listOf("pure black", "amoled", "oled", "black background")) { SearchResultSwitch(PureBlackKey, false) },
                 SettingsChild("Color palette", "color_palette", listOf("color palette", "accent color", "theme color")),
                 SettingsChild("App icon", "app_icon", listOf("icon", "app icon", "icon pack")),
-                SettingsChild("Disable blur", "disable_blur", listOf("blur", "disable blur", "no blur", "performance")),
+                SettingsChild("Disable blur", "disable_blur", listOf("blur", "disable blur", "no blur", "performance")) { SearchResultSwitch(DisableBlurKey, false) },
                 SettingsChild("Blur intensity", "blur_intensity", listOf("blur intensity", "blur amount", "blur level")),
                 SettingsChild("Font preference", "font_preference", listOf("font", "font style", "typography")),
                 SettingsChild("Player design style", "player_design_style", listOf("player design", "player layout", "player style")),
@@ -91,25 +125,25 @@ fun buildSettingsGroups(
             keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless", "flac", "lossless", "hi-res", "sample rate", "bitrate"),
             onClick = { navController.navigate("settings/player") },
             children = listOf(
-                SettingsChild("Low data mode", "low_data_mode", listOf("data", "data saver", "low quality", "data mode")),
+                SettingsChild("Low data mode", "low_data_mode", listOf("data", "data saver", "low quality", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
                 SettingsChild("History duration", "history_duration", listOf("history", "duration", "recent", "queue length")),
-                SettingsChild("Crossfade", "crossfade", listOf("crossfade", "fade", "transition", "mix", "blend")),
-                SettingsChild("Crossfade gapless", "crossfade_gapless", listOf("crossfade gapless", "gapless crossfade", "seamless crossfade")),
-                SettingsChild("Skip silence", "skip_silence", listOf("silence", "skip silence", "blank", "quiet")),
-                SettingsChild("Audio normalization", "audio_normalization", listOf("normalization", "loudness", "normalize", "volume level")),
-                SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")),
-                SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")),
-                SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")),
+                SettingsChild("Crossfade", "crossfade", listOf("crossfade", "fade", "transition", "mix", "blend")) { SearchResultSwitch(CrossfadeEnabledKey, false) },
+                SettingsChild("Crossfade gapless", "crossfade_gapless", listOf("crossfade gapless", "gapless crossfade", "seamless crossfade")) { SearchResultSwitch(CrossfadeGaplessKey, true) },
+                SettingsChild("Skip silence", "skip_silence", listOf("silence", "skip silence", "blank", "quiet")) { SearchResultSwitch(SkipSilenceKey, false) },
+                SettingsChild("Audio normalization", "audio_normalization", listOf("normalization", "loudness", "normalize", "volume level")) { SearchResultSwitch(AudioNormalizationKey, true) },
+                SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")) { SearchResultSwitch(AudioOffload, false) },
+                SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")) { SearchResultSwitch(SeekExtraSeconds, false) },
+                SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
                 SettingsChild("Device mute recovery volume", "device_mute_recovery_volume", listOf("recovery volume", "mute recovery", "volume restore")),
-                SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")),
-                SettingsChild("ArchiveTune Canvas", "archivetune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")),
-                SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")),
-                SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")),
-                SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")),
-                SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")),
-                SettingsChild("Auto skip on error", "auto_skip_error", listOf("skip", "error", "auto skip", "failed")),
-                SettingsChild("Stop music on task clear", "stop_task_clear", listOf("stop", "task clear", "background", "close app")),
-                SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")),
+                SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")) { SearchResultSwitch(AutoStartOnBluetoothKey, false) },
+                SettingsChild("ArchiveTune Canvas", "archivetune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
+                SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
+                SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
+                SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },
+                SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")) { SearchResultSwitch(AutoDownloadOnLikeKey, false) },
+                SettingsChild("Auto skip on error", "auto_skip_error", listOf("skip", "error", "auto skip", "failed")) { SearchResultSwitch(AutoSkipNextOnErrorKey, false) },
+                SettingsChild("Stop music on task clear", "stop_task_clear", listOf("stop", "task clear", "background", "close app")) { SearchResultSwitch(StopMusicOnTaskClearKey, false) },
+                SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")) { SearchResultSwitch(WakelockKey, false) },
                 SettingsChild("Artist separators", "artist_separators", listOf("artist", "separator", "split", "featuring")),
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
                 SettingsChild("External downloader", "external_downloader", listOf("external downloader", "download app", "custom downloader")),
