@@ -99,7 +99,7 @@ private object TidalHealthUiCache {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TidalSettings(navController: NavController) {
+fun TidalSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 

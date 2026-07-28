@@ -53,7 +53,7 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SourceSettings(navController: NavController) {
+fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     Scaffold(
         topBar = {
             TopAppBar(
