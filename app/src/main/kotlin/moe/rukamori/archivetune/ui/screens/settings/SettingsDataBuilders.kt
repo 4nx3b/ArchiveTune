@@ -138,7 +138,7 @@ fun buildSettingsGroups(
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
                 SettingsChild("Device mute recovery volume", "device_mute_recovery_volume", listOf("recovery volume", "mute recovery", "volume restore")),
                 SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")) { SearchResultSwitch(AutoStartOnBluetoothKey, false) },
-                SettingsChild("ArchiveTune Canvas", "archivetune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
+                SettingsChild("ArchiveTune Canvas", "archive_tune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
                 SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },
@@ -242,6 +242,78 @@ fun buildSettingsGroups(
                 SettingsChild("Discord rich presence", "discord_presence", listOf("discord", "rich presence", "status", "now playing")),
                 SettingsChild("ListenBrainz", "listenbrainz", listOf("listenbrainz", "listen brainz", "scrobble")),
             ),
+        )
+    val discord =
+        SettingsItem(
+            key = "discord",
+            icon = painterResource(R.drawable.discord),
+            title = stringResource(R.string.discord_integration),
+            subtitle = stringResource(R.string.settings_integration_subtitle),
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("discord", "rich presence", "rpc", "status", "activity", "now playing"),
+            onClick = { navController.navigate("settings/discord") },
+            children = listOf(
+                SettingsChild("Discord account", "discord_account", listOf("discord account", "discord login", "discord token", "discord authorization")),
+                SettingsChild("Discord options", "discord_options", listOf("discord options", "discord refresh", "refresh discord")),
+                SettingsChild("Discord connection settings", "discord_connection", listOf("discord connection", "activity status", "platform status", "discord platform")),
+                SettingsChild("Discord activity content", "discord_activity", listOf("discord activity", "activity name", "activity details", "activity state", "activity type", "discord show when paused")),
+                SettingsChild("Discord image options", "discord_images", listOf("discord image", "large image", "large text", "discord artwork", "discord cover")),
+            ),
+        )
+    val lastfm =
+        SettingsItem(
+            key = "lastfm",
+            icon = painterResource(R.drawable.discord),
+            title = stringResource(R.string.lastfm_integration),
+            subtitle = stringResource(R.string.settings_integration_subtitle),
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("lastfm", "last.fm", "scrobble", "scrobbling", "listens", "session"),
+            onClick = { navController.navigate("settings/lastfm") },
+            children = listOf(
+                SettingsChild("Last.fm service", "lastfm_service", listOf("lastfm service", "lastfm provider", "lastfm instance")),
+                SettingsChild("Last.fm account", "lastfm_account", listOf("lastfm account", "lastfm login", "lastfm session", "lastfm username")),
+                SettingsChild("Last.fm options", "lastfm_options", listOf("lastfm options", "lastfm settings", "scrobble toggle", "now playing")),
+                SettingsChild("Last.fm scrobbling configuration", "lastfm_scrobbling_config", listOf("scrobble config", "scrobble configuration", "scrobble threshold", "scrobble percentage")),
+            ),
+        )
+    val tidal =
+        SettingsItem(
+            key = "tidal",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = stringResource(R.string.source_tidal),
+            subtitle = stringResource(R.string.settings_integration_subtitle),
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("tidal", "hifi", "master", "mqa", "lossless", "flac"),
+            onClick = { navController.navigate("settings/tidal") },
+            children = listOf(
+                SettingsChild("Tidal account", "tidal_account", listOf("tidal account", "tidal login", "tidal token", "tidal session")),
+                SettingsChild("Tidal instances", "tidal_instances", listOf("tidal instance", "tidal server", "tidal url", "tidal endpoint")),
+            ),
+        )
+    val qobuz =
+        SettingsItem(
+            key = "qobuz",
+            icon = painterResource(R.drawable.provider_qobuz),
+            title = stringResource(R.string.source_qobuz),
+            subtitle = stringResource(R.string.settings_integration_subtitle),
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("qobuz", "hires", "hi-res", "flac", "lossless", "cd quality"),
+            onClick = { navController.navigate("settings/qobuz") },
+            children = listOf(
+                SettingsChild("Qobuz account", "qobuz_account", listOf("qobuz account", "qobuz login", "qobuz email", "qobuz session")),
+                SettingsChild("Qobuz tokens", "qobuz_tokens", listOf("qobuz token", "qobuz app secret", "qobuz credential")),
+                SettingsChild("Qobuz instances", "qobuz_instances", listOf("qobuz instance", "qobuz server", "qobuz url", "qobuz endpoint")),
+            ),
+        )
+    val telegram =
+        SettingsItem(
+            key = "telegram",
+            icon = painterResource(R.drawable.telegram),
+            title = stringResource(R.string.telegram_integration),
+            subtitle = stringResource(R.string.settings_integration_subtitle),
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("telegram", "telegram channel", "channel sync", "telegram music", "telegram bot"),
+            onClick = { navController.navigate("settings/telegram") },
         )
     val aiIntegration =
         SettingsItem(
@@ -425,7 +497,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),
-            items = listOf(integration, aiIntegration, internet, poToken),
+            items = listOf(integration, discord, lastfm, tidal, qobuz, telegram, aiIntegration, internet, poToken),
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),

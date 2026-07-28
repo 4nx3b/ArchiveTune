@@ -20,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -71,21 +72,31 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.integration_accounts)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("lastfm_scrobbling"),
+                title = stringResource(R.string.integration_accounts),
+            ) {
                 item {
                     IntegrationAccountCards(navController = navController)
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.general)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("discord_presence"),
+                title = stringResource(R.string.general),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.discord_integration)) },
@@ -98,7 +109,10 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
             }
 
             if (manualSourceLogin) {
-                PreferenceGroup(title = stringResource(R.string.music_sources)) {
+                PreferenceGroup(
+                    modifier = positions.modifierFor("music_sources"),
+                    title = stringResource(R.string.music_sources),
+                ) {
                     item {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.tidal_integration)) },
@@ -123,7 +137,10 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.scrobbling)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("listenbrainz"),
+                title = stringResource(R.string.scrobbling),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.lastfm_integration)) },
