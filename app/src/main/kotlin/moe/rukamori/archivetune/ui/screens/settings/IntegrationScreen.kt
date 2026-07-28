@@ -42,7 +42,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationScreen(navController: NavController) {
+fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
     // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the

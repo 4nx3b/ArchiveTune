@@ -121,6 +121,7 @@ import kotlin.math.roundToInt
 fun LyricsSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }

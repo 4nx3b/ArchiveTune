@@ -130,7 +130,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppearanceSettings(navController: NavController) {
+fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
     val (dynamicTheme, onDynamicThemeChange) =
@@ -446,15 +446,22 @@ fun AppearanceSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.theme)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("dynamic_theme"),
+                title = stringResource(R.string.theme),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_dynamic_theme)) },
@@ -637,7 +644,10 @@ fun AppearanceSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.player)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("disable_blur"),
+                title = stringResource(R.string.player),
+            ) {
                 item {
                     EnumListPreference(
                         title = { Text(stringResource(R.string.player_design_style)) },
@@ -917,7 +927,10 @@ fun AppearanceSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.misc)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("app_language"),
+                title = stringResource(R.string.misc),
+            ) {
                 item {
                     EnumListPreference(
                         title = { Text(stringResource(R.string.quick_picks_display_mode)) },

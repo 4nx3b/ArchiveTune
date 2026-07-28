@@ -118,6 +118,7 @@ import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import moe.rukamori.archivetune.utils.toggleSpeedDialPin
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
+import timber.log.Timber
 
 @Composable
 fun SongMenu(
@@ -894,18 +895,29 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-                                                val downloadRequest =
-                                                    DownloadRequest
-                                                        .Builder(song.id, song.id.toUri())
-                                                        .setCustomCacheKey(song.id)
-                                                        .setData(song.song.title.toByteArray())
-                                                        .build()
-                                                DownloadService.sendAddDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    downloadRequest,
-                                                    false,
-                                                )
+                                                // If the song has cached audio in the player cache (e.g.
+                                                // lossless FLAC from Qobuz/Tidal playback), copy it to the
+                                                // download cache so the download appears complete instantly
+                                                // without re-downloading from YouTube Music.
+                                                val playerSpans = getCachedSpansForKey(downloadUtil.playerCache, song.id)
+                                                if (playerSpans.isNotEmpty()) {
+                                                    coroutineScope.launch(Dispatchers.IO) {
+                                                        copySpansToCache(downloadUtil.downloadCache, song.id, playerSpans)
+                                                    }
+                                                } else {
+                                                    val downloadRequest =
+                                                        DownloadRequest
+                                                            .Builder(song.id, song.id.toUri())
+                                                            .setCustomCacheKey(song.id)
+                                                            .setData(song.song.title.toByteArray())
+                                                            .build()
+                                                    DownloadService.sendAddDownload(
+                                                        context,
+                                                        ExoDownloadService::class.java,
+                                                        downloadRequest,
+                                                        false,
+                                                    )
+                                                }
                                             },
                                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     )
@@ -1162,18 +1174,74 @@ private fun getCachedSpansForKey(
 }
 
 /**
+ * Copies cached [spans] into the destination [cache] under the given [cacheKey].
+ * This allows instantly "downloading" a song that is already cached in the player
+ * cache (e.g. lossless FLAC from Qobuz/Tidal) into the download cache, so the
+ * Media3 download system recognises it as completed.
+ */
+private fun copySpansToCache(
+    cache: androidx.media3.datasource.cache.Cache,
+    cacheKey: String,
+    spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+) {
+    try {
+        val sorted = spans.mapNotNull { span ->
+            val file = span.file
+            if (file != null && file.exists()) span to file else null
+        }.sortedBy { it.first.position }
+
+        if (sorted.isEmpty()) return
+
+        for ((span, file) in sorted) {
+            val data = file.readBytes()
+            val start = span.position
+            cache.setData(cacheKey, start, data)
+        }
+
+        Timber.tag("SongExport").d(
+            "Copied %d spans (%d bytes) to download cache for key=%s",
+            sorted.size,
+            sorted.sumOf { it.second.length() },
+            cacheKey,
+        )
+    } catch (e: Exception) {
+        Timber.tag("SongExport").e(e, "Failed to copy spans to download cache")
+    }
+}
+
+/**
  * Writes cached [spans] (sorted by position) to the output stream at [destUri].
+ * Skips spans whose backing file is null or missing. If there are gaps between
+ * spans, logs a warning since the resulting file may be incomplete.
  */
 private fun writeSpansToUri(
     context: android.content.Context,
     destUri: Uri,
     spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
 ) {
+    val sorted = spans.mapNotNull { span ->
+        val file = span.file
+        if (file != null && file.exists()) span to file else null
+    }.sortedBy { it.first.position }
+
+    if (sorted.isEmpty()) {
+        throw IllegalStateException("No valid cache span files found")
+    }
+
     context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-        spans.sortedBy { it.position }.forEach { span ->
-            java.io.FileInputStream(span.file).use { input ->
+        var lastEnd = 0L
+        for ((span, file) in sorted) {
+            if (span.position > lastEnd && lastEnd > 0) {
+                Timber.tag("SongExport").w(
+                    "Gap in cache spans: bytes %d–%d missing (song may be incomplete)",
+                    lastEnd,
+                    span.position,
+                )
+            }
+            java.io.FileInputStream(file).use { input ->
                 input.copyTo(output)
             }
+            lastEnd = span.position + file.length()
         }
         output.flush()
     } ?: throw IllegalStateException("Could not open destination stream")
