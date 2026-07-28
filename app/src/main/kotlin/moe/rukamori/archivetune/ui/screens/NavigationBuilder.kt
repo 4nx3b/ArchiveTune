@@ -460,6 +460,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         StorageSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
+    composable("settings/storage/export_songs") {
+        ExportDownloadedSongsScreen(navController)
+    }
     composable(
         route = "settings/privacy?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),

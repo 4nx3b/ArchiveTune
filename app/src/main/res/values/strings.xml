@@ -672,6 +672,14 @@
     <string name="clear_all_downloads">Clear all downloads</string>
     <string name="export_downloaded_songs">Export downloaded songs</string>
     <string name="export_downloaded_songs_description">Save a copy of all downloaded songs to a chosen folder in their original audio format</string>
+    <string name="export_downloaded_songs_pick_folder">Pick export folder</string>
+    <string name="export_downloaded_songs_select_all">Select all</string>
+    <string name="export_downloaded_songs_deselect_all">Deselect all</string>
+    <string name="export_downloaded_songs_selected_count">%1$d of %2$d selected</string>
+    <string name="export_downloaded_songs_empty">No downloaded songs to export</string>
+    <string name="export_downloaded_songs_pick_folder_first">Select at least one song and pick a folder</string>
+    <string name="export_downloaded_songs_progress">Exporting %1$d of %2$d…</string>
+    <string name="export_downloaded_songs_complete">Exported %1$d song(s) successfully%2$s</string>
     <string name="max_image_cache_size">Max image cache size</string>
     <string name="clear_image_cache">Clear image cache</string>
     <string name="max_song_cache_size">Max song cache size</string>
