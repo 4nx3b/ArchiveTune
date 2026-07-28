@@ -886,8 +886,9 @@ fun SongMenu(
                                                 // (Range Not Satisfiable) errors when the
                                                 // stream URL or content-length changes
                                                 // between attempts.
-                                                if (download != null &&
-                                                    download.state != Download.STATE_COMPLETED
+                                                val dl = download
+                                                if (dl != null &&
+                                                    dl.state != Download.STATE_COMPLETED
                                                 ) {
                                                     DownloadService.sendRemoveDownload(
                                                         context,
