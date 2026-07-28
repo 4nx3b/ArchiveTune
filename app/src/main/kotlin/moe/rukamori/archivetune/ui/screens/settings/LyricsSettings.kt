@@ -235,10 +235,15 @@ fun LyricsSettings(
         )
     }
 
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
@@ -375,7 +380,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.display)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_font_size"),
+            title = stringResource(R.string.display),
+        ) {
             item {
                 EnumListPreference(
                     title = { Text(stringResource(R.string.lyrics_mode)) },
@@ -449,7 +457,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.providers)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_provider"),
+            title = stringResource(R.string.providers),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.enable_betterlyrics)) },
@@ -594,7 +605,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.romanization)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_romanize"),
+            title = stringResource(R.string.romanization),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
@@ -648,7 +662,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.queue)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_preload"),
+            title = stringResource(R.string.queue),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.preload_queue_lyrics)) },
@@ -671,7 +688,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.cache)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_cache_size"),
+            title = stringResource(R.string.cache),
+        ) {
             item {
                 PreferenceEntry(
                     title = { Text(stringResource(R.string.clear_lyrics_cache)) },

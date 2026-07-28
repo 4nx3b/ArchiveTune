@@ -517,8 +517,11 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/music_together") {
         MusicTogetherScreen(navController)
     }
-    composable("settings/lastfm") {
-        LastFMSettings(navController)
+    composable(
+        route = "settings/lastfm?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LastFMSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("lastfm_dashboard") {
         LastFmDashboardScreen(navController)
