@@ -129,7 +129,7 @@ fun detectAudioExtensionFromSpans(
     spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
 ): String {
     val firstSpan = spans.firstOrNull() ?: return "mp3"
-    val file = firstSpan.file
+    val file = firstSpan.file ?: return "mp3"
     if (!file.exists() || file.length() < 12) return "mp3"
     val header = ByteArray(12)
     file.inputStream().use { if (it.read(header) < 4) return "mp3" }
