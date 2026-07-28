@@ -224,7 +224,7 @@ fun StorageSettings(
                             val mime = extensionToMimeType(detectedExt)
                             // Try to get song title from the database for a meaningful filename
                             val songEntity = database.getSongByIdBlocking(songId)
-                            val safeTitle = songEntity?.title?.trim()
+                            val safeTitle = songEntity?.song?.title?.trim()
                                 ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                 ?.ifBlank { "audio" } ?: "audio_$songId"
                             // createDocument() requires a document URI (representing the
