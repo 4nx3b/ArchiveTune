@@ -43,6 +43,8 @@ import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
+import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -59,6 +61,7 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -189,6 +192,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             ArtistSeparatorsKey,
             defaultValue = ",;/&",
+        )
+    val (downloadSource, onDownloadSourceChange) =
+        rememberEnumPreference(
+            DownloadSourceKey,
+            defaultValue = DownloadSource.YOUTUBE_MUSIC,
         )
     val (externalDownloaderEnabled, onExternalDownloaderEnabledChange) =
         rememberPreference(
@@ -485,6 +493,23 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.download), null) },
                         checked = autoDownloadOnLike,
                         onCheckedChange = onAutoDownloadOnLikeChange,
+                    )
+                }
+
+                item {
+                    EnumListPreference(
+                        modifier = positions.modifierFor("download_source"),
+                        title = { Text(stringResource(R.string.download_source_title)) },
+                        icon = { Icon(painterResource(R.drawable.download), null) },
+                        selectedValue = downloadSource,
+                        onValueSelected = onDownloadSourceChange,
+                        valueText = {
+                            when (it) {
+                                DownloadSource.QOBUZ -> stringResource(R.string.download_source_qobuz)
+                                DownloadSource.TIDAL -> stringResource(R.string.download_source_tidal)
+                                DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)
+                            }
+                        },
                     )
                 }
 
