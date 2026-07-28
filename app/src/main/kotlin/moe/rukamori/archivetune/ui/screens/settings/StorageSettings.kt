@@ -85,8 +85,8 @@ import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
-import moe.rukamori.archivetune.db.entities.exportMimeType
-import moe.rukamori.archivetune.db.entities.fileExtension
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -216,9 +216,11 @@ fun StorageSettings(
                         for (songId in keys) {
                             val spans = cache.getCachedSpans(songId)
                             if (spans.isEmpty()) continue
-                            val formatInfo = database.format(songId).first()
-                            val ext = formatInfo?.fileExtension() ?: "mp3"
-                            val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
+                            // Detect the actual audio format from cached data's
+                            // magic bytes so the exported file gets the correct
+                            // extension (e.g. .opus instead of wrongly .flac).
+                            val detectedExt = detectAudioExtensionFromSpans(spans)
+                            val mime = extensionToMimeType(detectedExt)
                             // Try to get song title from the database for a meaningful filename
                             val songEntity = database.getSongByIdBlocking(songId)
                             val safeTitle = songEntity?.title?.trim()
@@ -235,7 +237,7 @@ fun StorageSettings(
                                 context.contentResolver,
                                 parentDocUri,
                                 mime,
-                                "$safeTitle.$ext",
+                                "$safeTitle.$detectedExt",
                             ) ?: run { failed++; continue }
                             runCatching {
                                 context.contentResolver.openOutputStream(destUri, "w")?.use { output ->

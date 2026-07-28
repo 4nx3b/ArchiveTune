@@ -183,13 +183,13 @@ object TelegramClient {
         val chatIds = linkedSetOf<Long>()
 
         // Check for invite link first — private channels require a different TDLib API.
-        extractInviteHash(trimmed)?.let { inviteHash ->
+        extractInviteLink(trimmed)?.let { inviteLink ->
             runCatching {
-                val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteHash))
+                val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteLink))
                 // If the invite link is valid, try to join the chat.
                 // If already a member, JoinChatByInviteLink returns the chat id anyway.
                 val joinedChatId = runCatching {
-                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteHash)).id
+                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteLink)).id
                 }.getOrNull()
                 val chatId = joinedChatId ?: inviteInfo.chatId
                 if (chatId != 0L) {
@@ -542,16 +542,21 @@ object TelegramClient {
     }
 
     /**
-     * Extracts the invite hash from a Telegram invite link.
-     * Supports formats: t.me/+hash, t.me/joinchat/hash, t.me/add/1234hash
+     * Extracts the full invite link from a Telegram invite URL.
+     * Supports formats: t.me/+hash, t.me/joinchat/hash, t.me/add/1234hash.
+     * Returns the full URL including the https:// scheme, which TDLib requires
+     * for CheckChatInviteLink and JoinChatByInviteLink.
      */
-    private fun extractInviteHash(query: String): String? {
+    private fun extractInviteLink(query: String): String? {
         val trimmed = query.trim()
         val inviteRegex =
             Regex(
-                "(?:https?://)?t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)([A-Za-z0-9_-]+)",
+                "((?:https?://)?t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)[A-Za-z0-9_-]+)",
                 RegexOption.IGNORE_CASE,
             )
-        return inviteRegex.find(trimmed)?.groupValues?.get(1)
+        val match = inviteRegex.find(trimmed) ?: return null
+        val link = match.groupValues[1]
+        // Ensure the link has a scheme so TDLib can parse it correctly.
+        return if (link.startsWith("http")) link else "https://$link"
     }
 }
