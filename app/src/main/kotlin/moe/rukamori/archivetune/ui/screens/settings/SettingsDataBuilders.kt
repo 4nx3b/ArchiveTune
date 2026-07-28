@@ -70,8 +70,15 @@ fun buildSettingsGroups(
             title = stringResource(R.string.account),
             subtitle = stringResource(R.string.settings_account_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
-            keywords = listOf("account", "profile", "youtube", "sign in", "login", "logout"),
+            keywords = listOf("account", "profile", "youtube", "sign in", "login", "logout", "token", "hidden", "playlist", "channels", "switch account"),
             onClick = { navController.navigate("settings/account") },
+            children = listOf(
+                SettingsChild("Account switcher", "account_switcher", listOf("account switcher", "switch account", "multiple accounts", "saved accounts", "account channels")),
+                SettingsChild("Hidden playlists", "hidden_playlists", listOf("hidden", "hidden playlists", "hide playlist", "hidden music", "private playlist")),
+                SettingsChild("Tap to show tokens", "tap_to_show_tokens", listOf("token", "tokens", "show token", "po token", "innertube", "visitor data", "datasync", "credentials", "advanced login")),
+                SettingsChild("Save current account", "save_current_account", listOf("save account", "remember account", "persist account")),
+                SettingsChild("Logout", "account_logout", listOf("logout", "log out", "sign out", "disconnect")),
+            ),
         )
     val stats =
         SettingsItem(
@@ -314,6 +321,12 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("telegram", "telegram channel", "channel sync", "telegram music", "telegram bot"),
             onClick = { navController.navigate("settings/telegram") },
+            children = listOf(
+                SettingsChild("Telegram login", "telegram_login", listOf("telegram login", "telegram session", "telegram account", "sign in telegram")),
+                SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),
+                SettingsChild("Telegram lossless only", "telegram_lossless_only", listOf("lossless", "flac", "lossless only", "high quality")),
+                SettingsChild("Telegram logout", "telegram_logout", listOf("logout", "log out", "sign out", "disconnect telegram")),
+            ),
         )
     val aiIntegration =
         SettingsItem(
@@ -322,8 +335,16 @@ fun buildSettingsGroups(
             title = stringResource(R.string.ai_integration),
             subtitle = stringResource(R.string.ai_integration_desc),
             accentColor = MaterialTheme.colorScheme.secondary,
-            keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration"),
+            keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
+            children = listOf(
+                SettingsChild("AI provider", "ai_provider", listOf("ai provider", "provider", "openai", "gemini", "claude", "anthropic", "model provider")),
+                SettingsChild("Custom endpoint", "ai_custom_endpoint", listOf("custom endpoint", "endpoint", "base url", "api url", "custom api")),
+                SettingsChild("AI API key", "ai_api_key", listOf("api key", "key", "secret", "ai key", "token")),
+                SettingsChild("AI model", "ai_model", listOf("model", "ai model", "gpt", "gemini model", "claude model")),
+                SettingsChild("Test API", "ai_test_api", listOf("test", "test api", "verify", "test connection", "ai test")),
+                SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")),
+            ),
         )
     val internet =
         SettingsItem(
