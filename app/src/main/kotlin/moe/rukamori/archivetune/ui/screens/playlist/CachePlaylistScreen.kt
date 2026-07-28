@@ -78,8 +78,8 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
-import moe.rukamori.archivetune.db.entities.exportMimeType
-import moe.rukamori.archivetune.db.entities.fileExtension
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.SongSortTypeKey
@@ -142,11 +142,11 @@ fun CachePlaylistScreen(
                             }
                             val safeTitle = song.title.trim()
                                 .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
-                            // Resolve the correct file extension and MIME type from
-                            // the FormatEntity so lossless FLAC tracks export as .flac.
-                            val formatInfo = database.format(song.id).first()
-                            val ext = formatInfo?.fileExtension() ?: "mp3"
-                            val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
+                            // Detect the actual audio format from cached data's
+                            // magic bytes so the exported file gets the correct
+                            // extension (e.g. .opus instead of wrongly .flac).
+                            val detectedExt = detectAudioExtensionFromSpans(spans)
+                            val mime = extensionToMimeType(detectedExt)
                             // createDocument() requires a document URI (representing the
                             // parent directory as a document), NOT the tree URI returned by
                             // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
@@ -158,7 +158,7 @@ fun CachePlaylistScreen(
                                 context.contentResolver,
                                 parentDocUri,
                                 mime,
-                                "$safeTitle.$ext",
+                                "$safeTitle.$detectedExt",
                             ) ?: throw IllegalStateException("Could not create file")
                             context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
                                 spans.sortedBy { it.position }.forEach { span ->

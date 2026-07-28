@@ -117,6 +117,57 @@ fun FormatEntity.formattedFileSize(): String =
         }
     } ?: ""
 
+/**
+ * Detects the actual audio container format by reading magic bytes from the first
+ * cached span file. This is used when exporting downloaded songs to ensure the
+ * file extension matches the real data (e.g. a FormatEntity may claim FLAC while the
+ * cached bytes are actually Opus from YouTube Music).
+ *
+ * @return a file extension string: "flac", "opus", "m4a", "wav", "ogg", or "mp3"
+ */
+fun detectAudioExtensionFromSpans(
+    spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+): String {
+    val firstSpan = spans.firstOrNull() ?: return "mp3"
+    val file = firstSpan.file
+    if (!file.exists() || file.length() < 12) return "mp3"
+    val header = ByteArray(12)
+    file.inputStream().use { if (it.read(header) < 4) return "mp3" }
+    return when {
+        // FLAC: "fLaC" marker
+        header[0] == 0x66.toByte() && header[1] == 0x4C.toByte() &&
+            header[2] == 0x61.toByte() && header[3] == 0x43.toByte() -> "flac"
+        // OGG/Opus: "OggS" marker
+        header[0] == 0x4F.toByte() && header[1] == 0x67.toByte() &&
+            header[2] == 0x67.toByte() && header[3] == 0x53.toByte() -> "opus"
+        // M4A/AAC: "ftyp" at offset 4
+        header.size >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() &&
+            header[6] == 0x79.toByte() && header[7] == 0x70.toByte() -> "m4a"
+        // WAV: "RIFF" marker
+        header[0] == 0x52.toByte() && header[1] == 0x49.toByte() &&
+            header[2] == 0x46.toByte() && header[3] == 0x46.toByte() -> "wav"
+        // MP3: ID3 tag header or MPEG sync word
+        header[0] == 0x49.toByte() && header[1] == 0x44.toByte() &&
+            header[2] == 0x33.toByte() -> "mp3"
+        (header[0].toInt() and 0xFF) == 0xFF &&
+            (header[1].toInt() and 0xE0) == 0xE0 -> "mp3"
+        else -> "mp3"
+    }
+}
+
+/**
+ * Returns the MIME type corresponding to the given audio file extension.
+ */
+fun extensionToMimeType(ext: String): String = when (ext) {
+    "flac" -> "audio/flac"
+    "opus" -> "audio/opus"
+    "m4a" -> "audio/mp4"
+    "ogg" -> "audio/ogg"
+    "wav" -> "audio/wav"
+    "mp3" -> "audio/mpeg"
+    else -> "application/octet-stream"
+}
+
 enum class RatePriority {
     BITRATE_FIRST,
     SAMPLE_RATE_FIRST,
