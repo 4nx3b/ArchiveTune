@@ -124,7 +124,67 @@ fun SettingsScreen(
         BuildConfig.UPDATER_AVAILABLE &&
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
+    /** Navigate to a settings sub-screen, optionally scrolling to a child setting. */
+    fun navigateToSetting(route: String, scrollToKey: String? = null) {
+        if (scrollToKey != null) {
+            navController.navigate("$route?scrollTo=$scrollToKey")
+        } else {
+            navController.navigate(route)
+        }
+    }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+    // When searching, flatten all individual SettingsChildren across every
+    // category so each matching setting is shown as a separate row.
+    val filteredChildResults = remember(searchQuery, allSettingsGroups) {
+        if (searchQuery.isBlank()) emptyList()
+        else {
+            val query = searchQuery.trim().lowercase()
+            allSettingsGroups.flatMap { group ->
+                group.items.mapNotNull { item ->
+                    item.children.mapNotNull { child ->
+                        val matchesTitle = child.title.lowercase().contains(query)
+                        val matchesKeywords = child.keywords.any { it.lowercase().contains(query) }
+                        val matchesParent =
+                            item.title.lowercase().contains(query) ||
+                                item.subtitle?.lowercase()?.contains(query) == true ||
+                                item.keywords.any { it.lowercase().contains(query) }
+                        if (matchesTitle || matchesKeywords || matchesParent) {
+                            SearchResultItem(
+                                title = child.title,
+                                parentTitle = item.title,
+                                parentIcon = item.icon,
+                                parentKey = item.key,
+                                parentAccentColor = item.accentColor,
+                                parentRoute = "settings/${item.key}",
+                                scrollKey = child.scrollKey,
+                                onClick = item.onClick,
+                            )
+                        } else null
+                    }.ifEmpty {
+                        // If the parent matches but has no children,
+                        // show the parent itself as a single result.
+                        if (item.title.lowercase().contains(query) ||
+                            item.subtitle?.lowercase()?.contains(query) == true ||
+                            item.keywords.any { it.lowercase().contains(query) }
+                        ) {
+                            listOf(
+                                SearchResultItem(
+                                    title = item.title,
+                                    parentTitle = item.subtitle ?: "",
+                                    parentIcon = item.icon,
+                                    parentKey = item.key,
+                                    parentAccentColor = item.accentColor,
+                                    parentRoute = null,
+                                    scrollKey = null,
+                                    onClick = item.onClick,
+                                ),
+                            )
+                        } else emptyList()
+                    }
+                }
+            }
+        }
+    }
     val filteredGroups = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
             allSettingsGroups
@@ -141,9 +201,9 @@ fun SettingsScreen(
         }
     }
 
-    // Auto-scroll to the first matching item when search query changes.
+    // Auto-scroll to the first matching search result when the query changes.
     // We debounce slightly so rapid typing doesn't cause excessive scrolls.
-    // Note: filteredGroups is NOT a LaunchedEffect key — if it were, every
+    // Note: filteredChildResults is NOT a LaunchedEffect key — if it were, every
     // keystroke would cancel the debounce timer before it fires.
     LaunchedEffect(listState) {
         snapshotFlow { searchQuery }
@@ -151,26 +211,13 @@ fun SettingsScreen(
             .distinctUntilChanged()
             .collect { query ->
                 if (query.isBlank()) return@collect
-                // Snapshot the current filtered groups inside the flow so
+                // Snapshot the current search results inside the flow so
                 // we always scroll to the latest match.
-                val groups = filteredGroups
-                val firstItemKey = groups
-                    .firstOrNull()?.items?.firstOrNull()?.key ?: return@collect
-                // When searching, the banners are hidden, so the LazyColumn layout is:
-                //   0 = search_bar, 1 = search_spacing, then group items.
-                var targetIndex = 2
-                var found = false
-                for (group in groups) {
-                    if (group.items.any { it.key == firstItemKey }) {
-                        found = true
-                        break
-                    }
-                    // Each non-first group has a spacer item before its items.
-                    targetIndex += 1 + group.items.size
-                }
-                if (found) {
-                    listState.animateScrollToItem(targetIndex)
-                }
+                val results = filteredChildResults
+                if (results.isEmpty()) return@collect
+                // When searching, the LazyColumn layout is:
+                //   0 = search_bar, 1 = search_spacing, 2+ = search results.
+                listState.animateScrollToItem(2)
             }
     }
 
@@ -316,37 +363,71 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
             }
 
-            filteredGroups.forEachIndexed { groupIndex, group ->
-                if (groupIndex > 0) {
-                    item(
-                        key = "settings_group_spacing_$groupIndex",
-                        contentType = "settings_group_spacing",
-                    ) {
-                        Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
-                    }
-                }
-
+            if (searchQuery.isNotBlank() && filteredChildResults.isNotEmpty()) {
                 itemsIndexed(
-                    items = group.items,
-                    key = { _, item -> item.key },
-                    contentType = { _, _ -> "settings_segment" },
-                ) { index, settingsItem ->
-                    SettingsSegmentedItem(
-                        item = settingsItem,
-                        index = index,
-                        count = group.items.size,
-                        modifier =
-                            Modifier
-                                .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
-                                .padding(
-                                    bottom =
-                                        if (index < group.items.lastIndex) {
-                                            SettingsDimensions.SegmentedItemGap
-                                        } else {
-                                            0.dp
-                                        },
-                                ),
+                    items = filteredChildResults,
+                    key = { _, result -> result.parentKey + ":" + result.scrollKey },
+                    contentType = { _, _ -> "search_result" },
+                ) { _, result ->
+                    SettingsSearchResultItem(
+                        result = result,
+                        onClick = {
+                            if (result.parentRoute != null && result.scrollKey != null) {
+                                navigateToSetting(result.parentRoute, result.scrollKey)
+                            } else {
+                                result.onClick()
+                            }
+                        },
+                        modifier = Modifier.padding(
+                            horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
+                            vertical = 4.dp,
+                        ),
                     )
+                }
+            } else if (searchQuery.isNotBlank()) {
+                item(key = "no_results") {
+                    Text(
+                        text = stringResource(R.string.no_results_found),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(
+                            horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
+                            vertical = 16.dp,
+                        ),
+                    )
+                }
+            } else {
+                filteredGroups.forEachIndexed { groupIndex, group ->
+                    if (groupIndex > 0) {
+                        item(
+                            key = "settings_group_spacing_$groupIndex",
+                            contentType = "settings_group_spacing",
+                        ) {
+                            Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
+                        }
+                    }
+
+                    itemsIndexed(
+                        items = group.items,
+                        key = { _, item -> item.key },
+                        contentType = { _, _ -> "settings_segment" },
+                    ) { index, settingsItem ->
+                        SettingsSegmentedItem(
+                            item = settingsItem,
+                            index = index,
+                            count = group.items.size,
+                            modifier =
+                                Modifier
+                                    .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
+                                    .padding(
+                                        bottom =
+                                            if (index < group.items.lastIndex) {
+                                                SettingsDimensions.SegmentedItemGap
+                                            } else {
+                                                0.dp
+                                            },
+                                    ),
+                        )
+                    }
                 }
             }
         }
