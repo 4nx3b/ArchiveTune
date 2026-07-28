@@ -903,6 +903,20 @@ fun SongMenu(
                                                 if (playerSpans.isNotEmpty()) {
                                                     coroutineScope.launch(Dispatchers.IO) {
                                                         copySpansToCache(downloadUtil.downloadCache, song.id, playerSpans)
+                                                        // Also send a download request so the Media3 download
+                                                        // manager recognises the already-cached data as completed.
+                                                        val downloadRequest =
+                                                            DownloadRequest
+                                                                .Builder(song.id, song.id.toUri())
+                                                                .setCustomCacheKey(song.id)
+                                                                .setData(song.song.title.toByteArray())
+                                                                .build()
+                                                        DownloadService.sendAddDownload(
+                                                            context,
+                                                            ExoDownloadService::class.java,
+                                                            downloadRequest,
+                                                            false,
+                                                        )
                                                     }
                                                 } else {
                                                     val downloadRequest =
@@ -1192,10 +1206,15 @@ private fun copySpansToCache(
 
         if (sorted.isEmpty()) return
 
+        val simpleCache = cache as? androidx.media3.datasource.cache.SimpleCache
+        if (simpleCache == null) {
+            Timber.tag("SongExport").w("Download cache is not a SimpleCache; cannot copy spans")
+            return
+        }
         for ((span, file) in sorted) {
             val data = file.readBytes()
             val start = span.position
-            cache.setData(cacheKey, start, data)
+            simpleCache.setData(cacheKey, start, data)
         }
 
         Timber.tag("SongExport").d(

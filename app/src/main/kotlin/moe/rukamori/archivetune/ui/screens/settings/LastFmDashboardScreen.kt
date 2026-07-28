@@ -258,7 +258,7 @@ fun LastFmDashboardScreen(
                     DashboardTrackCard(
                         track = track,
                         rank = index + 1,
-                        playCount = track.playcount,
+                        playCount = track.playcount?.toString(),
                     )
                 }
             }
