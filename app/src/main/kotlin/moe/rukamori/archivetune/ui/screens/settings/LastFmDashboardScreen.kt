@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
+import moe.rukamori.archivetune.telegram.TelegramCoverProvider
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
@@ -216,6 +217,23 @@ fun LastFmDashboardScreen(
         }
         val top = topTracks?.getOrNull().orEmpty()
         val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
+        var catalogArtworkByTrack by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+        LaunchedEffect(top) {
+            val missing = top.filter { track ->
+                bestArtwork(track.image).isNullOrBlank() &&
+                    recentArtworkByTrack[track.trackArtworkKey()].isNullOrBlank() &&
+                    catalogArtworkByTrack[track.trackArtworkKey()].isNullOrBlank()
+            }
+            if (missing.isNotEmpty()) {
+                val resolved = withContext(Dispatchers.IO) {
+                    missing.mapNotNull { track ->
+                        TelegramCoverProvider.coverUrl(track.name.orEmpty(), track.artist?.text)
+                            ?.let { track.trackArtworkKey() to it }
+                    }.toMap()
+                }
+                if (resolved.isNotEmpty()) catalogArtworkByTrack = catalogArtworkByTrack + resolved
+            }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -266,7 +284,7 @@ fun LastFmDashboardScreen(
                                 track = track,
                                 rank = index + 1,
                                 playCount = track.playcount,
-                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
+                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()] ?: catalogArtworkByTrack[track.trackArtworkKey()],
                             )
                         }
                     }

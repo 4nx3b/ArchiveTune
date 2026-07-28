@@ -508,6 +508,8 @@
     <string name="navigation_bar_style">Navigation bar style</string>
     <string name="navigation_bar_style_default">Default</string>
     <string name="navigation_bar_style_floating">Floating</string>
+    <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
+    <string name="hide_navigation_bar_labels_desc">Show only icons in both floating and legacy navigation bars</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="frosted_blur">Frosted blur</string>
@@ -598,6 +600,11 @@
     <string name="auto_start_on_bluetooth">Auto-start on Bluetooth connect</string>
     <string name="auto_start_on_bluetooth_desc">Automatically resume playback when a Bluetooth audio device connects</string>
     <string name="artist_separators">Symbols to split artists</string>
+    <string name="download_source">Download Source</string>
+    <string name="download_source_desc">Choose which source is used for new song downloads</string>
+    <string name="source_qobuz">Qobuz</string>
+    <string name="source_tidal">Tidal</string>
+    <string name="source_youtube_music">YouTube Music</string>
     <string name="external_downloader">External Downloader</string>
     <string name="external_downloader_desc">Download songs through an external app by package name</string>
     <string name="external_downloader_package">Downloader App Package</string>

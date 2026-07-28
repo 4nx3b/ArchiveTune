@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
@@ -43,6 +44,7 @@ import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
+import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -59,6 +61,7 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -189,6 +192,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             ArtistSeparatorsKey,
             defaultValue = ",;/&",
+        )
+    val (downloadSource, onDownloadSourceChange) =
+        rememberEnumPreference(
+            DownloadSourceKey,
+            defaultValue = AudioSourceType.YOUTUBE,
         )
     val (externalDownloaderEnabled, onExternalDownloaderEnabledChange) =
         rememberPreference(
@@ -362,7 +370,8 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 onCrossfadeEnabledChange(false)
                             }
                         },
-                    )
+                        )
+                    }
                 }
 
                 item {
@@ -538,6 +547,24 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.style), null) },
                         onClick = { showTagsManagementDialog = true },
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("download_source")) {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.download_source)) },
+                            icon = { Icon(painterResource(R.drawable.download), null) },
+                            selectedValue = downloadSource,
+                            onValueSelected = onDownloadSourceChange,
+                            valueText = {
+                                when (it) {
+                                    AudioSourceType.QOBUZ -> stringResource(R.string.source_qobuz)
+                                    AudioSourceType.TIDAL -> stringResource(R.string.source_tidal)
+                                    AudioSourceType.YOUTUBE -> stringResource(R.string.source_youtube_music)
+                                }
+                            },
+                        )
+                    }
                 }
 
                 item {

@@ -225,6 +225,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
@@ -737,6 +738,10 @@ class MainActivity : ComponentActivity() {
             )
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
+                defaultValue = false,
+            )
+            val hideNavigationBarLabels by rememberPreference(
+                HideNavigationBarLabelsKey,
                 defaultValue = false,
             )
 
@@ -1639,7 +1644,7 @@ class MainActivity : ComponentActivity() {
                                                         contentDescription = null,
                                                     )
                                                 },
-                                                label = {
+                                                label = if (hideNavigationBarLabels) null else {
                                                     Text(
                                                         text = stringResource(screen.titleId),
                                                         maxLines = 1,
@@ -2251,6 +2256,7 @@ class MainActivity : ComponentActivity() {
                                                 style = navigationBarStyle,
                                                 frostedBlur = navigationBarFrostedBlur,
                                                 frostedBackdrop = navBarFrostedBackdrop,
+                                                hideLabels = hideNavigationBarLabels,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)

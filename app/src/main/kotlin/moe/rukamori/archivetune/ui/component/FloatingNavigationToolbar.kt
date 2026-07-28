@@ -140,6 +140,7 @@ fun FloatingNavigationToolbar(
     style: NavigationBarStyle = NavigationBarStyle.DEFAULT,
     frostedBlur: Boolean = false,
     frostedBackdrop: NavigationBarBackdrop? = null,
+    hideLabels: Boolean = false,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,
@@ -412,7 +413,7 @@ fun FloatingNavigationToolbar(
                                         }
                                     }
                                 },
-                                label = {
+                                label = if (hideLabels) null else {
                                     Text(
                                         text = stringResource(screen.titleId),
                                         maxLines = 1,
