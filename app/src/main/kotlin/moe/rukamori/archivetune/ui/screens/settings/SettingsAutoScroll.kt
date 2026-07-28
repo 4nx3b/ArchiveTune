@@ -7,11 +7,10 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableMapOf
 import androidx.compose.ui.Modifier
 
 /**
@@ -43,13 +42,13 @@ internal class PreferencePositions(private val positions: MutableMap<String, Int
     /** Returns a [Modifier] that records the composable's y-position under [key]. */
     fun modifierFor(key: String): Modifier =
         Modifier.onGloballyPositioned { coordinates ->
-            positions[key] = coordinates.positionInRoot().y.toInt()
+            positions[key] = coordinates.positionInRoot.y.toInt()
         }
 
     /** Scrolls the [scrollState] to the position registered for [key]. */
     suspend fun scrollToKey(key: String?, scrollState: androidx.compose.foundation.ScrollState) {
         if (key.isNullOrBlank()) return
-        kotlinx.coroutines.delay(200L) // wait for layout to settle
+        kotlinx.coroutines.delay(500L) // wait for layout to settle
         val targetY = positions[key] ?: return
         scrollState.animateScrollTo(
             value = (targetY - scrollState.maxValue / 10).coerceAtLeast(0),
