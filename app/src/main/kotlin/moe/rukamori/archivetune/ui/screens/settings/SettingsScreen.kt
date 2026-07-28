@@ -124,14 +124,6 @@ fun SettingsScreen(
         BuildConfig.UPDATER_AVAILABLE &&
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
-    /** Navigate to a settings sub-screen, optionally scrolling to a child setting. */
-    fun navigateToSetting(route: String, scrollToKey: String? = null) {
-        if (scrollToKey != null) {
-            navController.navigate("$route?scrollTo=$scrollToKey")
-        } else {
-            navController.navigate(route)
-        }
-    }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
     // When searching, flatten all individual SettingsChildren across every
     // category so each matching setting is shown as a separate row.
@@ -155,8 +147,8 @@ fun SettingsScreen(
                                 parentIcon = item.icon,
                                 parentKey = item.key,
                                 parentAccentColor = item.accentColor,
-                                parentRoute = "settings/${item.key}",
-                                scrollKey = child.scrollKey,
+                                parentRoute = null,
+                                scrollKey = null,
                                 onClick = item.onClick,
                             )
                         } else null
@@ -372,11 +364,7 @@ fun SettingsScreen(
                     SettingsSearchResultItem(
                         result = result,
                         onClick = {
-                            if (result.parentRoute != null && result.scrollKey != null) {
-                                navigateToSetting(result.parentRoute, result.scrollKey)
-                            } else {
-                                result.onClick()
-                            }
+                            result.onClick()
                         },
                         modifier = Modifier.padding(
                             horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
