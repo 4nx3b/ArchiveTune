@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -45,6 +46,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,6 +91,8 @@ private val DashboardAccentColor = Color(0xFFBE123C)
 private val DashboardCardBackground = Color(0xFFFFF5F5)
 private val DashboardIconBackground = Color(0xFFFFE4E6)
 
+private enum class LastFmTab { RECENTS, TOP_PLAYED }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LastFmDashboardScreen(
@@ -105,6 +110,7 @@ fun LastFmDashboardScreen(
     var recentTracks by remember { mutableStateOf<Result<List<RecentTrack>>?>(null) }
     var topTracks by remember { mutableStateOf<Result<List<TopTrack>>?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(LastFmTab.RECENTS) }
 
     fun refresh() {
         val username = current?.username?.takeIf { it.isNotBlank() } ?: return
@@ -227,40 +233,94 @@ fun LastFmDashboardScreen(
                 )
             }
 
-            // Recent tracks section
-            item(key = "recent_header") {
-                DashboardSectionHeader(
-                    text = stringResource(R.string.lastfm_recent_tracks),
-                    count = recent.size,
+            // Tab selector — Recents / Top Played (like History Local/Remote pills)
+            item(key = "tab_selector") {
+                LastFmTabSelector(
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    recentCount = recent.size,
+                    topCount = top.size,
                 )
             }
 
-            if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
-                item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
-            } else {
-                items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
-                    DashboardTrackCard(track = track)
+            // Tab content
+            when (selectedTab) {
+                LastFmTab.RECENTS -> {
+                    if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
+                        item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
+                    } else {
+                        items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
+                            DashboardTrackCard(track = track)
+                        }
+                    }
+                }
+                LastFmTab.TOP_PLAYED -> {
+                    if (top.isEmpty() && topTracks != null && !isRefreshing) {
+                        item(key = "top_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
+                    } else {
+                        items(top.withIndex().toList(), key = { "top_${it.index}_${it.value.name}" }) { (index, track) ->
+                            DashboardTrackCard(
+                                track = track,
+                                rank = index + 1,
+                                playCount = track.playcount?.toString(),
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+}
 
-            // Top tracks section
-            item(key = "top_header") {
-                DashboardSectionHeader(
-                    text = stringResource(R.string.lastfm_top_tracks),
-                    count = top.size,
+/**
+ * Pill-style tab selector matching the History page's Local/Remote ToggleButtons.
+ */
+@Composable
+private fun LastFmTabSelector(
+    selectedTab: LastFmTab,
+    onTabSelected: (LastFmTab) -> Unit,
+    recentCount: Int,
+    topCount: Int,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        val tabs = LastFmTab.entries
+        tabs.forEachIndexed { index, tab ->
+            val checked = tab == selectedTab
+            ToggleButton(
+                checked = checked,
+                onCheckedChange = {
+                    if (!checked) onTabSelected(tab)
+                },
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                shapes =
+                    when (index) {
+                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                        tabs.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                    },
+                colors =
+                    ToggleButtonDefaults.toggleButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+            ) {
+                Text(
+                    text =
+                        when (tab) {
+                            LastFmTab.RECENTS -> stringResource(R.string.lastfm_recent_tracks)
+                            LastFmTab.TOP_PLAYED -> stringResource(R.string.lastfm_top_tracks)
+                        },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Medium,
                 )
-            }
-
-            if (top.isEmpty() && topTracks != null && !isRefreshing) {
-                item(key = "top_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
-            } else {
-                items(top.withIndex().toList(), key = { "top_${it.index}_${it.value.name}" }) { (index, track) ->
-                    DashboardTrackCard(
-                        track = track,
-                        rank = index + 1,
-                        playCount = track.playcount?.toString(),
-                    )
-                }
             }
         }
     }
