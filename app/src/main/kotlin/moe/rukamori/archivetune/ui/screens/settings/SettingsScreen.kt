@@ -65,6 +65,28 @@ import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
+
+private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
+    val route =
+        when (parentKey) {
+            "appearance" -> "settings/appearance"
+            "playback" -> "settings/player"
+            "sources" -> "settings/sources"
+            "lyrics" -> "settings/lyrics"
+            "content" -> "settings/content"
+            "behavior" -> "settings/privacy"
+            "integration" -> "settings/integration"
+            "internet" -> "settings/internet"
+            "storage" -> "settings/storage"
+            "backup_restore" -> "settings/backup_restore"
+            "developer_options" -> "settings/misc"
+            "about" -> "settings/about"
+            else -> return null
+        }
+    val supportsScroll = parentKey !in setOf("developer_options", "about")
+    return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
+}
+
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun SettingsScreen(
@@ -143,9 +165,10 @@ fun SettingsScreen(
                                 parentIcon = item.icon,
                                 parentKey = item.key,
                                 parentAccentColor = item.accentColor,
-                                parentRoute = item.key,
+                                parentRoute = searchableSettingsRoute(item.key, if (child.switchControl == null) child.scrollKey else null),
                                 scrollKey = child.scrollKey,
                                 onClick = item.onClick,
+                                switchControl = child.switchControl,
                             )
                         } else null
                     }.ifEmpty {
@@ -345,8 +368,7 @@ fun SettingsScreen(
                     SettingsSearchResultItem(
                         result = result,
                         onClick = {
-                            // Navigate to the parent settings page directly.
-                            result.onClick()
+                            result.parentRoute?.let(navController::navigate) ?: result.onClick()
                         },
                         modifier = Modifier.padding(
                             horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
