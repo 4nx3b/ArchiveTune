@@ -73,7 +73,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerSettings(navController: NavController) {
+fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (lowDataMode, onLowDataModeChange) =
         rememberPreference(
             LowDataModeKey,
@@ -261,15 +261,22 @@ fun PlayerSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.player)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("low_data_mode"),
+                title = stringResource(R.string.player),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.low_data_mode_title)) },
@@ -414,7 +421,10 @@ fun PlayerSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.tidal_artwork)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("archive_tune_canvas"),
+                title = stringResource(R.string.tidal_artwork),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.archivetune_canvas)) },
@@ -444,7 +454,10 @@ fun PlayerSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.queue)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("persistent_queue"),
+                title = stringResource(R.string.queue),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.persistent_queue)) },
@@ -486,7 +499,10 @@ fun PlayerSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.misc)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("audio_offload"),
+                title = stringResource(R.string.misc),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.stop_music_on_task_clear)) },

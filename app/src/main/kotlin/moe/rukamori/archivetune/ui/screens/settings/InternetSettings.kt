@@ -140,7 +140,7 @@ fun InternetWarningBox(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun InternetSettings(navController: NavController) {
+fun InternetSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 

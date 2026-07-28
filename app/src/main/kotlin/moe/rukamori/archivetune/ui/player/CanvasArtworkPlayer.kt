@@ -30,6 +30,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -130,6 +131,7 @@ internal fun CanvasArtworkPlayer(
                         trackSelectionParameters
                             .buildUpon()
                             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            .setForceHighestSupportedBitrate(true)
                             .build()
                     volume = 0f
                     repeatMode = Player.REPEAT_MODE_ONE

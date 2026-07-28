@@ -147,8 +147,8 @@ fun SettingsScreen(
                                 parentIcon = item.icon,
                                 parentKey = item.key,
                                 parentAccentColor = item.accentColor,
-                                parentRoute = null,
-                                scrollKey = null,
+                                parentRoute = item.key,
+                                scrollKey = child.scrollKey,
                                 onClick = item.onClick,
                             )
                         } else null
@@ -364,7 +364,36 @@ fun SettingsScreen(
                     SettingsSearchResultItem(
                         result = result,
                         onClick = {
-                            result.onClick()
+                            // If we have a scrollKey, navigate to the parent route with a
+                            // scrollTo query parameter so the sub-page auto-scrolls to the item.
+                            if (result.scrollKey != null && result.parentRoute != null) {
+                                val route = when (result.parentRoute) {
+                                    "appearance" -> "settings/appearance"
+                                    "player" -> "settings/player"
+                                    "content" -> "settings/content"
+                                    "lyrics" -> "settings/lyrics"
+                                    "language_packs" -> "settings/language_packs"
+                                    "internet" -> "settings/internet"
+                                    "sources" -> "settings/sources"
+                                    "storage" -> "settings/storage"
+                                    "privacy" -> "settings/privacy"
+                                    "backup_restore" -> "settings/backup_restore"
+                                    "discord" -> "settings/discord"
+                                    "integration" -> "settings/integration"
+                                    "tidal" -> "settings/tidal"
+                                    "qobuz" -> "settings/qobuz"
+                                    "telegram" -> "settings/telegram"
+                                    "about" -> "settings/about"
+                                    else -> null
+                                }
+                                if (route != null) {
+                                    navController.navigate("$route?scrollTo=${result.scrollKey}")
+                                } else {
+                                    result.onClick()
+                                }
+                            } else {
+                                result.onClick()
+                            }
                         },
                         modifier = Modifier.padding(
                             horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
