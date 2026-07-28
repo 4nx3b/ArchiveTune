@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.screens.settings
 import androidx.compose.animation.core.RepeatableSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -32,11 +34,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -83,21 +84,10 @@ import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
 
-/**
- * In-app Last.fm dashboard accessible from the profile overflow menu.
- *
- * If the user is not logged in to Last.fm, the screen renders a single
- * call-to-action button that navigates to the existing Last.fm settings
- * screen for sign-in. If logged in, the dashboard fetches and displays:
- *
- *   - User profile card (avatar, name, total playcount, registered date)
- *   - Recent tracks with album art thumbnails (up to 20)
- *   - All-time top tracks with artwork thumbnails (up to 20)
- *
- * A refresh button in the top app bar allows the user to manually
- * re-fetch all stats. Errors during fetch are surfaced inline —
- * the dashboard degrades gracefully and lets the user retry.
- */
+private val DashboardAccentColor = Color(0xFFBE123C)
+private val DashboardCardBackground = Color(0xFFFFF5F5)
+private val DashboardIconBackground = Color(0xFFFFE4E6)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LastFmDashboardScreen(
@@ -122,7 +112,6 @@ fun LastFmDashboardScreen(
         scope.launch {
             isRefreshing = true
             try {
-                // Apply the runtime config so LastFM is ready to call.
                 current.serviceConfig.apply(sessionKey = current.sessionKey)
                 val infoResult = LastFM.getUserInfo(username)
                 val recentResult = LastFM.getRecentTracks(username, limit = 20)
@@ -167,7 +156,6 @@ fun LastFmDashboardScreen(
                 },
                 actions = {
                     if (isLoggedIn) {
-                        // Refresh button — spins while data is being fetched.
                         val rotation by animateFloatAsState(
                             targetValue = if (isRefreshing) 360f else 0f,
                             animationSpec = if (isRefreshing) {
@@ -217,6 +205,9 @@ fun LastFmDashboardScreen(
             return@Scaffold
         }
 
+        val recent = recentTracks?.getOrNull().orEmpty()
+        val top = topTracks?.getOrNull().orEmpty()
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding =
@@ -224,8 +215,9 @@ fun LastFmDashboardScreen(
                     top = innerPadding.calculateTopPadding(),
                     bottom = 24.dp,
                 ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // User profile card — history-style with accent tint
             item(key = "user_card") {
                 UserCard(
                     userInfo = userInfo,
@@ -235,29 +227,39 @@ fun LastFmDashboardScreen(
                 )
             }
 
+            // Recent tracks section
             item(key = "recent_header") {
-                SectionHeader(text = stringResource(R.string.lastfm_recent_tracks))
+                DashboardSectionHeader(
+                    text = stringResource(R.string.lastfm_recent_tracks),
+                    count = recent.size,
+                )
             }
 
-            val recent = recentTracks?.getOrNull().orEmpty()
             if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
                 item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
             } else {
                 items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
-                    RecentTrackRow(track)
+                    DashboardTrackCard(track = track)
                 }
             }
 
+            // Top tracks section
             item(key = "top_header") {
-                SectionHeader(text = stringResource(R.string.lastfm_top_tracks))
+                DashboardSectionHeader(
+                    text = stringResource(R.string.lastfm_top_tracks),
+                    count = top.size,
+                )
             }
 
-            val top = topTracks?.getOrNull().orEmpty()
             if (top.isEmpty() && topTracks != null && !isRefreshing) {
                 item(key = "top_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
             } else {
                 items(top.withIndex().toList(), key = { "top_${it.index}_${it.value.name}" }) { (index, track) ->
-                    TopTrackRow(rank = index + 1, track = track)
+                    DashboardTrackCard(
+                        track = track,
+                        rank = index + 1,
+                        playCount = track.playcount,
+                    )
                 }
             }
         }
@@ -274,12 +276,20 @@ private fun NotSignedIn(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            painter = painterResource(R.drawable.stats),
-            contentDescription = null,
+        Surface(
             modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
+            shape = CircleShape,
+            color = DashboardIconBackground,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.stats),
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                    tint = DashboardAccentColor,
+                )
+            }
+        }
         Spacer(Modifier.height(16.dp))
         Text(
             text = stringResource(R.string.lastfm_sign_in_required),
@@ -306,16 +316,17 @@ private fun UserCard(
     isRefreshing: Boolean,
     onRetry: () -> Unit,
 ) {
-    ElevatedCard(
+    Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         shape = RoundedCornerShape(20.dp),
+        color = DashboardCardBackground,
     ) {
         when {
             userInfo == null && isRefreshing -> {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
                     horizontalArrangement = Arrangement.Center,
-                ) { CircularProgressIndicator() }
+                ) { CircularProgressIndicator(color = DashboardAccentColor) }
             }
             userInfo?.isSuccess == true -> {
                 val info = userInfo.getOrNull()!!
@@ -327,7 +338,7 @@ private fun UserCard(
                     Surface(
                         modifier = Modifier.size(72.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = DashboardIconBackground,
                     ) {
                         if (!avatar.isNullOrBlank()) {
                             AsyncImage(
@@ -341,7 +352,7 @@ private fun UserCard(
                                 Icon(
                                     painter = painterResource(R.drawable.account),
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    tint = DashboardAccentColor,
                                 )
                             }
                         }
@@ -368,44 +379,33 @@ private fun UserCard(
                             Text(
                                 text = stringResource(R.string.lastfm_playcount, count),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = DashboardAccentColor,
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
                 }
             }
-            userInfo?.isFailure == true -> {
-                // Silently degrade — show the placeholder instead of the error card
-                // so the user can still see recent tracks and top tracks below.
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.account),
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.size(12.dp))
-                    Text(
-                        text = "@$username",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
             else -> {
-                // Logged in but not yet loaded — show a quiet placeholder.
+                // Error or not loaded — show placeholder
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.account),
-                        contentDescription = null,
+                    Surface(
                         modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                        shape = CircleShape,
+                        color = DashboardIconBackground,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.account),
+                                contentDescription = null,
+                                tint = DashboardAccentColor,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
                     Spacer(Modifier.size(12.dp))
                     Text(
                         text = "@$username",
@@ -417,14 +417,39 @@ private fun UserCard(
     }
 }
 
+/**
+ * Section header styled like the History page: filled dot + title on the left,
+ * count on the right.
+ */
 @Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-    )
+private fun DashboardSectionHeader(
+    text: String,
+    count: Int,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(8.dp),
+            shape = CircleShape,
+            color = DashboardAccentColor,
+        ) {}
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = "$count ${stringResource(R.string.songs)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -437,11 +462,6 @@ private fun EmptyHint(text: String) {
     )
 }
 
-/**
- * Extracts the best-quality (largest) artwork URL from a list of Last.fm
- * [UserImage] entries.  Returns null when the list is empty or all URLs
- * are blank.
- */
 private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.UserImage>?): String? =
     images
         ?.filter { it.text.isNotBlank() }
@@ -449,160 +469,213 @@ private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.User
         ?.text
 
 /**
- * A single recent-track row with an album-art thumbnail fetched from
- * the Last.fm API image data attached to each track.
+ * A card-style track row matching the History page design.
+ * Uses a rounded card with larger album art (56 dp), bold title,
+ * and metadata row with artist and optional play count.
  */
 @Composable
-private fun RecentTrackRow(track: RecentTrack) {
+private fun DashboardTrackCard(
+    track: RecentTrack,
+    rank: Int? = null,
+    playCount: String? = null,
+) {
     val artworkUrl = bestArtwork(track.image)
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        // Album art thumbnail (48 dp square with rounded corners)
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!artworkUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = artworkUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                // Fallback placeholder when no artwork is available
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
+            // Album art thumbnail
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                if (!artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = artworkUrl,
                         contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop,
                     )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
-        }
-        Spacer(Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.name.orEmpty(),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = track.artist?.text.orEmpty(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (track.isNowPlaying) {
-            Text(
-                text = stringResource(R.string.lastfm_now_playing),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 20.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-    )
-}
 
-/**
- * A single top-track row with rank badge and an artwork thumbnail
- * fetched from the Last.fm API image data attached to each track.
- */
-@Composable
-private fun TopTrackRow(rank: Int, track: TopTrack) {
-    val artworkUrl = bestArtwork(track.image)
+            Spacer(Modifier.width(12.dp))
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Album art thumbnail (48 dp square with rounded corners)
-        Surface(
-            modifier = Modifier.size(48.dp),
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ) {
-            if (!artworkUrl.isNullOrBlank()) {
-                AsyncImage(
-                    model = artworkUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            // Rank badge (for top tracks)
+            if (rank != null) {
+                Surface(
+                    modifier = Modifier.size(28.dp),
+                    shape = CircleShape,
+                    color = DashboardIconBackground,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = rank.toString(),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = DashboardAccentColor,
+                        )
+                    }
                 }
+                Spacer(Modifier.width(8.dp))
             }
-        }
-        Spacer(Modifier.size(12.dp))
-        // Rank badge
-        Surface(
-            modifier = Modifier.size(28.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = rank.toString(),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    text = track.name.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = track.artist?.text.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // Now playing badge or play count
+            if (track.isNowPlaying) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DashboardIconBackground,
+                ) {
+                    Text(
+                        text = stringResource(R.string.lastfm_now_playing),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = DashboardAccentColor,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            } else if (playCount != null) {
+                Text(
+                    text = stringResource(R.string.lastfm_playcount_short, playCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        Spacer(Modifier.size(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.name.orEmpty(),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = track.artist?.text.orEmpty(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        track.playcount?.let { count ->
-            Text(
-                text = stringResource(R.string.lastfm_playcount_short, count),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 20.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-    )
 }
 
 /**
- * Thin HiltViewModel wrapper so we can inject LastFmSettingsRepository
- * into the Composable.
+ * Wrapper for TopTrack to match the DashboardTrackCard interface.
  */
+@Composable
+private fun DashboardTrackCard(
+    track: TopTrack,
+    rank: Int? = null,
+    playCount: String? = null,
+) {
+    val artworkUrl = bestArtwork(track.image)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                if (!artworkUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = artworkUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            if (rank != null) {
+                Surface(
+                    modifier = Modifier.size(28.dp),
+                    shape = CircleShape,
+                    color = DashboardIconBackground,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = rank.toString(),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = DashboardAccentColor,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.name.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = track.artist?.text.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (playCount != null) {
+                Text(
+                    text = stringResource(R.string.lastfm_playcount_short, playCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
 @HiltViewModel
 class LastFmDashboardViewModel
     @Inject
