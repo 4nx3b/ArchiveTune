@@ -15,6 +15,7 @@ import android.net.Uri
 import androidx.media3.database.DatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.Cache
@@ -121,6 +122,14 @@ class DownloadUtil
         }
 
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
+
+        private val cachedPlaybackDataSourceFactory =
+            CacheDataSource
+                .Factory()
+                .setCache(playerCache)
+                .setCacheReadDataSourceFactory(FileDataSource.Factory())
+                .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
         private val youtubeDataSourceFactory =
             ResolvingDataSource.Factory(
