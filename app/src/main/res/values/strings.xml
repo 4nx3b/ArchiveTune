@@ -510,6 +510,8 @@
     <string name="navigation_bar_style_floating">Floating</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
+    <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
+    <string name="hide_navigation_bar_labels_desc">Show only icons in the bottom navigation bar</string>
     <string name="frosted_blur">Frosted blur</string>
     <string name="lyrics_animation_style">Lyrics animation style</string>
     <string name="lyrics_mode">Lyrics mode</string>
