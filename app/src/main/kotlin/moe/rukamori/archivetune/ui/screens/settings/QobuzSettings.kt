@@ -103,7 +103,7 @@ private object QobuzHealthUiCache {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QobuzSettings(navController: NavController) {
+fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 

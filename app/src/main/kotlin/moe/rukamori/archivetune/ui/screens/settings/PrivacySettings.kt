@@ -52,7 +52,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController) {
+fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(

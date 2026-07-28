@@ -397,8 +397,11 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/hidden_playlists") {
         HiddenPlaylistsScreen(navController)
     }
-    composable("settings/appearance") {
-        AppearanceSettings(navController)
+    composable(
+        route = "settings/appearance?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable("settings/appearance/icon") {
         IconScreen(navController)
@@ -415,47 +418,83 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/appearance/theme_creator") {
         ThemeCreatorScreen(navController)
     }
-    composable("settings/content") {
-        ContentSettings(navController)
+    composable(
+        route = "settings/content?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        ContentSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/lyrics") {
-        LyricsSettings(navController)
+    composable(
+        route = "settings/lyrics?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LyricsSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/language_packs") {
         LanguagePackSettings(navController)
     }
-    composable("settings/internet") {
-        InternetSettings(navController)
+    composable(
+        route = "settings/internet?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        InternetSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/player") {
-        PlayerSettings(navController)
+    composable(
+        route = "settings/player?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        PlayerSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/sources") {
-        SourceSettings(navController)
+    composable(
+        route = "settings/sources?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        SourceSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable("settings/player/chiper") {
         ChiperSettings(navController)
     }
-    composable("settings/storage") {
-        StorageSettings(navController)
+    composable(
+        route = "settings/storage?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        StorageSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/privacy") {
-        PrivacySettings(navController)
+    composable(
+        route = "settings/privacy?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        PrivacySettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/backup_restore") {
-        BackupAndRestore(navController)
+    composable(
+        route = "settings/backup_restore?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        BackupAndRestore(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/discord") {
-        DiscordSettings(navController)
+    composable(
+        route = "settings/discord?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        DiscordSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/integration") {
-        IntegrationScreen(navController)
+    composable(
+        route = "settings/integration?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        IntegrationScreen(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/tidal") {
-        TidalSettings(navController)
+    composable(
+        route = "settings/tidal?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        TidalSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/qobuz") {
-        QobuzSettings(navController)
+    composable(
+        route = "settings/qobuz?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        QobuzSettings(navController, it.savedStateHandle["scrollTo"])
     }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)
