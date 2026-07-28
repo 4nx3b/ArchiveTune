@@ -262,7 +262,7 @@ fun LastFmDashboardScreen(
                             DashboardTrackCard(
                                 track = track,
                                 rank = index + 1,
-                                playCount = track.playcount?.toString(),
+                                playCount = track.playcount,
                             )
                         }
                     }
@@ -537,7 +537,7 @@ private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.User
 private fun DashboardTrackCard(
     track: RecentTrack,
     rank: Int? = null,
-    playCount: String? = null,
+    playCount: Int? = null,
 ) {
     val artworkUrl = bestArtwork(track.image)
 
@@ -648,7 +648,7 @@ private fun DashboardTrackCard(
 private fun DashboardTrackCard(
     track: TopTrack,
     rank: Int? = null,
-    playCount: String? = null,
+    playCount: Int? = null,
 ) {
     val artworkUrl = bestArtwork(track.image)
 
