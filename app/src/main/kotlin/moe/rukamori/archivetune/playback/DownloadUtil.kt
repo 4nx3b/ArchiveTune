@@ -20,6 +20,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
@@ -125,13 +126,15 @@ class DownloadUtil
             ResolvingDataSource.Factory(
                 CacheDataSource
                     .Factory()
-                    .setCache(playerCache)
+                    .setCache(downloadCache)
+                    .setCacheKeyFactory(DownloadRequestCacheKeyFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                     .setUpstreamDataSourceFactory(
                         OkHttpDataSource.Factory(
                             mediaOkHttpClient,
                         ),
                     ).setCacheWriteDataSinkFactory(
-                        CacheDataSink.Factory().setCache(playerCache).setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE),
+                        CacheDataSink.Factory().setCache(downloadCache).setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE),
                     ),
             ) { dataSpec ->
                 val mediaId = dataSpec.key ?: error("No media id")
@@ -217,6 +220,10 @@ class DownloadUtil
                             download: Download,
                             finalException: Exception?,
                         ) {
+                            if (finalException != null || download.state == Download.STATE_FAILED) {
+                                songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
+                                runCatching { downloadCache.removeResource(download.request.id) }
+                            }
                             downloads.update { map ->
                                 map.toMutableMap().apply {
                                     set(download.request.id, download)
@@ -368,6 +375,10 @@ class DownloadUtil
                 delegate?.close()
                 delegate = null
             }
+        }
+
+        private object DownloadRequestCacheKeyFactory : CacheKeyFactory {
+            override fun buildCacheKey(dataSpec: DataSpec): String = dataSpec.key ?: dataSpec.uri.toString()
         }
 
         companion object {
