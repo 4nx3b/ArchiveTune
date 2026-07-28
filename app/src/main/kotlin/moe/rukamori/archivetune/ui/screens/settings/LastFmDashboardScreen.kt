@@ -84,6 +84,8 @@ import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
 import moe.rukamori.archivetune.telegram.TelegramCoverProvider
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
@@ -225,7 +227,17 @@ fun LastFmDashboardScreen(
                 withContext(Dispatchers.IO) {
                     top.mapNotNull { track ->
                         val key = track.trackArtworkKey()
-                        TelegramCoverProvider.coverUrl(track.name.orEmpty(), track.artist?.text)?.let { key to it }
+                        val title = track.name.orEmpty()
+                        val artist = track.artist?.text
+                        // 1) Prefer Last.fm's own image (when the API returns one).
+                        // 2) Fall back to the iTunes catalogue (covers most western pop/rock).
+                        // 3) Fall back to a YouTube Music search so anime/Japanese/indie
+                        //    tracks that iTunes doesn't carry still get a real thumbnail.
+                        val url =
+                            bestArtwork(track.image)
+                                ?: TelegramCoverProvider.coverUrl(title, artist)
+                                ?: resolveYtThumbnail(title, artist)
+                        url?.let { key to it }
                     }.toMap()
                 }
         }
@@ -551,6 +563,22 @@ private fun TopTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowerc
 
 private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
     mapNotNull { track -> bestArtwork(track.image)?.let { track.trackArtworkKey() to it } }.toMap()
+
+/**
+ * Resolves a thumbnail URL for [title]/[artist] by searching YouTube Music and
+ * taking the first song result's thumbnail. Used as a last-resort fallback when
+ * Last.fm and iTunes both come up empty (common for anime/Japanese/indie tracks).
+ * Returns null on any failure — the caller falls through to a placeholder icon.
+ */
+private suspend fun resolveYtThumbnail(title: String, artist: String?): String? {
+    if (title.isBlank()) return null
+    val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
+    val result =
+        runCatching { YouTube.search(term, YouTube.SearchFilter.FILTER_SONG) }.getOrNull()
+            ?: return null
+    val first = result.items.firstOrNull { it is SongItem } as? SongItem ?: return null
+    return first.thumbnail.takeIf(String::isNotBlank)
+}
 
 private fun List<RecentTrack>.dedupeNowPlayingEchoes(): List<RecentTrack> {
     val nowPlayingKeys = filter { it.isNowPlaying }.mapTo(mutableSetOf()) { it.trackArtworkKey() }

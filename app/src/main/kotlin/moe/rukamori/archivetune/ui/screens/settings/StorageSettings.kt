@@ -195,75 +195,6 @@ fun StorageSettings(
             ?.model
             ?.cacheClear != null
 
-    val downloadUtil = LocalDownloadUtil.current
-    val database = LocalDatabase.current
-    val coroutineScope = rememberCoroutineScope()
-    var isExporting by remember { mutableStateOf(false) }
-
-    // SAF folder picker for exporting all downloaded songs to local storage.
-    val exportDownloadedSongsLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            if (treeUri == null) return@rememberLauncherForActivityResult
-            isExporting = true
-            coroutineScope.launch {
-                var exported = 0
-                var failed = 0
-                try {
-                    withContext(Dispatchers.IO) {
-                        // Iterate all keys in the download cache and export each song
-                        // in its original audio format.
-                        val cache = downloadUtil.downloadCache
-                        val keys = cache.keys.toList()
-                        for (songId in keys) {
-                            val spans = cache.getCachedSpans(songId)
-                            if (spans.isEmpty()) continue
-                            // Detect the actual audio format from cached data's
-                            // magic bytes so the exported file gets the correct
-                            // extension (e.g. .opus instead of wrongly .flac).
-                            val detectedExt = detectAudioExtensionFromSpans(spans)
-                            val mime = extensionToMimeType(detectedExt)
-                            // Try to get song title from the database for a meaningful filename
-                            val songEntity = database.getSongByIdBlocking(songId)
-                            val safeTitle = songEntity?.song?.title?.trim()
-                                ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                                ?.ifBlank { "audio" } ?: "audio_$songId"
-                            // createDocument() requires a document URI (representing the
-                            // parent directory as a document), NOT the tree URI returned by
-                            // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
-                            val parentDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
-                                treeUri,
-                                android.provider.DocumentsContract.getTreeDocumentId(treeUri),
-                            )
-                            val destUri = android.provider.DocumentsContract.createDocument(
-                                context.contentResolver,
-                                parentDocUri,
-                                mime,
-                                "$safeTitle.$detectedExt",
-                            ) ?: run { failed++; continue }
-                            runCatching {
-                                context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-                                    spans.sortedBy { it.position }.forEach { span ->
-                                        java.io.FileInputStream(span.file).use { input ->
-                                            input.copyTo(output)
-                                        }
-                                    }
-                                    output.flush()
-                                }
-                            }.onSuccess { exported++ }.onFailure { failed++ }
-                        }
-                    }
-                } finally {
-                    isExporting = false
-                }
-                val failedMsg = if (failed > 0) ", $failed failed" else ""
-                android.widget.Toast.makeText(
-                    context,
-                    context.getString(R.string.export_all_songs_complete, exported, failedMsg),
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
-
     val maxImageCacheSizeBytes =
         if (maxImageCacheSize > 0) {
             cacheSizeMegabytesToBytes(maxImageCacheSize)
@@ -449,29 +380,8 @@ fun StorageSettings(
                                 contentDescription = null,
                             )
                         },
-                        onClick = { exportDownloadedSongsLauncher.launch(null) },
+                        onClick = { navController.navigate("settings/storage/export_songs") },
                     )
-                }
-                if (isExporting) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                text = stringResource(R.string.export_songs_to_local_description),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
                 }
             }
 

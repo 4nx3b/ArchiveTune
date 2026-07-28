@@ -107,6 +107,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.player.rememberDeviceMusicVolumeController
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
@@ -167,6 +168,14 @@ fun PlayerMenu(
     val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
     val lowDataModeActive = rememberLowDataModeActive()
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
+    // Only show the "Refetch canvas" overflow action when the current song
+    // actually has an animated artwork entry cached. Songs that never resolved
+    // a canvas (no animated artwork exists for them) wouldn't benefit from a
+    // refetch and would just produce a confusing no-op button.
+    var hasCanvasArtwork by remember(mediaMetadata.id) { mutableStateOf(false) }
+    LaunchedEffect(mediaMetadata.id, isCanvasArtworkRefetching) {
+        hasCanvasArtwork = CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)
+    }
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(mediaMetadata.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = mediaMetadata.id) }
@@ -490,7 +499,8 @@ fun PlayerMenu(
                                 isQueueTrigger != true &&
                                 archiveTuneCanvasEnabled &&
                                 !lowDataModeActive &&
-                                playerDesignStyle != PlayerDesignStyle.V5
+                                playerDesignStyle != PlayerDesignStyle.V5 &&
+                                hasCanvasArtwork
                             ) {
                                 add(
                                     NewAction(

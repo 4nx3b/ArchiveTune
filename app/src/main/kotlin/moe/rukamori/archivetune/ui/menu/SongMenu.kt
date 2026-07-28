@@ -90,9 +90,9 @@ import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
-import moe.rukamori.archivetune.db.entities.exportMimeType
 import moe.rukamori.archivetune.db.entities.fileExtension
 import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -147,13 +147,13 @@ fun SongMenu(
     val downloadUtil = LocalDownloadUtil.current
 
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
-    // The MIME type hint is resolved from the cached FormatEntity, but the actual
-    // file extension is detected from the cached audio data's magic bytes to
-    // avoid exporting lossy data with a .flac extension.
+    // The MIME type hint is derived from the *actual* cached audio bytes
+    // (preferred) or the FormatEntity stored at download time, so a FLAC
+    // stream from Qobuz exports with audio/flac rather than the previous
+    // audio/mpeg fallback. The file extension is always detected from
+    // magic bytes to avoid exporting lossy data with a .flac extension
+    // (and vice versa).
     val songFormat by database.format(song.id).collectAsState(initial = null)
-    val exportMimeType = songFormat?.exportMimeType() ?: "audio/mpeg"
-    // Detect the real audio format from the download cache so the exported
-    // file always gets the correct extension (e.g. .opus instead of .flac).
     val detectedExt by produceState(
         initialValue = songFormat?.fileExtension() ?: "mp3",
         song.id,
@@ -166,6 +166,7 @@ fun SongMenu(
             }
         }
     }
+    val exportMimeType = extensionToMimeType(detectedExt)
     val exportToDownloadsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMimeType)) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
@@ -1135,25 +1136,38 @@ private suspend fun exportDownloadedSongToUri(
 
 /**
  * Resolves cached spans for a given [songId]. Tries the key directly first,
- * then falls back to searching all cache keys for a matching entry.
+ * then checks the source-prefixed keys used by Qobuz/Tidal downloads
+ * ("qobuz:<songId>" and "tidal:<songId>") so lossless exports pull the
+ * actual FLAC bytes instead of falling through to a YouTube Music stream,
+ * and finally falls back to scanning all cache keys for any entry that
+ * ends with the songId.
  */
 private fun getCachedSpansForKey(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,
 ): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
-    var spans = cache.getCachedSpans(songId)
-    if (spans.isNotEmpty()) return spans
-    // Fallback: the download may have been stored under a slightly different
-    // key (e.g. with a URI prefix). Search all keys for one that ends with
-    // the songId or equals it after URI decoding.
+    cache.getCachedSpans(songId)
+        .takeIf { it.isNotEmpty() }
+        ?.let { return it }
+
+    // Source-prefixed cache keys (set by DownloadUtil.resolvePreferredDownloadDataSpec).
+    for (prefix in listOf("qobuz:", "tidal:")) {
+        val sourceKey = "$prefix$songId"
+        cache.getCachedSpans(sourceKey)
+            .takeIf { it.isNotEmpty() }
+            ?.let { return it }
+    }
+
+    // Last-resort scan: the download may have been stored under a URI-derived
+    // key. Match any key whose final path segment equals the songId.
     for (key in cache.keys) {
         val cleanKey = key.substringAfterLast("/")
-        if (cleanKey == songId || key == songId) {
-            spans = cache.getCachedSpans(key)
+        if (cleanKey == songId || key == songId || key.endsWith(":$songId")) {
+            val spans = cache.getCachedSpans(key)
             if (spans.isNotEmpty()) return spans
         }
     }
-    return spans
+    return java.util.TreeSet()
 }
 
 /**
