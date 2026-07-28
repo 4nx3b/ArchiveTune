@@ -143,6 +143,30 @@ class DownloadUtil
                 .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
+        /**
+         * Read-only view of [playerCache] used as an inner upstream of the download chain.
+         *
+         * The download [CacheDataSource] is bound to [downloadCache]; without this inner layer,
+         * any byte range present in [playerCache] (e.g. a song that was just streamed from Qobuz
+         * or YouTube) but absent from [downloadCache] would fall through to [OkHttpDataSource]
+         * holding the *bare media id* the [DownloadRequest] carried (e.g. "dJth8oW7CAQ"), which
+         * is not a valid URL — producing `HttpDataSourceException: Malformed URL` and failing
+         * the download at 0%.
+         *
+         * Chaining [playerCache] as the next upstream means: downloadCache miss → playerCache hit
+         * → serve bytes (and write them through to downloadCache so subsequent chunks persist).
+         * Only when *both* caches miss do we reach [OkHttpDataSource], by which point the
+         * [ResolvingDataSource] resolver below has already swapped the URI for a real YouTube
+         * stream URL.
+         */
+        private val playerCacheDownloadUpstreamFactory =
+            CacheDataSource
+                .Factory()
+                .setCache(playerCache)
+                .setCacheReadDataSourceFactory(FileDataSource.Factory())
+                .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
         private val youtubeDataSourceFactory =
             ResolvingDataSource.Factory(
                 CacheDataSource
@@ -150,11 +174,8 @@ class DownloadUtil
                     .setCache(downloadCache)
                     .setCacheKeyFactory(DownloadRequestCacheKeyFactory)
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                    .setUpstreamDataSourceFactory(
-                        OkHttpDataSource.Factory(
-                            mediaOkHttpClient,
-                        ),
-                    ).setCacheWriteDataSinkFactory(
+                    .setUpstreamDataSourceFactory(playerCacheDownloadUpstreamFactory)
+                    .setCacheWriteDataSinkFactory(
                         CacheDataSink.Factory().setCache(downloadCache).setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE),
                     ),
             ) { dataSpec ->
@@ -167,6 +188,9 @@ class DownloadUtil
                 // downloading a song that was streamed from an external lossless
                 // source saves the actual lossless data instead of re-downloading
                 // from YouTube Music. The keys match MusicService.sourceCacheKey().
+                // The chained [playerCacheDownloadUpstreamFactory] reads these source-specific
+                // keys directly from playerCache — no YouTube URL resolution is needed when the
+                // lossless bytes are already cached.
                 for (sourcePrefix in listOf("qobuz:", "tidal:")) {
                     val sourceKey = "$sourcePrefix$mediaId"
                     if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
