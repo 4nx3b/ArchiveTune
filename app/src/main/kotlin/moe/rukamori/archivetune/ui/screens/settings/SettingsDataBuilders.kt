@@ -78,6 +78,7 @@ fun buildSettingsGroups(
                 SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
                 SettingsChild("Color source", "color_source", listOf("color", "color source", "dynamic color", "material you")),
+                SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page", "open tab")),
             ),
         )
     val playback =
