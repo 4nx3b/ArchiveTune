@@ -43,7 +43,6 @@ import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
-import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -52,7 +51,6 @@ import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
-import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
@@ -206,19 +204,6 @@ fun PlayerSettings(navController: NavController) {
     val (wakelockEnabled, onWakelockChange) =
         rememberPreference(
             WakelockKey,
-            defaultValue = false,
-        )
-    val (downloadSource, onDownloadSourceChange) =
-        rememberPreference(
-            DownloadSourceKey,
-            defaultValue = "youtube_music",
-        )
-    // When the user selects Qobuz or Tidal as download source, ensure the
-    // corresponding source provider is enabled so the resolution chain
-    // actually tries that provider during playback/download.
-    val (qobuzEnabled, onQobuzEnabledChange) =
-        rememberPreference(
-            QobuzEnabledKey,
             defaultValue = false,
         )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
@@ -460,38 +445,6 @@ fun PlayerSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.queue)) {
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.download_source_title)) },
-                        description = when (downloadSource) {
-                            "youtube_music" -> stringResource(R.string.download_source_youtube_music)
-                            "tidal" -> stringResource(R.string.download_source_tidal)
-                            "qobuz" -> stringResource(R.string.download_source_qobuz)
-                            else -> downloadSource
-                        },
-                        icon = { Icon(painterResource(R.drawable.download), null) },
-                        onClick = { onDownloadSourceChange(
-                            when (downloadSource) {
-                                "youtube_music" -> "tidal"
-                                "tidal" -> "qobuz"
-                                else -> "youtube_music"
-                            }
-                        )
-                            // Enable the newly selected source so the resolution chain
-                            // actually tries it. Qobuz is disabled by default.
-                            when (downloadSource) {
-                                "youtube_music" -> {
-                                    // Next is tidal (already enabled by default)
-                                }
-                                "tidal" -> onQobuzEnabledChange(true)
-                                else -> {
-                                    // Back to youtube_music, no enable needed
-                                }
-                            }
-                        },
-                    )
-                }
-
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.persistent_queue)) },
