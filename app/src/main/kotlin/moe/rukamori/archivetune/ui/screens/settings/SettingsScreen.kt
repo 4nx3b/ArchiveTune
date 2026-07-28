@@ -140,7 +140,7 @@ fun SettingsScreen(
         else {
             val query = searchQuery.trim().lowercase()
             allSettingsGroups.flatMap { group ->
-                group.items.mapNotNull { item ->
+                group.items.flatMap { item ->
                     item.children.mapNotNull { child ->
                         val matchesTitle = child.title.lowercase().contains(query)
                         val matchesKeywords = child.keywords.any { it.lowercase().contains(query) }
