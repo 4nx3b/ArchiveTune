@@ -325,26 +325,76 @@ class DownloadUtil
             val artists = song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) }
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
-            val directStreamUri =
+            // Resolve the source-specific direct stream and pull out the
+            // metadata we need to (a) build the DataSpec and (b) persist a
+            // FormatEntity so future exports read the correct MIME/codec
+            // (FLAC for Qobuz/Tidal lossless) instead of defaulting to MP3.
+            data class ResolvedStream(
+                val uri: String,
+                val mimeType: String,
+                val codecs: String,
+                val contentLength: Long?,
+            )
+            val resolvedStream =
                 runCatching {
                     when (downloadSource) {
                         DownloadSource.QOBUZ ->
                             QobuzAudioProvider.resolve(
                                 QobuzAudioProvider.Query(mediaId, queryTitle, artists, album, durationMs),
                                 qobuzAudioQuality.toFormatId(),
-                            )?.uri
+                            )?.let { ResolvedStream(it.uri, it.mimeType, it.codecs, it.contentLength) }
                         DownloadSource.TIDAL ->
                             TidalAudioProvider.resolve(
                                 TidalAudioProvider.Query(mediaId, queryTitle, artists, album, null, durationMs),
                                 audioQuality = tidalAudioQuality,
-                            ).mediaUri
+                            ).let { ResolvedStream(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
                         DownloadSource.YOUTUBE_MUSIC -> null
                     }
                 }.getOrNull() ?: return null
+            persistSourceFormatEntity(
+                mediaId = mediaId,
+                mimeType = resolvedStream.mimeType,
+                codecs = resolvedStream.codecs,
+                contentLength = resolvedStream.contentLength,
+            )
             return dataSpec.buildUpon()
-                .setUri(directStreamUri.toUri())
+                .setUri(resolvedStream.uri.toUri())
                 .setKey("${downloadSource.name.lowercase(java.util.Locale.US)}:$mediaId")
                 .build()
+        }
+
+        /**
+         * Writes a [FormatEntity] reflecting the resolved lossless/lossy stream
+         * (Qobuz/Tidal) so that subsequent exports read the correct codec + MIME
+         * type instead of defaulting to MP3.
+         */
+        private fun persistSourceFormatEntity(
+            mediaId: String,
+            mimeType: String,
+            codecs: String,
+            contentLength: Long?,
+        ) {
+            val normalizedMime = mimeType.ifBlank { "audio/flac" }.substringBefore(";")
+            downloadScope.launch {
+                runCatching {
+                    database.query {
+                        upsert(
+                            FormatEntity(
+                                id = mediaId,
+                                itag = 0,
+                                mimeType = normalizedMime,
+                                codecs = codecs,
+                                bitrate = 0,
+                                sampleRate = null,
+                                contentLength = contentLength ?: 0L,
+                                loudnessDb = null,
+                                perceptualLoudnessDb = null,
+                                playbackUrl = null,
+                            ),
+                        )
+                    }
+                }
+            }
         }
 
         private fun resolveDownloadAudioQuality(lowDataModeActive: Boolean): AudioQuality =
