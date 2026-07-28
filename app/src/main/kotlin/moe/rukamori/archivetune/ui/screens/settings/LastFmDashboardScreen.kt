@@ -573,10 +573,12 @@ private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
 private suspend fun resolveYtThumbnail(title: String, artist: String?): String? {
     if (title.isBlank()) return null
     val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
-    val result =
-        runCatching { YouTube.search(term, YouTube.SearchFilter.FILTER_SONG) }.getOrNull()
+    // YouTube.search already returns Result<SearchResult>; don't wrap in runCatching
+    // (that would produce Result<Result<SearchResult>> and break type inference).
+    val searchResult =
+        YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val first = result.items.firstOrNull { it is SongItem } as? SongItem ?: return null
+    val first = searchResult.items.firstOrNull { it is SongItem } as? SongItem ?: return null
     return first.thumbnail.takeIf(String::isNotBlank)
 }
 
