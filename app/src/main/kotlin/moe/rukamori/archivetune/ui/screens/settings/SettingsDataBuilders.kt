@@ -57,6 +57,19 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("appearance", "theme", "dark", "light", "color", "palette", "style", "design"),
             onClick = { navController.navigate("settings/appearance") },
+            children = listOf(
+                SettingsChild("Dark theme", "dark_theme", listOf("dark", "dark theme", "night", "amoled")),
+                SettingsChild("Pure black", "pure_black", listOf("pure black", "amoled", "oled", "black background")),
+                SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
+                SettingsChild("Toggle fullscreen", "toggle_fullscreen", listOf("fullscreen", "immersive", "hide status bar")),
+                SettingsChild("Player background blur", "player_blur", listOf("background blur", "blur", "player background")),
+                SettingsChild("Lyrics background blur", "lyrics_blur", listOf("lyrics blur", "lyrics background")),
+                SettingsChild("Thumbnail corner radius", "thumbnail_corner", listOf("thumbnail", "corner radius", "rounded", "round")),
+                SettingsChild("Canvas blur level", "canvas_blur_level", listOf("canvas", "blur level", "blur amount")),
+                SettingsChild("Icon pack", "icon_pack", listOf("icon", "icon pack", "app icon")),
+                SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
+                SettingsChild("Color source", "color_source", listOf("color", "color source", "dynamic color", "material you")),
+            ),
         )
     val playback =
         SettingsItem(
@@ -67,6 +80,26 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("playback", "player", "audio", "quality", "equalizer", "eq", "volume", "crossfade", "gapless", "flac", "lossless", "hi-res", "sample rate", "bitrate"),
             onClick = { navController.navigate("settings/player") },
+            children = listOf(
+                SettingsChild("Low data mode", "low_data_mode", listOf("data", "data saver", "low quality", "data mode")),
+                SettingsChild("History duration", "history_duration", listOf("history", "duration", "recent", "queue length")),
+                SettingsChild("Crossfade", "crossfade", listOf("crossfade", "fade", "transition", "mix", "blend")),
+                SettingsChild("Gapless playback", "gapless", listOf("gapless", "gap", "seamless", "no gap")),
+                SettingsChild("Skip silence", "skip_silence", listOf("silence", "skip silence", "blank", "quiet")),
+                SettingsChild("Audio normalization", "audio_normalization", listOf("normalization", "loudness", "normalize", "volume level")),
+                SettingsChild("Audio offload", "audio_offload", listOf("offload", "audio offload", "hardware decoder")),
+                SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")),
+                SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")),
+                SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")),
+                SettingsChild("Download source", "download_source", listOf("download source", "youtube music", "tidal", "qobuz", "provider")),
+                SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")),
+                SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")),
+                SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")),
+                SettingsChild("Auto skip on error", "auto_skip_error", listOf("skip", "error", "auto skip", "failed")),
+                SettingsChild("Stop music on task clear", "stop_task_clear", listOf("stop", "task clear", "background", "close app")),
+                SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")),
+                SettingsChild("Artist separators", "artist_separators", listOf("artist", "separator", "split", "featuring")),
+            ),
         )
     val sources =
         SettingsItem(
@@ -77,6 +110,11 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
+            children = listOf(
+                SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
+                SettingsChild("Qobuz", "qobuz", listOf("qobuz", "hires", "hi-res", "flac", "lossless", "cd quality")),
+                SettingsChild("Tidal", "tidal", listOf("tidal", "lossless", "hifi", "master", "mq")),
+            ),
         )
     val lyrics =
         SettingsItem(
@@ -87,6 +125,12 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc"),
             onClick = { navController.navigate("settings/lyrics") },
+            children = listOf(
+                SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib")),
+                SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle")),
+                SettingsChild("Lyrics font size", "lyrics_font_size", listOf("font size", "lyrics size", "text size")),
+                SettingsChild("Lyrics animations", "lyrics_animations", listOf("animation", "animated lyrics", "lyrics effect")),
+            ),
         )
     val content =
         SettingsItem(
@@ -97,6 +141,12 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.primary,
             keywords = listOf("content", "language", "locale", "country", "region", "app language", "explicit", "age restricted", "age", "mature", "video"),
             onClick = { navController.navigate("settings/content") },
+            children = listOf(
+                SettingsChild("Content language", "content_language", listOf("language", "content language", "locale", "country")),
+                SettingsChild("Content country", "content_country", listOf("country", "region", "content country")),
+                SettingsChild("Hide explicit", "hide_explicit", listOf("explicit", "age", "mature", "age restricted", "clean")),
+                SettingsChild("Enable video", "enable_video", listOf("video", "music video", "mv")),
+            ),
         )
     val languagePacks =
         SettingsItem(
@@ -117,6 +167,13 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.primary,
             keywords = listOf("behavior", "privacy", "swipe", "gesture", "history", "cache", "data"),
             onClick = { navController.navigate("settings/privacy") },
+            children = listOf(
+                SettingsChild("Swipe sensitivity", "swipe_sensitivity", listOf("swipe", "gesture", "sensitivity")),
+                SettingsChild("Cache songs", "cache_songs", listOf("cache", "offline", "download cache")),
+                SettingsChild("Listen history", "listen_history", listOf("history", "listen history", "recent")),
+                SettingsChild("Search history", "search_history", listOf("search history", "clear search")),
+                SettingsChild("Analytics", "analytics", listOf("analytics", "tracking", "crash")),
+            ),
         )
     val integration =
         SettingsItem(
@@ -127,6 +184,11 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("integration", "lastfm", "last.fm", "scrobble", "scrobbling", "discord"),
             onClick = { navController.navigate("settings/integration") },
+            children = listOf(
+                SettingsChild("Last.fm scrobbling", "lastfm_scrobbling", listOf("lastfm", "last.fm", "scrobble", "scrobbling", "listens")),
+                SettingsChild("Discord rich presence", "discord_presence", listOf("discord", "rich presence", "status", "now playing")),
+                SettingsChild("ListenBrainz", "listenbrainz", listOf("listenbrainz", "listen brainz", "scrobble")),
+            ),
         )
     val aiIntegration =
         SettingsItem(
@@ -147,6 +209,11 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic"),
             onClick = { navController.navigate("settings/internet") },
+            children = listOf(
+                SettingsChild("Proxy", "proxy_settings", listOf("proxy", "http proxy", "socks", "vpn")),
+                SettingsChild("Enable tor", "enable_tor", listOf("tor", "onion", "anonymous")),
+                SettingsChild("Download speed limit", "download_speed_limit", listOf("speed", "limit", "throttle", "bandwidth", "download speed")),
+            ),
         )
     val poToken =
         SettingsItem(
@@ -167,6 +234,12 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.primary,
             keywords = listOf("storage", "download", "cache", "disk", "space", "memory", "path", "location", "export", "export songs", "local storage", "save songs"),
             onClick = { navController.navigate("settings/storage") },
+            children = listOf(
+                SettingsChild("Song cache size", "song_cache_size", listOf("cache size", "song cache", "memory", "download cache")),
+                SettingsChild("Image cache size", "image_cache_size", listOf("image cache", "thumbnail cache", "artwork cache")),
+                SettingsChild("Download location", "download_location", listOf("download path", "location", "folder", "directory", "save to")),
+                SettingsChild("Export downloaded songs", "export_downloaded_songs", listOf("export", "export songs", "save songs", "local storage", "file")),
+            ),
         )
     val backupRestore =
         SettingsItem(
@@ -177,6 +250,10 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.primary,
             keywords = listOf("backup", "restore", "export", "import", "data", "save"),
             onClick = { navController.navigate("settings/backup_restore") },
+            children = listOf(
+                SettingsChild("Backup", "backup", listOf("backup", "save data", "export backup")),
+                SettingsChild("Restore", "restore", listOf("restore", "import", "recover")),
+            ),
         )
     val developerOptions =
         SettingsItem(
@@ -187,6 +264,10 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("developer", "debug", "experimental", "advanced", "logcat", "dev"),
             onClick = { navController.navigate("settings/misc") },
+            children = listOf(
+                SettingsChild("Logcat", "logcat", listOf("logcat", "log", "debug log")),
+                SettingsChild("Update channel", "update_channel", listOf("update channel", "canary", "stable", "beta")),
+            ),
         )
     val defaultLinks =
         if (isAndroid12OrLater) {
@@ -270,6 +351,11 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("about", "info", "version", "license", "credits", "contributors", "changelog"),
             onClick = { navController.navigate("settings/about") },
+            children = listOf(
+                SettingsChild("Version", "about_version", listOf("version", "build")),
+                SettingsChild("Changelog", "about_changelog", listOf("changelog", "changes", "release notes", "what's new")),
+                SettingsChild("License", "about_license", listOf("license", "gpl", "open source")),
+            ),
         )
 
     return listOf(
