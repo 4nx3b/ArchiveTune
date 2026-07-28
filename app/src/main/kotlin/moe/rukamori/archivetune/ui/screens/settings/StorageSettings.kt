@@ -224,9 +224,16 @@ fun StorageSettings(
                             val safeTitle = songEntity?.title?.trim()
                                 ?.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                 ?.ifBlank { "audio" } ?: "audio_$songId"
+                            // createDocument() requires a document URI (representing the
+                            // parent directory as a document), NOT the tree URI returned by
+                            // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
+                            val parentDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                                treeUri,
+                                android.provider.DocumentsContract.getTreeDocumentId(treeUri),
+                            )
                             val destUri = android.provider.DocumentsContract.createDocument(
                                 context.contentResolver,
-                                treeUri,
+                                parentDocUri,
                                 mime,
                                 "$safeTitle.$ext",
                             ) ?: run { failed++; continue }
