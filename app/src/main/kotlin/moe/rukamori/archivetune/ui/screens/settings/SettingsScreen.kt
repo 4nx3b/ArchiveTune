@@ -81,9 +81,19 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
             "about" -> "settings/about"
+            "discord" -> "settings/discord"
+            "tidal" -> "settings/tidal"
+            "qobuz" -> "settings/qobuz"
+            "telegram" -> "settings/telegram"
+            "lastfm" -> "settings/lastfm"
+            "ai_integration" -> "settings/ai_integration"
+            "language_packs" -> "settings/language_packs"
+            "po_token" -> PO_TOKEN_ROUTE
             else -> return null
         }
-    val supportsScroll = parentKey !in setOf("developer_options", "about")
+    // About / developer-options screens intentionally don't participate in auto-scroll
+    // (their contents are mostly static links). All other screens honor ?scrollTo=.
+    val supportsScroll = parentKey !in setOf("developer_options", "about", "po_token")
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
 
@@ -145,53 +155,63 @@ fun SettingsScreen(
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
     // When searching, flatten all individual SettingsChildren across every
     // category so each matching setting is shown as a separate row.
+    //
+    // Per product decision: settings that ship with an inline switch control
+    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
+    // Skip silence, Audio normalization, Audio offload, Persistent queue, etc.)
+    // are EXCLUDED from search results — they already expose their toggle in the
+    // parent screen, and showing them as search rows that don't auto-scroll was
+    // confusing. Every non-switch setting must be both searchable AND auto-scroll
+    // to its position when tapped.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) emptyList()
         else {
             val query = searchQuery.trim().lowercase()
             allSettingsGroups.flatMap { group ->
                 group.items.flatMap { item ->
-                    item.children.mapNotNull { child ->
-                        val matchesTitle = child.title.lowercase().contains(query)
-                        val matchesKeywords = child.keywords.any { it.lowercase().contains(query) }
-                        val matchesParent =
-                            item.title.lowercase().contains(query) ||
-                                item.subtitle?.lowercase()?.contains(query) == true ||
-                                item.keywords.any { it.lowercase().contains(query) }
-                        if (matchesTitle || matchesKeywords || matchesParent) {
-                            SearchResultItem(
-                                title = child.title,
-                                parentTitle = item.title,
-                                parentIcon = item.icon,
-                                parentKey = item.key,
-                                parentAccentColor = item.accentColor,
-                                parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
-                                scrollKey = child.scrollKey,
-                                onClick = item.onClick,
-                                switchControl = child.switchControl,
-                            )
-                        } else null
-                    }.ifEmpty {
-                        // If the parent matches but has no children,
-                        // show the parent itself as a single result.
-                        if (item.title.lowercase().contains(query) ||
-                            item.subtitle?.lowercase()?.contains(query) == true ||
-                            item.keywords.any { it.lowercase().contains(query) }
-                        ) {
-                            listOf(
+                    item.children
+                        .filter { child -> child.switchControl == null }
+                        .mapNotNull { child ->
+                            val matchesTitle = child.title.lowercase().contains(query)
+                            val matchesKeywords = child.keywords.any { it.lowercase().contains(query) }
+                            val matchesParent =
+                                item.title.lowercase().contains(query) ||
+                                    item.subtitle?.lowercase()?.contains(query) == true ||
+                                    item.keywords.any { it.lowercase().contains(query) }
+                            if (matchesTitle || matchesKeywords || matchesParent) {
                                 SearchResultItem(
-                                    title = item.title,
-                                    parentTitle = item.subtitle ?: "",
+                                    title = child.title,
+                                    parentTitle = item.title,
                                     parentIcon = item.icon,
                                     parentKey = item.key,
                                     parentAccentColor = item.accentColor,
-                                    parentRoute = null,
-                                    scrollKey = null,
+                                    parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
+                                    scrollKey = child.scrollKey,
                                     onClick = item.onClick,
-                                ),
-                            )
-                        } else emptyList()
-                    }
+                                    switchControl = null,
+                                )
+                            } else null
+                        }.ifEmpty {
+                            // If the parent matches but has no non-switch children,
+                            // show the parent itself as a single result.
+                            if (item.title.lowercase().contains(query) ||
+                                item.subtitle?.lowercase()?.contains(query) == true ||
+                                item.keywords.any { it.lowercase().contains(query) }
+                            ) {
+                                listOf(
+                                    SearchResultItem(
+                                        title = item.title,
+                                        parentTitle = item.subtitle ?: "",
+                                        parentIcon = item.icon,
+                                        parentKey = item.key,
+                                        parentAccentColor = item.accentColor,
+                                        parentRoute = null,
+                                        scrollKey = null,
+                                        onClick = item.onClick,
+                                    ),
+                                )
+                            } else emptyList()
+                        }
                 }
             }
         }
@@ -211,11 +231,6 @@ fun SettingsScreen(
             }.filter { it.items.isNotEmpty() }
         }
     }
-
-    // Note: Search results show individual settings items. Clicking a result
-    // navigates directly to the parent settings page. The previous auto-scroll
-    // approach was removed because it only scrolled to section headers, not
-    // the specific setting items.
 
     // Material 3 Expressive: when any settings dialog (history duration,
     // lyrics preload count, etc.) is showing, apply a backdrop blur to

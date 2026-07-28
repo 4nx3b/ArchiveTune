@@ -43,6 +43,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -192,17 +193,24 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             InternetWarningBox()
 
-            PreferenceGroup(title = stringResource(R.string.dns_over_https)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("enable_tor"),
+                title = stringResource(R.string.dns_over_https),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.dns_over_https)) },
@@ -233,7 +241,10 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.proxy)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("proxy_settings"),
+                title = stringResource(R.string.proxy),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_proxy)) },
@@ -385,7 +396,10 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.ip_rotation)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("download_speed_limit"),
+                title = stringResource(R.string.ip_rotation),
+            ) {
                 item {
                     IpRotationPreference(
                         title = { Text(stringResource(R.string.ip_rotation)) },
