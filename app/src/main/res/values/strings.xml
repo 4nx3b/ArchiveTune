@@ -897,7 +897,7 @@
     <string name="lastfm_sign_in_required_desc">Connect your Last.fm account to view your listening dashboard, recent tracks, and top tracks.</string>
     <string name="lastfm_sign_in_button">Sign in to Last.fm</string>
     <string name="lastfm_recent_tracks">Recent tracks</string>
-    <string name="lastfm_top_tracks">Top tracks (all time)</string>
+    <string name="lastfm_top_tracks">Top tracks</string>
     <string name="lastfm_no_recent_tracks">No recent tracks to show.</string>
     <string name="lastfm_no_top_tracks">No top tracks to show.</string>
     <string name="lastfm_load_failed">Could not load your Last.fm dashboard.</string>
