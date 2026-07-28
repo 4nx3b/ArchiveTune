@@ -243,6 +243,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     selectedIds.addAll(songs.map { it.songId })
                                 }
                             },
+                            onLongClick = {},
                         ) {
                             Icon(
                                 painter =
