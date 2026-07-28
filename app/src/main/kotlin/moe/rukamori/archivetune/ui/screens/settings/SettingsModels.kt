@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
@@ -39,19 +40,21 @@ data class SettingsItem(
     val keywords: List<String> = emptyList(),
     val children: List<SettingsChild> = emptyList(),
     val onClick: () -> Unit,
+    val switchControl: (@Composable () -> Unit)? = null,
 )
 
 /**
  * Represents a single searchable setting inside a settings category.
  * When the user searches settings, each [SettingsChild] that matches is
- * shown as a separate result row. Clicking it navigates to the parent
- * category screen with [scrollKey] so it auto-scrolls to the item.
+ * shown as a separate result row and may provide an inline control such as
+ * a switch for boolean preferences.
  */
 @Immutable
 data class SettingsChild(
     val title: String,
     val scrollKey: String,
     val keywords: List<String> = emptyList(),
+    val switchControl: (@Composable () -> Unit)? = null,
 )
 
 /**
@@ -68,4 +71,5 @@ data class SearchResultItem(
     val parentRoute: String?,
     val scrollKey: String?,
     val onClick: () -> Unit,
+    val switchControl: (@Composable () -> Unit)? = null,
 )
