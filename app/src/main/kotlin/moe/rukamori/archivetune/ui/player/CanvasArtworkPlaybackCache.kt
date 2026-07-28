@@ -136,6 +136,17 @@ object CanvasArtworkPlaybackCache {
         return playable
     }
 
+    /**
+     * Returns true if the cache has a (potentially playable) canvas entry for [mediaId].
+     * This is cheaper than [get] because it skips the full [CanvasCacheEntry.toPlayableArtwork]
+     * resolution and file-existence checks — it only verifies that an in-memory entry exists.
+     */
+    @Synchronized
+    fun hasEntry(mediaId: String): Boolean {
+        if (mediaId.isBlank()) return false
+        return map.containsKey(mediaId)
+    }
+
     suspend fun put(
         mediaId: String,
         artwork: CanvasArtwork,

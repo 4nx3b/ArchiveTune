@@ -90,8 +90,6 @@ import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
-import moe.rukamori.archivetune.db.entities.exportMimeType
-import moe.rukamori.archivetune.db.entities.fileExtension
 import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
@@ -101,6 +99,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -147,27 +146,42 @@ fun SongMenu(
     val downloadUtil = LocalDownloadUtil.current
 
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
-    // The MIME type hint is resolved from the cached FormatEntity, but the actual
-    // file extension is detected from the cached audio data's magic bytes to
-    // avoid exporting lossy data with a .flac extension.
-    val songFormat by database.format(song.id).collectAsState(initial = null)
-    val exportMimeType = songFormat?.exportMimeType() ?: "audio/mpeg"
-    // Detect the real audio format from the download cache so the exported
-    // file always gets the correct extension (e.g. .opus instead of .flac).
+    // Detect the real audio format from whichever cache (player or download)
+    // actually holds the data — the player cache may contain lossless FLAC from
+    // Qobuz/Tidal while the download cache may have lossy MP3 from YouTube Music.
+    // We check the player cache first so the exported file always reflects the
+    // quality of the stream that was actually played.
     val detectedExt by produceState(
-        initialValue = songFormat?.fileExtension() ?: "mp3",
+        initialValue = "mp3",
         song.id,
     ) {
         withContext(Dispatchers.IO) {
-            val cache = downloadUtil.downloadCache
-            val spans = getCachedSpansForKey(cache, song.id)
-            if (spans.isNotEmpty()) {
-                value = detectAudioExtensionFromSpans(spans)
+            // Player cache first (has lossless data from Qobuz/Tidal playback)
+            val playerSpans = getCachedSpansForKey(downloadUtil.playerCache, song.id)
+            if (playerSpans.isNotEmpty()) {
+                value = detectAudioExtensionFromSpans(playerSpans)
+            } else {
+                // Fall back to download cache
+                val downloadSpans = getCachedSpansForKey(downloadUtil.downloadCache, song.id)
+                if (downloadSpans.isNotEmpty()) {
+                    value = detectAudioExtensionFromSpans(downloadSpans)
+                }
             }
         }
     }
+    // Check whether the song has any cached data in either cache so we can
+    // offer an Export action even when no formal download has been triggered.
+    val hasCachedAudio by produceState(
+        initialValue = false,
+        song.id,
+    ) {
+        withContext(Dispatchers.IO) {
+            value = getCachedSpansForKey(downloadUtil.playerCache, song.id).isNotEmpty() ||
+                getCachedSpansForKey(downloadUtil.downloadCache, song.id).isNotEmpty()
+        }
+    }
     val exportToDownloadsLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMimeType)) { destUri ->
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
             val songId = song.id
             val songTitle = song.song.title
@@ -897,10 +911,11 @@ fun SongMenu(
                                     )
                                 }
                             }
-                            // Export — only shown when the download has actually completed.
-                            // Uses the correct file extension based on the audio codec
-                            // (FLAC for lossless, OPUS/M4A for lossy, etc.).
-                            if (download?.state == Download.STATE_COMPLETED) {
+                            // Export — shown whenever the song has cached audio data
+                            // in either the player cache (lossless from Qobuz/Tidal) or the
+                            // download cache (from YouTube Music). Uses the correct file
+                            // extension based on the audio codec detected from magic bytes.
+                            if (hasCachedAudio) {
                                 val safeTitle = song.song.title.trim()
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
                                 val ext = detectedExt
@@ -1033,7 +1048,9 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
-                    if (!isLocalSong) {
+                    // Refetch — only shown for songs that have canvas artwork,
+                    // since the primary use of this action is to refresh canvas data.
+                    if (!isLocalSong && CanvasArtworkPlaybackCache.hasEntry(song.id)) {
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.refetch)) },
                             leadingContent = {
@@ -1091,7 +1108,9 @@ fun SongMenu(
 
 
 /**
- * Exports a downloaded song to a pre-existing [destUri] (e.g. from CreateDocument).
+ * Exports a cached song to a pre-existing [destUri] (e.g. from CreateDocument).
+ * Checks the player cache first (which may hold lossless FLAC from Qobuz/Tidal
+ * playback), then falls back to the download cache.
  */
 private suspend fun exportDownloadedSongToUri(
     context: android.content.Context,
@@ -1101,10 +1120,11 @@ private suspend fun exportDownloadedSongToUri(
     songTitle: String,
 ): Result<Uri> = runCatching {
     withContext(Dispatchers.IO) {
-        val cache = downloadUtil.downloadCache
-        val spans = getCachedSpansForKey(cache, songId)
+        val spans = getCachedSpansForKey(downloadUtil.playerCache, songId)
+            .takeIf { it.isNotEmpty() }
+            ?: getCachedSpansForKey(downloadUtil.downloadCache, songId)
         if (spans.isEmpty()) {
-            throw IllegalStateException("Download cache is empty for this song")
+            throw IllegalStateException("No cached audio data found for this song")
         }
         writeSpansToUri(context, destUri, spans)
         destUri
@@ -1113,7 +1133,8 @@ private suspend fun exportDownloadedSongToUri(
 
 /**
  * Resolves cached spans for a given [songId]. Tries the key directly first,
- * then falls back to searching all cache keys for a matching entry.
+ * then checks source-specific cache keys (Qobuz, Tidal), and finally
+ * falls back to searching all cache keys for a matching entry.
  */
 private fun getCachedSpansForKey(
     cache: androidx.media3.datasource.cache.Cache,
@@ -1121,6 +1142,12 @@ private fun getCachedSpansForKey(
 ): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
     var spans = cache.getCachedSpans(songId)
     if (spans.isNotEmpty()) return spans
+    // Check source-specific cache keys used by MusicService during playback
+    // (e.g. Qobuz FLAC streams are stored under "qobuz:<songId>").
+    for (prefix in listOf("qobuz:", "tidal:")) {
+        spans = cache.getCachedSpans("$prefix$songId")
+        if (spans.isNotEmpty()) return spans
+    }
     // Fallback: the download may have been stored under a slightly different
     // key (e.g. with a URI prefix). Search all keys for one that ends with
     // the songId or equals it after URI decoding.
