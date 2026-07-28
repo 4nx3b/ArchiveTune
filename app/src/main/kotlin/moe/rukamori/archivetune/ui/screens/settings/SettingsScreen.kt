@@ -358,7 +358,7 @@ fun SettingsScreen(
             if (searchQuery.isNotBlank() && filteredChildResults.isNotEmpty()) {
                 itemsIndexed(
                     items = filteredChildResults,
-                    key = { _, result -> result.parentKey + ":" + result.scrollKey },
+                    key = { index, result -> result.parentKey + ":" + result.title + ":" + index },
                     contentType = { _, _ -> "search_result" },
                 ) { _, result ->
                     SettingsSearchResultItem(

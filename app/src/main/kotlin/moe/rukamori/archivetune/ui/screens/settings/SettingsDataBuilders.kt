@@ -91,7 +91,6 @@ fun buildSettingsGroups(
                 SettingsChild("Seek seconds add-up", "seek_seconds", listOf("seek", "skip", "forward", "rewind", "seconds")),
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")),
                 SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")),
-                SettingsChild("Download source", "download_source", listOf("download source", "youtube music", "tidal", "qobuz", "provider")),
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")),
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")),
                 SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")),
