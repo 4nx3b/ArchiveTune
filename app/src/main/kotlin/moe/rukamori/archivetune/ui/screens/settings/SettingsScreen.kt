@@ -146,6 +146,7 @@ fun SettingsScreen(
                                 parentRoute = item.key,
                                 scrollKey = child.scrollKey,
                                 onClick = item.onClick,
+                                switchControl = child.switchControl,
                             )
                         } else null
                     }.ifEmpty {
