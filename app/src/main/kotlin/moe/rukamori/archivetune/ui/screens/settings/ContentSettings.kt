@@ -98,13 +98,21 @@ fun ContentSettings(
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
-        PreferenceGroup(title = stringResource(R.string.general)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("content_language"),
+            title = stringResource(R.string.general),
+        ) {
             item {
                 ListPreference(
                     title = { Text(stringResource(R.string.content_language)) },
@@ -216,7 +224,10 @@ fun ContentSettings(
             onOpenSource = viewModel::openAiContentFilterSource,
         )
 
-        PreferenceGroup(title = stringResource(R.string.app_language)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("app_language"),
+            title = stringResource(R.string.app_language),
+        ) {
             item {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     PreferenceEntry(
@@ -255,7 +266,10 @@ fun ContentSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.misc)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("quick_picks"),
+            title = stringResource(R.string.misc),
+        ) {
             item {
                 EditTextPreference(
                     title = { Text(stringResource(R.string.top_length)) },

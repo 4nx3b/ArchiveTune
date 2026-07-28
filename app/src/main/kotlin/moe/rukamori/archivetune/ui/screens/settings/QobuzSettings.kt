@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -552,6 +553,10 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
@@ -561,10 +566,13 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                     ),
                 )
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.qobuz_integration)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_account"),
+                title = stringResource(R.string.qobuz_integration),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.qobuz_enable)) },
@@ -593,7 +601,10 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.qobuz_tokens)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_tokens"),
+                title = stringResource(R.string.qobuz_tokens),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_login_web)) },
@@ -739,7 +750,10 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.qobuz_instances)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_instances"),
+                title = stringResource(R.string.qobuz_instances),
+            ) {
                 item {
                     PreferenceEntry(
                         title = {
