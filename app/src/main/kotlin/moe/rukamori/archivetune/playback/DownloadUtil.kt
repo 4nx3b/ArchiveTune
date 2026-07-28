@@ -138,8 +138,11 @@ class DownloadUtil
                     .setCache(downloadCache)
                     .setCacheKeyFactory(DownloadRequestCacheKeyFactory)
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                    .setUpstreamDataSourceFactory(cachedPlaybackDataSourceFactory)
-                    .setCacheWriteDataSinkFactory(
+                    .setUpstreamDataSourceFactory(
+                        OkHttpDataSource.Factory(
+                            mediaOkHttpClient,
+                        ),
+                    ).setCacheWriteDataSinkFactory(
                         CacheDataSink.Factory().setCache(downloadCache).setBufferSize(DOWNLOAD_WRITE_BUFFER_SIZE),
                     ),
             ) { dataSpec ->
