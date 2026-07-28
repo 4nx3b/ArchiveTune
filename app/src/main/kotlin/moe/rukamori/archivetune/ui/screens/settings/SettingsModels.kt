@@ -37,5 +37,35 @@ data class SettingsItem(
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
     val keywords: List<String> = emptyList(),
+    val children: List<SettingsChild> = emptyList(),
+    val onClick: () -> Unit,
+)
+
+/**
+ * Represents a single searchable setting inside a settings category.
+ * When the user searches settings, each [SettingsChild] that matches is
+ * shown as a separate result row. Clicking it navigates to the parent
+ * category screen with [scrollKey] so it auto-scrolls to the item.
+ */
+@Immutable
+data class SettingsChild(
+    val title: String,
+    val scrollKey: String,
+    val keywords: List<String> = emptyList(),
+)
+
+/**
+ * A flattened search result derived from a [SettingsChild].
+ * Shown as an individual row in the search results list.
+ */
+@Immutable
+data class SearchResultItem(
+    val title: String,
+    val parentTitle: String,
+    val parentIcon: Painter,
+    val parentKey: String,
+    val parentAccentColor: Color = Color.Unspecified,
+    val parentRoute: String?,
+    val scrollKey: String?,
     val onClick: () -> Unit,
 )
