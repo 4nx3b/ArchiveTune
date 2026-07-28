@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
+import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
@@ -211,6 +212,14 @@ fun PlayerSettings(navController: NavController) {
         rememberPreference(
             DownloadSourceKey,
             defaultValue = "youtube_music",
+        )
+    // When the user selects Qobuz or Tidal as download source, ensure the
+    // corresponding source provider is enabled so the resolution chain
+    // actually tries that provider during playback/download.
+    val (qobuzEnabled, onQobuzEnabledChange) =
+        rememberPreference(
+            QobuzEnabledKey,
+            defaultValue = false,
         )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
@@ -467,7 +476,19 @@ fun PlayerSettings(navController: NavController) {
                                 "tidal" -> "qobuz"
                                 else -> "youtube_music"
                             }
-                        ) },
+                        )
+                            // Enable the newly selected source so the resolution chain
+                            // actually tries it. Qobuz is disabled by default.
+                            when (downloadSource) {
+                                "youtube_music" -> {
+                                    // Next is tidal (already enabled by default)
+                                }
+                                "tidal" -> onQobuzEnabledChange(true)
+                                else -> {
+                                    // Back to youtube_music, no enable needed
+                                }
+                            }
+                        },
                     )
                 }
 

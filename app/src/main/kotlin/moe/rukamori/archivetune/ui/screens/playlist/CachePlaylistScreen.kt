@@ -147,9 +147,16 @@ fun CachePlaylistScreen(
                             val formatInfo = database.format(song.id).first()
                             val ext = formatInfo?.fileExtension() ?: "mp3"
                             val mime = formatInfo?.exportMimeType() ?: "audio/mpeg"
+                            // createDocument() requires a document URI (representing the
+                            // parent directory as a document), NOT the tree URI returned by
+                            // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
+                            val parentDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                                treeUri,
+                                android.provider.DocumentsContract.getTreeDocumentId(treeUri),
+                            )
                             val destUri = android.provider.DocumentsContract.createDocument(
                                 context.contentResolver,
-                                treeUri,
+                                parentDocUri,
                                 mime,
                                 "$safeTitle.$ext",
                             ) ?: throw IllegalStateException("Could not create file")
