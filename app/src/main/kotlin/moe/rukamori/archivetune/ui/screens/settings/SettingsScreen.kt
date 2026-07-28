@@ -165,7 +165,7 @@ fun SettingsScreen(
                                 parentIcon = item.icon,
                                 parentKey = item.key,
                                 parentAccentColor = item.accentColor,
-                                parentRoute = searchableSettingsRoute(item.key, if (child.switchControl == null) child.scrollKey else null),
+                                parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
                                 scrollKey = child.scrollKey,
                                 onClick = item.onClick,
                                 switchControl = child.switchControl,

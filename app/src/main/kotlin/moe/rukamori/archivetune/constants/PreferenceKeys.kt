@@ -164,6 +164,12 @@ val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+enum class DownloadSource {
+    QOBUZ,
+    TIDAL,
+    YOUTUBE_MUSIC,
+}
+
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
@@ -695,6 +701,7 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 // Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
 // Android 12+; a translucent surface fallback below that.
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")

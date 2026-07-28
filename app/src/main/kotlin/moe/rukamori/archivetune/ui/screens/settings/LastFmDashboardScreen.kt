@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
+import moe.rukamori.archivetune.telegram.TelegramCoverProvider
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
@@ -216,6 +217,18 @@ fun LastFmDashboardScreen(
         }
         val top = topTracks?.getOrNull().orEmpty()
         val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
+        var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+        LaunchedEffect(top) {
+            if (top.isEmpty()) return@LaunchedEffect
+            catalogueArtworkByTrack =
+                withContext(Dispatchers.IO) {
+                    top.mapNotNull { track ->
+                        val key = track.trackArtworkKey()
+                        TelegramCoverProvider.coverUrl(track.name.orEmpty(), track.artist?.text)?.let { key to it }
+                    }.toMap()
+                }
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -266,7 +279,7 @@ fun LastFmDashboardScreen(
                                 track = track,
                                 rank = index + 1,
                                 playCount = track.playcount,
-                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
+                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()] ?: catalogueArtworkByTrack[track.trackArtworkKey()],
                             )
                         }
                     }
