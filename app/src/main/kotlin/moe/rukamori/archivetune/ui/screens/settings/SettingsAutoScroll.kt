@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -42,7 +43,7 @@ internal class PreferencePositions(private val positions: MutableMap<String, Int
     /** Returns a [Modifier] that records the composable's y-position under [key]. */
     fun modifierFor(key: String): Modifier =
         Modifier.onGloballyPositioned { coordinates ->
-            positions[key] = coordinates.positionInRoot.y.toInt()
+            positions[key] = coordinates.positionInRoot().y.toInt()
         }
 
     /** Scrolls the [scrollState] to the position registered for [key]. */
