@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
+import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
 import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PermanentShuffleKey
@@ -108,6 +109,7 @@ fun buildSettingsGroups(
                 SettingsChild("Player slider style", "player_slider_style", listOf("player slider", "slider style", "progress bar")),
                 SettingsChild("Swipe sensitivity", "swipe_sensitivity", listOf("swipe", "gesture", "sensitivity")),
                 SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar", "nav bar", "bottom bar")),
+                SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
                 SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page")),
                 SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
@@ -141,6 +143,7 @@ fun buildSettingsGroups(
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },
                 SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")) { SearchResultSwitch(AutoDownloadOnLikeKey, false) },
+                SettingsChild("Download source", "download_source", listOf("download source", "qobuz download", "tidal download", "youtube music download")),
                 SettingsChild("Auto skip on error", "auto_skip_error", listOf("skip", "error", "auto skip", "failed")) { SearchResultSwitch(AutoSkipNextOnErrorKey, false) },
                 SettingsChild("Stop music on task clear", "stop_task_clear", listOf("stop", "task clear", "background", "close app")) { SearchResultSwitch(StopMusicOnTaskClearKey, false) },
                 SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")) { SearchResultSwitch(WakelockKey, false) },

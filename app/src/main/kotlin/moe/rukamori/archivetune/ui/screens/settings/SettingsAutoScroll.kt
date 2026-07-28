@@ -49,10 +49,13 @@ internal class PreferencePositions(private val positions: MutableMap<String, Int
     /** Scrolls the [scrollState] to the position registered for [key]. */
     suspend fun scrollToKey(key: String?, scrollState: androidx.compose.foundation.ScrollState) {
         if (key.isNullOrBlank()) return
-        kotlinx.coroutines.delay(500L) // wait for layout to settle
-        val targetY = positions[key] ?: return
-        scrollState.animateScrollTo(
-            value = (targetY - scrollState.maxValue / 10).coerceAtLeast(0),
-        )
+        repeat(20) {
+            val targetY = positions[key]
+            if (targetY != null) {
+                scrollState.animateScrollTo(value = targetY.coerceAtLeast(0))
+                return
+            }
+            kotlinx.coroutines.delay(100L)
+        }
     }
 }
