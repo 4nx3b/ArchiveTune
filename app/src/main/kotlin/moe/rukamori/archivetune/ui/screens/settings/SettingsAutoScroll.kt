@@ -42,7 +42,7 @@ internal class PreferencePositions(private val positions: MutableMap<String, Int
     /** Returns a [Modifier] that records the composable's y-position under [key]. */
     fun modifierFor(key: String): Modifier =
         Modifier.onGloballyPositioned { coordinates ->
-            positions[key] = coordinates.positionInRoot.y.toInt()
+            positions[key] = coordinates.positionInRoot().y.toInt()
         }
 
     /** Scrolls the [scrollState] to the position registered for [key]. */
