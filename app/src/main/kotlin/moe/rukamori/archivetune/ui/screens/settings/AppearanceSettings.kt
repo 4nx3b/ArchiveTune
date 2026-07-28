@@ -974,19 +974,21 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    EnumListPreference(
-                        title = { Text(stringResource(R.string.default_open_tab)) },
-                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                        selectedValue = defaultOpenTab,
-                        onValueSelected = onDefaultOpenTabChange,
-                        valueText = {
-                            when (it) {
-                                NavigationTab.HOME -> stringResource(R.string.home)
-                                NavigationTab.SEARCH -> stringResource(R.string.search)
-                                NavigationTab.LIBRARY -> stringResource(R.string.filter_library)
-                            }
-                        },
-                    )
+                    Column(modifier = positions.modifierFor("default_open_tab")) {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.default_open_tab)) },
+                            icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                            selectedValue = defaultOpenTab,
+                            onValueSelected = onDefaultOpenTabChange,
+                            valueText = {
+                                when (it) {
+                                    NavigationTab.HOME -> stringResource(R.string.home)
+                                    NavigationTab.SEARCH -> stringResource(R.string.search)
+                                    NavigationTab.LIBRARY -> stringResource(R.string.filter_library)
+                                }
+                            },
+                        )
+                    }
                 }
 
                 item {
