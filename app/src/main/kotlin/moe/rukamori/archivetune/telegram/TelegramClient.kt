@@ -185,12 +185,13 @@ object TelegramClient {
         // Check for invite link first — private channels require a different TDLib API.
         extractInviteHash(trimmed)?.let { inviteHash ->
             runCatching {
-                val inviteInfo = send(TdApi.CheckChatInviteLink(inviteHash))
+                val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteHash))
                 // If the invite link is valid, try to join the chat.
                 // If already a member, JoinChatByInviteLink returns the chat id anyway.
-                val chatId = runCatching {
-                    send(TdApi.JoinChatByInviteLink(inviteHash)).chatId
-                }.getOrNull() ?: inviteInfo.chatId
+                val joinedChatId = runCatching {
+                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteHash)).id
+                }.getOrNull()
+                val chatId = joinedChatId ?: inviteInfo.chatId
                 if (chatId != 0L) {
                     chatIds += chatId
                 }
