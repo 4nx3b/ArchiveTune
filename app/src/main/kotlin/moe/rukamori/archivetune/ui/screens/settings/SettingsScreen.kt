@@ -40,12 +40,10 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -57,8 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -193,25 +189,10 @@ fun SettingsScreen(
         }
     }
 
-    // Auto-scroll to the first matching search result when the query changes.
-    // We debounce slightly so rapid typing doesn't cause excessive scrolls.
-    // Note: filteredChildResults is NOT a LaunchedEffect key — if it were, every
-    // keystroke would cancel the debounce timer before it fires.
-    LaunchedEffect(listState) {
-        snapshotFlow { searchQuery }
-            .debounce(200L)
-            .distinctUntilChanged()
-            .collect { query ->
-                if (query.isBlank()) return@collect
-                // Snapshot the current search results inside the flow so
-                // we always scroll to the latest match.
-                val results = filteredChildResults
-                if (results.isEmpty()) return@collect
-                // When searching, the LazyColumn layout is:
-                //   0 = search_bar, 1 = search_spacing, 2+ = search results.
-                listState.animateScrollToItem(2)
-            }
-    }
+    // Note: Search results show individual settings items. Clicking a result
+    // navigates directly to the parent settings page. The previous auto-scroll
+    // approach was removed because it only scrolled to section headers, not
+    // the specific setting items.
 
     // Material 3 Expressive: when any settings dialog (history duration,
     // lyrics preload count, etc.) is showing, apply a backdrop blur to
@@ -364,36 +345,8 @@ fun SettingsScreen(
                     SettingsSearchResultItem(
                         result = result,
                         onClick = {
-                            // If we have a scrollKey, navigate to the parent route with a
-                            // scrollTo query parameter so the sub-page auto-scrolls to the item.
-                            if (result.scrollKey != null && result.parentRoute != null) {
-                                val route = when (result.parentRoute) {
-                                    "appearance" -> "settings/appearance"
-                                    "player" -> "settings/player"
-                                    "content" -> "settings/content"
-                                    "lyrics" -> "settings/lyrics"
-                                    "language_packs" -> "settings/language_packs"
-                                    "internet" -> "settings/internet"
-                                    "sources" -> "settings/sources"
-                                    "storage" -> "settings/storage"
-                                    "privacy" -> "settings/privacy"
-                                    "backup_restore" -> "settings/backup_restore"
-                                    "discord" -> "settings/discord"
-                                    "integration" -> "settings/integration"
-                                    "tidal" -> "settings/tidal"
-                                    "qobuz" -> "settings/qobuz"
-                                    "telegram" -> "settings/telegram"
-                                    "about" -> "settings/about"
-                                    else -> null
-                                }
-                                if (route != null) {
-                                    navController.navigate("$route?scrollTo=${result.scrollKey}")
-                                } else {
-                                    result.onClick()
-                                }
-                            } else {
-                                result.onClick()
-                            }
+                            // Navigate to the parent settings page directly.
+                            result.onClick()
                         },
                         modifier = Modifier.padding(
                             horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding,
