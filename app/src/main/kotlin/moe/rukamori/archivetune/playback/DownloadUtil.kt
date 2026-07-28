@@ -139,6 +139,16 @@ class DownloadUtil
                 if (playerCache.isCached(mediaId, dataSpec.position, length)) {
                     return@Factory dataSpec
                 }
+                // Check source-specific player-cache keys (Qobuz, Tidal) so that
+                // downloading a song that was streamed from an external lossless
+                // source saves the actual lossless data instead of re-downloading
+                // from YouTube Music. The keys match MusicService.sourceCacheKey().
+                for (sourcePrefix in listOf("qobuz:", "tidal:")) {
+                    val sourceKey = "$sourcePrefix$mediaId"
+                    if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
+                        return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                    }
+                }
                 val lowDataModeActive = context.isLowDataModeActive()
                 val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
                 val streamCacheKey = buildSongUrlCacheKey(mediaId, requestedAudioQuality)
