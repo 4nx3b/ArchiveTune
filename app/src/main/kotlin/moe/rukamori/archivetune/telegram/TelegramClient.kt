@@ -173,14 +173,31 @@ object TelegramClient {
     // ------------------------------------------------------------------
 
     /**
-     * Searches public chats and keeps only channels/supergroups. Accepts plain queries, @usernames
-     * and t.me links.
+     * Searches public chats and keeps only channels/supergroups. Accepts plain queries, @usernames,
+     * t.me links, and Telegram invite links (t.me/+hash or t.me/joinchat/hash).
      */
     suspend fun searchChannels(query: String): List<TelegramChannel> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
         val chatIds = linkedSetOf<Long>()
+
+        // Check for invite link first — private channels require a different TDLib API.
+        extractInviteHash(trimmed)?.let { inviteHash ->
+            runCatching {
+                val inviteInfo = send(TdApi.CheckChatInviteLink(inviteHash))
+                // If the invite link is valid, try to join the chat.
+                // If already a member, JoinChatByInviteLink returns the chat id anyway.
+                val chatId = runCatching {
+                    send(TdApi.JoinChatByInviteLink(inviteHash)).chatId
+                }.getOrNull() ?: inviteInfo.chatId
+                if (chatId != 0L) {
+                    chatIds += chatId
+                }
+            }.onFailure { e ->
+                Timber.w(e, "Failed to resolve Telegram invite link")
+            }
+        }
 
         // Exact username / t.me link lookup first so pasting a link always works.
         extractUsername(trimmed)?.let { username ->
@@ -521,5 +538,19 @@ object TelegramClient {
             return trimmed.removePrefix("@").takeIf { it.matches(Regex("[A-Za-z0-9_]{3,}")) }
         }
         return null
+    }
+
+    /**
+     * Extracts the invite hash from a Telegram invite link.
+     * Supports formats: t.me/+hash, t.me/joinchat/hash, t.me/add/1234hash
+     */
+    private fun extractInviteHash(query: String): String? {
+        val trimmed = query.trim()
+        val inviteRegex =
+            Regex(
+                "(?:https?://)?t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)([A-Za-z0-9_-]+)",
+                RegexOption.IGNORE_CASE,
+            )
+        return inviteRegex.find(trimmed)?.groupValues?.get(1)
     }
 }
