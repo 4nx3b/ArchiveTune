@@ -11,12 +11,13 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import moe.rukamori.archivetune.audiosource.AudioSourceType
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzInstancesKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
+import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalInstancesKey
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
@@ -148,13 +149,13 @@ object LosslessStreamResolver {
         artists: List<String>,
         album: String?,
         durationMs: Long?,
-        audioQuality: moe.rukamori.archivetune.constants.TidalAudioQuality,
+        audioQuality: TidalAudioQuality,
         cacheDir: File,
     ): DirectStream? {
         val apiQuality = when (audioQuality) {
-            moe.rukamori.archivetune.constants.TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
-            moe.rukamori.archivetune.constants.TidalAudioQuality.FLAC -> "LOSSLESS"
-            moe.rukamori.archivetune.constants.TidalAudioQuality.AAC_320 -> "HIGH"
+            TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
+            TidalAudioQuality.FLAC -> "LOSSLESS"
+            TidalAudioQuality.AAC_320 -> "HIGH"
         }
         val accountFirst = readBoolean(context, TidalAccountFirstKey, true)
         Timber.tag("LosslessResolver").d(
