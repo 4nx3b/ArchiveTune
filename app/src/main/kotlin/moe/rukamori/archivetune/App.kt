@@ -155,6 +155,19 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
+        // Initialize PRDownloader (lightweight parallel download library, ~50 KB)
+        // with an aggressively-tuned config so the segmented parallel data
+        // source has a warmed-up connection pool + dispatcher ready by the
+        // time the user starts a download. PRDownloader is used by
+        // SegmentedParallelDataSource to fetch large byte ranges of a single
+        // media file concurrently — see DownloadUtil.segmentedParallelFactory.
+        runCatching {
+            val config = com.downloader.PRDownloaderConfig.newBuilder()
+                .setReadTimeout(60_000)
+                .setConnectTimeout(30_000)
+                .build()
+            com.downloader.PRDownloader.initialize(this, config)
+        }
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
