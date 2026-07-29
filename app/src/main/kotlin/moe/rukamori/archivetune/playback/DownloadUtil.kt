@@ -104,6 +104,14 @@ class DownloadUtil
          */
         private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
 
+        /**
+         * OkHttp client used for media HTTP requests.
+         *
+         * Used directly by [moe.rukamori.archivetune.innertube.YouTube] for
+         * stream URL resolution and indirectly by [PRDownloaderDataSource]
+         * (PRDownloader has its own internal OkHttp client, configured via
+         * [com.downloader.PRDownloaderConfig] in [App.kt]).
+         */
         private val mediaOkHttpClient: OkHttpClient by lazy {
             OkHttpClient
                 .Builder()
@@ -117,12 +125,11 @@ class DownloadUtil
                 .callTimeout(0, TimeUnit.SECONDS) // no overall cap — let large FLAC files download to completion
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
-                        // Ketch (used by KetchHttpDataSource) handles its own
-                        // internal chunked download concurrency — leave these
-                        // caps generous so Ketch's parallel chunks can fly.
-                        // We also leave headroom for the player's own streaming
-                        // requests (MusicService uses the same OkHttp client
-                        // shape, configured separately).
+                        // PRDownloader (used by PRDownloaderDataSource) manages
+                        // its own internal OkHttp dispatcher — leave these caps
+                        // generous so the player's own streaming requests
+                        // (which share this client) don't get starved when
+                        // multiple downloads are in flight.
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
                         maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST
                     },
@@ -197,31 +204,31 @@ class DownloadUtil
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
         /**
-         * Ketch-backed HTTP data source factory.
+         * PRDownloader-backed HTTP data source factory.
          *
-         * This replaces the previous `ParallelRangeOkHttpDataSource`
-         * (which itself replaced `SegmentedParallelDataSource`).
-         * Both predecessors were slow and occasionally corrupted FLAC
-         * streams via in-memory byte-range stitching
-         * (UnrecognizedInputFormatException, Code 3003).
+         * This replaces the previous `KetchHttpDataSource`, which itself
+         * replaced `ParallelRangeOkHttpDataSource` and
+         * `SegmentedParallelDataSource`. All three predecessors were
+         * slow or corrupted FLAC streams (Ketch's WorkManager job
+         * scheduling added ~200ms overhead per download and its
+         * temp-file lifecycle occasionally left partial files that
+         * corrupted subsequent exports).
          *
-         * [KetchHttpDataSource] delegates the HTTP fetch to the Ketch
-         * library (https://github.com/khushpanchal/Ketch) — a
-         * WorkManager-based file downloader with parallel chunked
-         * transfer, retry, and pause/resume support. Ketch writes to
-         * a temp file on disk; we then expose those bytes to Media3's
+         * [PRDownloaderDataSource] delegates the HTTP fetch to
+         * [PRDownloader](https://github.com/amitshekhariitbhu/PRDownloader) —
+         * a lightweight (~45 KB) file download library with pause/resume,
+         * retry, and progress callbacks. PRDownloader writes to a temp
+         * file on disk; we then expose those bytes to Media3's
          * [CacheDataSink] via [FileDataSource] so the bytes flow into
-         * the download cache as fragments (exactly as before, just
-         * fetched faster and more reliably).
+         * the download cache as fragments.
          *
-         * The Ketch singleton is held by [KetchHolder] and initialized
-         * at app start (see [App.initializeCriticalSync]). It uses an
-         * OkHttp client configuration mirroring [mediaOkHttpClient]
-         * (HTTP/2, generous timeouts, YouTube stream proxy) so behavior
-         * on Qobuz / Tidal / googlevideo is unchanged.
+         * PRDownloader is initialized at app start (see
+         * [App.initializeCriticalSync]) with tuned timeouts. The temp
+         * file is deleted synchronously in `close()` to prevent the
+         * stale-partial-file corruption that plagued Ketch.
          */
         private val okHttpDataSourceFactory =
-            KetchHttpDataSource.Factory(context)
+            PRDownloaderDataSource.Factory(context)
 
         /**
          * Read-only view of [playerCache] used as an inner upstream of the download chain.
@@ -235,7 +242,7 @@ class DownloadUtil
          *
          * Chaining [playerCache] as the next upstream means: downloadCache miss → playerCache hit
          * → serve bytes (and write them through to downloadCache so subsequent chunks persist).
-         * Only when *both* caches miss do we reach [okHttpDataSourceFactory] (Ketch), by which
+         * Only when *both* caches miss do we reach [okHttpDataSourceFactory] (PRDownloader), by which
          * point the [ResolvingDataSource] resolver below has already swapped the URI for a
          * real YouTube stream URL.
          */
@@ -710,9 +717,9 @@ class DownloadUtil
             // home connection while leaving headroom for the player.
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 4
 
-            // Ketch's internal WorkManager + OkHttp dispatcher handle chunked
-            // download concurrency. The constants below configure the OkHttp
-            // client shared by Ketch and the player's streaming requests.
+            // PRDownloader manages its own internal OkHttp dispatcher for
+            // downloads. The constants below configure the OkHttp client
+            // shared by PRDownloader and the player's streaming requests.
 
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 32
             private const val MAX_DOWNLOAD_HTTP_REQUESTS = 64
