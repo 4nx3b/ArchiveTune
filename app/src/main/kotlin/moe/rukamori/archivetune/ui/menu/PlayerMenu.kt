@@ -151,7 +151,8 @@ fun PlayerMenu(
     val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
 
-    val download by LocalDownloadUtil.current
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil
         .getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
 
@@ -822,18 +823,27 @@ fun PlayerMenu(
                                         database.transaction {
                                             insert(mediaMetadata)
                                         }
-                                        val downloadRequest =
-                                            DownloadRequest
-                                                .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                                .setCustomCacheKey(mediaMetadata.id)
-                                                .setData(mediaMetadata.title.toByteArray())
-                                                .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false,
-                                        )
+                                        // Cache-first download: prewarm playerCache
+                                        // via Qobuz/Tidal/YT before DownloadManager
+                                        // opens, so the actual download reads bytes
+                                        // locally instead of fetching over the network.
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                downloadUtil.prewarmSongForDownload(mediaMetadata.id)
+                                            }
+                                            val downloadRequest =
+                                                DownloadRequest
+                                                    .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
+                                                    .setCustomCacheKey(mediaMetadata.id)
+                                                    .setData(mediaMetadata.title.toByteArray())
+                                                    .build()
+                                            DownloadService.sendAddDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                downloadRequest,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
