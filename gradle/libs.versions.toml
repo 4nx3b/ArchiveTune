@@ -139,7 +139,9 @@ translator = { module = "com.github.therealbush:translator", version.ref = "tran
 # boosting per-song download speed beyond what cross-file parallelism alone
 # can achieve. Initialized in App.kt with an tuned thread pool + connection
 # pool that mirrors the OkHttp client configuration used elsewhere.
-prdownloader = { module = "com.github.amitshekhariitbhu:PRDownloader", version = "1.0.1" }
+# Note: 1.0.1's JitPack build failed (lintVitalRelease); 1.0.2 is the first
+# version with a published .aar.
+prdownloader = { module = "com.github.amitshekhariitbhu:PRDownloader", version = "1.0.2" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
 
