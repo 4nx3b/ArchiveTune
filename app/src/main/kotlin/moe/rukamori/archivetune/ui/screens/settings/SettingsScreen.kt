@@ -166,76 +166,142 @@ fun SettingsScreen(
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) emptyList()
         else {
-            // Split the query into individual words and require every word to
-            // appear in at least one of (title, keywords, parent title).
-            // This makes "low data" match "Low data mode" (both words present in
-            // the title) and "persistent queue" match "Persistent queue".
+            // Normalize the query: keep the raw trimmed string for substring
+            // matching, and also split on whitespace for per-word matching.
+            // A child matches if EITHER:
+            //   (a) the full query string is a substring of the title, any
+            //       keyword, or any parent token (handles "scheduled backup"
+            //       matching the "Scheduled backup" title verbatim), OR
+            //   (b) every word of the query appears (as a substring) in at
+            //       least one of (title | keywords | parent tokens). This
+            //       handles "low data" matching "Low data mode" and
+            //       "persistent queue" matching "Persistent queue".
+            val rawQuery = searchQuery.trim().lowercase()
             val queryWords =
-                searchQuery.trim().lowercase().split("\\s+".toRegex())
+                rawQuery.split("\\s+".toRegex())
                     .filter { it.isNotBlank() }
             if (queryWords.isEmpty()) emptyList()
             else {
-                allSettingsGroups.flatMap { group ->
-                    group.items.flatMap { item ->
-                        item.children.mapNotNull { child ->
-                            val titleTokens = listOf(child.title.lowercase())
-                            val keywordTokens = child.keywords.map { it.lowercase() }
+                data class ScoredResult(
+                    val item: SearchResultItem,
+                    val score: Int, // higher = better match
+                )
+
+                val scored =
+                    allSettingsGroups.flatMap { group ->
+                        group.items.flatMap { item ->
                             val parentTokens =
                                 buildList {
                                     add(item.title.lowercase())
                                     item.subtitle?.lowercase()?.let(::add)
                                     addAll(item.keywords.map { it.lowercase() })
                                 }
-                            val titleMatches = queryWords.all { q -> titleTokens.any { it.contains(q) } }
-                            val keywordMatches = queryWords.all { q -> keywordTokens.any { it.contains(q) } }
-                            val parentMatches = queryWords.all { q -> parentTokens.any { it.contains(q) } }
-                            // Also accept the looser "any word matches the title's first word"
-                            // case so a query like "crossfade" still surfaces a setting titled
-                            // "Crossfade gapless" when the user only types one word.
-                            val anyWordInTitle = queryWords.any { q -> titleTokens.any { it.contains(q) } }
-                            val matches = titleMatches || keywordMatches || parentMatches || anyWordInTitle
-                            if (matches) {
-                                SearchResultItem(
-                                    title = child.title,
-                                    parentTitle = item.title,
-                                    parentIcon = item.icon,
-                                    parentKey = item.key,
-                                    parentAccentColor = item.accentColor,
-                                    parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
-                                    scrollKey = child.scrollKey,
-                                    onClick = item.onClick,
-                                    switchControl = child.switchControl,
-                                )
-                            } else null
-                        }.ifEmpty {
-                            // If the parent matches but has no children, show the
-                            // parent itself as a single result so top-level items
-                            // (e.g. "Statistics") remain searchable.
-                            val parentTokens =
-                                buildList {
-                                    add(item.title.lowercase())
-                                    item.subtitle?.lowercase()?.let(::add)
-                                    addAll(item.keywords.map { it.lowercase() })
+
+                            val childResults =
+                                item.children.mapNotNull { child ->
+                                    val titleLower = child.title.lowercase()
+                                    val keywordTokens = child.keywords.map { it.lowercase() }
+
+                                    // (a) full-query substring match
+                                    val titleSubstr = titleLower.contains(rawQuery)
+                                    val keywordSubstr = keywordTokens.any { it.contains(rawQuery) }
+                                    val parentSubstr = parentTokens.any { it.contains(rawQuery) }
+
+                                    // (b) all-words match
+                                    val titleAllWords =
+                                        queryWords.all { q -> titleLower.contains(q) }
+                                    val keywordAllWords =
+                                        queryWords.all { q -> keywordTokens.any { it.contains(q) } }
+                                    val parentAllWords =
+                                        queryWords.all { q -> parentTokens.any { it.contains(q) } }
+
+                                    val matches =
+                                        titleSubstr || keywordSubstr || parentSubstr ||
+                                            titleAllWords || keywordAllWords || parentAllWords
+
+                                    if (!matches) null else {
+                                        // Relevance scoring — higher is better:
+                                        //   1000 = exact title match (case-insensitive)
+                                        //   900  = title starts with the full query
+                                        //   800  = title contains the full query as a substring
+                                        //   700  = any keyword equals the full query
+                                        //   600  = any keyword contains the full query
+                                        //   500  = all query words are in the title (any order)
+                                        //   400  = parent token contains the full query
+                                        //   300  = all query words are in the keywords
+                                        //   200  = all query words are in the parent tokens
+                                        //   100  = partial match
+                                        val score = when {
+                                            titleLower == rawQuery -> 1000
+                                            titleLower.startsWith(rawQuery) -> 900
+                                            titleSubstr -> 800
+                                            keywordTokens.any { it == rawQuery } -> 700
+                                            keywordSubstr -> 600
+                                            titleAllWords -> 500
+                                            parentSubstr -> 400
+                                            keywordAllWords -> 300
+                                            parentAllWords -> 200
+                                            else -> 100
+                                        }
+                                        ScoredResult(
+                                            item = SearchResultItem(
+                                                title = child.title,
+                                                parentTitle = item.title,
+                                                parentIcon = item.icon,
+                                                parentKey = item.key,
+                                                parentAccentColor = item.accentColor,
+                                                parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
+                                                scrollKey = child.scrollKey,
+                                                onClick = item.onClick,
+                                                switchControl = child.switchControl,
+                                            ),
+                                            score = score,
+                                        )
+                                    }
                                 }
-                            if (queryWords.all { q -> parentTokens.any { it.contains(q) } } ||
-                                queryWords.any { q -> parentTokens.any { it.contains(q) } }
-                            ) {
-                                listOf(
-                                    SearchResultItem(
-                                        title = item.title,
-                                        parentTitle = item.subtitle ?: "",
-                                        parentIcon = item.icon,
-                                        parentKey = item.key,
-                                        parentAccentColor = item.accentColor,
-                                        parentRoute = null,
-                                        scrollKey = null,
-                                        onClick = item.onClick,
-                                    ),
-                                )
-                            } else emptyList()
+
+                            if (childResults.isNotEmpty()) {
+                                childResults
+                            } else {
+                                // If the parent matches but has no matching
+                                // children, show the parent itself as a single
+                                // result so top-level items (e.g. "Statistics")
+                                // remain searchable.
+                                val parentSubstr = parentTokens.any { it.contains(rawQuery) }
+                                val parentAllWords =
+                                    queryWords.all { q -> parentTokens.any { it.contains(q) } }
+                                if (parentSubstr || parentAllWords) {
+                                    val score = when {
+                                        item.title.lowercase() == rawQuery -> 1000
+                                        item.title.lowercase().startsWith(rawQuery) -> 900
+                                        parentSubstr -> 400
+                                        else -> 200
+                                    }
+                                    listOf(
+                                        ScoredResult(
+                                            item = SearchResultItem(
+                                                title = item.title,
+                                                parentTitle = item.subtitle ?: "",
+                                                parentIcon = item.icon,
+                                                parentKey = item.key,
+                                                parentAccentColor = item.accentColor,
+                                                parentRoute = null,
+                                                scrollKey = null,
+                                                onClick = item.onClick,
+                                            ),
+                                            score = score,
+                                        ),
+                                    )
+                                } else {
+                                    emptyList()
+                                }
+                            }
                         }
                     }
-                }
+
+                // Sort by score descending so the best match is at the top.
+                // Stable sort preserves screen-order within a score tier.
+                scored.sortedByDescending { it.score }.map { it.item }
             }
         }
     }
