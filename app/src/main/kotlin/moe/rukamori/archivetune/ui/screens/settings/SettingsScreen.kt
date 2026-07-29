@@ -168,14 +168,22 @@ fun SettingsScreen(
         else {
             // Normalize the query: keep the raw trimmed string for substring
             // matching, and also split on whitespace for per-word matching.
-            // A child matches if EITHER:
-            //   (a) the full query string is a substring of the title, any
-            //       keyword, or any parent token (handles "scheduled backup"
-            //       matching the "Scheduled backup" title verbatim), OR
-            //   (b) every word of the query appears (as a substring) in at
-            //       least one of (title | keywords | parent tokens). This
-            //       handles "low data" matching "Low data mode" and
-            //       "persistent queue" matching "Persistent queue".
+            //
+            // MATCHING RULES (in priority order):
+            //   (a) The full query string is a substring of the title, any
+            //       keyword, or any parent token. Handles "scheduled backup"
+            //       verbatim against the "Scheduled backup" title.
+            //   (b) Each query word appears as a substring of AT LEAST ONE
+            //       token across the COMBINED set {title, keywords, parent
+            //       tokens}. Words do NOT all have to live in the same field.
+            //       This is what makes "low data mode", "scheduled backup
+            //       frequency", "discord rich presence activity", and other
+            //       2-, 3-, 4-word queries return results even when each word
+            //       lives in a different field (title vs keyword vs subtitle).
+            //   (c) Phrase fallback: if the joined query (with single spaces)
+            //       is a substring of the joined "all tokens" string, accept.
+            //       This catches typos and word-order differences like
+            //       "backup scheduled" matching "Scheduled backup".
             val rawQuery = searchQuery.trim().lowercase()
             val queryWords =
                 rawQuery.split("\\s+".toRegex())
@@ -196,18 +204,46 @@ fun SettingsScreen(
                                     item.subtitle?.lowercase()?.let(::add)
                                     addAll(item.keywords.map { it.lowercase() })
                                 }
+                            // Pre-join parent tokens once per parent for the phrase check.
+                            val parentJoined = parentTokens.joinToString(" ")
 
                             val childResults =
                                 item.children.mapNotNull { child ->
                                     val titleLower = child.title.lowercase()
                                     val keywordTokens = child.keywords.map { it.lowercase() }
 
-                                    // (a) full-query substring match
+                                    // Combined token bucket for per-word matching.
+                                    // Each query word only needs to match ANY
+                                    // token in this combined set — they don't
+                                    // all have to be in the same field.
+                                    val combinedTokens = buildList {
+                                        add(titleLower)
+                                        addAll(keywordTokens)
+                                        addAll(parentTokens)
+                                    }
+
+                                    // (a) full-query substring match in any single field
                                     val titleSubstr = titleLower.contains(rawQuery)
                                     val keywordSubstr = keywordTokens.any { it.contains(rawQuery) }
                                     val parentSubstr = parentTokens.any { it.contains(rawQuery) }
 
-                                    // (b) all-words match
+                                    // (b) per-word: every query word appears as a
+                                    //     substring of at least one combined token
+                                    val allWordsMatchAnyField =
+                                        queryWords.all { q ->
+                                            titleLower.contains(q) ||
+                                                keywordTokens.any { it.contains(q) } ||
+                                                parentTokens.any { it.contains(q) }
+                                        }
+
+                                    // (c) phrase fallback — joined query against
+                                    //     joined tokens (catches word-order swaps)
+                                    val combinedJoined = combinedTokens.joinToString(" ")
+                                    val phraseMatch = combinedJoined.contains(rawQuery)
+
+                                    // (b-legacy) all-words-in-same-field match — kept
+                                    // for scoring only (a higher score signal than the
+                                    // per-word across-fields match).
                                     val titleAllWords =
                                         queryWords.all { q -> titleLower.contains(q) }
                                     val keywordAllWords =
@@ -217,30 +253,35 @@ fun SettingsScreen(
 
                                     val matches =
                                         titleSubstr || keywordSubstr || parentSubstr ||
+                                            allWordsMatchAnyField || phraseMatch ||
                                             titleAllWords || keywordAllWords || parentAllWords
 
                                     if (!matches) null else {
-                                        // Relevance scoring — higher is better:
+                                        // Relevance scoring — higher is better.
                                         //   1000 = exact title match (case-insensitive)
                                         //   900  = title starts with the full query
                                         //   800  = title contains the full query as a substring
                                         //   700  = any keyword equals the full query
                                         //   600  = any keyword contains the full query
-                                        //   500  = all query words are in the title (any order)
-                                        //   400  = parent token contains the full query
-                                        //   300  = all query words are in the keywords
-                                        //   200  = all query words are in the parent tokens
-                                        //   100  = partial match
+                                        //   550  = all query words are in the title (any order)
+                                        //   500  = phrase match against combined tokens
+                                        //   450  = parent token contains the full query
+                                        //   400  = all query words are in the keywords (same field)
+                                        //   350  = all query words are in the parent tokens (same field)
+                                        //   300  = every query word matches some token across fields
+                                        //   100  = partial match (shouldn't happen given above)
                                         val score = when {
                                             titleLower == rawQuery -> 1000
                                             titleLower.startsWith(rawQuery) -> 900
                                             titleSubstr -> 800
                                             keywordTokens.any { it == rawQuery } -> 700
                                             keywordSubstr -> 600
-                                            titleAllWords -> 500
-                                            parentSubstr -> 400
-                                            keywordAllWords -> 300
-                                            parentAllWords -> 200
+                                            titleAllWords -> 550
+                                            phraseMatch -> 500
+                                            parentSubstr -> 450
+                                            keywordAllWords -> 400
+                                            parentAllWords -> 350
+                                            allWordsMatchAnyField -> 300
                                             else -> 100
                                         }
                                         ScoredResult(
@@ -270,11 +311,13 @@ fun SettingsScreen(
                                 val parentSubstr = parentTokens.any { it.contains(rawQuery) }
                                 val parentAllWords =
                                     queryWords.all { q -> parentTokens.any { it.contains(q) } }
-                                if (parentSubstr || parentAllWords) {
+                                val parentPhraseMatch = parentJoined.contains(rawQuery)
+                                if (parentSubstr || parentAllWords || parentPhraseMatch) {
                                     val score = when {
                                         item.title.lowercase() == rawQuery -> 1000
                                         item.title.lowercase().startsWith(rawQuery) -> 900
                                         parentSubstr -> 400
+                                        parentPhraseMatch -> 300
                                         else -> 200
                                     }
                                     listOf(
