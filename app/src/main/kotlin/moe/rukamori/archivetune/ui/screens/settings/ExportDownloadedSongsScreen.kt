@@ -31,14 +31,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -97,7 +100,10 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     var songs by remember { mutableStateOf<List<DownloadedSongRow>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var isExporting by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var exportedCount by remember { mutableStateOf(0) }
+    var deletedCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
     val selectedIds: SnapshotStateList<String> = remember { mutableStateListOf() }
 
@@ -218,6 +224,63 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
 
     val allSelected = songs.isNotEmpty() && selectedIds.size == songs.size
 
+    /**
+     * Deletes the cached spans for the currently-selected song IDs. Releases
+     * the underlying cache entries via [Cache.removeResource] for every
+     * source-prefixed key the song may live under (qobuz:, tidal:, bare id).
+     * Updates the in-memory list so the UI reflects the deletion immediately.
+     */
+    fun deleteSelected() {
+        val toDelete = songs.filter { it.songId in selectedIds }
+        if (toDelete.isEmpty()) return
+        isDeleting = true
+        totalCount = toDelete.size
+        deletedCount = 0
+        coroutineScope.launch {
+            var deleted = 0
+            var failed = 0
+            try {
+                withContext(Dispatchers.IO) {
+                    val cache = downloadUtil.downloadCache
+                    val playerCache = downloadUtil.playerCache
+                    for (row in toDelete) {
+                        var removed = false
+                        for (key in listOf("qobuz:${row.songId}", "tidal:${row.songId}", row.songId)) {
+                            runCatching { cache.removeResource(key) }.onSuccess { removed = true }
+                            runCatching { playerCache.removeResource(key) }.onSuccess { removed = true }
+                        }
+                        if (removed) deleted++ else failed++
+                        deletedCount = deleted
+                    }
+                    // Also cancel any pending Media3 download requests for these ids
+                    // so they don't immediately re-create the cache entries.
+                    runCatching {
+                        toDelete.forEach { row ->
+                            downloadUtil.downloadManager.removeDownload(row.songId)
+                        }
+                    }
+                }
+            } finally {
+                isDeleting = false
+            }
+            // Refresh the song list to reflect deletions.
+            val failedMsg = if (failed > 0) ", $failed failed" else ""
+            Toast.makeText(
+                context,
+                context.getString(
+                    R.string.export_downloaded_songs_delete_complete,
+                    deleted,
+                    failedMsg,
+                ),
+                Toast.LENGTH_LONG,
+            ).show()
+            // Update the local list + clear selection.
+            val deletedIds = toDelete.map { it.songId }.toSet()
+            songs = songs.filterNot { it.songId in deletedIds }
+            selectedIds.removeAll(deletedIds)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -285,24 +348,57 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                             )
-                            if (isExporting) {
+                            if (isExporting || isDeleting) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
                                     text =
-                                        stringResource(
-                                            R.string.export_downloaded_songs_progress,
-                                            exportedCount,
-                                            totalCount,
-                                        ),
+                                        if (isExporting) {
+                                            stringResource(
+                                                R.string.export_downloaded_songs_progress,
+                                                exportedCount,
+                                                totalCount,
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.export_downloaded_songs_delete_progress,
+                                                deletedCount,
+                                                totalCount,
+                                            )
+                                        },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(8.dp))
+                        // Delete button — destructive action, gated by a confirmation dialog.
+                        OutlinedButton(
+                            onClick = { showDeleteConfirm = true },
+                            enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            if (isDeleting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.delete),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.export_downloaded_songs_delete))
+                        }
+                        Spacer(Modifier.width(8.dp))
                         FilledTonalButton(
                             onClick = { pickFolderLauncher.launch(null) },
-                            enabled = !isExporting && selectedIds.isNotEmpty(),
+                            enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
                         ) {
                             if (isExporting) {
                                 CircularProgressIndicator(
@@ -449,6 +545,40 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 }
             }
         }
+    }
+
+    // Delete confirmation dialog — destructive action needs an explicit OK.
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(R.string.export_downloaded_songs_delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.export_downloaded_songs_delete_confirm_message,
+                        selectedIds.size,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        deleteSelected()
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.export_downloaded_songs_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
     }
 }
 

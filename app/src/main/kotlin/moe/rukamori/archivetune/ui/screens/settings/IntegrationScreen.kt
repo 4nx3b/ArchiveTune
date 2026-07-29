@@ -21,8 +21,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -38,6 +40,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -52,6 +55,7 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
+    var showCrossServiceImport by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -179,6 +183,26 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                     )
                 }
             }
+
+            // ─── Playlist import ──────────────────────────────────────────
+            // Cross-service playlist import: paste a URL from YouTube Music,
+            // Apple Music, Amazon Music, Tidal or Deezer and we'll resolve
+            // the tracks against YouTube Music and build a local playlist.
+            // Lives here (in Integration) per product decision so all
+            // cross-service features are co-located.
+            PreferenceGroup(
+                modifier = positions.modifierFor("cross_service_import"),
+                title = stringResource(R.string.cross_service_import_playlist_title),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.cross_service_import_entry_title)) },
+                        description = stringResource(R.string.cross_service_import_entry_desc),
+                        icon = { Icon(painterResource(R.drawable.playlist_import), null) },
+                        onClick = { showCrossServiceImport = true },
+                    )
+                }
+            }
         }
     }
 
@@ -202,4 +226,9 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
             },
         )
     }
+
+    CrossServiceImportPlaylistDialog(
+        isVisible = showCrossServiceImport,
+        onDismiss = { showCrossServiceImport = false },
+    )
 }

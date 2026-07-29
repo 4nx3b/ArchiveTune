@@ -206,11 +206,24 @@ fun SettingsScreen(
                                 }
                             // Pre-join parent tokens once per parent for the phrase check.
                             val parentJoined = parentTokens.joinToString(" ")
+                            // Pre-split parent tokens into individual words once so
+                            // the per-word prefix matcher (handles plural/singular and
+                            // partial-word queries like "config" matching "configuration")
+                            // doesn't re-split on every query word.
+                            val parentWords = parentTokens.flatMap { it.split(Regex("[\\s_\\-/.]+")) }.filter { it.isNotBlank() }
 
                             val childResults =
                                 item.children.mapNotNull { child ->
                                     val titleLower = child.title.lowercase()
                                     val keywordTokens = child.keywords.map { it.lowercase() }
+                                    // The scrollKey (e.g. "scrobble_threshold") is itself a
+                                    // strong search signal — users may type the underscored
+                                    // form when looking for a specific setting. Normalize
+                                    // underscores/dashes to spaces so it tokenizes cleanly.
+                                    val scrollKeyTokens = buildList {
+                                        add(child.scrollKey.lowercase())
+                                        addAll(child.scrollKey.lowercase().split("_", "-", ".").filter { it.isNotBlank() })
+                                    }
 
                                     // Combined token bucket for per-word matching.
                                     // Each query word only needs to match ANY
@@ -219,21 +232,35 @@ fun SettingsScreen(
                                     val combinedTokens = buildList {
                                         add(titleLower)
                                         addAll(keywordTokens)
+                                        addAll(scrollKeyTokens)
                                         addAll(parentTokens)
                                     }
+                                    // Pre-split into individual words for the prefix matcher.
+                                    val combinedWords = combinedTokens
+                                        .flatMap { it.split(Regex("[\\s_\\-/.]+")) }
+                                        .filter { it.isNotBlank() }
 
                                     // (a) full-query substring match in any single field
                                     val titleSubstr = titleLower.contains(rawQuery)
                                     val keywordSubstr = keywordTokens.any { it.contains(rawQuery) }
+                                    val scrollKeySubstr = scrollKeyTokens.any { it.contains(rawQuery) }
                                     val parentSubstr = parentTokens.any { it.contains(rawQuery) }
 
                                     // (b) per-word: every query word appears as a
-                                    //     substring of at least one combined token
+                                    //     substring of at least one combined token.
+                                    //     PLUS a prefix-of-word match so plurals /
+                                    //     partial-word queries (e.g. "config" matching
+                                    //     "configuration", "images" matching "image")
+                                    //     still hit. This is the catch-all that makes
+                                    //     3- and 4-word queries return results even when
+                                    //     each word lives in a different field.
                                     val allWordsMatchAnyField =
                                         queryWords.all { q ->
                                             titleLower.contains(q) ||
                                                 keywordTokens.any { it.contains(q) } ||
-                                                parentTokens.any { it.contains(q) }
+                                                scrollKeyTokens.any { it.contains(q) } ||
+                                                parentTokens.any { it.contains(q) } ||
+                                                combinedWords.any { word -> word.startsWith(q) || q.startsWith(word) }
                                         }
 
                                     // (c) phrase fallback — joined query against
@@ -252,9 +279,10 @@ fun SettingsScreen(
                                         queryWords.all { q -> parentTokens.any { it.contains(q) } }
 
                                     val matches =
-                                        titleSubstr || keywordSubstr || parentSubstr ||
-                                            allWordsMatchAnyField || phraseMatch ||
-                                            titleAllWords || keywordAllWords || parentAllWords
+                                        titleSubstr || keywordSubstr || scrollKeySubstr ||
+                                            parentSubstr || allWordsMatchAnyField ||
+                                            phraseMatch || titleAllWords ||
+                                            keywordAllWords || parentAllWords
 
                                     if (!matches) null else {
                                         // Relevance scoring — higher is better.
@@ -306,11 +334,15 @@ fun SettingsScreen(
                             } else {
                                 // If the parent matches but has no matching
                                 // children, show the parent itself as a single
-                                // result so top-level items (e.g. "Statistics")
-                                // remain searchable.
+                                // result so top-level items (e.g. "Statistics",
+                                // "Language packs", "PO Token") remain searchable
+                                // even when they have no children to match against.
                                 val parentSubstr = parentTokens.any { it.contains(rawQuery) }
                                 val parentAllWords =
-                                    queryWords.all { q -> parentTokens.any { it.contains(q) } }
+                                    queryWords.all { q ->
+                                        parentTokens.any { it.contains(q) } ||
+                                            parentWords.any { word -> word.startsWith(q) || q.startsWith(word) }
+                                    }
                                 val parentPhraseMatch = parentJoined.contains(rawQuery)
                                 if (parentSubstr || parentAllWords || parentPhraseMatch) {
                                     val score = when {

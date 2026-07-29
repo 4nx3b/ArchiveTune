@@ -335,6 +335,7 @@ fun buildSettingsGroups(
                 SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),
                 SettingsChild("Telegram lossless only", "telegram_lossless_only", listOf("lossless", "flac", "lossless only", "high quality")) { SearchResultSwitch(TelegramLosslessOnlyKey, false) },
                 SettingsChild("Telegram logout", "telegram_logout", listOf("logout", "log out", "sign out", "disconnect telegram")),
+                SettingsChild("Import playlist from another service", "cross_service_import", listOf("import", "import playlist", "cross service", "youtube music import", "apple music import", "amazon music import", "tidal import", "deezer import", "playlist url", "import url", "import from url", "playlist from url")),
             ),
         )
     val aiIntegration =

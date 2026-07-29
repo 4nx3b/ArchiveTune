@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -42,8 +43,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -82,6 +86,15 @@ public fun MediaDetailHero(
     metadata: String? = null,
     description: String? = null,
     additionalPrimaryActions: (@Composable RowScope.(Color) -> Unit)? = null,
+    /**
+     * When true, the bottom of the hero is rendered as a blurred duplicate of
+     * the thumbnail instead of a flat surface-color gradient. Looks closer to
+     * modern music apps (Spotify / Apple Music / YouTube Music) which blur the
+     * artwork under the action row.
+     *
+     * Defaults to true — every playlist/album screen in the app opts in.
+     */
+    useBlurredBackdrop: Boolean = true,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
@@ -97,7 +110,8 @@ public fun MediaDetailHero(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = MediaDetailHeroMinHeight)
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .clipToBounds(),
     ) {
         if (thumbnailUrl != null) {
             AsyncImage(
@@ -129,20 +143,97 @@ public fun MediaDetailHero(
             }
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.42f),
-                            0.18f to Color.Transparent,
-                            0.42f to Color.Transparent,
-                            0.72f to surfaceColor.copy(alpha = 0.78f),
-                            1f to surfaceColor,
+        if (useBlurredBackdrop && thumbnailUrl != null) {
+            // ─── Blurred backdrop at the bottom ─────────────────────────────
+            // Render a second copy of the thumbnail, blurred, clipped to the
+            // bottom ~62% of the hero. A vertical gradient on top keeps the
+            // title + action buttons legible regardless of the thumbnail's
+            // average color, while still letting the blur show through
+            // strongly at the bottom (replacing the previous flat
+            // surfaceColor fade).
+            //
+            // Layer order (bottom → top):
+            //   1. Original thumbnail (full hero)
+            //   2. Blurred thumbnail duplicate, clipped to bottom 62%
+            //   3. Vertical scrim gradient for legibility
+            //
+            // Net visual: sharp artwork at the top (status-bar area), blurred
+            // artwork at the bottom (where the action buttons sit).
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.62f),
+            ) {
+                AsyncImage(
+                    model =
+                        thumbnailUrl.resize(
+                            width = MediaDetailHeroArtworkSizePx,
+                            height = MediaDetailHeroArtworkSizePx,
+                            sizeBuckets = MediaDetailHeroArtworkSizeBuckets,
+                            ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
                         ),
-                    ),
-        )
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .blur(32.dp),
+                )
+                // Scrims:
+                //   • Top of the blur band (≈ 38% of hero) fades in from transparent
+                //     so the boundary between sharp and blurred artwork is soft.
+                //   • Bottom of the blur band gets progressively darker so the
+                //     title + action buttons remain readable on bright thumbnails.
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.18f to Color.Black.copy(alpha = 0.10f),
+                                    0.45f to Color.Black.copy(alpha = 0.22f),
+                                    0.75f to Color.Black.copy(alpha = 0.34f),
+                                    1f to Color.Black.copy(alpha = 0.45f),
+                                ),
+                            ),
+                )
+            }
+            // Top-of-hero scrim for status-bar legibility — kept separate from
+            // the blur band so it covers the full hero height (the blur band
+            // only covers the bottom 62%).
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.42f),
+                                0.18f to Color.Transparent,
+                                0.40f to Color.Transparent,
+                            ),
+                        ),
+            )
+        } else {
+            // Legacy flat-gradient backdrop — used when there's no thumbnail
+            // to blur or when the caller explicitly opts out.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.42f),
+                                0.18f to Color.Transparent,
+                                0.42f to Color.Transparent,
+                                0.72f to surfaceColor.copy(alpha = 0.78f),
+                                1f to surfaceColor,
+                            ),
+                        ),
+            )
+        }
 
         Column(
             modifier =
