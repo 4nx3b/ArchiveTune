@@ -513,7 +513,7 @@ class DownloadUtil
             // resulting file is .m4a (jaudiotagger-readable) rather than .webm
             // (jaudiotagger-unreadable).
             val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
-            val playbackDataResult = runCatching {
+            val playbackData = runCatching {
                 context.retryWithoutPlaybackLoginContext {
                     YTPlayerUtils.playerResponseForDownload(
                         mediaId,
@@ -522,12 +522,18 @@ class DownloadUtil
                         networkMetered = lowDataModeActive,
                         preferM4A = true,
                     )
-                }
-            }
-            val playbackData = playbackDataResult.getOrNull() ?: return null
+                }.getOrThrow()
+            }.getOrNull() ?: return null
             persistPlaybackMetadata(mediaId, playbackData)
             val fetched = runCatching {
-                fetchStreamIntoPlayerCache(playbackData.streamUrl, mediaId, playbackData.format.contentLength)
+                fetchStreamIntoPlayerCache(
+                    playbackData.streamUrl,
+                    mediaId,
+                    // format.contentLength is nullable — pass null when blank
+                    // so fetchStreamIntoPlayerCache falls back to the
+                    // Content-Length response header.
+                    playbackData.format.contentLength,
+                )
             }.isSuccess
             return if (fetched) mediaId else null
         }
@@ -584,7 +590,8 @@ class DownloadUtil
                                 cacheSink.write(buffer, 0, read)
                             }
                         }
-                        cacheSink.flush()
+                        // CacheDataSink has no flush() — close() is what
+                        // finalizes the last fragment. Don't call flush.
                     } finally {
                         runCatching { cacheSink.close() }
                     }

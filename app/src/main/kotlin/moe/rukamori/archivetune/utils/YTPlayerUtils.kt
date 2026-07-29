@@ -1360,7 +1360,7 @@ object YTPlayerUtils {
         // When preferM4A is true (downloads), prefer MP4A/AAC over OPUS so the
         // resulting file is .m4a (which jaudiotagger can tag) instead of .webm
         // (which jaudiotagger cannot read, leaving the exported file untagged).
-        val resolvedCodecRank: (String? -> Int) = { codec ->
+        val resolvedCodecRank: (String?) -> Int = { codec ->
             if (preferM4A) codecRankPreferM4A(codec) else codecRank(codec)
         }
 
