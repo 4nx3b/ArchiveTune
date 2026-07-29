@@ -37,9 +37,6 @@ dependencyResolutionManagement {
                 // Prebuilt TDLib (Telegram Database Library) AAR with bundled JNI natives,
                 // used by the Telegram channel streaming integration.
                 includeGroup("com.github.tdlibx")
-                // PRDownloader — lightweight (~50 KB) parallel download helper used by
-                // the segmented parallel data source to accelerate per-song downloads.
-                includeGroup("com.github.amitshekhariitbhu")
             }
         }
     }
