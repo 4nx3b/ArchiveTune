@@ -222,46 +222,65 @@ fun LastFmDashboardScreen(
         }
         val top = topTracks?.getOrNull().orEmpty()
         val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
-        var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+        // Seed the live map from the process-wide in-memory cache so that
+        // navigating away from and back to the dashboard doesn't trigger
+        // another round of network resolutions for tracks we've already
+        // resolved this session.
+        val seedMap = remember(allTracksForArtworkSeedKey(recent, top)) {
+            val snapshot = HashMap<String, String>()
+            for (lookup in buildAllArtworkLookups(recent, top)) {
+                CachedArtworkStore.get(lookup.key)?.let { snapshot[lookup.key] = it }
+            }
+            snapshot
+        }
+        var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(seedMap) }
 
         // Combine recent + top tracks into a single de-duplicated list so we can
         // resolve covers for both tabs in one LaunchedEffect pass. Without this,
         // the Recents tab would fall through to the placeholder icon whenever
         // Last.fm didn't return an image (which is most of the time).
         val allTracksForArtwork = remember(recent, top) {
-            val keys = mutableSetOf<String>()
-            val combined = mutableListOf<ArtworkLookup>()
-            top.forEach { t ->
-                val k = t.trackArtworkKey()
-                if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
-            }
-            recent.forEach { t ->
-                val k = t.trackArtworkKey()
-                if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
-            }
-            combined
+            buildAllArtworkLookups(recent, top)
         }
 
         LaunchedEffect(allTracksForArtwork) {
             if (allTracksForArtwork.isEmpty()) return@LaunchedEffect
-            // Resolve covers concurrently, capping parallelism to 6 so we don't
-            // trip the per-IP rate limit on iTunes/Deezer.
-            catalogueArtworkByTrack =
-                withContext(Dispatchers.IO) {
-                    val results = mutableMapOf<String, String>()
-                    val chunks = allTracksForArtwork.chunked(6)
-                    for (chunk in chunks) {
-                        chunk.map { lookup ->
-                            async(Dispatchers.IO) {
-                                val url = resolveCatalogueCover(lookup)
-                                if (url != null) lookup.key to url else null
+            // Resolve covers concurrently with a bounded parallelism of 12.
+            // We stream resolved URLs into the live state map as soon as each
+            // chunk finishes so the user sees thumbnails appearing in waves
+            // instead of waiting for the whole batch to complete.
+            //
+            // Per-IP rate limits on iTunes / Deezer are well above 12 rps,
+            // so we don't need additional throttling.
+            val snapshot = HashMap<String, String>(catalogueArtworkByTrack)
+            val chunks = allTracksForArtwork.chunked(LASTFM_ARTWORK_CONCURRENCY)
+            for (chunk in chunks) {
+                // Skip lookups we've already resolved this session — saves
+                // network calls when the user pulls-to-refresh and only
+                // a few new tracks came in.
+                val toResolve = chunk.filter { lookup -> snapshot[lookup.key].isNullOrBlank() }
+                if (toResolve.isEmpty()) continue
+                val resolved = withContext(Dispatchers.IO) {
+                    toResolve.map { lookup ->
+                        async(Dispatchers.IO) {
+                            val url = resolveCatalogueCover(lookup)
+                            if (url != null) {
+                                CachedArtworkStore.put(lookup.key, url)
+                                lookup.key to url
+                            } else {
+                                null
                             }
-                        }.awaitAll().forEach { pair ->
-                            pair?.let { (k, u) -> results[k] = u }
                         }
-                    }
-                    results
+                    }.awaitAll().filterNotNull()
                 }
+                if (resolved.isEmpty()) continue
+                resolved.forEach { (k, u) -> snapshot[k] = u }
+                // Publish a new map so Compose sees a new reference and
+                // recomposes the rows that now have artwork. Mutating the
+                // existing map wouldn't trigger recomposition.
+                catalogueArtworkByTrack = snapshot.toMap()
+            }
         }
 
         LazyColumn(
@@ -598,6 +617,72 @@ private data class ArtworkLookup(
     val title: String,
     val artist: String?,
 )
+
+/**
+ * Process-wide LRU cache of resolved Last.fm dashboard artwork URLs. Keyed by
+ * `title::artist` (the same key used by the [ArtworkLookup]). Capped at 256
+ * entries — enough for the typical Last.fm dashboard page (50 recents + 50
+ * top tracks) plus a few prior sessions' worth of resolved tracks.
+ *
+ * This is intentionally process-lived (not persisted to disk) because cover
+ * URLs from third-party catalogues can expire or change, and re-resolving
+ * once per app session is cheap (under a minute for 100 tracks at 12
+ * parallel requests).
+ */
+private object CachedArtworkStore {
+    private const val MAX_ENTRIES = 256
+    private val map = object : LinkedHashMap<String, String>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+            return size > MAX_ENTRIES
+        }
+    }
+
+    @Synchronized
+    fun get(key: String): String? = map[key]
+
+    @Synchronized
+    fun put(key: String, url: String) {
+        map[key] = url
+    }
+}
+
+private const val LASTFM_ARTWORK_CONCURRENCY = 12
+
+/**
+ * Builds the combined list of artwork lookups (top + recent, deduped) used
+ * to seed the LaunchedEffect that resolves catalogue covers.
+ */
+private fun buildAllArtworkLookups(
+    recent: List<RecentTrack>,
+    top: List<TopTrack>,
+): List<ArtworkLookup> {
+    val keys = mutableSetOf<String>()
+    val combined = mutableListOf<ArtworkLookup>()
+    top.forEach { t ->
+        val k = t.trackArtworkKey()
+        if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
+    }
+    recent.forEach { t ->
+        val k = t.trackArtworkKey()
+        if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
+    }
+    return combined
+}
+
+/**
+ * Stable seed key derived from the recent + top tracks lists so the seed map
+ * only recomputes when the actual track set changes (not on every recomposition).
+ */
+private fun allTracksForArtworkSeedKey(
+    recent: List<RecentTrack>,
+    top: List<TopTrack>,
+): String {
+    val builder = StringBuilder()
+    top.forEach { builder.append(it.trackArtworkKey()).append('|') }
+    builder.append('#')
+    recent.forEach { builder.append(it.trackArtworkKey()).append('|') }
+    return builder.toString()
+}
 
 /**
  * Full fallback chain for resolving a track's cover URL when Last.fm doesn't
