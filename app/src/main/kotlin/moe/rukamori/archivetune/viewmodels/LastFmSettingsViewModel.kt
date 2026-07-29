@@ -23,9 +23,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LastFmProvider
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.scrobbling.LastFmApiCredentials
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsData
 import moe.rukamori.archivetune.scrobbling.LoginLastFmUseCase
@@ -57,6 +59,7 @@ data class LastFmSettingsUiModel(
     val customEndpoint: String,
     val apiKeyOverride: String,
     val secretOverride: String,
+    val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials>,
     val serviceConfigured: Boolean,
     val endpointValid: Boolean,
     val username: String,
@@ -93,14 +96,20 @@ data class LastFmServiceEditorUiModel(
     val customEndpoint: String = "",
     val apiKeyOverride: String = "",
     val secretOverride: String = "",
+    val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials> = emptyMap(),
     val isSaving: Boolean = false,
     val errorMessageResId: Int? = null,
+    // False on fork/CI builds that ship without the built-in Last.fm secret. When false, the user
+    // must supply their own Last.fm API key/secret, so the credential fields are shown for the
+    // official Last.fm provider too (not just LibreFM/Custom).
+    val builtInLastFmConfigured: Boolean =
+        BuildConfig.LASTFM_API_KEY.isNotBlank() && BuildConfig.LASTFM_SECRET.isNotBlank(),
 ) {
     val showCustomEndpoint: Boolean
         get() = provider == LastFmProvider.CUSTOM
 
     val showApiCredentials: Boolean
-        get() = provider != LastFmProvider.LASTFM
+        get() = provider != LastFmProvider.LASTFM || !builtInLastFmConfigured
 }
 
 enum class LastFmTimingSetting {
@@ -234,6 +243,7 @@ class LastFmSettingsViewModel
                         },
                     apiKeyOverride = model.apiKeyOverride,
                     secretOverride = model.secretOverride,
+                    credentialsByProvider = model.credentialsByProvider,
                 )
         }
 
@@ -245,7 +255,17 @@ class LastFmSettingsViewModel
 
         fun updateServiceProvider(provider: LastFmProvider) {
             serviceEditor.update { editor ->
-                editor.copy(provider = provider, errorMessageResId = null)
+                val credentialsByProvider =
+                    editor.credentialsByProvider +
+                        (editor.provider to LastFmApiCredentials(editor.apiKeyOverride, editor.secretOverride))
+                val credentials = credentialsByProvider[provider] ?: LastFmApiCredentials()
+                editor.copy(
+                    provider = provider,
+                    apiKeyOverride = credentials.apiKey,
+                    secretOverride = credentials.secret,
+                    credentialsByProvider = credentialsByProvider,
+                    errorMessageResId = null,
+                )
             }
         }
 
@@ -384,6 +404,7 @@ class LastFmSettingsViewModel
                 customEndpoint = settings.serviceConfig.customEndpoint,
                 apiKeyOverride = settings.serviceConfig.apiKeyOverride,
                 secretOverride = settings.serviceConfig.secretOverride,
+                credentialsByProvider = settings.credentialsByProvider,
                 serviceConfigured = settings.serviceConfig.initialized,
                 endpointValid = settings.serviceConfig.endpointValid,
                 username = settings.username,

@@ -24,7 +24,9 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.GlobalLog
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
@@ -39,6 +41,7 @@ class LyricsHelper
         private val baseProviders =
             listOf(
                 BetterLyricsProvider,
+                BetterLyricsPortatoProvider,
                 YouLyPlusLyricsProvider,
                 LrcLibLyricsProvider,
                 KuGouLyricsProvider,
@@ -98,7 +101,10 @@ class LyricsHelper
                 return LYRICS_NOT_FOUND
             }
 
-            val ordered = orderedProviders().filter { it.isEnabled(context) }
+            val ordered =
+                orderedProviders()
+                    .filter { it.isEnabled(context) }
+                    .filter { supportsMediaId(it, mediaMetadata.id) }
             val providers = if (preferredProviderOnly) ordered.take(1) else ordered
             val lyrics = fetchPriorityLyrics(providers, mediaMetadata)
             if (isMeaningfulLyrics(lyrics)) {
@@ -181,10 +187,8 @@ class LyricsHelper
 
             if (results.isEmpty()) return LYRICS_NOT_FOUND
 
-            // 1. Prioritize synced/karaoke LRC lyrics across providers
+            results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it) }?.let { return it }
             results.firstOrNull { LyricsUtils.isLineSyncedLrc(it) }?.let { return it }
-
-            // 2. Fallback to first available plain lyrics
             return results.first()
         }
 
@@ -226,6 +230,7 @@ class LyricsHelper
                     PreferredLyricsProvider.KUGOU to KuGouLyricsProvider,
                     PreferredLyricsProvider.MEGALOBIZ to MegalobizLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS to BetterLyricsProvider,
+                    PreferredLyricsProvider.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,
                     PreferredLyricsProvider.SIMPMUSIC to SimpMusicLyricsProvider,
                     PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC to PaxsenixAppleMusicLyricsProvider,
@@ -241,6 +246,21 @@ class LyricsHelper
         }
 
         private fun isMeaningfulLyrics(lyrics: String): Boolean = LyricsUtils.hasMeaningfulLyricsContent(lyrics)
+
+        /**
+         * Providers that treat the media id as a YouTube video id can never match local or
+         * Telegram tracks — skip them so the priority race isn't padded with guaranteed misses.
+         */
+        private fun supportsMediaId(
+            provider: LyricsProvider,
+            mediaId: String,
+        ): Boolean {
+            val isNonYouTubeId = mediaId.isTelegramMediaId() || mediaId.isLocalMediaId()
+            if (!isNonYouTubeId) return true
+            return provider !is SimpMusicLyricsProvider &&
+                provider !is YouTubeLyricsProvider &&
+                provider !is YouTubeSubtitleLyricsProvider
+        }
 
         fun clearCache() {
             cache.evictAll()

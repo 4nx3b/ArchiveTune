@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ai.AiLyricsDocumentParser
 import moe.rukamori.archivetune.ai.AiLyricsSegment
 import moe.rukamori.archivetune.constants.AiApiKeyKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
 import moe.rukamori.archivetune.constants.AiCustomEndpointKey
@@ -139,11 +140,14 @@ fun LyricsMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     showPlayerControlsState: State<Boolean>,
     onShowPlayerControlsChange: (Boolean) -> Unit,
+    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val showPlayerControls by showPlayerControlsState
+    val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
 
     var showEditDialog by rememberSaveable {
         mutableStateOf(false)
@@ -785,6 +789,35 @@ fun LyricsMenu(
                     },
                     onClick = {
                         onShowPlayerControlsChange(!showPlayerControls)
+                    },
+                    modifier =
+                        Modifier.padding(
+                            start = 8.dp,
+                            end = 8.dp,
+                        ),
+                )
+                NewMenuItem(
+                    headlineContent = {
+                        Text(stringResource(R.string.auto_hide_lyrics_player_controls))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = autoHidePlayerControls,
+                            onCheckedChange = {
+                                onAutoHidePlayerControlsPreferenceChange(it)
+                                onAutoHidePlayerControlsChange(it)
+                            },
+                            enabled = showPlayerControls,
+                        )
+                    },
+                    enabled = showPlayerControls,
+                    onClick = {
+                        val nextValue = !autoHidePlayerControls
+                        onAutoHidePlayerControlsPreferenceChange(nextValue)
+                        onAutoHidePlayerControlsChange(nextValue)
                     },
                     modifier =
                         Modifier.padding(

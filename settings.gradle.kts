@@ -34,6 +34,17 @@ dependencyResolutionManagement {
             filter {
                 includeGroup("com.github.therealbush")
                 includeGroup("com.github.TeamNewPipe")
+                // Prebuilt TDLib (Telegram Database Library) AAR with bundled JNI natives,
+                // used by the Telegram channel streaming integration.
+                includeGroup("com.github.tdlibx")
+                // Ketch — WorkManager-based file downloader with parallel chunked
+                // downloads and pause/resume support. Used as the HTTP fetcher
+                // inside KetchHttpDataSource (Media3 DataSource wrapper).
+                includeGroup("com.github.khushpanchal")
+                // jaudiotagger — pure-Java audio metadata tagger (ID3v2/Vorbis/MP4/FLAC).
+                // Used by AudioTagger to write title/artist/album/year tags onto
+                // exported downloaded songs.
+                includeGroup("com.github.RouHim")
             }
         }
     }

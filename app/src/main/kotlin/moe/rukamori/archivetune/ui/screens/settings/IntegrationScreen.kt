@@ -20,8 +20,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -30,22 +33,29 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
+import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationScreen(navController: NavController) {
+fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
+    // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the
+    // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
+    // source pool, so most users never need to see raw instance/token fields.
+    val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
+    var showCrossServiceImport by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -66,15 +76,31 @@ fun IntegrationScreen(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.general)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("lastfm_scrobbling"),
+                title = stringResource(R.string.integration_accounts),
+            ) {
+                item {
+                    IntegrationAccountCards(navController = navController)
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("discord_presence"),
+                title = stringResource(R.string.general),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.discord_integration)) },
@@ -86,7 +112,39 @@ fun IntegrationScreen(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.scrobbling)) {
+            if (manualSourceLogin) {
+                PreferenceGroup(
+                    modifier = positions.modifierFor("music_sources"),
+                    title = stringResource(R.string.music_sources),
+                ) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.tidal_integration)) },
+                            description = stringResource(R.string.tidal_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
+                            onClick = {
+                                navController.navigate("settings/tidal")
+                            },
+                        )
+                    }
+
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.qobuz_integration)) },
+                            description = stringResource(R.string.qobuz_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
+                            onClick = {
+                                navController.navigate("settings/qobuz")
+                            },
+                        )
+                    }
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("listenbrainz"),
+                title = stringResource(R.string.scrobbling),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.lastfm_integration)) },
@@ -125,6 +183,26 @@ fun IntegrationScreen(navController: NavController) {
                     )
                 }
             }
+
+            // ─── Playlist import ──────────────────────────────────────────
+            // Cross-service playlist import: paste a URL from YouTube Music,
+            // Apple Music, Amazon Music, Tidal or Deezer and we'll resolve
+            // the tracks against YouTube Music and build a local playlist.
+            // Lives here (in Integration) per product decision so all
+            // cross-service features are co-located.
+            PreferenceGroup(
+                modifier = positions.modifierFor("cross_service_import"),
+                title = stringResource(R.string.cross_service_import_playlist_title),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.cross_service_import_entry_title)) },
+                        description = stringResource(R.string.cross_service_import_entry_desc),
+                        icon = { Icon(painterResource(R.drawable.playlist_import), null) },
+                        onClick = { showCrossServiceImport = true },
+                    )
+                }
+            }
         }
     }
 
@@ -148,4 +226,9 @@ fun IntegrationScreen(navController: NavController) {
             },
         )
     }
+
+    CrossServiceImportPlaylistDialog(
+        isVisible = showCrossServiceImport,
+        onDismiss = { showCrossServiceImport = false },
+    )
 }

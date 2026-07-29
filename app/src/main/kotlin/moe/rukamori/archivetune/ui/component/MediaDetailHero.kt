@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -58,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
@@ -97,7 +99,8 @@ public fun MediaDetailHero(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = MediaDetailHeroMinHeight)
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .clipToBounds(),
     ) {
         if (thumbnailUrl != null) {
             AsyncImage(
@@ -129,6 +132,32 @@ public fun MediaDetailHero(
             }
         }
 
+        // ─── Flat gradient backdrop ──────────────────────────────────────
+        // The previous iteration of the hero attempted to render a second
+        // blurred copy of the thumbnail clipped to the bottom ~62% of the
+        // hero, with a frosted-glass tint on top. In practice this rarely
+        // read as "frosted glass" — on dense 2×2 playlist thumbnails the
+        // blur was barely perceptible behind the action-button row, and
+        // on bright thumbnails the frosted tint either washed the artwork
+        // out (35% alpha) or hid the blur entirely (55% alpha).
+        //
+        // We've reverted to the original flat vertical gradient that was
+        // used before the blur was introduced. This gives a clean,
+        // predictable transition from sharp artwork at the top → solid
+        // surfaceColor at the bottom, which is what every playlist /
+        // album / artist screen in the app was originally designed
+        // against. The action-button Column sits on the solid-surface
+        // portion at the bottom, so button contrast is consistent
+        // regardless of the thumbnail's average color.
+        //
+        // Layer order (bottom → top):
+        //   1. Original thumbnail (full hero, sharp)
+        //   2. Vertical gradient:
+        //      - 0.00 → 0.18: black @ 42% → transparent (status-bar legibility)
+        //      - 0.18 → 0.42: transparent (sharp artwork visible)
+        //      - 0.42 → 0.72: transparent → surfaceColor @ 78% (fade into solid)
+        //      - 0.72 → 1.00: surfaceColor @ 78% → surfaceColor (solid backdrop
+        //        for the action-button row)
         Box(
             modifier =
                 Modifier
@@ -158,9 +187,12 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Title — use a tighter lineHeight than headlineLarge's default
+            // 40sp to avoid the "weird spacing" the user reported when a
+            // playlist title wraps to two lines.
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
                 color = heroContentColor,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -171,19 +203,19 @@ public fun MediaDetailHero(
             subtitle?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(lineHeight = 22.sp),
                     color = heroContentColor.copy(alpha = 0.82f),
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
 
             description?.takeIf(String::isNotBlank)?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = heroContentColor.copy(alpha = 0.76f),
                     textAlign = TextAlign.Center,
                     maxLines = 3,
@@ -204,7 +236,7 @@ public fun MediaDetailHero(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 16.dp),
+                            .padding(top = 12.dp),
                 )
             }
 

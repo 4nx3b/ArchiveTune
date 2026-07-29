@@ -216,6 +216,8 @@
     <string name="lyrics_share_background_blur_value">%1$d px</string>
     <string name="lyrics_line_blur">Blur lyrics lines</string>
     <string name="show_lyrics_player_controls">Show player controls</string>
+    <string name="auto_hide_lyrics_player_controls">Auto-hide controls</string>
+    <string name="auto_hide_lyrics_player_controls_description">Fade the controls after 5s and dock a slim seek bar at the bottom. Tap the screen to bring them back.</string>
     <string name="lyrics_share_background_dim">Background dim</string>
     <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="lyrics_share_show_cover">Show album cover</string>
@@ -290,6 +292,7 @@
     <string name="player_design_v7">Immersive</string>
     <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
+    <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
     <string name="blur_gradient">Blur Gradient</string>
@@ -622,6 +625,8 @@
     <string name="ai_api_connected">API connected</string>
     <string name="ai_api_test_failed">API test failed</string>
     <string name="ai_translation_menu">AI Translation</string>
+    <string name="hide_ai_mix">Hide AI Mix</string>
+    <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
     <string name="about_lead_developer">Lead Developer</string>
     <string name="about_archive_tune_team">Team</string>
     <string name="about_respecter">Respecter</string>
@@ -630,6 +635,7 @@
     <string name="about_license">LICENSE</string>
     <string name="about_license_unknown">Unknown license</string>
     <string name="about_position_lead_dev">Eh?</string>
+    <string name="about_position_vossgraves">merely added tidal and qobuz integration</string>
     <string name="about_position_developers">Developer | Team</string>
     <string name="about_position_yuki">dummy reze | Admin</string>
     <string name="about_position_mo_agamy">Base Framework | Metrolist</string>

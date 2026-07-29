@@ -22,23 +22,20 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -56,17 +53,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController) {
+fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
-    val coroutineScope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val showMessage: (String) -> Unit =
-        remember(coroutineScope, snackbarHostState) {
-            { message ->
-                coroutineScope.launch { snackbarHostState.showSnackbar(message) }
-                Unit
-            }
-        }
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
             key = PauseListenHistoryKey,
@@ -163,7 +151,6 @@ fun PrivacySettings(navController: NavController) {
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_behavior_title)) },
@@ -182,15 +169,22 @@ fun PrivacySettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.listen_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_listen_history"),
+                title = stringResource(R.string.listen_history),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.pause_listen_history)) },
@@ -209,7 +203,10 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.search_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_search_history"),
+                title = stringResource(R.string.search_history),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.pause_search_history)) },
@@ -228,7 +225,10 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.misc)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("haptics"),
+                title = stringResource(R.string.misc),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.haptics)) },
@@ -249,8 +249,6 @@ fun PrivacySettings(navController: NavController) {
                     )
                 }
             }
-
-            SupportAdPrivacySettingsSection(onMessage = showMessage)
         }
     }
 }

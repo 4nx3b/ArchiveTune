@@ -149,6 +149,7 @@ fun BackupAndRestore(
     navController: NavController,
     viewModel: BackupRestoreViewModel = hiltViewModel(),
     spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     val importedSongs = remember { mutableStateListOf<Song>() }
     var showChoosePlaylistDialogOnline by rememberSaveable { mutableStateOf(false) }
@@ -269,12 +270,16 @@ fun BackupAndRestore(
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             val scheduledBackupData =
@@ -306,9 +311,13 @@ fun BackupAndRestore(
                 onFrequencySelected = viewModel::onScheduledBackupFrequencySelected,
                 onDirectoryClick = { backupDirectoryLauncher.launch(null) },
                 onOverwriteChanged = viewModel::onScheduledBackupOverwriteChanged,
+                positions = positions,
             )
 
-            PreferenceGroup(title = stringResource(R.string.internal_service)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("backup"),
+                title = stringResource(R.string.internal_service),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.action_backup)) },
@@ -346,7 +355,10 @@ fun BackupAndRestore(
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.external_service)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("restore"),
+                title = stringResource(R.string.external_service),
+            ) {
                 spotifyAccountPreferences(
                     state = spotifyState,
                     showPlaylists = showSpotifyPlaylists,
@@ -481,8 +493,12 @@ private fun ScheduledBackupSection(
     onFrequencySelected: (ScheduledBackupFrequency) -> Unit,
     onDirectoryClick: () -> Unit,
     onOverwriteChanged: (Boolean) -> Unit,
+    positions: PreferencePositions,
 ) {
-    PreferenceGroup(title = stringResource(R.string.scheduled_backup)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("scheduled_backup"),
+        title = stringResource(R.string.scheduled_backup),
+    ) {
         item {
             SwitchPreference(
                 title = { Text(stringResource(R.string.scheduled_backup_enabled)) },

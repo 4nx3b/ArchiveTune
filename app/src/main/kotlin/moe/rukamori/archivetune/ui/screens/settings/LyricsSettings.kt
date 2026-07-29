@@ -66,6 +66,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
+import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
 import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
@@ -95,6 +96,8 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PreloadQueueLyricsEnabledKey
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
@@ -118,6 +121,7 @@ import kotlin.math.roundToInt
 fun LyricsSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
@@ -158,6 +162,8 @@ fun LyricsSettings(
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
+    val (enableBetterLyricsPortato, onEnableBetterLyricsPortatoChange) =
+        rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
     val (enableYouLyPlusLyrics, onEnableYouLyPlusLyricsChange) =
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
     val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) = rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
@@ -199,7 +205,7 @@ fun LyricsSettings(
             deserializeLyricsProviderOrder(providerOrderStr)
         }
     val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
-    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
+    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (lyricsRomanizeHindi, onLyricsRomanizeHindiChange) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
@@ -213,7 +219,8 @@ fun LyricsSettings(
             PreloadQueueLyricsEnabledKey,
             defaultValue = true,
         )
-    val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 1)
+    val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 3)
+    val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
 
     var showProviderOrderDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -228,10 +235,15 @@ fun LyricsSettings(
         )
     }
 
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
@@ -368,7 +380,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.display)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_font_size"),
+            title = stringResource(R.string.display),
+        ) {
             item {
                 EnumListPreference(
                     title = { Text(stringResource(R.string.lyrics_mode)) },
@@ -442,13 +457,25 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.providers)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_provider"),
+            title = stringResource(R.string.providers),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.enable_betterlyrics)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = enableBetterLyrics,
                     onCheckedChange = onEnableBetterLyricsChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.enable_betterlyrics_portato)) },
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    checked = enableBetterLyricsPortato,
+                    onCheckedChange = onEnableBetterLyricsPortatoChange,
                 )
             }
 
@@ -578,13 +605,23 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.romanization)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_romanize"),
+            title = stringResource(R.string.romanization),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
+                    description =
+                        if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
+                            null
+                        } else {
+                            stringResource(R.string.language_pack_required)
+                        },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsRomanizeJapanese,
                     onCheckedChange = onLyricsRomanizeJapaneseChange,
+                    isEnabled = japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
                 )
             }
 
@@ -625,7 +662,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.queue)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_preload"),
+            title = stringResource(R.string.queue),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.preload_queue_lyrics)) },
@@ -648,7 +688,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.cache)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_cache_size"),
+            title = stringResource(R.string.cache),
+        ) {
             item {
                 PreferenceEntry(
                     title = { Text(stringResource(R.string.clear_lyrics_cache)) },
@@ -683,6 +726,7 @@ private fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.KUGOU -> "KuGou"
         PreferredLyricsProvider.MEGALOBIZ -> "Megalobiz"
         PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
+        PreferredLyricsProvider.BETTER_LYRICS_PORTATO -> "BetterLyrics Portato"
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
         PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
         PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"

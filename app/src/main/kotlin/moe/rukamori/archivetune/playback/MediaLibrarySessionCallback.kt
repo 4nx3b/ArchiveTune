@@ -31,6 +31,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
@@ -46,6 +49,7 @@ import moe.rukamori.archivetune.constants.MediaSessionConstants
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
 import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.constants.SongSortType
+import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSong
@@ -60,8 +64,12 @@ import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.models.PersistQueue
 import moe.rukamori.archivetune.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
+import moe.rukamori.archivetune.spotify.SpotifyMapper
+import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import java.io.ObjectInputStream
 import java.text.Collator
@@ -77,10 +85,12 @@ class MediaLibrarySessionCallback
         @ApplicationContext val context: Context,
         val database: MusicDatabase,
         val downloadUtil: DownloadUtil,
+        val spotifyLibraryRepository: SpotifyLibraryRepository,
     ) : MediaLibrarySession.Callback {
         private val scope = CoroutineScope(Dispatchers.Main) + Job()
         private var pendingSearchJob: Job? = null
         private val onlineSearchItemCache = ConcurrentHashMap<String, MediaItem>()
+        private val spotifyPlaylistItemCache = ConcurrentHashMap<String, List<MediaItem>>()
         var toggleLike: () -> Unit = {}
         var toggleStartRadio: () -> Unit = {}
         var toggleLibrary: () -> Unit = {}
@@ -612,7 +622,7 @@ class MediaLibrarySessionCallback
                                     drawableUri(R.drawable.download),
                                     MediaMetadata.MEDIA_TYPE_PLAYLIST,
                                 ),
-                            ) +
+                            ) + spotifyPlaylistFolder() +
                                 database.playlists(PlaylistSortType.CUSTOM, descending = false).first().map { playlist ->
                                     queueMediaItem(
                                         "${MusicService.PLAYLIST}/${playlist.id}",
@@ -626,6 +636,22 @@ class MediaLibrarySessionCallback
                                         MediaMetadata.MEDIA_TYPE_PLAYLIST,
                                     )
                                 }
+                        }
+
+                        MusicService.SPOTIFY_PLAYLIST -> {
+                            spotifyPlaylistsForAuto().map { playlist ->
+                                queueMediaItem(
+                                    "${MusicService.SPOTIFY_PLAYLIST}/${playlist.id}",
+                                    playlist.name,
+                                    context.resources.getQuantityString(
+                                        R.plurals.n_song,
+                                        playlist.tracks?.total ?: 0,
+                                        playlist.tracks?.total ?: 0,
+                                    ),
+                                    SpotifyMapper.getPlaylistThumbnail(playlist)?.toUri(),
+                                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                                )
+                            }
                         }
 
                         else -> {
@@ -657,6 +683,10 @@ class MediaLibrarySessionCallback
 
                                 parentId.startsWith("${MusicService.ONLINE_PLAYLIST}/") -> {
                                     onlinePlaylistChildren(parentId)
+                                }
+
+                                parentId.startsWith("${MusicService.SPOTIFY_PLAYLIST}/") -> {
+                                    spotifyPlaylistChildren(parentId)
                                 }
 
                                 else -> {
@@ -874,6 +904,18 @@ class MediaLibrarySessionCallback
                             ),
                             null,
                         )
+                    }
+
+                    mediaId == MusicService.SPOTIFY_PLAYLIST -> {
+                        spotifyPlaylistFolder().firstOrNull()?.let {
+                            LibraryResult.ofItem(it, null)
+                        } ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
+                    }
+
+                    mediaId.startsWith("${MusicService.SPOTIFY_PLAYLIST}/") -> {
+                        spotifyPlaylistItem(mediaId)?.let {
+                            LibraryResult.ofItem(it, null)
+                        } ?: LibraryResult.ofError(SessionError.ERROR_UNKNOWN)
                     }
 
                     mediaId.startsWith("${MusicService.ONLINE_PLAYLIST}/") -> {
@@ -1111,6 +1153,19 @@ class MediaLibrarySessionCallback
                         )
                     }
 
+                    MusicService.SPOTIFY_PLAYLIST -> {
+                        val playlistId = path.getOrNull(1) ?: return@future defaultResult
+                        val selectedSongId = path.getOrNull(2)
+                        val songs = spotifyPlaylistMediaItems(playlistId)
+                        MediaSession.MediaItemsWithStartPosition(
+                            songs,
+                            selectedSongId?.let { songId ->
+                                songs.indexOfFirst { it.mediaId == songId }.takeIf { it != -1 }
+                            } ?: 0,
+                            startPositionMs,
+                        )
+                    }
+
                     MusicService.ONLINE_PLAYLIST -> {
                         val playlistId = path.getOrNull(1) ?: return@future defaultResult
                         val action = path.getOrNull(2)
@@ -1208,6 +1263,94 @@ class MediaLibrarySessionCallback
             return root in AUTO_QUEUE_SONG_ROOTS && contains("/")
         }
 
+        private suspend fun spotifyPlaylistFolder(): List<MediaItem> {
+            val playlists = spotifyPlaylistsForAuto()
+            if (playlists.isEmpty()) return emptyList()
+            return listOf(
+                browsableMediaItem(
+                    MusicService.SPOTIFY_PLAYLIST,
+                    context.getString(R.string.spotify_playlists),
+                    context.resources.getQuantityString(
+                        R.plurals.n_playlist,
+                        playlists.size,
+                        playlists.size,
+                    ),
+                    drawableUri(R.drawable.spotify_icon),
+                    MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS,
+                ),
+            )
+        }
+
+        private suspend fun spotifyPlaylistsForAuto() =
+            if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) {
+                emptyList()
+            } else {
+                spotifyLibraryRepository.restoreCachedPlaylists()
+                spotifyLibraryRepository.playlists.value.ifEmpty {
+                    spotifyLibraryRepository.refreshPlaylists()
+                }
+            }
+
+        private suspend fun spotifyPlaylistChildren(parentId: String): List<MediaItem> {
+            val playlistId = parentId.pathSegments().getOrNull(1) ?: return emptyList()
+            return spotifyPlaylistMediaItems(playlistId).map { mediaItem ->
+                mediaItem
+                    .buildUpon()
+                    .setMediaId("$parentId/${mediaItem.mediaId}")
+                    .setMediaMetadata(
+                        mediaItem.mediaMetadata
+                            .buildUpon()
+                            .setIsPlayable(true)
+                            .setIsBrowsable(false)
+                            .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                            .setExtras(playableExtras())
+                            .build(),
+                    ).build()
+            }
+        }
+
+        private suspend fun spotifyPlaylistItem(mediaId: String): MediaItem? {
+            val path = mediaId.pathSegments()
+            val playlistId = path.getOrNull(1) ?: return null
+            if (path.size == 2) {
+                val playlist = spotifyPlaylistsForAuto().firstOrNull { it.id == playlistId } ?: return null
+                val songCount = playlist.tracks?.total ?: 0
+                return queueMediaItem(
+                    mediaId,
+                    playlist.name,
+                    context.resources.getQuantityString(R.plurals.n_song, songCount, songCount),
+                    SpotifyMapper.getPlaylistThumbnail(playlist)?.toUri(),
+                    MediaMetadata.MEDIA_TYPE_PLAYLIST,
+                )
+            }
+
+            val songId = path.getOrNull(2) ?: return null
+            return spotifyPlaylistMediaItems(playlistId)
+                .firstOrNull { it.mediaId == songId }
+                ?.buildUpon()
+                ?.setMediaId(mediaId)
+                ?.build()
+        }
+
+        private suspend fun spotifyPlaylistMediaItems(playlistId: String): List<MediaItem> {
+            spotifyPlaylistItemCache[playlistId]?.let { return it }
+            val resolved =
+                runCatching {
+                    spotifyLibraryRepository
+                        .playlistTracks(playlistId)
+                        .chunked(SPOTIFY_RESOLVE_BATCH_SIZE)
+                        .flatMap { batch ->
+                            coroutineScope {
+                                batch.map { track ->
+                                    async { SpotifyPlaybackResolver.resolveToMediaItem(track) }
+                                }.awaitAll()
+                            }.filterNotNull()
+                        }
+                }.getOrElse { emptyList() }
+            if (resolved.isNotEmpty()) spotifyPlaylistItemCache[playlistId] = resolved
+            return resolved
+        }
+
         private suspend fun playlistChildren(
             session: MediaLibrarySession,
             parentId: String,
@@ -1249,7 +1392,10 @@ class MediaLibrarySessionCallback
                                     playlistEntity.isEditable &&
                                     currentSongId != null &&
                                     database.checkInPlaylist(playlistId, currentSongId) == 0 &&
-                                    (playlistEntity.browseId == null || !currentSongId.isLocalMediaId())
+                                    (
+                                        playlistEntity.browseId == null ||
+                                            !(currentSongId.isLocalMediaId() || currentSongId.isTelegramMediaId())
+                                    )
                             if (canAddCurrentSong) {
                                 add(
                                     queueMediaItem(
@@ -1685,7 +1831,7 @@ class MediaLibrarySessionCallback
                 val browseId = playlist.playlist.browseId
                 val setVideoId =
                     if (browseId != null) {
-                        if (songId.isLocalMediaId()) return@withContext false
+                        if (songId.isLocalMediaId() || songId.isTelegramMediaId()) return@withContext false
                         YouTube.addToPlaylist(browseId, songId).getOrNull() ?: return@withContext false
                     } else {
                         null
@@ -2034,6 +2180,7 @@ class MediaLibrarySessionCallback
             private const val CONTENT_STYLE_GRID_ITEM = 2
             private const val AUTO_BROWSE_LIMIT = 100
             private const val AUTO_HOME_PLAYLIST_LIMIT = 20
+            private const val SPOTIFY_RESOLVE_BATCH_SIZE = 20
             private const val HOME_RECENT_WINDOW_MS = 86400000L * 14L
             private const val PLAYLIST_ACTION_SHUFFLE = "_shuffle"
             private const val PLAYLIST_ACTION_SORT = "_sort"

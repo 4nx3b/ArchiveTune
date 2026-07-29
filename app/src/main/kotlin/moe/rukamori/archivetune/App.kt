@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import moe.rukamori.archivetune.ads.SupportAdsInitializer
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.extensions.*
@@ -43,17 +42,22 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.morideobfuscator.MoriCipherConfig
 import moe.rukamori.archivetune.morideobfuscator.MoriCipherRuntime
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
+import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
 import moe.rukamori.archivetune.utils.MoriCipherUpdateScheduler
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
@@ -109,6 +113,7 @@ class App :
         }
         BotGuardTokenGenerator.initialize(this)
         PreferenceStore.start(this)
+        JapaneseLanguagePackManager.initialize(this)
         Timber.plant(Timber.DebugTree())
         try {
             Timber.plant(
@@ -120,7 +125,6 @@ class App :
 
         initializeGatekeeper()
         initializeCriticalSync()
-        SupportAdsInitializer.initialize(this)
         initializeDeferredAsync()
     }
 
@@ -128,7 +132,11 @@ class App :
         applicationScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val result = runGatekeeperCheckUseCase()
-                if (result !is GatekeeperResult.Blocked || !result.retryable) return@launch
+                when (result) {
+                    GatekeeperResult.Allowed -> return@launch
+                    GatekeeperResult.Unavailable -> Unit
+                    is GatekeeperResult.Blocked -> if (!result.retryable) return@launch
+                }
                 delay(GATEKEEPER_RETRY_INTERVAL_MILLIS)
             }
         }
@@ -147,6 +155,13 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
+        // Ketch is the file downloader used by KetchHttpDataSource (the
+        // upstream HTTP fetcher inside Media3's download CacheDataSource
+        // chain). Initialized once at app start with a tuned OkHttp client
+        // (HTTP/2, generous timeouts, YouTube stream proxy) so downloads
+        // benefit from Ketch's parallel chunked transfer + WorkManager
+        // lifecycle without paying init cost on the first download.
+        moe.rukamori.archivetune.playback.KetchHolder.init(this)
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
@@ -234,6 +249,59 @@ class App :
             }
         }
 
+        // Subtly verify the public Tidal instances on startup so dead / preview-only (unsubscribed)
+        // mirrors are pruned before the user plays anything. The scan is staggered (one instance at
+        // a time with a small delay) so it never competes with critical startup work, and its
+        // results are cached for the settings screen and future launches.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (dataStore.get(TidalEnabledKey, true)) {
+                    // Restore the last probe track so the very first scan can classify preview vs full.
+                    dataStore.get(TidalLastProbeTrackKey)?.takeIf { it.isNotBlank() }?.let {
+                        if (TidalAudioProvider.lastResolvedTrackId.isNullOrBlank()) {
+                            TidalAudioProvider.seedProbeTrack(it)
+                        }
+                    }
+                    // When a community Source Pool URL is baked in, auto-discover its
+                    // health-checked instances on startup so playback is seamless without any
+                    // manual setup. With no provider configured this stays a cheap re-verify.
+                    val autoDiscover = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
+                    TidalInstanceHealthManager.refresh(this@App, includeDiscovery = autoDiscover, staggered = true)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Tidal instance startup health scan failed")
+            }
+        }
+
+        // Pull shared premium ACCOUNTS (real subscriber tokens) from the community Source Pool so the
+        // resolvers can stream full-quality FLAC directly against the official Tidal/Qobuz APIs — no
+        // self-hosted restream instance required. Loads the persisted cache first (instant), then
+        // refreshes over the network. Disabled automatically when no Source Pool URL is baked in.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (PoolAccountManager.isEnabled) {
+                    PoolAccountManager.loadCached(this@App)
+                    PoolAccountManager.refresh(this@App)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Pool account startup refresh failed")
+            }
+        }
+
+        // Restore the Qobuz health-probe track so the settings "Test" action can distinguish a
+        // fully-working instance from a preview-only (unsubscribed) one on the first probe.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (dataStore.get(QobuzEnabledKey, false)) {
+                    dataStore.get(QobuzLastProbeTrackKey)?.takeIf { it.isNotBlank() }?.let {
+                        QobuzAudioProvider.seedProbeTrack(it)
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Qobuz probe-track restore failed")
+            }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map {
@@ -275,9 +343,9 @@ class App :
                     YouTube.authState = authState
                     if (previousFingerprint != authState.fingerprint) {
                         YTPlayerUtils.clearPlaybackAuthCaches()
-                        val visitorData = authState.visitorData
-                        if (!visitorData.isNullOrBlank()) {
-                            BotGuardTokenGenerator.preWarm(visitorData)
+                        val sessionId = authState.sessionId
+                        if (!sessionId.isNullOrBlank()) {
+                            BotGuardTokenGenerator.preWarm(sessionId)
                         }
                     }
                 }
@@ -358,7 +426,10 @@ class App :
 
         return ImageLoader
             .Builder(this)
-            .crossfade(true)
+            .components {
+                // Resolve `tgthumb://<fileId>` artwork models through TDLib (Telegram source).
+                add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
+            }.crossfade(true)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             .diskCache(diskCache)
             .diskCachePolicy(imageCacheConfig.policy)

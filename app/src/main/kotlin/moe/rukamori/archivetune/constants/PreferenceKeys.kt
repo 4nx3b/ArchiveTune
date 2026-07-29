@@ -150,6 +150,7 @@ val PlaylistSuggestionSourceKey = stringPreferencesKey("playlistSuggestionSource
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
+val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
@@ -162,9 +163,36 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+enum class DownloadSource {
+    /**
+     * Picks the best available source per song: tries Qobuz → Tidal → Deezer
+     * (lossless FLAC) and falls back to YouTube Music (lossy MP3/AAC) only
+     * when none of the lossless backends can resolve the track. This is the
+     * default and the recommended setting — it guarantees FLAC whenever a
+     * configured lossless provider has the track, without forcing the user
+     * to manually switch sources.
+     */
+    AUTO,
+
+    QOBUZ,
+    TIDAL,
+
+    /**
+     * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
+     * stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on Deezer or the API can't resolve a full stream.
+     */
+    DEEZER,
+
+    YOUTUBE_MUSIC,
+}
+
+val DownloadSourceKey = stringPreferencesKey("downloadSource")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
+val AiMixLastGeneratedAtKey = longPreferencesKey("aiMixLastGeneratedAt")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyHostKey = stringPreferencesKey("proxyHost")
 val ProxyPortKey = intPreferencesKey("proxyPort")
@@ -173,6 +201,7 @@ val ProxyPasswordKey = stringPreferencesKey("proxyPassword")
 val ProxyTypeKey = stringPreferencesKey("proxyType")
 val EnableDnsOverHttpsKey = booleanPreferencesKey("enableDnsOverHttps")
 val DnsOverHttpsProviderKey = stringPreferencesKey("dnsOverHttpsProvider")
+val TidalInstanceUrlKey = stringPreferencesKey("tidalInstanceUrl")
 val StreamBypassProxyKey = booleanPreferencesKey("streamBypassProxy")
 val IpRotationEnabledKey = booleanPreferencesKey("ipRotationEnabled")
 val YtmSyncKey = booleanPreferencesKey("ytmSync")
@@ -204,6 +233,9 @@ val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 
+// Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
+val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
+
 enum class AiProvider {
     CHATGPT,
     GEMINI,
@@ -224,6 +256,11 @@ val LastFMProviderKey = stringPreferencesKey("lastfmProvider")
 val LastFMCustomEndpointKey = stringPreferencesKey("lastfmCustomEndpoint")
 val LastFMApiKeyOverrideKey = stringPreferencesKey("lastfmApiKeyOverride")
 val LastFMSecretOverrideKey = stringPreferencesKey("lastfmSecretOverride")
+val LibreFMApiKeyOverrideKey = stringPreferencesKey("librefmApiKeyOverride")
+val LibreFMSecretOverrideKey = stringPreferencesKey("librefmSecretOverride")
+val CustomScrobbleApiKeyOverrideKey = stringPreferencesKey("customScrobbleApiKeyOverride")
+val CustomScrobbleSecretOverrideKey = stringPreferencesKey("customScrobbleSecretOverride")
+val LastFMCredentialsMigratedKey = booleanPreferencesKey("lastfmCredentialsMigrated")
 val EnableLastFMScrobblingKey = booleanPreferencesKey("lastfmScrobblingEnable")
 val LastFMUseNowPlaying = booleanPreferencesKey("lastfmUseNowPlaying")
 val ScrobbleDelayPercentKey = floatPreferencesKey("scrobbleDelayPercent")
@@ -308,7 +345,18 @@ val StorageFolderDisplayNameKey = stringPreferencesKey("storageFolderDisplayName
 
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
+
+// When true (default), plays are reported to the logged-in YouTube account's listen history even
+// when the audio was streamed from another source (Tidal/Qobuz). History is keyed off the YouTube
+// video id, so it stays source-independent; this toggle lets the user opt out of the remote report
+// without affecting the local play-count/history DB (governed by PauseListenHistoryKey).
+val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
+
+// Integration screen: account cards. YouTube is always shown; Last.fm and Discord
+// cards can be pinned to the top of the Integration screen by the user.
+val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
+val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
@@ -552,6 +600,7 @@ enum class QuickPicks {
 
 enum class PreferredLyricsProvider {
     BETTER_LYRICS,
+    BETTER_LYRICS_PORTATO,
     YOULY_PLUS,
     LRCLIB,
     KUGOU,
@@ -568,6 +617,7 @@ enum class PreferredLyricsProvider {
 val DefaultLyricsProviderOrder =
     listOf(
         PreferredLyricsProvider.BETTER_LYRICS,
+        PreferredLyricsProvider.BETTER_LYRICS_PORTATO,
         PreferredLyricsProvider.YOULY_PLUS,
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
@@ -623,6 +673,7 @@ enum class PlayerDesignStyle {
     V7,
     V8,
     V9,
+    APPLE_MUSIC,
 }
 
 enum class PlayerBackgroundStyle {
@@ -654,7 +705,22 @@ enum class MiniPlayerBackgroundStyle {
     THEME,
     GRADIENT,
     GLOW,
+    FROSTED,
 }
+
+// Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
+// a pill with larger margins that never pairs with the mini player.
+enum class NavigationBarStyle {
+    DEFAULT,
+    FLOATING,
+}
+
+val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
+
+// Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
+// Android 12+; a translucent surface fallback below that.
+val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
@@ -677,6 +743,7 @@ val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
+val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
 val TopSize = stringPreferencesKey("topSize")
 
@@ -754,6 +821,164 @@ val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_ur
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
+// Tidal music source integration (ported from MetroFuse)
+val TidalCookieKey = stringPreferencesKey("tidalCookie")
+val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")
+val TidalAudioQualityKey = stringPreferencesKey("tidalAudioQuality")
+val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallbackEnabled")
+val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
+val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
+
+// Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
+val TidalInstancesKey = stringPreferencesKey("tidalInstances")
+
+// JSON cache of the last instance health scan: [{"url","status","latencyMs","checkedAt"}, ...].
+// Persisted so working instances are remembered across launches instead of re-probed every time.
+val TidalVerifiedInstancesKey = stringPreferencesKey("tidalVerifiedInstances")
+
+// The last Tidal track id that resolved successfully. Used as a "probe" track for health checks so
+// we can tell a fully-working instance apart from a reachable-but-preview-only (unsubscribed) one.
+val TidalLastProbeTrackKey = stringPreferencesKey("tidalLastProbeTrack")
+
+// Tidal account login (device/OAuth) + subscription state.
+val TidalAccessTokenKey = stringPreferencesKey("tidalAccessToken")
+val TidalRefreshTokenKey = stringPreferencesKey("tidalRefreshToken")
+val TidalTokenExpiryKey = longPreferencesKey("tidalTokenExpiry")
+val TidalSubscriptionKey = stringPreferencesKey("tidalSubscription")
+
+// Which auth flow produced the stored session: "oauth" (device code), "pkce" (web login with a
+// durable refresh token), or "webcapture" (live Bearer token grabbed from the web player, no
+// refresh token). The refresh path uses this to pick the right OAuth client_id/secret.
+val TidalAuthFlowKey = stringPreferencesKey("tidalAuthFlow")
+
+// Real account country + user id captured at login, used by the account playback path instead of a
+// hardcoded country. userId is also needed for the subscription-tier lookup.
+val TidalCountryCodeKey = stringPreferencesKey("tidalCountryCode")
+val TidalUserIdKey = longPreferencesKey("tidalUserId")
+
+// Set when a silent token refresh fails so the UI can surface a "reconnect" prompt. Cleared on any
+// successful login/refresh.
+val TidalNeedsReloginKey = booleanPreferencesKey("tidalNeedsRelogin")
+
+enum class TidalSubscriptionStatus {
+    UNKNOWN,
+    PREMIUM,
+    FREE,
+}
+
+enum class TidalAudioQuality {
+    AAC_320,
+    FLAC,
+    HI_RES_LOSSLESS,
+}
+
+val TidalAudioQualityOptions =
+    listOf(
+        TidalAudioQuality.AAC_320,
+        TidalAudioQuality.FLAC,
+        TidalAudioQuality.HI_RES_LOSSLESS,
+    )
+
+// ---------------------------------------------------------------------------
+// Qobuz source (user-provided Qobuz-DL proxy instances, e.g. squid.wtf-style)
+// ---------------------------------------------------------------------------
+// Streaming/playback only (like Tidal): the app never bundles endpoints — the user pastes their own
+// proxy instance URLs. Each instance exposes get-music (search) + download-music (stream URL).
+val QobuzEnabledKey = booleanPreferencesKey("qobuzEnabled")
+
+// CSV of user-provided Qobuz proxy instance base URLs, highest priority first.
+val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
+
+// JSON cache of the last Qobuz instance health scan, mirroring TidalVerifiedInstancesKey.
+val QobuzVerifiedInstancesKey = stringPreferencesKey("qobuzVerifiedInstances")
+
+// ---------------------------------------------------------------------------
+// Experimental: manual source sign-in
+// ---------------------------------------------------------------------------
+// When OFF (default) the app relies solely on the community Source Pool: users never see the
+// manual Tidal/Qobuz instance & account sign-in fields. Flipping this ON in Experimental Settings
+// re-exposes the manual sign-in UI for power users who want to add their own private sources.
+val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login")
+
+// The last Qobuz track id that resolved successfully, used as a health "probe" track so we can tell
+// a fully-working instance from a reachable-but-preview-only one.
+val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")
+
+// JSON list of direct Qobuz API token entries (user_auth_token + user_id + app_id + app_secret +
+// metadata). These call www.qobuz.com/api.json/0.2 directly with an MD5 request signature, so they
+// need no proxy instance. Tried before proxy URLs during resolution (direct = highest fidelity).
+val QobuzTokensKey = stringPreferencesKey("qobuzTokens")
+
+// JSON health cache for the token list, mirroring QobuzVerifiedInstancesKey.
+val QobuzVerifiedTokensKey = stringPreferencesKey("qobuzVerifiedTokens")
+
+// Qobuz quality maps to the proxy/Qobuz format_id: FLAC=6 (CD 16-bit), HI_RES=7 (≤96kHz),
+// MAX=27 (>96kHz). MP3 (5) is intentionally omitted — this is a lossless source.
+enum class QobuzAudioQuality {
+    FLAC,
+    HI_RES,
+    MAX,
+}
+
+val QobuzAudioQualityOptions =
+    listOf(
+        QobuzAudioQuality.FLAC,
+        QobuzAudioQuality.HI_RES,
+        QobuzAudioQuality.MAX,
+    )
+
+val QobuzAudioQualityKey = stringPreferencesKey("qobuzAudioQuality")
+
+fun QobuzAudioQuality.toFormatId(): Int =
+    when (this) {
+        QobuzAudioQuality.FLAC -> 6
+        QobuzAudioQuality.HI_RES -> 7
+        QobuzAudioQuality.MAX -> 27
+    }
+
+// ---------------------------------------------------------------------------
+// Telegram channel streaming integration
+// ---------------------------------------------------------------------------
+// Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
+// with their own Telegram account (phone + code + optional 2FA password); the app's api_id/api_hash
+// are baked in at build time (BuildConfig.TELEGRAM_API_ID/HASH), so no developer credentials are
+// entered in-app. The session lives in TDLib's encrypted database under filesDir; these keys only
+// hold display metadata for the settings screen.
+val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
+val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
+
+// When ON (default) the channel browser only materialises lossless files (FLAC/WAV/AIFF/APE/ALAC/…)
+// into the channel's playlist; when OFF every audio message and audio-typed document is included.
+val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
+
+// ---------------------------------------------------------------------------
+// Multi-source audio framework
+// ---------------------------------------------------------------------------
+// A configurable set of lossless/stream sources. The user can reorder them (priority for playback
+// resolution), toggle each on/off, and pick a primary "search" source. YouTube is always available
+// as the final fallback and cannot be removed.
+
+enum class AudioSourceType {
+    TIDAL,
+    QOBUZ,
+    YOUTUBE,
+}
+
+// CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
+val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
+
+// Per-song "play from" overrides, encoded as "songId=SOURCE" entries joined by ';'. The chosen
+// source is forced for that specific song (subject to the metadata match gate), overriding the
+// global source order. Persisted here so it is included in Settings backups.
+val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
+
+// The primary audio source the user prefers to search/resolve first (AudioSourceType name).
+// Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.
+val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
+
+// When logged in, try the user's own Tidal account (official API) before the public instances.
+val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
+
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")
 val PoTokenPlayerKey = stringPreferencesKey("poTokenPlayer")
@@ -770,7 +995,7 @@ val LanguageCodeToName =
         "vi" to "Tiếng Việt",
         "zh" to "中文",
         "zh-CN" to "简体中文",
-        "zh-TW" to "繁體中文",
+        "zh-TW" to "繁���中文",
         "fr" to "Français",
         "de" to "Deutsch",
         "es" to "Español",

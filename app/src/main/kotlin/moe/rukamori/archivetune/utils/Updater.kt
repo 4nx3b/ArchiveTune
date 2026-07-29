@@ -55,11 +55,13 @@ private data class ReleasesNetworkResult(
 object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
-    private const val StableReleaseBaseUrl = "https://github.com/rukamori/ArchiveTune/releases"
+    private const val CanaryCacheCheckIntervalMs: Long = 15 * 60 * 1000L
+    private const val OWNER = "4nx3b/ArchiveTune"
+    private const val StableReleaseBaseUrl = "https://github.com/$OWNER/releases"
     private const val CanaryReleaseBaseUrl =
-        "https://github.com/rukamori/canary/releases"
+        "https://github.com/$OWNER/releases"
     private const val CanaryWorkflowRunsUrl =
-        "https://api.github.com/repos/rukamori/ArchiveTune/actions/workflows/build.yml/runs" +
+        "https://api.github.com/repos/$OWNER/actions/workflows/nightly.yml/runs" +
             "?branch=dev&status=success&per_page=1&exclude_pull_requests=true"
     var lastCheckTime = -1L
         private set
@@ -94,11 +96,11 @@ object Updater {
         "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-nightly.apk"
 
     private fun workflowArtifactName(): String =
-        "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-release"
+        "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-nightly"
 
     private fun workflowArtifactDownloadUrl(): String {
         val artifactUrl =
-            "https://nightly.link/rukamori/ArchiveTune/workflows/build/dev/${workflowArtifactName()}"
+            "https://nightly.link/$OWNER/workflows/nightly/dev/${workflowArtifactName()}"
         return if (canDownloadUpdatesDirectly) "$artifactUrl.zip" else artifactUrl
     }
 
@@ -164,7 +166,9 @@ object Updater {
 
     private val semVerRegex =
         Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
-    private val canaryTagRegex = Regex("""N\d{8}""")
+    // Fork Canary tags include a date and usually an HHmm suffix (NyyyyMMddHHmm).
+    // Accept the older date-only form too so workflow fallback remains compatible.
+    private val canaryTagRegex = Regex("""N\d{8}(?:\d{4})?""")
 
     private fun parseSemVerOrNull(text: String): SemVer? {
         val match = semVerRegex.find(text) ?: return null
@@ -195,10 +199,23 @@ object Updater {
     private fun parseReleaseSemVerOrNull(release: ReleaseInfo): SemVer? =
         parseSemVerOrNull(release.tagName) ?: parseSemVerOrNull(release.name)
 
+    // Canary builds share a single fixed display versionName (e.g. "13.7.5"), so the version *name*
+    // can't distinguish two canary builds. Instead each canary build number is carried inline as a
+    // human-readable suffix: "13.7.5 (build <versionCode>)". This string is both shown in the UI and
+    // used for comparison — when it carries a build number we compare that monotonic number against
+    // the running app's BuildConfig.VERSION_CODE, which is what makes "update available" true only
+    // for a genuinely newer canary build. The string never leaves the app (it is produced and parsed
+    // by this same Updater), so the format is free to be display-friendly.
+    private val buildNumberRegex = Regex("""\(build (\d+)\)""")
+
+    internal fun buildNumberOrNull(version: String): Int? = buildNumberRegex.find(version)?.groupValues?.get(1)?.toIntOrNull()
+
     internal fun isSameVersion(
         a: String,
         b: String,
     ): Boolean {
+        buildNumberOrNull(a)?.let { return it == BuildConfig.VERSION_CODE }
+        buildNumberOrNull(b)?.let { return it == BuildConfig.VERSION_CODE }
         val aSemVer = parseSemVerOrNull(a)
         val bSemVer = parseSemVerOrNull(b)
         return if (aSemVer != null && bSemVer != null) {
@@ -215,6 +232,9 @@ object Updater {
         latestVersion: String,
         currentVersion: String,
     ): Boolean {
+        // Canary build-number comparison takes priority: a newer build number means an update is
+        // available even though the display versionName is unchanged.
+        buildNumberOrNull(latestVersion)?.let { return it > BuildConfig.VERSION_CODE }
         val latestSemVer = parseSemVerOrNull(latestVersion)
         val currentSemVer = parseSemVerOrNull(currentVersion)
         return if (latestSemVer != null && currentSemVer != null) {
@@ -239,11 +259,12 @@ object Updater {
     }
 
     internal fun findLatestCanaryRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
-        if (releases.isEmpty()) return null
-        return releases.maxByOrNull { release ->
-            val dateTag = release.tagName.removePrefix("N").takeWhile { it.isDigit() }
-            dateTag.toLongOrNull() ?: 0L
-        }
+        return releases
+            .filter { canaryTagRegex.matches(it.tagName) }
+            .maxByOrNull { release ->
+                val dateTag = release.tagName.removePrefix("N").takeWhile { it.isDigit() }
+                dateTag.toLongOrNull() ?: 0L
+            }
     }
 
     private fun preferredReleaseVersionNameOrNull(release: ReleaseInfo): String? =
@@ -322,7 +343,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/rukamori/ArchiveTune/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/$OWNER/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
@@ -385,7 +406,7 @@ object Updater {
 
     suspend fun getCommitHistory(
         count: Int = 20,
-        branch: String = "dev",
+        branch: String = "main",
     ): Result<List<GitCommit>> =
         runCatchingCancellable {
             if (!isUpdaterDistribution) {
@@ -394,7 +415,7 @@ object Updater {
 
             val response =
                 client
-                    .get("https://api.github.com/repos/rukamori/ArchiveTune/commits?sha=$branch&per_page=$count")
+                    .get("https://api.github.com/repos/$OWNER/commits?sha=$branch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()
@@ -435,8 +456,31 @@ object Updater {
         return "$StableReleaseBaseUrl/latest/download/$artifactName"
     }
 
+    // The nightly workflow embeds the build's monotonic versionCode in the release notes as
+    // "at-build:<n>". Fall back to the numeric patch segment of the release name ("Canary 13.7.<n>")
+    // for older releases that predate the marker.
+    private val canaryBuildMarkerRegex = Regex("""at-build:(\d+)""")
+
+    internal fun canaryBuildNumber(release: ReleaseInfo): Int? =
+        release.body?.let { canaryBuildMarkerRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() }
+            ?: parseSemVerOrNull(release.name)?.patch
+
+    /**
+     * Converts a Canary release into the same build-number form used everywhere in the updater.
+     * Never compare a Canary release name as SemVer: names contain the commit count in the patch
+     * position, which makes an already-installed build look newer than its fixed display version.
+     */
+    internal fun getCanaryReleaseVersionName(release: ReleaseInfo): String {
+        val buildNumber = canaryBuildNumber(release)
+        return if (buildNumber != null) {
+            "${BuildConfig.VERSION_NAME} (build $buildNumber)"
+        } else {
+            release.tagName.ifBlank { release.name }
+        }
+    }
+
     suspend fun getLatestCanaryVersionName(): Result<String> =
-        getLatestCanaryReleaseInfo().map(::getReleaseVersionName)
+        getLatestCanaryReleaseInfo().map(::getCanaryReleaseVersionName)
 
     suspend fun getLatestCanaryReleaseNotes(): Result<String?> = getLatestCanaryReleaseInfo().map { it.body }
 
@@ -489,7 +533,7 @@ object Updater {
                     ?.let { runCatching { parseReleasesJson(it, canaryReleaseArtifactName()) }.getOrNull() }
 
             val shouldCheckNetwork =
-                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
+                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= CanaryCacheCheckIntervalMs
 
             if (!shouldCheckNetwork) {
                 return@runCatchingCancellable cachedReleases ?: emptyList()
@@ -619,7 +663,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/rukamori/canary/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/$OWNER/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
