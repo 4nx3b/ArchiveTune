@@ -8804,17 +8804,69 @@ class MusicService :
                 }
             }
 
-        val cachedLength =
-            getContinuousCachedLength(
-                mediaId = mediaId,
+        // Find the first source-prefixed key (or the bare mediaId) that
+        // has the requested byte range fully cached. Returning the
+        // DataSpec with the matching key is critical — without it the
+        // CacheDataSource would look up the bytes under the bare mediaId
+        // and miss the lossless FLAC bytes cached under "qobuz:$mediaId"
+        // / "tidal:$mediaId", then fall through to the YouTube resolver
+        // and serve a lossy MP3 stream — producing Code 3003 when the
+        // Media3 extractors then tried to read MP3 bytes under a FLAC
+        // FormatEntity.
+        val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+        val matchingKey = candidateKeys.firstOrNull { key ->
+            getContinuousCachedLengthForKey(
+                key = key,
                 position = dataSpec.position,
                 requestedLength = requestedLength,
                 includePlayerCache = includePlayerCache,
-            )
+            ) >= requestedLength
+        } ?: return null
 
-        if (cachedLength < requestedLength) return null
+        return dataSpec.buildUpon()
+            .setKey(matchingKey)
+            .subrange(0L, requestedLength)
+            .build()
+    }
 
-        return dataSpec.subrange(0L, requestedLength)
+    /**
+     * Same as [getContinuousCachedLength] but for a specific cache key.
+     * Used by [resolveCachedDataSpec] to find the source-prefixed key
+     * whose cache spans fully cover the requested range.
+     */
+    private fun getContinuousCachedLengthForKey(
+        key: String,
+        position: Long,
+        requestedLength: Long,
+        includePlayerCache: Boolean = true,
+    ): Long {
+        val targetEnd = position.saturatingAdd(requestedLength)
+        var cursor = position
+        val playerCacheSpans =
+            if (includePlayerCache) {
+                runCatching { playerCache.getCachedSpans(key).toList() }.getOrNull().orEmpty()
+            } else {
+                emptyList()
+            }
+        val spans =
+            (
+                runCatching { downloadCache.getCachedSpans(key).toList() }.getOrNull().orEmpty() +
+                    playerCacheSpans
+            ).asSequence()
+                .filter { span -> span.position.saturatingAdd(span.length) > position }
+                .sortedBy { span -> span.position }
+                .toList()
+
+        for (span in spans) {
+            if (span.position > cursor) break
+            val spanEnd = span.position.saturatingAdd(span.length)
+            if (spanEnd > cursor) {
+                cursor = minOf(spanEnd, targetEnd)
+                if (cursor >= targetEnd) break
+            }
+        }
+
+        return (cursor - position).coerceAtLeast(0L)
     }
 
     private fun getContinuousCachedLength(
@@ -8825,16 +8877,28 @@ class MusicService :
     ): Long {
         val targetEnd = position.saturatingAdd(requestedLength)
         var cursor = position
+        // Include source-prefixed cache keys (qobuz:, tidal:, deezer:) so
+        // that a song downloaded from a lossless source plays back as the
+        // lossless bytes — not as a re-fetched YouTube Music stream. Without
+        // this, playing a downloaded FLAC song would bypass the cached FLAC
+        // bytes (keyed as "qobuz:abc") and fall through to the YouTube
+        // resolver, which serves a different (lossy MP3/AAC) stream —
+        // causing the "Code 3003 UnrecognizedInputFormatException" when the
+        // Media3 extractors received an MP3 stream under a FLAC cache key.
+        val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
         val playerCacheSpans =
             if (includePlayerCache) {
-                runCatching { playerCache.getCachedSpans(mediaId).toList() }.getOrNull().orEmpty()
+                candidateKeys.flatMap { key ->
+                    runCatching { playerCache.getCachedSpans(key).toList() }.getOrNull().orEmpty()
+                }
             } else {
                 emptyList()
             }
         val spans =
             (
-                runCatching { downloadCache.getCachedSpans(mediaId).toList() }.getOrNull().orEmpty() +
-                    playerCacheSpans
+                candidateKeys.flatMap { key ->
+                    runCatching { downloadCache.getCachedSpans(key).toList() }.getOrNull().orEmpty()
+                } + playerCacheSpans
             ).asSequence()
                 .filter { span -> span.position.saturatingAdd(span.length) > position }
                 .sortedBy { span -> span.position }
