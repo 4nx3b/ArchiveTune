@@ -1135,6 +1135,34 @@ fun BottomSheetPlayer(
             mutableIntStateOf(0)
         }
 
+        // Prefetch the canvas artwork for the next-up song in the background
+        // so when the user skips, the canvas starts animating within ~100ms
+        // instead of waiting for the ArchiveTuneCanvas API lookup (~200-800ms).
+        // Skipped if the next-up canvas is already cached (cheap in-memory
+        // check) or if low-data mode is on (respect the user's data-saver).
+        LaunchedEffect(nextUpMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas, lowDataModeActive) {
+            val next = nextUpMetadata ?: return@LaunchedEffect
+            val nextMediaId = next.id.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+            if (!shouldUseV7Canvas && !shouldUseArtworkCanvas) return@LaunchedEffect
+            if (lowDataModeActive) return@LaunchedEffect
+            // Skip if already cached — CanvasArtworkPlaybackCache.hasEntry is
+            // a cheap in-memory map lookup, no I/O.
+            if (CanvasArtworkPlaybackCache.hasEntry(nextMediaId)) return@LaunchedEffect
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching {
+                    resolveCanvasArtworkForPlayback(
+                        mediaId = nextMediaId,
+                        songTitleRaw = next.title,
+                        artistNameRaw = next.artists.firstOrNull()?.name.orEmpty(),
+                        storefront = storefront,
+                        requireVertical = shouldUseV7Canvas,
+                        allowNetwork = true,
+                        albumTitle = next.album?.title,
+                    )
+                }
+            }
+        }
+
         LaunchedEffect(playerConnection, mediaMetadata?.id) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
