@@ -178,6 +178,8 @@
     <string name="download_source_youtube_music">YouTube Music</string>
     <string name="download_source_tidal">Tidal</string>
     <string name="download_source_qobuz">Qobuz</string>
+    <string name="download_source_deezer">Deezer</string>
+    <string name="download_source_auto">Auto (FLAC when available)</string>
     <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
