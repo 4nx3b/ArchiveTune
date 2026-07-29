@@ -180,6 +180,11 @@
     <string name="download_source_qobuz">Qobuz</string>
     <string name="download_source_deezer">Deezer</string>
     <string name="download_source_auto">Auto (FLAC when available)</string>
+    <string name="download_cover">Download cover</string>
+    <string name="cover_saved">Cover saved to Pictures/ArchiveTune</string>
+    <string name="cover_save_failed">Couldn\'t save cover</string>
+    <string name="cover_save_no_artwork">No artwork available for this song</string>
+    <string name="cover_saving">Saving cover…</string>
     <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>

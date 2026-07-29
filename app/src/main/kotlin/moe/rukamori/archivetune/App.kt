@@ -161,10 +161,18 @@ class App :
         // downloads benefit from PRDownloader's pause/resume + retry support
         // without paying init cost on the first download. Replaces Ketch —
         // see PRDownloaderDataSource.kt for the rationale.
+        //
+        // Tuned for parallel-throughput: PRDownloader internally caps each
+        // download at 1 concurrent connection (it's a sequential fetcher),
+        // but it can run many downloads in parallel — the OkHttp dispatcher
+        // inside PRDownloader honors `setUserAgent` for proper HTTP/2
+        // connection reuse, and the read/connect timeouts are generous
+        // enough for large FLAC files on slow links.
         runCatching {
             val config = com.downloader.PRDownloaderConfig.newBuilder()
                 .setReadTimeout(60_000)
-                .setConnectTimeout(30_000)
+                .setConnectTimeout(15_000)
+                .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
                 .build()
             com.downloader.PRDownloader.initialize(this, config)
         }
