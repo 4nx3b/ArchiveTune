@@ -517,6 +517,12 @@ dependencies {
     implementation(libs.accompanist.lyrics.core)
 
     implementation("org.json:json:20240303")
+
+    // Lightweight parallel download library (~50 KB) — used by the segmented
+    // parallel data source to fetch large byte ranges of a single media file
+    // concurrently. Boosts per-song download speed for Qobuz/Tidal FLACs and
+    // YouTube Music streams beyond what cross-file parallelism alone can do.
+    implementation(libs.prdownloader)
 }
 
 androidComponents {
