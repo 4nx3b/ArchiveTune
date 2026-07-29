@@ -898,11 +898,11 @@ fun SongMenu(
                                                         false,
                                                     )
                                                 }
-                                                // Also clear any partial cached data from the
-                                                // download cache. Stale bytes can cause HTTP 416
-                                                // (Range Not Satisfiable) when the stream URL or
-                                                // content-length changes between attempts.
-                                                downloadUtil.downloadCache.removeResource(song.id)
+                                                // Also clear any partial or stale cached data for this song
+                                                // across the bare ID and any source-prefixed keys. Stale bytes
+                                                // can cause HTTP 416 (Range Not Satisfiable) or corrupted
+                                                // offline files when the source/format changes between attempts.
+                                                downloadUtil.clearCachedDownloadArtifacts(song.id)
                                                 val downloadRequest =
                                                     DownloadRequest
                                                         .Builder(song.id, song.id.toUri())

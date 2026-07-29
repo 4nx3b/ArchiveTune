@@ -70,6 +70,9 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun buildDownloadCacheKeys(mediaId: String): List<String> =
+    listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+
 @Singleton
 class DownloadUtil
     @Inject
@@ -272,16 +275,11 @@ class DownloadUtil
             ) { dataSpec ->
                 val mediaId = dataSpec.key ?: error("No media id")
                 val length = if (dataSpec.length >= 0) dataSpec.length else 1
-                if (playerCache.isCached(mediaId, dataSpec.position, length)) {
-                    return@Factory dataSpec
-                }
-                // Check source-specific player-cache keys (Qobuz, Tidal, Deezer) so that
-                // downloading a song that was streamed from an external lossless
-                // source saves the actual lossless data instead of re-downloading
-                // from YouTube Music. The keys match MusicService.sourceCacheKey().
-                // The chained [playerCacheDownloadUpstreamFactory] reads these source-specific
-                // keys directly from playerCache — no YouTube URL resolution is needed when the
-                // lossless bytes are already cached.
+                // Fresh downloads should not short-circuit to a previously-streamed lossy
+                // MP3/AAC entry under the bare mediaId. That would re-use a different format
+                // and can produce corrupt or mismatched offline files. We only reuse cache data
+                // when it was explicitly stored under a source-prefixed key (qobuz/tidal/deezer)
+                // for a lossless download.
                 for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
                     val sourceKey = "$sourcePrefix$mediaId"
                     if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
@@ -360,8 +358,7 @@ class DownloadUtil
                             finalException: Exception?,
                         ) {
                             if (finalException != null || download.state == Download.STATE_FAILED) {
-                                songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
-                                runCatching { downloadCache.removeResource(download.request.id) }
+                                clearCachedDownloadArtifacts(download.request.id)
                             }
                             downloads.update { map ->
                                 map.toMutableMap().apply {
@@ -374,6 +371,7 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
+                            clearCachedDownloadArtifacts(download.request.id)
                             downloads.update { map -> map - download.request.id }
                         }
                     },
@@ -405,6 +403,13 @@ class DownloadUtil
 
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
+        fun clearCachedDownloadArtifacts(mediaId: String) {
+            songUrlCache.keys.removeIf { it.startsWith("$mediaId:") }
+            for (cacheKey in buildDownloadCacheKeys(mediaId)) {
+                runCatching { downloadCache.removeResource(cacheKey) }
+                runCatching { playerCache.removeResource(cacheKey) }
+            }
+        }
 
         private fun resolvePreferredDownloadDataSpec(
             dataSpec: DataSpec,
