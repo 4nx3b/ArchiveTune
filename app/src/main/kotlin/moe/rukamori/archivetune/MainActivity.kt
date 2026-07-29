@@ -525,6 +525,15 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Pre-warm DNS + TLS connections to the most common download/stream
+        // hosts so the first song download of the session doesn't pay the
+        // ~300-800ms DNS+TCP+TLS handshake cost. Fires off a single HEAD
+        // request per host on a background IO coroutine; failures are
+        // silently swallowed (it's just an optimization).
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { downloadUtil.prewarmDownloadConnections() }
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
                 PreferenceStore
