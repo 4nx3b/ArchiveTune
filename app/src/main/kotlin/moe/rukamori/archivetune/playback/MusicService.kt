@@ -7281,11 +7281,18 @@ class MusicService :
         val loudnessDb = nonNullPlayback.audioConfig?.loudnessDb
         val perceptualLoudnessDb = nonNullPlayback.audioConfig?.perceptualLoudnessDb
         val resolvedContentLength = format.contentLength ?: 0L
+        // Bug fix: use consistent regex-based codec extraction across the codebase.
+        // Previous inline extraction was inconsistent with DownloadUtil.extractCodecsFromMimeType()
+        // and could produce different results for the same MIME type string.
         val resolvedCodecs =
-            format.mimeType
-                .substringAfter("codecs=", "")
-                .removeSurrounding("\"")
-                .substringBefore("\"")
+            Regex("""codecs="([^"]+)"""")
+                .find(format.mimeType)
+                ?.groupValues?.getOrNull(1)
+                ?.split(",")
+                ?.firstOrNull()
+                ?.trim()
+                ?.ifBlank { null }
+                ?: ""
         resolvedContentLength.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
         Timber
@@ -7300,7 +7307,17 @@ class MusicService :
             FormatEntity(
                 id = mediaId,
                 itag = format.itag,
-                mimeType = format.mimeType.split(";")[0],
+                // Bug fix: infer MIME type from codec when the raw MIME type is missing or misleading,
+                // consistent with the fix in DownloadUtil.persistPlaybackMetadata().
+                // Previously defaulted to the raw split which could be blank for lossless formats.
+                mimeType = format.mimeType.split(";")[0].trim().ifBlank {
+                    when {
+                        resolvedCodecs.contains("flac", ignoreCase = true) -> "audio/flac"
+                        resolvedCodecs.contains("alac", ignoreCase = true) -> "audio/alac"
+                        resolvedCodecs.contains("opus", ignoreCase = true) -> "audio/webm"
+                        else -> "audio/mp4"
+                    }
+                },
                 codecs = resolvedCodecs,
                 bitrate = format.bitrate,
                 sampleRate = format.audioSampleRate,

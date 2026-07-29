@@ -682,6 +682,9 @@ interface DatabaseDao {
     @Query("SELECT * FROM song WHERE id = :songId LIMIT 1")
     fun getSongByIdBlocking(songId: String): Song?
 
+    @Query("SELECT * FROM format WHERE id = :formatId LIMIT 1")
+    fun getFormatByIdBlocking(formatId: String): FormatEntity?
+
     @Transaction
     @Query("SELECT * FROM song WHERE id IN (:songIds)")
     suspend fun getSongsByIds(songIds: List<String>): List<Song>

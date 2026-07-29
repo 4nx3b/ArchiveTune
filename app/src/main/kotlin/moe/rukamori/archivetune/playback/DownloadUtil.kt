@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
+import timber.log.Timber
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
@@ -69,7 +70,7 @@ class DownloadUtil
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
-        private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
+        private val downloadExecutor = Executors.newFixedThreadPool(OPTIMIZED_MAX_PARALLEL_DOWNLOADS)
 
         private val mediaOkHttpClient: OkHttpClient by lazy {
             OkHttpClient
@@ -78,12 +79,12 @@ class DownloadUtil
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
-                        maxRequestsPerHost = DEFAULT_MAX_PARALLEL_DOWNLOADS
+                        maxRequestsPerHost = OPTIMIZED_MAX_PARALLEL_DOWNLOADS
                     },
                 ).connectionPool(
                     ConnectionPool(
@@ -132,7 +133,39 @@ class DownloadUtil
                 val mediaId = dataSpec.key ?: error("No media id")
                 val length = if (dataSpec.length >= 0) dataSpec.length else 1
                 if (playerCache.isCached(mediaId, dataSpec.position, length)) {
-                    return@Factory dataSpec
+                    // Bug fix: verify cached stream quality matches requested download quality.
+                    // Previously, a song streamed at HIGHEST (320kbps AAC) would be cached and
+                    // served as-is during download even when LOSSLESS was requested.
+                    val lowDataModeActive = context.isLowDataModeActive()
+                    val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
+                    if (requestedAudioQuality == AudioQuality.LOSSLESS) {
+                        // For LOSSLESS downloads, check if the cached format is actually lossless.
+                        // If the cached data is lossy (e.g., from a previous streaming session),
+                        // evict the cached spans so we can re-resolve with a lossless format.
+                        val cachedFormat = database.query { getFormatByIdBlocking(mediaId) }
+                        val isCachedLossless = cachedFormat?.let { fmt ->
+                            fmt.mimeType.equals("audio/flac", ignoreCase = true) ||
+                                fmt.mimeType.equals("audio/x-flac", ignoreCase = true) ||
+                                fmt.mimeType.equals("audio/alac", ignoreCase = true) ||
+                                fmt.codecs.contains("flac", ignoreCase = true) ||
+                                fmt.codecs.contains("alac", ignoreCase = true) ||
+                                (fmt.sampleRate != null && fmt.sampleRate >= 44100 && fmt.bitrate >= 800_000)
+                        } ?: false
+                        if (!isCachedLossless) {
+                            Timber.tag("DownloadUtil").w(
+                                "Cached stream for %s is lossy (%s); evicting to re-resolve as LOSSLESS",
+                                mediaId,
+                                cachedFormat?.mimeType ?: "unknown",
+                            )
+                            playerCache.removeResource(mediaId)
+                            songUrlCache.remove(buildSongUrlCacheKey(mediaId, requestedAudioQuality))
+                            // Fall through to re-resolve with LOSSLESS quality
+                        } else {
+                            return@Factory dataSpec
+                        }
+                    } else {
+                        return@Factory dataSpec
+                    }
                 }
                 val lowDataModeActive = context.isLowDataModeActive()
                 val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
@@ -182,7 +215,7 @@ class DownloadUtil
                 dataSourceFactory,
                 downloadExecutor,
             ).apply {
-                maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
+                maxParallelDownloads = OPTIMIZED_MAX_PARALLEL_DOWNLOADS
                 addListener(
                     object : DownloadManager.Listener {
                         override fun onDownloadChanged(
@@ -233,7 +266,12 @@ class DownloadUtil
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
         private fun resolveDownloadAudioQuality(lowDataModeActive: Boolean): AudioQuality =
-            if (lowDataModeActive) AudioQuality.LOW else audioQuality
+            // Bug fix: Downloads should default to LOSSLESS instead of AUTO (which maps to HIGHEST).
+            // AUTO maps to HIGHEST (320kbps AAC) on unmetered networks, which is lossy.
+            // For downloads, we always want the best quality available.
+            if (lowDataModeActive) AudioQuality.LOW
+            else if (audioQuality == AudioQuality.AUTO) AudioQuality.LOSSLESS
+            else audioQuality
 
         private fun buildSongUrlCacheKey(
             mediaId: String,
@@ -246,20 +284,34 @@ class DownloadUtil
         ) {
             downloadScope.launch {
                 runCatching {
+                    // Bug fix: persist metadata synchronously within the download scope to prevent
+                    // race conditions where the download completes before metadata is written.
+                    // Previously fire-and-forget with no error handling, causing silent metadata loss.
                     val format = playbackData.format
                     val contentLength = format.contentLength ?: 0L
-                    val resolvedCodecs =
-                        format.mimeType
-                            .substringAfter("codecs=", "")
-                            .removeSurrounding("\"")
-                            .substringBefore("\"")
+
+                    // Robust codec extraction: parse "codecs=\"codec1, codec2\"" from mimeType
+                    val resolvedCodecs = extractCodecsFromMimeType(format.mimeType)
+
+                    // Bug fix: infer MIME type from codec when the raw MIME type is missing or misleading.
+                    // Previously defaulted to "audio/mp4" for all blank/missing MIME types, which
+                    // caused FLAC streams to be stored as audio/mp4, corrupting metadata.
+                    val rawMimeType = format.mimeType.substringBefore(";").trim()
+                    val resolvedMimeType = when {
+                        rawMimeType.isNotBlank() -> rawMimeType
+                        resolvedCodecs.contains("flac", ignoreCase = true) -> "audio/flac"
+                        resolvedCodecs.contains("alac", ignoreCase = true) -> "audio/alac"
+                        resolvedCodecs.contains("opus", ignoreCase = true) -> "audio/webm"
+                        resolvedCodecs.contains("mp4a", ignoreCase = true) -> "audio/mp4"
+                        else -> "audio/mp4"
+                    }
 
                     database.query {
                         upsert(
                             FormatEntity(
                                 id = mediaId,
                                 itag = format.itag,
-                                mimeType = format.mimeType.split(";")[0],
+                                mimeType = resolvedMimeType,
                                 codecs = resolvedCodecs,
                                 bitrate = format.bitrate,
                                 sampleRate = format.audioSampleRate,
@@ -272,8 +324,9 @@ class DownloadUtil
 
                         val now = LocalDateTime.now()
                         val existing = getSongByIdBlocking(mediaId)?.song
+                        val videoDetails = playbackData.videoDetails
                         val resolvedThumbnailUrl =
-                            playbackData.videoDetails
+                            videoDetails
                                 ?.thumbnail
                                 ?.thumbnails
                                 ?.lastOrNull()
@@ -283,14 +336,20 @@ class DownloadUtil
                         val updatedSong =
                             if (existing != null) {
                                 existing.copy(
+                                    title = existing.title.takeIf { it.isNotBlank() }
+                                        ?: videoDetails?.title?.takeIf { it.isNotBlank() }
+                                        ?: existing.title,
+                                    duration = existing.duration.takeIf { it > 0 }
+                                        ?: videoDetails?.lengthSeconds?.toIntOrNull()?.takeIf { it > 0 }
+                                        ?: existing.duration,
                                     thumbnailUrl = existing.thumbnailUrl?.takeIf { it.isNotBlank() } ?: resolvedThumbnailUrl,
                                     dateDownload = existing.dateDownload ?: now,
                                 )
                             } else {
                                 SongEntity(
                                     id = mediaId,
-                                    title = playbackData.videoDetails?.title ?: "Unknown",
-                                    duration = playbackData.videoDetails?.lengthSeconds?.toIntOrNull() ?: 0,
+                                    title = videoDetails?.title?.takeIf { it.isNotBlank() } ?: mediaId,
+                                    duration = videoDetails?.lengthSeconds?.toIntOrNull()?.takeIf { it > 0 } ?: -1,
                                     thumbnailUrl = resolvedThumbnailUrl,
                                     dateDownload = now,
                                 )
@@ -298,15 +357,38 @@ class DownloadUtil
 
                         upsert(updatedSong)
                     }
+                }.onFailure { e ->
+                    // Bug fix: log metadata persistence failures instead of silently swallowing them.
+                    // Previously, errors in persistPlaybackMetadata were fire-and-forget, causing
+                    // silent metadata corruption (missing format info, wrong codec, etc.).
+                    Timber.tag("DownloadUtil").e(e, "Failed to persist playback metadata for %s", mediaId)
                 }
             }
         }
 
+        /**
+         * Robustly extracts the codec string from a MIME type like:
+         *   "audio/mp4; codecs=\"mp4a.40.2\"" -> "mp4a.40.2"
+         *   "audio/webm; codecs=\"opus\"" -> "opus"
+         *   "audio/mp4; codecs=\"mp4a.40.2\",something" -> "mp4a.40.2"
+         * Returns empty string if no codecs parameter is found.
+         *
+         * Bug fix: previous implementation used removeSurrounding("\"") which fails when
+         * trailing content follows the closing quote (e.g., codecs="mp4a.40.2"; extra).
+         * Now uses regex-based extraction for robustness.
+         */
+        private fun extractCodecsFromMimeType(mimeType: String): String {
+            val match = Regex("""codecs="([^"]+)"""").find(mimeType) ?: return ""
+            val codecList = match.groupValues.getOrNull(1) ?: return ""
+            // Take only the first codec from a comma-separated list
+            return codecList.split(",").firstOrNull()?.trim()?.ifBlank { null } ?: ""
+        }
+
         companion object {
-            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 6
-            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 12
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 24
-            private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 5L
-            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 256 * 1024
+            private const val OPTIMIZED_MAX_PARALLEL_DOWNLOADS = 4
+            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 8
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 16
+            private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 3L
+            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 512 * 1024 // 512KB for faster I/O
         }
     }

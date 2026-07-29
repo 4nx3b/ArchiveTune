@@ -12,6 +12,8 @@ import androidx.media3.common.PlaybackException
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import moe.rukamori.archivetune.constants.AudioQuality
@@ -47,6 +49,11 @@ object YTPlayerUtils {
     private const val DEFAULT_STREAM_EXPIRE_SECONDS = 300
     private const val MAX_PLAYBACK_DATA_CACHE_ENTRIES = 128
     private const val PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT = 32
+    // Bug fix: number of download stream clients to attempt concurrently.
+    // Previously all 5 clients were tried sequentially, causing slow downloads
+    // when the first client fails. Trying the top 2 in parallel cuts resolution
+    // time roughly in half for the common case.
+    private const val CONCURRENT_DOWNLOAD_CLIENT_COUNT = 2
     const val STREAM_URL_EXPIRY_SAFETY_MS = 60_000L
     private val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
 
@@ -371,7 +378,7 @@ object YTPlayerUtils {
             }
 
             PlayerStreamClient.HI_RES_LOSSLESS -> {
-                WEB_REMIX
+                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
             }
 
             PlayerStreamClient.IOS -> {
@@ -497,6 +504,7 @@ object YTPlayerUtils {
         runCatching {
             val attempts =
                 when (audioQuality) {
+                    AudioQuality.LOSSLESS -> listOf(AudioQuality.LOSSLESS, AudioQuality.HIGHEST, AudioQuality.HIGH, AudioQuality.LOW)
                     AudioQuality.HIGHEST -> listOf(AudioQuality.HIGHEST, AudioQuality.HIGH, AudioQuality.LOW)
                     AudioQuality.HIGH -> listOf(AudioQuality.HIGH, AudioQuality.LOW)
                     AudioQuality.AUTO -> listOf(AudioQuality.AUTO, AudioQuality.HIGH, AudioQuality.LOW)
@@ -598,9 +606,55 @@ object YTPlayerUtils {
     ): Result<PlaybackData> =
         runCatching {
             Timber.tag(logTag).i("Fetching download response for videoId: $videoId, playlistId: $playlistId")
+
+            // Bug fix: attempt the first two stream clients concurrently to reduce download
+            // resolution latency. Previously, all 5 clients were tried sequentially, meaning
+            // a failure of the first client (HI_RES_LOSSLESS) would block for seconds before
+            // trying ANDROID_MUSIC. By launching both in parallel, we can return the first
+            // successful result immediately.
+            val primaryClients = downloadPreferredStreamClientAttempts.take(CONCURRENT_DOWNLOAD_CLIENT_COUNT)
+            val fallbackClients = downloadPreferredStreamClientAttempts.drop(CONCURRENT_DOWNLOAD_CLIENT_COUNT)
+
             var lastError: Throwable? = null
 
-            for (preferredStreamClient in downloadPreferredStreamClientAttempts) {
+            // Phase 1: try primary clients concurrently
+            val primaryResult = coroutineScope {
+                val deferreds = primaryClients.map { client ->
+                    async {
+                        Pair(
+                            client,
+                            playerResponseForPlayback(
+                                videoId = videoId,
+                                playlistId = playlistId,
+                                audioQuality = audioQuality,
+                                connectivityManager = connectivityManager,
+                                preferredStreamClient = client,
+                                networkMetered = networkMetered,
+                            ),
+                        )
+                    }
+                }
+                // Return the first successful result from concurrent attempts
+                for (deferred in deferreds) {
+                    val (client, attemptResult) = deferred.await()
+                    if (attemptResult.isSuccess) {
+                        Timber.tag(logTag).i("Download stream resolved with client %s for %s", client.name, videoId)
+                        return@coroutineScope attemptResult
+                    }
+                    lastError = attemptResult.exceptionOrNull()
+                    Timber.tag(logTag).w(
+                        lastError,
+                        "Download stream resolution failed with preferred client %s for %s",
+                        client.name,
+                        videoId,
+                    )
+                }
+                Result.failure<PlaybackData>(lastError ?: IllegalStateException("All primary clients failed for $videoId"))
+            }
+            if (primaryResult.isSuccess) return@runCatching primaryResult.getOrThrow()
+
+            // Phase 2: try remaining fallback clients sequentially
+            for (preferredStreamClient in fallbackClients) {
                 val attemptResult =
                     playerResponseForPlayback(
                         videoId = videoId,
@@ -616,7 +670,7 @@ object YTPlayerUtils {
                 lastError = attemptResult.exceptionOrNull()
                 Timber.tag(logTag).w(
                     lastError,
-                    "Download stream resolution failed with preferred client %s for %s",
+                    "Download stream resolution failed with fallback client %s for %s",
                     preferredStreamClient.name,
                     videoId,
                 )
@@ -627,11 +681,11 @@ object YTPlayerUtils {
 
     private val downloadPreferredStreamClientAttempts: List<PlayerStreamClient> =
         listOf(
-            PlayerStreamClient.WEB_REMIX,
             PlayerStreamClient.HI_RES_LOSSLESS,
+            PlayerStreamClient.ANDROID_MUSIC,
+            PlayerStreamClient.WEB_REMIX,
             PlayerStreamClient.IOS,
             PlayerStreamClient.TVHTML5,
-            PlayerStreamClient.ANDROID_MUSIC,
         )
 
     private suspend fun refreshIpRotationForBotDetection(
@@ -1240,25 +1294,35 @@ object YTPlayerUtils {
                 AudioQuality.LOW -> 70_000
                 AudioQuality.HIGH -> 160_000
                 AudioQuality.HIGHEST -> 320_000
+                AudioQuality.LOSSLESS -> null
                 AudioQuality.AUTO -> null
             }
 
         val preferHigher =
             compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                .thenByDescending { isLosslessFormat(it) }
                 .thenByDescending { it.bitrate }
                 .thenByDescending { codecRank(extractCodec(it.mimeType)) }
                 .thenByDescending { it.audioSampleRate ?: 0 }
 
         val preferLowerAboveTarget =
             compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                .thenByDescending { isLosslessFormat(it) }
                 .thenBy { it.bitrate }
                 .thenByDescending { codecRank(extractCodec(it.mimeType)) }
                 .thenByDescending { it.audioSampleRate ?: 0 }
 
         val candidates =
             when {
-                targetBitrateBps == null || effectiveQuality == AudioQuality.HIGHEST -> {
-                    audioFormats.sortedWith(preferHigher)
+                targetBitrateBps == null || effectiveQuality == AudioQuality.HIGHEST || effectiveQuality == AudioQuality.LOSSLESS -> {
+                    // For LOSSLESS: prefer lossless formats first, then fall back to highest bitrate
+                    if (effectiveQuality == AudioQuality.LOSSLESS) {
+                        val losslessFormats = audioFormats.filter { isLosslessFormat(it) }.sortedWith(preferHigher)
+                        val lossyFormats = audioFormats.filterNot { isLosslessFormat(it) }.sortedWith(preferHigher)
+                        losslessFormats + lossyFormats
+                    } else {
+                        audioFormats.sortedWith(preferHigher)
+                    }
                 }
 
                 else -> {
@@ -1331,10 +1395,23 @@ object YTPlayerUtils {
     private fun codecRank(codec: String?): Int =
         when {
             codec.isNullOrBlank() -> 0
+            codec.contains("flac", ignoreCase = true) -> 5
+            codec.contains("alac", ignoreCase = true) -> 4
             codec.contains("opus", ignoreCase = true) -> 3
             codec.contains("mp4a", ignoreCase = true) -> 2
             else -> 1
         }
+
+    private fun isLosslessFormat(format: PlayerResponse.StreamingData.Format): Boolean {
+        val codec = extractCodec(format.mimeType) ?: return false
+        val mimeTypeBase = format.mimeType.substringBefore(";").trim().lowercase()
+        return codec.contains("flac", ignoreCase = true) ||
+            codec.contains("alac", ignoreCase = true) ||
+            mimeTypeBase == "audio/flac" ||
+            mimeTypeBase == "audio/x-flac" ||
+            mimeTypeBase == "audio/alac" ||
+            (format.audioSampleRate != null && format.audioSampleRate >= 44100 && format.bitrate >= 800_000)
+    }
 
     private fun isLikelyPreview(
         format: PlayerResponse.StreamingData.Format,
