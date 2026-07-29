@@ -47,7 +47,6 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -709,29 +708,21 @@ private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp
 
 /**
- * Blur modifier used by the hero's backdrop. Uses a hardware-accelerated
- * [android.graphics.RenderEffect] on API 31+ (Android 12) for a real
- * Gaussian blur, and falls back to [Modifier.blur] on older API levels
- * (which itself uses a software fallback in Compose 1.6+).
+ * Blur modifier used by the hero's backdrop. Compose's [Modifier.blur]
+ * already dispatches to a hardware-accelerated
+ * `android.graphics.RenderEffect` on API 31+ (Android 12) and falls back
+ * to a software-rendered blur on older API levels — so calling
+ * `RenderEffect.createBlurEffect` directly is unnecessary and produces a
+ * type mismatch (`android.graphics.RenderEffect` vs the Compose
+ * `androidx.compose.ui.graphics.RenderEffect` expected by
+ * `GraphicsLayerScope.renderEffect`).
  *
  * The radius (24dp) is tuned to be obviously blurred while still
  * preserving enough color information that the artwork is recognisable —
  * a frosted-glass tint is layered on top in the hero to guarantee
  * legibility regardless of the thumbnail's average color.
  */
-private val MediaDetailHeroBlurModifier: Modifier =
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-        Modifier.graphicsLayer {
-            renderEffect =
-                android.graphics.RenderEffect.createBlurEffect(
-                    24f,
-                    24f,
-                    android.graphics.Shader.TileMode.CLAMP,
-                )
-        }
-    } else {
-        Modifier.blur(24.dp)
-    }
+private val MediaDetailHeroBlurModifier: Modifier = Modifier.blur(24.dp)
 
 private enum class MediaDetailActionLayoutId {
     Shuffle,
