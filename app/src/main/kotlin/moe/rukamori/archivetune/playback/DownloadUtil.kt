@@ -83,6 +83,22 @@ class DownloadUtil
         @DownloadCache val downloadCache: Cache,
         @PlayerCache val playerCache: Cache,
     ) {
+        /**
+         * Private hold on the injected [Context].
+         *
+         * Captured as a property so member functions (e.g. [prewarmSongForDownload])
+         * can reference it without triggering Kotlin 2.4's `context(...)` parser
+         * ambiguity — `context` is a soft keyword for context receivers in 2.4,
+         * and using it as a bare identifier inside a member function makes the
+         * parser expect a parenthesized argument list.
+         *
+         * Existing property initializers (e.g. [connectivityManager]) and the
+         * [youtubeDataSourceFactory] resolver lambda still use the constructor
+         * parameter directly — those scopes parse fine because the lambda
+         * capture disambiguates. Only new member functions need this alias.
+         */
+        private val appContext: Context = context
+
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
         private val downloadSource by enumPreference(context, DownloadSourceKey, DownloadSource.AUTO)
@@ -467,7 +483,7 @@ class DownloadUtil
             // Resolve the preferred source — same chain as the resolver inside
             // [youtubeDataSourceFactory] so the pre-warm fetch uses the same
             // URL + cache key the DownloadManager would use on cache miss.
-            val lowDataModeActive = context.isLowDataModeActive()
+            val lowDataModeActive = appContext.isLowDataModeActive()
             val song = database.getSongByIdBlocking(mediaId)
             if (song != null && downloadSource != DownloadSource.YOUTUBE_MUSIC) {
                 val title = song.song.title.takeIf { it.isNotBlank() }
@@ -514,7 +530,7 @@ class DownloadUtil
             // (jaudiotagger-unreadable).
             val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
             val playbackData = runCatching {
-                context.retryWithoutPlaybackLoginContext {
+                appContext.retryWithoutPlaybackLoginContext {
                     YTPlayerUtils.playerResponseForDownload(
                         mediaId,
                         audioQuality = requestedAudioQuality,
