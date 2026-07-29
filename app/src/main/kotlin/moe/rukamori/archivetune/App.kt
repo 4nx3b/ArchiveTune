@@ -155,12 +155,13 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
-        // Note: PRDownloader + SegmentedParallelDataSource were removed —
-        // the segmented byte-range fetcher corrupted downloaded FLAC streams
-        // (UnrecognizedInputFormatException, Code 3003) when its in-memory
-        // segment stitching mis-ordered bytes. We now rely on OkHttp's
-        // built-in HTTP/2 multiplexing and a 32-song parallel download
-        // executor, which is fast enough without per-song segmentation.
+        // Ketch is the file downloader used by KetchHttpDataSource (the
+        // upstream HTTP fetcher inside Media3's download CacheDataSource
+        // chain). Initialized once at app start with a tuned OkHttp client
+        // (HTTP/2, generous timeouts, YouTube stream proxy) so downloads
+        // benefit from Ketch's parallel chunked transfer + WorkManager
+        // lifecycle without paying init cost on the first download.
+        moe.rukamori.archivetune.playback.KetchHolder.init(this)
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)

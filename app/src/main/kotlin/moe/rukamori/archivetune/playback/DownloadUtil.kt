@@ -117,12 +117,12 @@ class DownloadUtil
                 .callTimeout(0, TimeUnit.SECONDS) // no overall cap — let large FLAC files download to completion
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
-                        // Per-song parallel byte-range requests are now issued
-                        // by ParallelRangeOkHttpDataSource (below) — each song
-                        // opens up to 4 concurrent Range requests. With 4 songs
-                        // × 4 ranges = 16 concurrent requests in flight, well
-                        // within this cap. We leave headroom for the player's
-                        // own streaming requests.
+                        // Ketch (used by KetchHttpDataSource) handles its own
+                        // internal chunked download concurrency — leave these
+                        // caps generous so Ketch's parallel chunks can fly.
+                        // We also leave headroom for the player's own streaming
+                        // requests (MusicService uses the same OkHttp client
+                        // shape, configured separately).
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
                         maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST
                     },
@@ -197,51 +197,45 @@ class DownloadUtil
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
         /**
-         * Parallel byte-range OkHttp data source factory.
+         * Ketch-backed HTTP data source factory.
          *
-         * This replaces both the previous `SegmentedParallelDataSource`
-         * (which corrupted FLAC streams by stitching byte ranges together
-         * in memory, causing `UnrecognizedInputFormatException (Code 3003)`)
-         * *and* the default `OkHttpDataSource.Factory` (which used a single
-         * sequential HTTP read per song and was slow).
+         * This replaces the previous `ParallelRangeOkHttpDataSource`
+         * (which itself replaced `SegmentedParallelDataSource`).
+         * Both predecessors were slow and occasionally corrupted FLAC
+         * streams via in-memory byte-range stitching
+         * (UnrecognizedInputFormatException, Code 3003).
          *
-         * [ParallelRangeOkHttpDataSource] issues up to
-         * [PARALLEL_RANGES_PER_DOWNLOAD] concurrent HTTP `Range:` requests
-         * per file and writes each range's bytes directly to the
-         * [CacheDataSink] at the correct offset — no in-memory stitching,
-         * no full-body buffering. Each range is an independent OkHttp call,
-         * so a transient failure on one range retries that range alone
-         * instead of failing the whole download.
+         * [KetchHttpDataSource] delegates the HTTP fetch to the Ketch
+         * library (https://github.com/khushpanchal/Ketch) — a
+         * WorkManager-based file downloader with parallel chunked
+         * transfer, retry, and pause/resume support. Ketch writes to
+         * a temp file on disk; we then expose those bytes to Media3's
+         * [CacheDataSink] via [FileDataSource] so the bytes flow into
+         * the download cache as fragments (exactly as before, just
+         * fetched faster and more reliably).
          *
-         * On a 40 MB FLAC this delivers ~3-4× the throughput of a single
-         * sequential read on Qobuz / Tidal / googlevideo, all of which
-         * rate-limit *per connection* rather than *per IP* — so 4 parallel
-         * ranges on the same connection pool bypass the per-connection cap.
+         * The Ketch singleton is held by [KetchHolder] and initialized
+         * at app start (see [App.initializeCriticalSync]). It uses an
+         * OkHttp client configuration mirroring [mediaOkHttpClient]
+         * (HTTP/2, generous timeouts, YouTube stream proxy) so behavior
+         * on Qobuz / Tidal / googlevideo is unchanged.
          */
         private val okHttpDataSourceFactory =
-            ParallelRangeOkHttpDataSource.Factory(mediaOkHttpClient)
-
-        private val cachedPlaybackDataSourceFactory =
-            CacheDataSource
-                .Factory()
-                .setCache(playerCache)
-                .setCacheReadDataSourceFactory(FileDataSource.Factory())
-                .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
-                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            KetchHttpDataSource.Factory(context)
 
         /**
          * Read-only view of [playerCache] used as an inner upstream of the download chain.
          *
          * The download [CacheDataSource] is bound to [downloadCache]; without this inner layer,
          * any byte range present in [playerCache] (e.g. a song that was just streamed from Qobuz
-         * or YouTube) but absent from [downloadCache] would fall through to [OkHttpDataSource]
+         * or YouTube) but absent from [downloadCache] would fall through to [okHttpDataSourceFactory]
          * holding the *bare media id* the [DownloadRequest] carried (e.g. "dJth8oW7CAQ"), which
          * is not a valid URL — producing `HttpDataSourceException: Malformed URL` and failing
          * the download at 0%.
          *
          * Chaining [playerCache] as the next upstream means: downloadCache miss → playerCache hit
          * → serve bytes (and write them through to downloadCache so subsequent chunks persist).
-         * Only when *both* caches miss do we reach [okHttpDataSourceFactory], by which
+         * Only when *both* caches miss do we reach [okHttpDataSourceFactory] (Ketch), by which
          * point the [ResolvingDataSource] resolver below has already swapped the URI for a
          * real YouTube stream URL.
          */
@@ -716,10 +710,9 @@ class DownloadUtil
             // home connection while leaving headroom for the player.
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 4
 
-            // PARALLEL_RANGES_PER_DOWNLOAD and MIN_RANGE_SIZE_BYTES are
-            // declared as top-level constants in ParallelRangeOkHttpDataSource.kt
-            // so they can be shared between the data source and this class
-            // without a circular companion-object reference.
+            // Ketch's internal WorkManager + OkHttp dispatcher handle chunked
+            // download concurrency. The constants below configure the OkHttp
+            // client shared by Ketch and the player's streaming requests.
 
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 32
             private const val MAX_DOWNLOAD_HTTP_REQUESTS = 64
