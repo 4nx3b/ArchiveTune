@@ -175,36 +175,81 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 treeUri,
                                 android.provider.DocumentsContract.getTreeDocumentId(treeUri),
                             )
-                        for (row in toExport) {
+                        val tempDir = java.io.File(context.cacheDir, "export_tmp").apply { mkdirs() }
+                        loop@ for (row in toExport) {
                             val spans =
-                                resolveSpans(cache, row.songId) ?: run { failed++; continue }
+                                resolveSpans(cache, row.songId) ?: run { failed++; continue@loop }
                             val detectedExt = detectAudioExtensionFromSpans(spans)
                             val mime = extensionToMimeType(detectedExt)
                             val safeTitle =
                                 row.title
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                     .ifBlank { "audio_${row.songId}" }
-                            val destUri =
-                                android.provider.DocumentsContract.createDocument(
-                                    context.contentResolver,
-                                    parentDocUri,
-                                    mime,
-                                    "$safeTitle.$detectedExt",
-                                ) ?: run { failed++; continue }
-                            runCatching {
-                                context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-                                    spans.sortedBy { it.position }.forEach { span ->
-                                        java.io.FileInputStream(span.file).use { input ->
+                            // Stage 1: assemble spans into a single temp file
+                            // so jaudiotagger can write metadata tags onto it.
+                            // The temp file is deleted in the finally block
+                            // below — both on success and on failure.
+                            val tempFile = java.io.File(tempDir, "${row.songId}.$detectedExt")
+                            try {
+                                runCatching {
+                                    java.io.FileOutputStream(tempFile).use { output ->
+                                        spans.sortedBy { it.position }.forEach { span ->
+                                            java.io.FileInputStream(span.file).use { input ->
+                                                input.copyTo(output)
+                                            }
+                                        }
+                                        output.flush()
+                                    }
+                                }.getOrElse {
+                                    tempFile.delete()
+                                    failed++
+                                    continue@loop
+                                }
+                                // Stage 2: write metadata tags (title, artist,
+                                // album, year, track) via jaudiotagger. Failure
+                                // is non-fatal — the untagged file is still
+                                // playable, just missing ID3/Vorbis tags.
+                                val songEntity = database.getSongByIdBlocking(row.songId)
+                                val metadata = moe.rukamori.archivetune.playback.AudioTagger.Metadata(
+                                    title = songEntity?.song?.title?.takeIf(String::isNotBlank),
+                                    artist = songEntity?.artists
+                                        ?.joinToString(", ") { it.name }
+                                        ?.takeIf(String::isNotBlank),
+                                    albumArtist = songEntity?.artists
+                                        ?.firstOrNull()?.name
+                                        ?.takeIf(String::isNotBlank),
+                                    album = songEntity?.album?.title?.takeIf(String::isNotBlank)
+                                        ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank),
+                                    year = songEntity?.song?.year?.takeIf { it > 0 },
+                                )
+                                moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, metadata)
+                                // Stage 3: copy the tagged temp file to the
+                                // user-selected SAF folder.
+                                val destUri =
+                                    android.provider.DocumentsContract.createDocument(
+                                        context.contentResolver,
+                                        parentDocUri,
+                                        mime,
+                                        "$safeTitle.$detectedExt",
+                                    ) ?: run { failed++; continue@loop }
+                                runCatching {
+                                    context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+                                        java.io.FileInputStream(tempFile).use { input ->
                                             input.copyTo(output)
                                         }
+                                        output.flush()
                                     }
-                                    output.flush()
-                                }
-                            }.onSuccess {
-                                exported++
-                                exportedCount = exported
-                            }.onFailure { failed++ }
+                                }.onSuccess {
+                                    exported++
+                                    exportedCount = exported
+                                }.onFailure { failed++ }
+                            } finally {
+                                tempFile.delete()
+                            }
                         }
+                        // Best-effort cleanup of stale temp files from a
+                        // previous interrupted export run.
+                        runCatching { tempDir.listFiles()?.forEach { it.delete() } }
                     }
                 } finally {
                     isExporting = false
