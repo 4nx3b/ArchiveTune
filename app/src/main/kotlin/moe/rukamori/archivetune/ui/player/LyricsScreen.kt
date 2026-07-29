@@ -320,6 +320,17 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
+        // Yield one frame before kicking off Palette extraction. The lyrics
+        // sheet's slide-up animation runs in the draw phase (graphicsLayer)
+        // and doesn't recompose per frame on its own, but the *first*
+        // composition of LyricsScreen still runs heavy code on the IO/Default
+        // dispatchers (Palette generate + image decode) that competes with
+        // the spring animation for CPU on low/mid-range phones. A 120ms
+        // delay lets the spring get ~60% of the way through its travel
+        // before Palette work starts — invisible to the user (the blurred
+        // background thumbnail covers the unextracted state) but noticeably
+        // smoother on devices where the open animation was laggy.
+        kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
             gradientColors = AppleMusicFallbackGradient
             hasValidPalette = false
