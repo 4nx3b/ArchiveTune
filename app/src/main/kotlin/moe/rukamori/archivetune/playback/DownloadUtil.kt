@@ -97,8 +97,9 @@ class DownloadUtil
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
                 .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .callTimeout(0, TimeUnit.SECONDS) // no overall cap — let large FLAC files download to completion
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
@@ -513,10 +514,10 @@ class DownloadUtil
         }
 
         companion object {
-            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 16
-            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 32
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 64
+            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 32
+            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 64
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 128
             private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 5L
-            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 4 * 1024 * 1024  // 4MB — larger buffer reduces I/O syscalls for faster downloads
+            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 16 * 1024 * 1024  // 16MB — larger buffer reduces I/O syscalls for faster downloads
         }
     }

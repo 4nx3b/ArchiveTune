@@ -75,6 +75,8 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
@@ -84,6 +86,7 @@ import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
 import moe.rukamori.archivetune.telegram.TelegramCoverProvider
+import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
@@ -221,24 +224,43 @@ fun LastFmDashboardScreen(
         val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
         var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
-        LaunchedEffect(top) {
-            if (top.isEmpty()) return@LaunchedEffect
+        // Combine recent + top tracks into a single de-duplicated list so we can
+        // resolve covers for both tabs in one LaunchedEffect pass. Without this,
+        // the Recents tab would fall through to the placeholder icon whenever
+        // Last.fm didn't return an image (which is most of the time).
+        val allTracksForArtwork = remember(recent, top) {
+            val keys = mutableSetOf<String>()
+            val combined = mutableListOf<ArtworkLookup>()
+            top.forEach { t ->
+                val k = t.trackArtworkKey()
+                if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
+            }
+            recent.forEach { t ->
+                val k = t.trackArtworkKey()
+                if (keys.add(k)) combined.add(ArtworkLookup(k, t.name.orEmpty(), t.artist?.text))
+            }
+            combined
+        }
+
+        LaunchedEffect(allTracksForArtwork) {
+            if (allTracksForArtwork.isEmpty()) return@LaunchedEffect
+            // Resolve covers concurrently, capping parallelism to 6 so we don't
+            // trip the per-IP rate limit on iTunes/Deezer.
             catalogueArtworkByTrack =
                 withContext(Dispatchers.IO) {
-                    top.mapNotNull { track ->
-                        val key = track.trackArtworkKey()
-                        val title = track.name.orEmpty()
-                        val artist = track.artist?.text
-                        // 1) Prefer Last.fm's own image (when the API returns one).
-                        // 2) Fall back to the iTunes catalogue (covers most western pop/rock).
-                        // 3) Fall back to a YouTube Music search so anime/Japanese/indie
-                        //    tracks that iTunes doesn't carry still get a real thumbnail.
-                        val url =
-                            bestArtwork(track.image)
-                                ?: TelegramCoverProvider.coverUrl(title, artist)
-                                ?: resolveYtThumbnail(title, artist)
-                        url?.let { key to it }
-                    }.toMap()
+                    val results = mutableMapOf<String, String>()
+                    val chunks = allTracksForArtwork.chunked(6)
+                    for (chunk in chunks) {
+                        chunk.map { lookup ->
+                            async(Dispatchers.IO) {
+                                val url = resolveCatalogueCover(lookup)
+                                if (url != null) lookup.key to url else null
+                            }
+                        }.awaitAll().forEach { pair ->
+                            pair?.let { (k, u) -> results[k] = u }
+                        }
+                    }
+                    results
                 }
         }
 
@@ -278,7 +300,10 @@ fun LastFmDashboardScreen(
                         item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
                     } else {
                         items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
-                            DashboardTrackCard(track = track)
+                            DashboardTrackCard(
+                                track = track,
+                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()] ?: catalogueArtworkByTrack[track.trackArtworkKey()],
+                            )
                         }
                     }
                 }
@@ -565,6 +590,38 @@ private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
     mapNotNull { track -> bestArtwork(track.image)?.let { track.trackArtworkKey() to it } }.toMap()
 
 /**
+ * Lightweight lookup key for the catalogue artwork resolution pass — avoids
+ * pulling TopTrack / RecentTrack into the artwork coroutine scope.
+ */
+private data class ArtworkLookup(
+    val key: String,
+    val title: String,
+    val artist: String?,
+)
+
+/**
+ * Full fallback chain for resolving a track's cover URL when Last.fm doesn't
+ * return an image. Tries, in order:
+ *  1. TelegramCoverProvider (only useful if the user has Telegram configured)
+ *  2. iTunes catalogue (free, great for western pop / rock / K-pop with
+ *     international distribution)
+ *  3. Deezer catalogue (free, strong European / Asian coverage; often has
+ *     covers iTunes lacks)
+ *  4. YouTube Music search (last-resort fallback so anime / indie tracks that
+ *     aren't in either catalogue still get a thumbnail)
+ *
+ * Returns null on total failure — caller falls through to the placeholder icon.
+ */
+private suspend fun resolveCatalogueCover(lookup: ArtworkLookup): String? {
+    if (lookup.title.isBlank()) return null
+    val title = lookup.title
+    val artist = lookup.artist
+    return TelegramCoverProvider.coverUrl(title, artist)
+        ?: CatalogueCoverProvider.resolveCoverUrl(title, artist)
+        ?: resolveYtThumbnail(title, artist)
+}
+
+/**
  * Resolves a thumbnail URL for [title]/[artist] by searching YouTube Music and
  * taking the first song result's thumbnail. Used as a last-resort fallback when
  * Last.fm and iTunes both come up empty (common for anime/Japanese/indie tracks).
@@ -605,8 +662,9 @@ private fun DashboardTrackCard(
     track: RecentTrack,
     rank: Int? = null,
     playCount: Int? = null,
+    fallbackArtworkUrl: String? = null,
 ) {
-    val artworkUrl = bestArtwork(track.image)
+    val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
 
     Surface(
         modifier = Modifier
