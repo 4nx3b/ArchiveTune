@@ -165,7 +165,6 @@ class App :
             val config = com.downloader.PRDownloaderConfig.newBuilder()
                 .setReadTimeout(60_000)
                 .setConnectTimeout(30_000)
-                .setBufferSize(4 * 1024 * 1024) // 4 MB
                 .build()
             com.downloader.PRDownloader.initialize(this, config)
         }

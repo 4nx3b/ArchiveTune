@@ -112,8 +112,8 @@ object CrossServicePlaylistImporter {
                     ResolvedImport(
                         source = source,
                         sourcePlaylistId = playlistId,
-                        title = page.title,
-                        thumbnailUrl = page.thumbnail,
+                        title = page.playlist.title,
+                        thumbnailUrl = page.playlist.thumbnail,
                         tracks = page.songs.map {
                             ForeignTrack(
                                 title = it.title,
