@@ -62,6 +62,7 @@ import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
 import moe.rukamori.archivetune.ui.component.EnumListPreference
+import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -521,21 +522,34 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    EnumListPreference(
+                    // Only expose AUTO and YOUTUBE_MUSIC in the picker.
+                    // Qobuz / Tidal / Deezer remain valid enum values (so
+                    // existing user preferences still deserialize) but are
+                    // no longer selectable from the UI — the AUTO chain
+                    // already picks them up automatically when their
+                    // accounts are configured in the Integration screen.
+                    val selectableSources = remember {
+                        listOf(DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC)
+                    }
+                    ListPreference(
                         modifier = positions.modifierFor("download_source"),
                         title = { Text(stringResource(R.string.download_source_title)) },
                         icon = { Icon(painterResource(R.drawable.download), null) },
-                        selectedValue = downloadSource,
-                        onValueSelected = onDownloadSourceChange,
+                        selectedValue =
+                            if (downloadSource in selectableSources) {
+                                downloadSource
+                            } else {
+                                DownloadSource.AUTO
+                            },
+                        values = selectableSources,
                         valueText = {
                             when (it) {
                                 DownloadSource.AUTO -> stringResource(R.string.download_source_auto)
-                                DownloadSource.QOBUZ -> stringResource(R.string.download_source_qobuz)
-                                DownloadSource.TIDAL -> stringResource(R.string.download_source_tidal)
-                                DownloadSource.DEEZER -> stringResource(R.string.download_source_deezer)
                                 DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)
+                                else -> it.name
                             }
                         },
+                        onValueSelected = onDownloadSourceChange,
                     )
                 }
 
