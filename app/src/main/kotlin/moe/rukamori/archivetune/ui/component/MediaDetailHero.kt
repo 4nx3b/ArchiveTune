@@ -146,33 +146,44 @@ public fun MediaDetailHero(
         if (useBlurredBackdrop && thumbnailUrl != null) {
             // ─── Blurred backdrop at the bottom ─────────────────────────────
             // Render a second copy of the thumbnail, blurred, clipped to the
-            // bottom ~50% of the hero — the area below the playlist title
-            // where the play / shuffle / download action buttons sit.
+            // bottom ~62% of the hero — covering everything from just below
+            // the playlist title down through the play / shuffle / download
+            // action buttons.
+            //
+            // The previous 50% band was too short: the action-button Column
+            // is positioned with `top = systemBarsTopPadding + AppBarHeight +
+            // 96.dp` and its action row sat *just below* the blur band's top
+            // edge, so on tall screens the buttons appeared over a hard
+            // transition line between sharp artwork and blurred backdrop.
+            // 62% guarantees the entire button row is fully inside the blur.
             //
             // The blur is the *primary* backdrop layer (replacing the previous
-            // flat surfaceColor gradient). A light frosted tint is layered on
-            // top so white text remains readable on bright thumbnails, but
-            // the tint is kept LIGHT enough that the blurred artwork is
+            // flat surfaceColor gradient). A frosted tint is layered on top
+            // so white text remains readable on bright thumbnails, but the
+            // tint is kept LIGHT enough that the blurred artwork is
             // unambiguously visible — addressing the previous bug where the
             // area appeared "completely transparent".
             //
             // Layer order (bottom → top):
             //   1. Original thumbnail (full hero, sharp)
-            //   2. Blurred thumbnail duplicate, clipped to bottom 50%
-            //      — uses graphicsLayer + RenderEffect on API 31+ for a real
-            //        hardware-accelerated Gaussian blur (24dp radius),
-            //        falls back to Modifier.blur() on older APIs.
-            //   3. Light frosted-glass tint (surfaceColor @ 30% alpha) so
-            //      the blur reads as frosted glass rather than just a soft
-            //      copy of the artwork.
-            //   4. Soft vertical scrim at the very bottom for button
-            //      legibility on bright thumbnails.
+            //   2. Blurred thumbnail duplicate, clipped to bottom 62%
+            //      — Modifier.blur() (48dp) dispatches to a hardware-
+            //        accelerated RenderEffect on API 31+ and falls back to
+            //        a software blur on older APIs.
+            //   3. Frosted-glass tint (surfaceColor @ 35% alpha) so the blur
+            //      reads as frosted glass rather than just a soft copy of
+            //      the artwork.
+            //   4. Vertical scrim — darker at the very bottom edge so the
+            //      action buttons remain readable on bright thumbnails,
+            //      fading to transparent at the top so the blur shows.
+            //   5. Top-of-band gradient — softly fades the *top* of the blur
+            //      band into the sharp artwork above it (no hard line).
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .fillMaxHeight(0.50f),
+                        .fillMaxHeight(0.62f),
             ) {
                 AsyncImage(
                     model =
@@ -189,18 +200,34 @@ public fun MediaDetailHero(
                             .matchParentSize()
                             .then(MediaDetailHeroBlurModifier),
                 )
-                // Frosted-glass tint — kept LIGHT (30% alpha) so the blur is
-                // visibly blurred. The previous 55% alpha made the area read
-                // as a flat surface color, hiding the blur entirely.
+                // Frosted-glass tint — 35% alpha. Strong enough to mute the
+                // sharpest color peaks from the artwork (so white text reads),
+                // light enough that the 48dp blur is still obviously visible.
                 Box(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .background(surfaceColor.copy(alpha = 0.30f)),
+                            .background(surfaceColor.copy(alpha = 0.35f)),
                 )
-                // Legibility scrim — gentle gradient, darker only at the very
-                // bottom edge so the action buttons remain readable. Kept
-                // lighter than before so the frosted glass still shows.
+                // Top-of-band fade — softly fades the top 22% of the blur
+                // band from transparent → surfaceColor so there is no hard
+                // line where the blurred duplicate meets the sharp artwork
+                // above it. Without this, the eye reads the blur as a
+                // separate panel rather than a continuous frosted surface.
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to surfaceColor.copy(alpha = 0.35f),
+                                    0.22f to Color.Transparent,
+                                    0.50f to Color.Transparent,
+                                ),
+                            ),
+                )
+                // Legibility scrim — darker only at the very bottom edge so
+                // the action buttons remain readable on bright thumbnails.
                 Box(
                     modifier =
                         Modifier
@@ -208,16 +235,16 @@ public fun MediaDetailHero(
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    0.45f to Color.Transparent,
-                                    0.75f to Color.Black.copy(alpha = 0.12f),
-                                    1f to Color.Black.copy(alpha = 0.28f),
+                                    0.55f to Color.Transparent,
+                                    0.80f to Color.Black.copy(alpha = 0.18f),
+                                    1f to Color.Black.copy(alpha = 0.36f),
                                 ),
                             ),
                 )
             }
             // Top-of-hero scrim for status-bar legibility — kept separate from
             // the blur band so it covers the full hero height (the blur band
-            // only covers the bottom 50%).
+            // only covers the bottom 62%).
             Box(
                 modifier =
                     Modifier
@@ -717,12 +744,16 @@ private val MediaDetailActionSize = 48.dp
  * `androidx.compose.ui.graphics.RenderEffect` expected by
  * `GraphicsLayerScope.renderEffect`).
  *
- * The radius (24dp) is tuned to be obviously blurred while still
- * preserving enough color information that the artwork is recognisable —
- * a frosted-glass tint is layered on top in the hero to guarantee
- * legibility regardless of the thumbnail's average color.
+ * The radius (48dp) is intentionally large — a 24dp blur was still too
+ * subtle behind the dense collage of a 2×2 playlist thumbnail and read
+ * as "slightly soft" rather than "frosted glass". 48dp produces an
+ * unambiguously blurred backdrop that the action-button row can sit on
+ * top of, while still preserving enough color information that the
+ * artwork is recognisable. A frosted-glass tint is layered on top in
+ * the hero to guarantee legibility regardless of the thumbnail's
+ * average color.
  */
-private val MediaDetailHeroBlurModifier: Modifier = Modifier.blur(24.dp)
+private val MediaDetailHeroBlurModifier: Modifier = Modifier.blur(48.dp)
 
 private enum class MediaDetailActionLayoutId {
     Shuffle,
