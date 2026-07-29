@@ -7,7 +7,7 @@
 
 package moe.rukamori.archivetune.playback
 
-import androidx.media3.C
+import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -71,7 +71,7 @@ import java.io.IOException
 class SegmentedParallelDataSource private constructor(
     private val okHttpClient: OkHttpClient,
     private val delegateFactory: OkHttpDataSource.Factory,
-) : BaseDataSource() {
+) : BaseDataSource(true) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -165,7 +165,7 @@ class SegmentedParallelDataSource private constructor(
     ): ByteArray {
         val rangeHeader = "bytes=$startInclusive-$endInclusive"
         val request = okhttp3.Request.Builder()
-            .url(original.uri)
+            .url(original.uri.toString())
             .header("Range", rangeHeader)
             .header("Accept-Encoding", "identity")
             .header("Connection", "keep-alive")
@@ -176,7 +176,7 @@ class SegmentedParallelDataSource private constructor(
             }
             val body = response.body ?: throw IOException("Empty body for range $rangeHeader")
             val bytes = body.bytes()
-            bytesTransferred(bytes.size.toLong())
+            bytesTransferred(bytes.size)
             return bytes
         }
     }
@@ -191,7 +191,7 @@ class SegmentedParallelDataSource private constructor(
                 remaining = 0L
             } else if (read > 0) {
                 remaining -= read.toLong()
-                bytesTransferred(read.toLong())
+                bytesTransferred(read)
             }
             return read
         }
@@ -212,7 +212,7 @@ class SegmentedParallelDataSource private constructor(
                     // Channel was closed. If it was closed with an exception,
                     // surface that to the caller so Media3 marks the download
                     // as failed rather than silently treating it as EOF.
-                    result.closeCause?.let { cause ->
+                    result.exceptionOrNull()?.let { cause ->
                         throw IOException("Parallel segment fetch failed", cause)
                     }
                     // Clean close with no exception → EOF.
@@ -237,7 +237,7 @@ class SegmentedParallelDataSource private constructor(
             target -= toCopy
             remaining -= toCopy.toLong()
         }
-        if (written > 0) bytesTransferred(written.toLong())
+        if (written > 0) bytesTransferred(written)
         return written
     }
 
