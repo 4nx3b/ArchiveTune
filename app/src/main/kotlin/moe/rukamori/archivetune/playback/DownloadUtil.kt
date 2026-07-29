@@ -53,9 +53,8 @@ import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
-import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.enumPreference
@@ -462,6 +461,18 @@ class DownloadUtil
          * downloadScope on Dispatchers.IO and awaits completion.
          */
         suspend fun prewarmSongForDownload(mediaId: String): String? {
+            // Refresh the community Source Pool accounts (Qobuz/Tidal subscriber
+            // tokens) before resolving — the pool refresh is throttled to once
+            // per 30 min inside PoolAccountManager.refresh(), so this is a cheap
+            // no-op on the hot path. Doing it here (instead of only at app start)
+            // means newly-contributed accounts become available to downloads
+            // without an app restart, and avoids the "downloads always fall back
+            // to YouTube .webm" failure mode when the pool cache has been evicted
+            // by the OS or never loaded on this cold start.
+            if (PoolAccountManager.isEnabled) {
+                runCatching { PoolAccountManager.refresh(appContext) }
+            }
+
             // Fast path: bytes already cached under any source-prefixed key —
             // no work to do. The DownloadManager will pick them up via the
             // resolver in [youtubeDataSourceFactory].
@@ -692,6 +703,13 @@ class DownloadUtil
          * Resolves a single source's direct stream. Returns null when the
          * source can't resolve the track (so [resolvePreferredDownloadDataSpec]
          * can fall through to the next source in the chain).
+         *
+         * This routes through [LosslessStreamResolver] which mirrors
+         * MusicService's pool-aware logic — it merges the user's own
+         * Qobuz/Tidal credentials with the community Source Pool accounts
+         * before calling the providers. Without this, downloads of
+         * uncached songs silently fell through to the YouTube Music
+         * fallback (.webm lossy) because the providers had no tokens.
          */
         private fun resolveSourceStream(
             source: DownloadSource,
@@ -702,16 +720,27 @@ class DownloadUtil
             durationMs: Long?,
         ): ResolvedStreamData? = when (source) {
             DownloadSource.QOBUZ -> {
-                QobuzAudioProvider.resolve(
-                    QobuzAudioProvider.Query(mediaId, title, artists, album, durationMs),
-                    qobuzAudioQuality.toFormatId(),
+                LosslessStreamResolver.resolveQobuz(
+                    context = appContext,
+                    mediaId = mediaId,
+                    title = title,
+                    artists = artists,
+                    album = album,
+                    durationMs = durationMs,
+                    formatId = qobuzAudioQuality.toFormatId(),
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.TIDAL -> {
-                TidalAudioProvider.resolve(
-                    TidalAudioProvider.Query(mediaId, title, artists, album, null, durationMs),
+                LosslessStreamResolver.resolveTidal(
+                    context = appContext,
+                    mediaId = mediaId,
+                    title = title,
+                    artists = artists,
+                    album = album,
+                    durationMs = durationMs,
                     audioQuality = tidalAudioQuality,
-                ).let { ResolvedStreamData(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
+                    cacheDir = appContext.cacheDir,
+                )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.DEEZER -> {
                 // Public Deezer API only exposes 30-second previews — full
@@ -930,33 +959,32 @@ class DownloadUtil
         }
 
         companion object {
-            // 6 concurrent songs. Increased from 4 — the previous value left
-            // bandwidth on the table for fast connections (200+ Mbps). 6 songs
-            // saturates a 100-200 Mbps link while keeping per-song latency
-            // reasonable. Going higher than 6 risks starving the player's own
-            // streaming requests and thrashing the disk I/O scheduler.
-            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 6
+            // 8 concurrent songs. Increased from 6 — the cache-first strategy
+            // means most downloads now hit the local playerCache (no network
+            // fetch, just disk read), so we can afford more parallelism without
+            // starving the player's streaming requests. 8 saturates a 200+ Mbps
+            // link on the cache-miss path while keeping per-song latency
+            // reasonable on the cache-hit path (~1-2 s for a 40 MB FLAC).
+            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 8
 
             // PRDownloader manages its own internal OkHttp dispatcher for
             // downloads. The constants below configure the OkHttp client
             // shared by PRDownloader and the player's streaming requests.
-
-            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 48
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 96
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST = 48
+            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 64
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 128
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST = 64
             private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 10L
 
-            // 8 MB in-memory write buffer for CacheDataSink — doubled from 4 MB.
+            // 12 MB in-memory write buffer for CacheDataSink — increased from 8 MB.
             // Larger buffer = fewer fsync syscalls = higher write throughput on
-            // flash storage. 6 parallel downloads × 8 MB = 48 MB peak heap,
+            // flash storage. 8 parallel downloads × 12 MB = 96 MB peak heap,
             // well within the 192 MB large-heap limit on modern Android.
-            internal const val DOWNLOAD_WRITE_BUFFER_SIZE = 8 * 1024 * 1024
+            internal const val DOWNLOAD_WRITE_BUFFER_SIZE = 12 * 1024 * 1024
 
-            // 50 MB fragment size — a 40 MB FLAC is stored as 1 fragment
-            // instead of the previous 2 (at 20 MB). Fewer fragments = fewer
-            // open file handles + fewer fsync syscalls = higher write
-            // throughput. A 150 MB hi-res FLAC is stored as 3 fragments.
-            internal const val DOWNLOAD_FRAGMENT_SIZE = 50L * 1024 * 1024
+            // 64 MB fragment size — increased from 50 MB. A 40 MB FLAC is
+            // stored as 1 fragment, a 150 MB hi-res FLAC as 3. Fewer
+            // fragments = fewer open file handles + fewer fsync syscalls.
+            internal const val DOWNLOAD_FRAGMENT_SIZE = 64L * 1024 * 1024
 
             // Hosts that downloads frequently hit. Pre-warming these at app
             // start means the first download of a session skips the
