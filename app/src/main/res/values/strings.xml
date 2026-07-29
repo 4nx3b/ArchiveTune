@@ -701,6 +701,7 @@
     <string name="export_downloaded_songs_delete_confirm_message">Remove the cached download for %1$d selected song(s)? This removes them from the offline cache but keeps the song entry in your library.</string>
     <string name="export_downloaded_songs_delete_progress">Deleting %1$d of %2$d…</string>
     <string name="export_downloaded_songs_delete_complete">Deleted %1$d song(s) from cache%2$s</string>
+    <string name="export_downloaded_songs_search_empty">No songs match \u201c%1$s\u201d</string>
     <string name="max_image_cache_size">Max image cache size</string>
     <string name="clear_image_cache">Clear image cache</string>
     <string name="max_song_cache_size">Max song cache size</string>

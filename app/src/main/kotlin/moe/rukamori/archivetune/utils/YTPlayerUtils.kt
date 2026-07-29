@@ -513,6 +513,7 @@ object YTPlayerUtils {
         preferredStreamClient: PlayerStreamClient = PlayerStreamClient.WEB_REMIX,
         // if provided, this preference overrides ConnectivityManager.isActiveNetworkMetered
         networkMetered: Boolean? = null,
+        preferM4A: Boolean = false,
     ): Result<PlaybackData> {
         val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
         val initialKey =
@@ -541,6 +542,7 @@ object YTPlayerUtils {
                 connectivityManager = connectivityManager,
                 preferredStreamClient = preferredStreamClient,
                 networkMetered = isMetered,
+                preferM4A = preferM4A,
             ).onSuccess { playbackData ->
                 cachePlaybackData(
                     key = currentKey.copy(authFingerprint = playbackData.authFingerprint),
@@ -560,6 +562,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): Result<PlaybackData> =
         runCatching {
             val attempts =
@@ -583,6 +586,7 @@ object YTPlayerUtils {
                             connectivityManager = connectivityManager,
                             preferredStreamClient = preferredStreamClient,
                             networkMetered = networkMetered,
+                            preferM4A = preferM4A,
                         )
                     }
                 if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
@@ -656,15 +660,34 @@ object YTPlayerUtils {
         }
     }
 
+    /**
+     * Resolves a YouTube Music player response specifically for offline downloads.
+     *
+     * When [preferM4A] is true (default for downloads), the format selector prefers
+     * AAC/M4A streams (itag 140 / 141) over Opus/WebM (itag 251 / 250). This is
+     * critical for downloads because:
+     *   1. jaudiotagger has no WebM/Matroska reader — Opus-in-WebM files cannot
+     *      be tagged, leaving exported songs with no metadata (unknown artist,
+     *      unknown album, no artwork).
+     *   2. The .m4a extension is universally recognized by external music
+     *      players, while .webm is not (most players treat .webm as video).
+     *   3. AAC at 128 kbps (itag 140) is perceptually transparent for most
+     *      music, so the quality cost is negligible compared to the metadata
+     *      loss from picking Opus-in-WebM.
+     *
+     * When [preferM4A] is false, behavior is unchanged (Opus preferred for
+     * higher bitrate at the same quality tier).
+     */
     suspend fun playerResponseForDownload(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         networkMetered: Boolean? = null,
+        preferM4A: Boolean = true,
     ): Result<PlaybackData> =
         runCatching {
-            Timber.tag(logTag).i("Fetching download response for videoId: $videoId, playlistId: $playlistId")
+            Timber.tag(logTag).i("Fetching download response for videoId: $videoId, playlistId: $playlistId, preferM4A=$preferM4A")
             var lastError: Throwable? = null
 
             for (preferredStreamClient in downloadPreferredStreamClientAttempts) {
@@ -676,6 +699,7 @@ object YTPlayerUtils {
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
                         networkMetered = networkMetered,
+                        preferM4A = preferM4A,
                     )
 
                 if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
@@ -729,6 +753,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient,
         networkMetered: Boolean?,
+        preferM4A: Boolean = false,
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
@@ -1084,6 +1109,7 @@ object YTPlayerUtils {
                     streamPlayerResponse,
                     audioQuality,
                     isMetered,
+                    preferM4A = preferM4A,
                 )
 
             if (candidates.isEmpty()) continue
@@ -1287,12 +1313,14 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         // optional override from user preference; if non-null, use this instead of ConnectivityManager
         networkMetered: Boolean? = null,
+        preferM4A: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
         return selectAudioFormatCandidates(
             playerResponse,
             audioQuality,
             isMetered,
+            preferM4A = preferM4A,
         ).firstOrNull()
     }
 
@@ -1300,6 +1328,7 @@ object YTPlayerUtils {
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): List<PlayerResponse.StreamingData.Format> {
         Timber.tag(logTag).i("Finding format with audioQuality: $audioQuality, network metered: $networkMetered")
 
@@ -1328,16 +1357,23 @@ object YTPlayerUtils {
                 AudioQuality.AUTO -> null
             }
 
+        // When preferM4A is true (downloads), prefer MP4A/AAC over OPUS so the
+        // resulting file is .m4a (which jaudiotagger can tag) instead of .webm
+        // (which jaudiotagger cannot read, leaving the exported file untagged).
+        val resolvedCodecRank: (String?) -> Int = { codec ->
+            if (preferM4A) codecRankPreferM4A(codec) else codecRank(codec)
+        }
+
         val preferHigher =
             compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
                 .thenByDescending { it.bitrate }
-                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
+                .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
                 .thenByDescending { it.audioSampleRate ?: 0 }
 
         val preferLowerAboveTarget =
             compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
                 .thenBy { it.bitrate }
-                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
+                .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
                 .thenByDescending { it.audioSampleRate ?: 0 }
 
         val candidates =
@@ -1418,6 +1454,19 @@ object YTPlayerUtils {
             codec.isNullOrBlank() -> 0
             codec.contains("opus", ignoreCase = true) -> 3
             codec.contains("mp4a", ignoreCase = true) -> 2
+            else -> 1
+        }
+
+    /**
+     * Variant of [codecRank] that prefers MP4A/AAC over OPUS. Used for downloads
+     * where the file must be .m4a (jaudiotagger-readable) rather than .webm
+     * (jaudiotagger-unreadable, would silently skip metadata tagging).
+     */
+    private fun codecRankPreferM4A(codec: String?): Int =
+        when {
+            codec.isNullOrBlank() -> 0
+            codec.contains("mp4a", ignoreCase = true) -> 3
+            codec.contains("opus", ignoreCase = true) -> 2
             else -> 1
         }
 
