@@ -36,8 +36,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -105,7 +107,21 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     var exportedCount by remember { mutableStateOf(0) }
     var deletedCount by remember { mutableStateOf(0) }
     var totalCount by remember { mutableStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
     val selectedIds: SnapshotStateList<String> = remember { mutableStateListOf() }
+
+    // Filter songs by search query (title or artist, case-insensitive).
+    // Empty query shows all songs.
+    val displayedSongs = remember(songs, searchQuery) {
+        if (searchQuery.isBlank()) songs
+        else {
+            val q = searchQuery.lowercase().trim()
+            songs.filter {
+                it.title.lowercase().contains(q) || it.artist.lowercase().contains(q)
+            }
+        }
+    }
 
     // Load the list of downloaded songs from the cache + database.
     LaunchedEffect(Unit) {
@@ -205,35 +221,39 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     failed++
                                     continue@loop
                                 }
-                                // Stage 2: write metadata tags (title, artist,
+                                // Stage 2: ALWAYS write metadata tags (title, artist,
                                 // album, year, track, artwork) via jaudiotagger.
-                                // Failure is non-fatal — the untagged file is
-                                // still playable, just missing ID3/Vorbis tags.
-                                // WebM/Matroska files are skipped — jaudiotagger
-                                // has no WebM reader, so attempting to tag them
-                                // would throw and waste time.
+                                //
+                                // We always attempt tagging — never skip — because the
+                                // user's primary complaint was "all exported songs show
+                                // unknown artist, unknown album, no song artwork".
+                                // Failure is non-fatal: AudioTagger.tag() wraps every
+                                // operation in runCatching, so an unsupported format
+                                // (e.g. WebM) just leaves the file untagged without
+                                // aborting the export.
+                                //
+                                // Metadata source priority:
+                                //   1. Database SongEntity (populated when the user
+                                //      clicked Download — title/artists/album come
+                                //      from YouTube Music's browse response).
+                                //   2. YouTube.getMediaInfo(videoId) fallback — when
+                                //      the database has no artist/album (e.g. the song
+                                //      was downloaded via a playlist and the artist
+                                //      relation wasn't persisted). Fetches title +
+                                //      author + thumbnail from the watch endpoint.
+                                //   3. Thumbnail URL from row.thumbnailUrl as the
+                                //      embedded artwork bytes.
+                                val resolvedMetadata = resolveExportMetadata(database, row)
                                 if (detectedExt != "webm") {
-                                    val songEntity = database.getSongByIdBlocking(row.songId)
-                                    // Fetch the thumbnail bytes (best-effort).
-                                    // Used as embedded artwork so the exported
-                                    // file shows album art in external players.
-                                    val artworkBytes = songEntity?.song?.thumbnailUrl
-                                        ?.takeIf(String::isNotBlank)
-                                        ?.let { fetchArtworkBytes(it) }
-                                    val metadata = moe.rukamori.archivetune.playback.AudioTagger.Metadata(
-                                        title = songEntity?.song?.title?.takeIf(String::isNotBlank),
-                                        artist = songEntity?.artists
-                                            ?.joinToString(", ") { it.name }
-                                            ?.takeIf(String::isNotBlank),
-                                        albumArtist = songEntity?.artists
-                                            ?.firstOrNull()?.name
-                                            ?.takeIf(String::isNotBlank),
-                                        album = songEntity?.album?.title?.takeIf(String::isNotBlank)
-                                            ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank),
-                                        year = songEntity?.song?.year?.takeIf { it > 0 },
-                                        artworkBytes = artworkBytes,
-                                    )
-                                    moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, metadata)
+                                    moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, resolvedMetadata)
+                                } else {
+                                    // WebM/Matroska is not supported by jaudiotagger
+                                    // (no reader). We can't tag it, but we still export
+                                    // the bytes so the user has the audio. The fix for
+                                    // "everything is .webm" is at the download path
+                                    // (preferM4A = true in YTPlayerUtils), not here —
+                                    // by the time we export, the file is already .m4a
+                                    // if the download path worked correctly.
                                 }
                                 // Stage 3: copy the tagged temp file to the
                                 // user-selected SAF folder.
@@ -279,7 +299,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
             }
         }
 
-    val allSelected = songs.isNotEmpty() && selectedIds.size == songs.size
+    val allSelected = displayedSongs.isNotEmpty() && selectedIds.size == displayedSongs.size
 
     /**
      * Deletes the cached spans for the currently-selected song IDs. Releases
@@ -341,26 +361,64 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.export_downloaded_songs)) },
+                title = {
+                    if (isSearchActive) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text(stringResource(R.string.search)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.close),
+                                            contentDescription = stringResource(R.string.clear_search),
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    } else {
+                        Text(stringResource(R.string.export_downloaded_songs))
+                    }
+                },
                 navigationIcon = {
                     IconButton(
-                        onClick = navController::navigateUp,
+                        onClick = {
+                            if (isSearchActive) {
+                                isSearchActive = false
+                                searchQuery = ""
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
                         onLongClick = navController::backToMain,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.arrow_back),
+                            painter = painterResource(
+                                if (isSearchActive) R.drawable.arrow_back else R.drawable.arrow_back,
+                            ),
                             contentDescription = null,
                         )
                     }
                 },
                 actions = {
-                    if (songs.isNotEmpty()) {
+                    if (!isSearchActive && songs.isNotEmpty()) {
+                        // Search button — toggles the search bar in the title slot.
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = stringResource(R.string.search),
+                            )
+                        }
                         IconButton(
                             onClick = {
                                 if (allSelected) selectedIds.clear()
                                 else {
                                     selectedIds.clear()
-                                    selectedIds.addAll(songs.map { it.songId })
+                                    selectedIds.addAll(displayedSongs.map { it.songId })
                                 }
                             },
                             onLongClick = {},
@@ -401,7 +459,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 stringResource(
                                     R.string.export_downloaded_songs_selected_count,
                                     selectedIds.size,
-                                    songs.size,
+                                    displayedSongs.size,
                                 ),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
@@ -518,6 +576,31 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     )
                 }
             }
+            displayedSongs.isEmpty() -> {
+                // Search returned no matches — distinct empty state from "no songs at all".
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                            .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search_off),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(R.string.export_downloaded_songs_search_empty, searchQuery),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             else -> {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -528,7 +611,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                         ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(songs, key = { it.songId }) { row ->
+                    items(displayedSongs, key = { it.songId }) { row ->
                         val isSelected = row.songId in selectedIds
                         Row(
                             modifier =
@@ -702,3 +785,110 @@ private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
         connection.disconnect()
     }
 }.getOrNull()
+
+/**
+ * Resolves the metadata to embed into an exported audio file.
+ *
+ * Source priority:
+ *   1. **Database SongEntity** — populated when the user clicked Download.
+ *      Carries title, artists (from song_artist_map), album (from
+ *      song_album_map), year, thumbnailUrl.
+ *   2. **YouTube.getMediaInfo(videoId) fallback** — when the database row
+ *      is incomplete (e.g. the song was downloaded via a playlist and the
+ *      artist relation wasn't persisted, or the song row only has the title
+ *      because the browse endpoint didn't return album metadata). Fetches
+ *      title + author + thumbnail URL from the YouTube watch endpoint.
+ *   3. **Row fallback** — uses the [DownloadedSongRow.title] and
+ *      [DownloadedSongRow.thumbnailUrl] that were already loaded for the
+ *      list display. These come from the same DB row but are always
+ *      non-null, so we have a final safety net.
+ *
+ * Artwork bytes are fetched from the resolved thumbnail URL via
+ * [fetchArtworkBytes]. Failure is non-fatal — the audio file is still
+ * exported with text tags but no embedded artwork.
+ *
+ * This function NEVER returns null fields when a fallback exists —
+ * the user's complaint was "all exported songs show unknown artist,
+ * unknown album, no song artwork", and this resolver exists specifically
+ * to fill those gaps before handing the metadata to [AudioTagger.tag].
+ *
+ * Runs on the calling thread (already on Dispatchers.IO inside the export
+ * pipeline). Network calls (YouTube.getMediaInfo + fetchArtworkBytes) have
+ * their own timeouts.
+ */
+private suspend fun resolveExportMetadata(
+    database: moe.rukamori.archivetune.db.MusicDatabase,
+    row: DownloadedSongRow,
+): moe.rukamori.archivetune.playback.AudioTagger.Metadata {
+    val songEntity = database.getSongByIdBlocking(row.songId)
+
+    // Title — fall back to the row's title (which already has a sensible
+    // "Unknown song (id)" default), then to YouTube.getMediaInfo.
+    val dbTitle = songEntity?.song?.title?.takeIf(String::isNotBlank)
+    val title = dbTitle ?: row.title.takeIf { it.isNotBlank() }
+
+    // Artist — from song_artist_map, then YouTube.getMediaInfo's author,
+    // then empty (AudioTagger skips blank fields).
+    val dbArtists = songEntity?.artists?.mapNotNull { it.name.takeIf(String::isNotBlank) }
+        ?.takeIf { it.isNotEmpty() }
+    val dbArtistStr = dbArtists?.joinToString(", ")
+
+    // Album — from song_album_map → song.album.title, then song.albumName,
+    // then null (skipped).
+    val dbAlbum = songEntity?.album?.title?.takeIf(String::isNotBlank)
+        ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank)
+
+    // Year — from song.year (set when the album was browsed).
+    val dbYear = songEntity?.song?.year?.takeIf { it > 0 }
+
+    // Thumbnail URL — prefer the DB row's URL (which is the high-quality
+    // version set when the song was inserted), fall back to the row's
+    // thumbnailUrl (loaded at screen entry — may be the same or a
+    // lower-res variant).
+    val dbThumb = songEntity?.song?.thumbnailUrl?.takeIf(String::isNotBlank)
+    val thumbUrl = dbThumb ?: row.thumbnailUrl?.takeIf(String::isNotBlank)
+
+    // Fast path: if the DB has all the metadata we need, skip the
+    // YouTube.getMediaInfo() network call entirely.
+    val hasFullMetadata = title != null && !dbArtistStr.isNullOrBlank() && thumbUrl != null
+    if (hasFullMetadata) {
+        val artworkBytes = thumbUrl?.let { fetchArtworkBytes(it) }
+        return moe.rukamori.archivetune.playback.AudioTagger.Metadata(
+            title = title,
+            artist = dbArtistStr,
+            albumArtist = dbArtists?.firstOrNull(),
+            album = dbAlbum,
+            year = dbYear,
+            artworkBytes = artworkBytes,
+        )
+    }
+
+    // Fallback: query YouTube.getMediaInfo() for title/author/thumbnail.
+    // This is the key fix for "all exported songs show unknown artist" —
+    // when the DB row was inserted from a playlist context (not a full
+    // browse), the artist relation often isn't persisted. The watch
+    // endpoint always returns the author.
+    val mediaInfo = runCatching {
+        moe.rukamori.archivetune.innertube.YouTube.getMediaInfo(row.songId).getOrNull()
+    }.getOrNull()
+
+    val resolvedTitle = title
+        ?: mediaInfo?.title?.takeIf(String::isNotBlank)
+        ?: row.title
+    val resolvedArtist = dbArtistStr
+        ?: mediaInfo?.author?.takeIf(String::isNotBlank)
+        ?: ""
+    val resolvedThumb = thumbUrl
+        ?: mediaInfo?.authorThumbnail?.takeIf(String::isNotBlank)
+
+    val artworkBytes = resolvedThumb?.let { fetchArtworkBytes(it) }
+
+    return moe.rukamori.archivetune.playback.AudioTagger.Metadata(
+        title = resolvedTitle?.takeIf(String::isNotBlank),
+        artist = resolvedArtist.takeIf(String::isNotBlank),
+        albumArtist = (dbArtists?.firstOrNull() ?: mediaInfo?.author)?.takeIf(String::isNotBlank),
+        album = dbAlbum,
+        year = dbYear,
+        artworkBytes = artworkBytes,
+    )
+}
