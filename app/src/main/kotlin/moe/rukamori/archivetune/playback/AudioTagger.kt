@@ -86,7 +86,14 @@ object AudioTagger {
         if (!file.exists() || file.length() == 0L) return false
         return runCatching {
             val audioFile = AudioFileIO.read(file)
-            val tag = audioFile.tagOrCreateAndSetDefault()
+            // Use the explicit Java getter call instead of the synthetic
+            // `tagOrCreateAndSetDefault` property access — Kotlin 2.4
+            // misinterprets `audioFile.tagOrCreateAndSetDefault()` as
+            // property-access + invoke(), which yields an unresolved type
+            // for `tag` and cascades into "Unresolved reference 'setField'"
+            // on every field-write below. Calling the Java getter directly
+            // avoids the property-access synthesis and returns Tag cleanly.
+            val tag = audioFile.getTagOrCreateAndSetDefault()
             metadata.title?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.TITLE, it) }
             metadata.artist?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.ARTIST, it) }
             metadata.albumArtist?.takeIf(String::isNotBlank)?.let { tag.setField(FieldKey.ALBUM_ARTIST, it) }
