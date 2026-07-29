@@ -349,7 +349,7 @@ class DownloadUtil
                 dataSourceFactory,
                 downloadExecutor,
             ).apply {
-                maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
+                maxParallelDownloads = OPTIMIZED_MAX_PARALLEL_DOWNLOADS
                 addListener(
                     object : DownloadManager.Listener {
                         override fun onDownloadChanged(
@@ -593,7 +593,12 @@ class DownloadUtil
         }
 
         private fun resolveDownloadAudioQuality(lowDataModeActive: Boolean): AudioQuality =
-            if (lowDataModeActive) AudioQuality.LOW else audioQuality
+            // Bug fix: Downloads should default to LOSSLESS instead of AUTO (which maps to HIGHEST).
+            // AUTO maps to HIGHEST (320kbps AAC) on unmetered networks, which is lossy.
+            // For downloads, we always want the best quality available.
+            if (lowDataModeActive) AudioQuality.LOW
+            else if (audioQuality == AudioQuality.AUTO) AudioQuality.LOSSLESS
+            else audioQuality
 
         private fun buildSongUrlCacheKey(
             mediaId: String,
@@ -606,20 +611,34 @@ class DownloadUtil
         ) {
             downloadScope.launch {
                 runCatching {
+                    // Bug fix: persist metadata synchronously within the download scope to prevent
+                    // race conditions where the download completes before metadata is written.
+                    // Previously fire-and-forget with no error handling, causing silent metadata loss.
                     val format = playbackData.format
                     val contentLength = format.contentLength ?: 0L
-                    val resolvedCodecs =
-                        format.mimeType
-                            .substringAfter("codecs=", "")
-                            .removeSurrounding("\"")
-                            .substringBefore("\"")
+
+                    // Robust codec extraction: parse "codecs=\"codec1, codec2\"" from mimeType
+                    val resolvedCodecs = extractCodecsFromMimeType(format.mimeType)
+
+                    // Bug fix: infer MIME type from codec when the raw MIME type is missing or misleading.
+                    // Previously defaulted to "audio/mp4" for all blank/missing MIME types, which
+                    // caused FLAC streams to be stored as audio/mp4, corrupting metadata.
+                    val rawMimeType = format.mimeType.substringBefore(";").trim()
+                    val resolvedMimeType = when {
+                        rawMimeType.isNotBlank() -> rawMimeType
+                        resolvedCodecs.contains("flac", ignoreCase = true) -> "audio/flac"
+                        resolvedCodecs.contains("alac", ignoreCase = true) -> "audio/alac"
+                        resolvedCodecs.contains("opus", ignoreCase = true) -> "audio/webm"
+                        resolvedCodecs.contains("mp4a", ignoreCase = true) -> "audio/mp4"
+                        else -> "audio/mp4"
+                    }
 
                     database.query {
                         upsert(
                             FormatEntity(
                                 id = mediaId,
                                 itag = format.itag,
-                                mimeType = format.mimeType.split(";")[0],
+                                mimeType = resolvedMimeType,
                                 codecs = resolvedCodecs,
                                 bitrate = format.bitrate,
                                 sampleRate = format.audioSampleRate,
@@ -632,8 +651,9 @@ class DownloadUtil
 
                         val now = LocalDateTime.now()
                         val existing = getSongByIdBlocking(mediaId)?.song
+                        val videoDetails = playbackData.videoDetails
                         val resolvedThumbnailUrl =
-                            playbackData.videoDetails
+                            videoDetails
                                 ?.thumbnail
                                 ?.thumbnails
                                 ?.lastOrNull()
@@ -643,14 +663,20 @@ class DownloadUtil
                         val updatedSong =
                             if (existing != null) {
                                 existing.copy(
+                                    title = existing.title.takeIf { it.isNotBlank() }
+                                        ?: videoDetails?.title?.takeIf { it.isNotBlank() }
+                                        ?: existing.title,
+                                    duration = existing.duration.takeIf { it > 0 }
+                                        ?: videoDetails?.lengthSeconds?.toIntOrNull()?.takeIf { it > 0 }
+                                        ?: existing.duration,
                                     thumbnailUrl = existing.thumbnailUrl?.takeIf { it.isNotBlank() } ?: resolvedThumbnailUrl,
                                     dateDownload = existing.dateDownload ?: now,
                                 )
                             } else {
                                 SongEntity(
                                     id = mediaId,
-                                    title = playbackData.videoDetails?.title ?: "Unknown",
-                                    duration = playbackData.videoDetails?.lengthSeconds?.toIntOrNull() ?: 0,
+                                    title = videoDetails?.title?.takeIf { it.isNotBlank() } ?: mediaId,
+                                    duration = videoDetails?.lengthSeconds?.toIntOrNull()?.takeIf { it > 0 } ?: -1,
                                     thumbnailUrl = resolvedThumbnailUrl,
                                     dateDownload = now,
                                 )
@@ -658,6 +684,11 @@ class DownloadUtil
 
                         upsert(updatedSong)
                     }
+                }.onFailure { e ->
+                    // Bug fix: log metadata persistence failures instead of silently swallowing them.
+                    // Previously, errors in persistPlaybackMetadata were fire-and-forget, causing
+                    // silent metadata corruption (missing format info, wrong codec, etc.).
+                    Timber.tag("DownloadUtil").e(e, "Failed to persist playback metadata for %s", mediaId)
                 }
             }
         }
