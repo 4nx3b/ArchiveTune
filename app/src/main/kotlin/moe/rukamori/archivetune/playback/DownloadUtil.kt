@@ -63,6 +63,7 @@ import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -96,14 +97,19 @@ class DownloadUtil
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
-                .connectTimeout(15, TimeUnit.SECONDS)
+                .connectTimeout(8, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .callTimeout(0, TimeUnit.SECONDS) // no overall cap — let large FLAC files download to completion
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
+                        // Aggressive parallelism: allow up to MAX_DOWNLOAD_HTTP_REQUESTS
+                        // concurrent HTTP requests in flight, with up to MAX_DOWNLOAD_HTTP_REQUESTS
+                        // of them hitting the same host (googlevideo.com / qobuz / tidal). HTTP/2
+                        // multiplexing means each host connection can carry many requests, so the
+                        // per-host cap effectively becomes the per-connection concurrency cap.
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
-                        maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS
+                        maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST
                     },
                 ).connectionPool(
                     ConnectionPool(
@@ -111,6 +117,11 @@ class DownloadUtil
                         DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES,
                         TimeUnit.MINUTES,
                     ),
+                ).protocols(
+                    // Force HTTP/2 over HTTP/1.1 when available — HTTP/2 multiplexes
+                    // many requests over a single TCP connection, eliminating the
+                    // per-request TCP+TLS handshake cost (~100-300ms each).
+                    listOf(okhttp3.Protocol.HTTP_2, okhttp3.Protocol.HTTP_1_1),
                 ).addInterceptor { chain ->
                     val request = chain.request()
                     val host = request.url.host
@@ -121,7 +132,19 @@ class DownloadUtil
                             host.endsWith("youtube-nocookie.com") ||
                             host.endsWith("ytimg.com")
 
-                    if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                    if (!isYouTubeMediaHost) {
+                        // For non-YouTube hosts (Qobuz / Tidal / iTunes / Deezer), hint
+                        // that we want a binary stream and disable any transparent
+                        // gzip/br compression — compressed audio is already efficiently
+                        // encoded and re-compressing it just wastes CPU.
+                        return@addInterceptor chain.proceed(
+                            request
+                                .newBuilder()
+                                .header("Accept-Encoding", "identity")
+                                .header("Connection", "keep-alive")
+                                .build(),
+                        )
+                    }
 
                     val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                     chain.proceed(
@@ -132,6 +155,28 @@ class DownloadUtil
                             ).build(),
                     )
                 }.build()
+        }
+
+        /**
+         * Pre-warms DNS + TLS connections to the most common download hosts so
+         * the first download of a session doesn't pay the ~300-800ms
+         * DNS+TCP+TLS handshake cost. Safe to call on a background coroutine
+         * at app start; failures are silently swallowed (it's only an
+         * optimization, not a hard requirement).
+         */
+        fun prewarmDownloadConnections() {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            scope.launch {
+                for (host in PREWARM_HOSTS) {
+                    runCatching {
+                        val request = Request.Builder()
+                            .url("https://$host/")
+                            .head()
+                            .build()
+                        mediaOkHttpClient.newCall(request).execute().use { /* discard */ }
+                    }
+                }
+            }
         }
 
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
@@ -516,8 +561,24 @@ class DownloadUtil
         companion object {
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 32
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 64
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 128
-            private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 5L
-            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 16 * 1024 * 1024  // 16MB — larger buffer reduces I/O syscalls for faster downloads
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 256
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS_PER_HOST = 64
+            private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 10L
+            // 4MB write buffer — large enough to amortize fsync syscall cost on
+            // most filesystems, but small enough that 32 parallel downloads
+            // only need ~128MB of heap (vs the previous 512MB at 16MB × 32).
+            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 4 * 1024 * 1024
+
+            // Hosts that downloads frequently hit. Pre-warming these at app
+            // start means the first download of a session skips the
+            // DNS+TCP+TLS handshake (~300-800ms each).
+            private val PREWARM_HOSTS = listOf(
+                "www.youtube.com",
+                "music.youtube.com",
+                "r1---sn.googlevideo.com",
+                "api.qobuz.com",
+                "api.tidal.com",
+                "amp-api.tidal.com",
+            )
         }
     }
