@@ -206,23 +206,35 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     continue@loop
                                 }
                                 // Stage 2: write metadata tags (title, artist,
-                                // album, year, track) via jaudiotagger. Failure
-                                // is non-fatal — the untagged file is still
-                                // playable, just missing ID3/Vorbis tags.
-                                val songEntity = database.getSongByIdBlocking(row.songId)
-                                val metadata = moe.rukamori.archivetune.playback.AudioTagger.Metadata(
-                                    title = songEntity?.song?.title?.takeIf(String::isNotBlank),
-                                    artist = songEntity?.artists
-                                        ?.joinToString(", ") { it.name }
-                                        ?.takeIf(String::isNotBlank),
-                                    albumArtist = songEntity?.artists
-                                        ?.firstOrNull()?.name
-                                        ?.takeIf(String::isNotBlank),
-                                    album = songEntity?.album?.title?.takeIf(String::isNotBlank)
-                                        ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank),
-                                    year = songEntity?.song?.year?.takeIf { it > 0 },
-                                )
-                                moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, metadata)
+                                // album, year, track, artwork) via jaudiotagger.
+                                // Failure is non-fatal — the untagged file is
+                                // still playable, just missing ID3/Vorbis tags.
+                                // WebM/Matroska files are skipped — jaudiotagger
+                                // has no WebM reader, so attempting to tag them
+                                // would throw and waste time.
+                                if (detectedExt != "webm") {
+                                    val songEntity = database.getSongByIdBlocking(row.songId)
+                                    // Fetch the thumbnail bytes (best-effort).
+                                    // Used as embedded artwork so the exported
+                                    // file shows album art in external players.
+                                    val artworkBytes = songEntity?.song?.thumbnailUrl
+                                        ?.takeIf(String::isNotBlank)
+                                        ?.let { fetchArtworkBytes(it) }
+                                    val metadata = moe.rukamori.archivetune.playback.AudioTagger.Metadata(
+                                        title = songEntity?.song?.title?.takeIf(String::isNotBlank),
+                                        artist = songEntity?.artists
+                                            ?.joinToString(", ") { it.name }
+                                            ?.takeIf(String::isNotBlank),
+                                        albumArtist = songEntity?.artists
+                                            ?.firstOrNull()?.name
+                                            ?.takeIf(String::isNotBlank),
+                                        album = songEntity?.album?.title?.takeIf(String::isNotBlank)
+                                            ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank),
+                                        year = songEntity?.song?.year?.takeIf { it > 0 },
+                                        artworkBytes = artworkBytes,
+                                    )
+                                    moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, metadata)
+                                }
                                 // Stage 3: copy the tagged temp file to the
                                 // user-selected SAF folder.
                                 val destUri =
@@ -651,3 +663,42 @@ private fun resolveSpans(
     }
     return null
 }
+
+/**
+ * Fetches the raw bytes of an album-art image from [url] so they can be
+ * embedded into the exported audio file via [AudioTagger].
+ *
+ * Uses a basic [HttpURLConnection][java.net.HttpURLConnection] with a
+ * 10-second connect + 15-second read timeout — fast enough to not stall
+ * the export pipeline on a slow thumbnail CDN, generous enough to fetch
+ * a typical 500×500 JPEG (~50 KB) on a flaky mobile connection.
+ *
+ * Returns `null` on any error (HTTP non-2xx, IO failure, timeout). The
+ * caller treats null artwork as non-fatal — the audio file is still
+ * exported, just without embedded artwork.
+ *
+ * The URL is typically the song's `thumbnailUrl` from the database,
+ * which points at iTunes/Qobuz/Tidal/Deezer/YouTube CDN. All of these
+ * serve CORS-friendly JPEG/PNG over HTTPS.
+ */
+private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
+    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    connection.connectTimeout = 10_000
+    connection.readTimeout = 15_000
+    connection.requestMethod = "GET"
+    connection.setRequestProperty("User-Agent", "ArchiveTune")
+    connection.instanceFollowRedirects = true
+    connection.useCaches = true
+    try {
+        val responseCode = connection.responseCode
+        if (responseCode !in 200..299) return@runCatching null
+        val contentType = connection.contentType ?: ""
+        // Only accept image/* content types — a misconfigured CDN
+        // returning HTML (e.g. a login redirect) would corrupt the
+        // embedded artwork if we wrote it verbatim.
+        if (!contentType.startsWith("image/")) return@runCatching null
+        connection.inputStream.use { it.readBytes() }
+    } finally {
+        connection.disconnect()
+    }
+}.getOrNull()

@@ -155,13 +155,19 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
-        // Ketch is the file downloader used by KetchHttpDataSource (the
-        // upstream HTTP fetcher inside Media3's download CacheDataSource
-        // chain). Initialized once at app start with a tuned OkHttp client
-        // (HTTP/2, generous timeouts, YouTube stream proxy) so downloads
-        // benefit from Ketch's parallel chunked transfer + WorkManager
-        // lifecycle without paying init cost on the first download.
-        moe.rukamori.archivetune.playback.KetchHolder.init(this)
+        // PRDownloader is the file downloader used by PRDownloaderDataSource
+        // (the upstream HTTP fetcher inside Media3's download CacheDataSource
+        // chain). Initialized once at app start with tuned timeouts so
+        // downloads benefit from PRDownloader's pause/resume + retry support
+        // without paying init cost on the first download. Replaces Ketch —
+        // see PRDownloaderDataSource.kt for the rationale.
+        runCatching {
+            val config = com.downloader.PRDownloaderConfig.newBuilder()
+                .setReadTimeout(60_000)
+                .setConnectTimeout(30_000)
+                .build()
+            com.downloader.PRDownloader.initialize(this, config)
+        }
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)

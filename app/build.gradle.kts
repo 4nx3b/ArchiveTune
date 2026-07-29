@@ -518,18 +518,23 @@ dependencies {
 
     implementation("org.json:json:20240303")
 
-    // Ketch — WorkManager-based file downloader with parallel chunked
-    // downloads, pause/resume, and notification support. Used as the HTTP
-    // fetcher inside KetchHttpDataSource (a Media3 DataSource wrapper), which
-    // replaces the previous ParallelRangeOkHttpDataSource. Ketch handles
-    // large FLAC files efficiently via WorkManager + chunked OkHttp downloads.
-    implementation("com.github.khushpanchal:Ketch:2.0.6")
+    // PRDownloader — lightweight (~45 KB) file download library with
+    // pause/resume, retry, and progress callbacks. Used as the HTTP
+    // fetcher inside PRDownloaderDataSource (a Media3 DataSource wrapper).
+    // Replaces Ketch — Ketch's WorkManager + Flow observation added
+    // overhead without improving throughput, and its temp-file lifecycle
+    // occasionally left partial files that corrupted subsequent exports.
+    // PRDownloader is simpler (single OkHttp call per download, callback
+    // API instead of Flow), which makes the temp-file lifecycle easier
+    // to reason about.
+    implementation(libs.prdownloader)
 
     // jaudiotagger — pure-Java audio metadata tagger (ID3v2 / Vorbis Comments
     // / MP4 / FLAC). Used by AudioTagger to write title / artist / album /
-    // year / track-number tags onto exported downloaded songs so they show
-    // up correctly in external music players. Pinned to 1.4.x (Java 21
-    // bytecode) — the 2.x line targets Java 25 which Android cannot consume.
+    // year / track-number / artwork tags onto exported downloaded songs so
+    // they show up correctly in external music players. Pinned to 1.4.x
+    // (Java 21 bytecode) — the 2.x line targets Java 25 which Android cannot
+    // consume.
     implementation("com.github.RouHim:jaudiotagger:1.4.31")
     // SLF4J binding required by jaudiotagger at runtime — jaudiotagger
     // depends on slf4j-api but does not bundle a binding. slf4j-jdk14
