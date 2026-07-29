@@ -83,7 +83,7 @@ class DownloadUtil
     ) {
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
-        private val downloadSource by enumPreference(context, DownloadSourceKey, DownloadSource.YOUTUBE_MUSIC)
+        private val downloadSource by enumPreference(context, DownloadSourceKey, DownloadSource.AUTO)
         private val qobuzAudioQuality by enumPreference(context, QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -182,28 +182,25 @@ class DownloadUtil
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
         /**
-         * Segmented parallel data source factory — fetches a single media file
-         * using [SegmentedParallelDataSource.SEGMENT_COUNT] concurrent HTTP
-         * Range requests. This is the per-song speed-up: where the OkHttp
-         * dispatcher already parallelizes *across* songs (up to 32 concurrent
-         * downloads), this parallelizes *within* a song (4 parallel byte-range
-         * fetches per file). The two layers compose, so an 8-song batch on a
-         * 50 Mbps link that previously saturated at ~6 MB/s can now push
-         * ~24 MB/s aggregate, with each individual FLAC finishing 2-4× faster.
-         *
-         * Used as the upstream for both the playback cache and the download
-         * cache, so streams and downloads both benefit. Falls back to a single
-         * sequential read for very small or unknown-length ranges.
+         * Standard OkHttp-backed data source factory. Replaces the previous
+         * [SegmentedParallelDataSource] which was the root cause of
+         * `UnrecognizedInputFormatException (Code 3003)` on downloaded songs:
+         * the segmented fetcher stitched byte ranges back together in memory
+         * and occasionally produced an out-of-order or truncated stream that
+         * ExoPlayer's extractors could not identify. A single sequential
+         * OkHttp read is more than fast enough given the aggressive
+         * per-batch parallelism in [downloadExecutor] (32 concurrent songs)
+         * and HTTP/2 multiplexing on [mediaOkHttpClient].
          */
-        private val segmentedParallelFactory =
-            SegmentedParallelDataSource.Factory(mediaOkHttpClient)
+        private val okHttpDataSourceFactory =
+            OkHttpDataSource.Factory(mediaOkHttpClient)
 
         private val cachedPlaybackDataSourceFactory =
             CacheDataSource
                 .Factory()
                 .setCache(playerCache)
                 .setCacheReadDataSourceFactory(FileDataSource.Factory())
-                .setUpstreamDataSourceFactory(segmentedParallelFactory)
+                .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
         /**
@@ -218,7 +215,7 @@ class DownloadUtil
          *
          * Chaining [playerCache] as the next upstream means: downloadCache miss → playerCache hit
          * → serve bytes (and write them through to downloadCache so subsequent chunks persist).
-         * Only when *both* caches miss do we reach [SegmentedParallelDataSource], by which
+         * Only when *both* caches miss do we reach [okHttpDataSourceFactory], by which
          * point the [ResolvingDataSource] resolver below has already swapped the URI for a
          * real YouTube stream URL.
          */
@@ -227,7 +224,7 @@ class DownloadUtil
                 .Factory()
                 .setCache(playerCache)
                 .setCacheReadDataSourceFactory(FileDataSource.Factory())
-                .setUpstreamDataSourceFactory(segmentedParallelFactory)
+                .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
         private val youtubeDataSourceFactory =
@@ -247,14 +244,14 @@ class DownloadUtil
                 if (playerCache.isCached(mediaId, dataSpec.position, length)) {
                     return@Factory dataSpec
                 }
-                // Check source-specific player-cache keys (Qobuz, Tidal) so that
+                // Check source-specific player-cache keys (Qobuz, Tidal, Deezer) so that
                 // downloading a song that was streamed from an external lossless
                 // source saves the actual lossless data instead of re-downloading
                 // from YouTube Music. The keys match MusicService.sourceCacheKey().
                 // The chained [playerCacheDownloadUpstreamFactory] reads these source-specific
                 // keys directly from playerCache — no YouTube URL resolution is needed when the
                 // lossless bytes are already cached.
-                for (sourcePrefix in listOf("qobuz:", "tidal:")) {
+                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
                     val sourceKey = "$sourcePrefix$mediaId"
                     if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
                         return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
@@ -388,42 +385,136 @@ class DownloadUtil
             val artists = song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) }
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
+
+            // Build the source chain based on the user's preference.
+            // AUTO tries Qobuz → Tidal → Deezer (lossless FLAC), falling
+            // back to YouTube Music (lossy MP3/AAC) only when none of
+            // the lossless backends resolve the track.
+            val sourceOrder: List<DownloadSource> = when (downloadSource) {
+                DownloadSource.AUTO -> listOf(
+                    DownloadSource.QOBUZ,
+                    DownloadSource.TIDAL,
+                    DownloadSource.DEEZER,
+                    DownloadSource.YOUTUBE_MUSIC,
+                )
+                else -> listOf(downloadSource)
+            }
+
             // Resolve the source-specific direct stream and pull out the
             // metadata we need to (a) build the DataSpec and (b) persist a
             // FormatEntity so future exports read the correct MIME/codec
             // (FLAC for Qobuz/Tidal lossless) instead of defaulting to MP3.
-            data class ResolvedStream(
-                val uri: String,
-                val mimeType: String,
-                val codecs: String,
-                val contentLength: Long?,
-            )
-            val resolvedStream =
+            for (source in sourceOrder) {
+                val resolved = runCatching { resolveSourceStream(source, mediaId, queryTitle, artists, album, durationMs) }
+                    .getOrNull() ?: continue
+                // Deezer currently returns null (no full stream available
+                // without Premium) — but its lookup still enriches the song
+                // metadata (ISRC, album name, thumbnail) so the downloaded
+                // song has correct tags even when falling through to YT.
+                if (source == DownloadSource.DEEZER) {
+                    enrichSongMetadataFromDeezer(mediaId, queryTitle, artists, album, durationMs)
+                }
+                if (resolved == null) continue
+
+                persistSourceFormatEntity(
+                    mediaId = mediaId,
+                    mimeType = resolved.mimeType,
+                    codecs = resolved.codecs,
+                    contentLength = resolved.contentLength,
+                )
+                return dataSpec.buildUpon()
+                    .setUri(resolved.uri.toUri())
+                    .setKey("${source.name.lowercase(java.util.Locale.US)}:$mediaId")
+                    .build()
+            }
+            return null
+        }
+
+        /**
+         * Resolves a single source's direct stream. Returns null when the
+         * source can't resolve the track (so [resolvePreferredDownloadDataSpec]
+         * can fall through to the next source in the chain).
+         */
+        private fun resolveSourceStream(
+            source: DownloadSource,
+            mediaId: String,
+            title: String,
+            artists: List<String>,
+            album: String?,
+            durationMs: Long?,
+        ): ResolvedStreamData? = when (source) {
+            DownloadSource.QOBUZ -> {
+                QobuzAudioProvider.resolve(
+                    QobuzAudioProvider.Query(mediaId, title, artists, album, durationMs),
+                    qobuzAudioQuality.toFormatId(),
+                )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
+            }
+            DownloadSource.TIDAL -> {
+                TidalAudioProvider.resolve(
+                    TidalAudioProvider.Query(mediaId, title, artists, album, null, durationMs),
+                    audioQuality = tidalAudioQuality,
+                ).let { ResolvedStreamData(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
+            }
+            DownloadSource.DEEZER -> {
+                // Public Deezer API only exposes 30-second previews — full
+                // streaming requires Premium credentials. Return null so the
+                // AUTO chain falls through to the next source. The Deezer
+                // catalogue is still queried (via enrichSongMetadataFromDeezer)
+                // to populate the song's album/thumbnail/ISRC metadata.
+                null
+            }
+            DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
+        }
+
+        private data class ResolvedStreamData(
+            val uri: String,
+            val mimeType: String,
+            val codecs: String,
+            val contentLength: Long?,
+        )
+
+        /**
+         * Queries Deezer's public catalogue for [title]/[artists] and, if a
+         * match is found, persists the album name + cover URL to the song
+         * entity so the downloaded song has correct metadata + thumbnail.
+         * Best-effort — failures are silently swallowed.
+         */
+        private fun enrichSongMetadataFromDeezer(
+            mediaId: String,
+            title: String,
+            artists: List<String>,
+            album: String?,
+            durationMs: Long?,
+        ) {
+            downloadScope.launch {
                 runCatching {
-                    when (downloadSource) {
-                        DownloadSource.QOBUZ ->
-                            QobuzAudioProvider.resolve(
-                                QobuzAudioProvider.Query(mediaId, queryTitle, artists, album, durationMs),
-                                qobuzAudioQuality.toFormatId(),
-                            )?.let { ResolvedStream(it.uri, it.mimeType, it.codecs, it.contentLength) }
-                        DownloadSource.TIDAL ->
-                            TidalAudioProvider.resolve(
-                                TidalAudioProvider.Query(mediaId, queryTitle, artists, album, null, durationMs),
-                                audioQuality = tidalAudioQuality,
-                            ).let { ResolvedStream(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
-                        DownloadSource.YOUTUBE_MUSIC -> null
+                    val resolved = moe.rukamori.archivetune.deezer.DeezerAudioProvider.lookup(
+                        moe.rukamori.archivetune.deezer.DeezerAudioProvider.Query(
+                            mediaId = mediaId,
+                            title = title,
+                            artists = artists,
+                            album = album,
+                            durationMs = durationMs,
+                        ),
+                    ) ?: return@launch
+                    database.query {
+                        val existing = getSongByIdBlocking(mediaId)?.song ?: return@query
+                        val newThumb = existing.thumbnailUrl?.takeIf(String::isNotBlank)
+                            ?: resolved.coverUrl
+                        val newAlbum = existing.albumName?.takeIf(String::isNotBlank)
+                            ?: resolved.album
+                        if (newThumb == existing.thumbnailUrl && newAlbum == existing.albumName) {
+                            return@query
+                        }
+                        upsert(
+                            existing.copy(
+                                thumbnailUrl = newThumb,
+                                albumName = newAlbum,
+                            ),
+                        )
                     }
-                }.getOrNull() ?: return null
-            persistSourceFormatEntity(
-                mediaId = mediaId,
-                mimeType = resolvedStream.mimeType,
-                codecs = resolvedStream.codecs,
-                contentLength = resolvedStream.contentLength,
-            )
-            return dataSpec.buildUpon()
-                .setUri(resolvedStream.uri.toUri())
-                .setKey("${downloadSource.name.lowercase(java.util.Locale.US)}:$mediaId")
-                .build()
+                }
+            }
         }
 
         /**
@@ -438,25 +529,30 @@ class DownloadUtil
             contentLength: Long?,
         ) {
             val normalizedMime = mimeType.ifBlank { "audio/flac" }.substringBefore(";")
-            downloadScope.launch {
-                runCatching {
-                    database.query {
-                        upsert(
-                            FormatEntity(
-                                id = mediaId,
-                                itag = 0,
-                                mimeType = normalizedMime,
-                                codecs = codecs,
-                                bitrate = 0,
-                                sampleRate = null,
-                                contentLength = contentLength ?: 0L,
-                                loudnessDb = null,
-                                perceptualLoudnessDb = null,
-                                playbackUrl = null,
-                            ),
-                        )
-                    }
-                }
+            // Synchronous write — we're already on a background thread (the
+            // resolver runs inside the DownloadManager's worker pool) and
+            // the FormatEntity MUST be persisted before the download begins
+            // so subsequent exports read the correct MIME/codec. The
+            // previous async version caused "missing metadata on
+            // downloaded songs" because the export screen read the
+            // FormatEntity before the coroutine had a chance to write it.
+            // Calling the DAO directly bypasses MusicDatabase.query's
+            // fire-and-forget executor.
+            runCatching {
+                database.upsert(
+                    FormatEntity(
+                        id = mediaId,
+                        itag = 0,
+                        mimeType = normalizedMime,
+                        codecs = codecs,
+                        bitrate = 0,
+                        sampleRate = null,
+                        contentLength = contentLength ?: 0L,
+                        loudnessDb = null,
+                        perceptualLoudnessDb = null,
+                        playbackUrl = null,
+                    ),
+                )
             }
         }
 
