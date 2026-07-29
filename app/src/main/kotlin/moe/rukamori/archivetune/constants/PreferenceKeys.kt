@@ -165,8 +165,26 @@ val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
+    /**
+     * Picks the best available source per song: tries Qobuz → Tidal → Deezer
+     * (lossless FLAC) and falls back to YouTube Music (lossy MP3/AAC) only
+     * when none of the lossless backends can resolve the track. This is the
+     * default and the recommended setting — it guarantees FLAC whenever a
+     * configured lossless provider has the track, without forcing the user
+     * to manually switch sources.
+     */
+    AUTO,
+
     QOBUZ,
     TIDAL,
+
+    /**
+     * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
+     * stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on Deezer or the API can't resolve a full stream.
+     */
+    DEEZER,
+
     YOUTUBE_MUSIC,
 }
 

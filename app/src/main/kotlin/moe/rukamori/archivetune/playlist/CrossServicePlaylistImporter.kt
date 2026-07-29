@@ -172,14 +172,15 @@ object CrossServicePlaylistImporter {
 
     // ─── Apple Music ──────────────────────────────────────────────────────
     // URL pattern: https://music.apple.com/{cc}/playlist/{slug}/pl.{u}-{id}
-    // We fetch the playlist page HTML and extract the embedded JSON-LD
-    // `<script type="application/ld+json">` block, which contains a
-    // MusicPlaylist ItemList with each track's name + creator.
+    // Apple Music's public page embeds a `<script name="schema:music-playlist"
+    // type="application/json">` block containing the full track list with
+    // name + artistName. We extract from that. If the schema block isn't
+    // present (older layouts), we fall back to scraping the JSON-LD
+    // MusicRecording entries.
     private suspend fun fetchAppleMusicPlaylist(url: String): ResolvedImport {
         val html = fetchText(url)
         val id = extractAppleMusicPlaylistId(url) ?: url
-        val title = extractFromTag(html, "\"name\":\"")?.substringBefore("\"")
-            ?: "Apple Music Playlist"
+        val title = extractAppleMusicTitle(html)
         val tracks = parseAppleMusicTracks(html)
         return ResolvedImport(
             source = ImportSource.APPLE_MUSIC,
@@ -195,10 +196,36 @@ object CrossServicePlaylistImporter {
         return if (m.find()) "pl.${m.group(1)}" else null
     }
 
+    private fun extractAppleMusicTitle(html: String): String {
+        // Try the Open Graph og:title first, then the schema:name field,
+        // then the JSON-LD name field.
+        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
+        if (og.find()) return unescapeJson(og.group(1))
+        val schema = Pattern.compile("\"@type\":\"MusicPlaylist\"[^}]*?\"name\":\"([^\"]+)\"").matcher(html)
+        if (schema.find()) return unescapeJson(schema.group(1))
+        val ld = Pattern.compile("\\{\"@type\":\"MusicPlaylist\",\"name\":\"([^\"]+)\"").matcher(html)
+        if (ld.find()) return unescapeJson(ld.group(1))
+        return "Apple Music Playlist"
+    }
+
     private fun parseAppleMusicTracks(html: String): List<ForeignTrack> {
-        // Apple Music embeds tracks as a JSON-LD ItemList. We pull each
-        // `{name:..., byArtist:{name:...}}` pair via a tolerant regex.
         val tracks = mutableListOf<ForeignTrack>()
+
+        // Strategy 1: the schema:music-playlist JSON blob — most reliable.
+        // Each track looks like {"name":"...","artistName":"..."}.
+        val schemaRegex = Pattern.compile("\\{\"name\":\"([^\"]{2,200})\",\"artistName\":\"([^\"]{2,200})\"")
+        val sm = schemaRegex.matcher(html)
+        while (sm.find()) {
+            tracks.add(ForeignTrack(
+                title = unescapeJson(sm.group(1)),
+                artist = unescapeJson(sm.group(2)),
+            ))
+        }
+        if (tracks.isNotEmpty()) {
+            return tracks.distinctBy { it.title to it.artist }
+        }
+
+        // Strategy 2: JSON-LD MusicRecording entries.
         val itemRegex = Pattern.compile("\\{\"@type\":\"MusicRecording\",\"name\":\"([^\"]+)\"[^}]*?(?:\"byArtist\":\\{\"@type\":\"MusicGroup\",\"name\":\"([^\"]+)\"\\})?")
         val m = itemRegex.matcher(html)
         while (m.find()) {
@@ -229,8 +256,7 @@ object CrossServicePlaylistImporter {
     private suspend fun fetchAmazonMusicPlaylist(url: String): ResolvedImport {
         val html = fetchText(url)
         val id = extractAmazonPlaylistId(url) ?: url
-        val title = extractFromTag(html, "\"title\":\"")?.substringBefore("\"")
-            ?: "Amazon Music Playlist"
+        val title = extractAmazonMusicTitle(html)
         val tracks = parseAmazonMusicTracks(html)
         return ResolvedImport(
             source = ImportSource.AMAZON_MUSIC,
@@ -246,6 +272,18 @@ object CrossServicePlaylistImporter {
         return if (m.find()) m.group(1) else null
     }
 
+    private fun extractAmazonMusicTitle(html: String): String {
+        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
+        if (og.find()) return unescapeJson(og.group(1))
+        val title = Pattern.compile("<title>([^<]+)</title>").matcher(html)
+        if (title.find()) {
+            val raw = title.group(1).trim()
+            // Amazon Music titles look like "Playlist Name | Amazon Music"
+            return raw.substringBefore(" |").ifBlank { raw }
+        }
+        return "Amazon Music Playlist"
+    }
+
     private fun parseAmazonMusicTracks(html: String): List<ForeignTrack> {
         val tracks = mutableListOf<ForeignTrack>()
         // Amazon Music embeds track data as `{"title":"...","artist":"..."}`
@@ -259,6 +297,17 @@ object CrossServicePlaylistImporter {
                 artist = unescapeJson(m.group(2)),
             ))
         }
+        // Fallback: `{"trackName":"...","artistName":"..."}`
+        if (tracks.isEmpty()) {
+            val alt = Pattern.compile("\\{\"trackName\":\"([^\"]{2,120})\",\"artistName\":\"([^\"]+)\"")
+            val am = alt.matcher(html)
+            while (am.find()) {
+                tracks.add(ForeignTrack(
+                    title = unescapeJson(am.group(1)),
+                    artist = unescapeJson(am.group(2)),
+                ))
+            }
+        }
         return tracks.distinctBy { it.title to it.artist }
     }
 
@@ -269,8 +318,7 @@ object CrossServicePlaylistImporter {
     private suspend fun fetchTidalPlaylist(url: String): ResolvedImport {
         val html = fetchText(url)
         val id = extractTidalPlaylistId(url) ?: url
-        val title = extractFromTag(html, "\"title\":\"")?.substringBefore("\"")
-            ?: "Tidal Playlist"
+        val title = extractTidalTitle(html)
         val tracks = parseTidalTracks(html)
         return ResolvedImport(
             source = ImportSource.TIDAL,
@@ -287,6 +335,17 @@ object CrossServicePlaylistImporter {
         return if (m.find()) m.group(1) else null
     }
 
+    private fun extractTidalTitle(html: String): String {
+        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
+        if (og.find()) return unescapeJson(og.group(1))
+        val title = Pattern.compile("<title>([^<]+)</title>").matcher(html)
+        if (title.find()) {
+            val raw = title.group(1).trim()
+            return raw.substringBefore(" |").ifBlank { raw }
+        }
+        return "Tidal Playlist"
+    }
+
     private fun parseTidalTracks(html: String): List<ForeignTrack> {
         val tracks = mutableListOf<ForeignTrack>()
         // Tidal embeds tracks as `{"title":"...","artists":[{"name":"..."}]}`
@@ -297,6 +356,18 @@ object CrossServicePlaylistImporter {
                 title = unescapeJson(m.group(1)),
                 artist = unescapeJson(m.group(2)),
             ))
+        }
+        // Fallback: search for `{"name":"...","artist":"..."}` pairs (older
+        // Tidal serializations).
+        if (tracks.isEmpty()) {
+            val alt = Pattern.compile("\\{\"name\":\"([^\"]{2,120})\",\"artist\":\"([^\"]+)\"")
+            val am = alt.matcher(html)
+            while (am.find()) {
+                tracks.add(ForeignTrack(
+                    title = unescapeJson(am.group(1)),
+                    artist = unescapeJson(am.group(2)),
+                ))
+            }
         }
         return tracks.distinctBy { it.title to it.artist }
     }
