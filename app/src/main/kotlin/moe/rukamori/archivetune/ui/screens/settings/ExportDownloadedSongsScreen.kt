@@ -369,6 +369,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             placeholder = { Text(stringResource(R.string.search)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(28.dp),
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { searchQuery = "" }) {
