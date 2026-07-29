@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
@@ -146,25 +147,33 @@ public fun MediaDetailHero(
         if (useBlurredBackdrop && thumbnailUrl != null) {
             // ─── Blurred backdrop at the bottom ─────────────────────────────
             // Render a second copy of the thumbnail, blurred, clipped to the
-            // bottom ~62% of the hero. A vertical gradient on top keeps the
-            // title + action buttons legible regardless of the thumbnail's
-            // average color, while still letting the blur show through
-            // strongly at the bottom (replacing the previous flat
-            // surfaceColor fade).
+            // bottom ~50% of the hero — the area below the playlist title
+            // where the play / shuffle / download action buttons sit.
+            //
+            // The blur is the *primary* backdrop layer (replacing the previous
+            // flat surfaceColor gradient). A light frosted tint is layered on
+            // top so white text remains readable on bright thumbnails, but
+            // the tint is kept LIGHT enough that the blurred artwork is
+            // unambiguously visible — addressing the previous bug where the
+            // area appeared "completely transparent".
             //
             // Layer order (bottom → top):
-            //   1. Original thumbnail (full hero)
-            //   2. Blurred thumbnail duplicate, clipped to bottom 62%
-            //   3. Vertical scrim gradient for legibility
-            //
-            // Net visual: sharp artwork at the top (status-bar area), blurred
-            // artwork at the bottom (where the action buttons sit).
+            //   1. Original thumbnail (full hero, sharp)
+            //   2. Blurred thumbnail duplicate, clipped to bottom 50%
+            //      — uses graphicsLayer + RenderEffect on API 31+ for a real
+            //        hardware-accelerated Gaussian blur (24dp radius),
+            //        falls back to Modifier.blur() on older APIs.
+            //   3. Light frosted-glass tint (surfaceColor @ 30% alpha) so
+            //      the blur reads as frosted glass rather than just a soft
+            //      copy of the artwork.
+            //   4. Soft vertical scrim at the very bottom for button
+            //      legibility on bright thumbnails.
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .fillMaxHeight(0.62f),
+                        .fillMaxHeight(0.50f),
             ) {
                 AsyncImage(
                     model =
@@ -179,13 +188,20 @@ public fun MediaDetailHero(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .blur(32.dp),
+                            .then(MediaDetailHeroBlurModifier),
                 )
-                // Scrims:
-                //   • Top of the blur band (≈ 38% of hero) fades in from transparent
-                //     so the boundary between sharp and blurred artwork is soft.
-                //   • Bottom of the blur band gets progressively darker so the
-                //     title + action buttons remain readable on bright thumbnails.
+                // Frosted-glass tint — kept LIGHT (30% alpha) so the blur is
+                // visibly blurred. The previous 55% alpha made the area read
+                // as a flat surface color, hiding the blur entirely.
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .background(surfaceColor.copy(alpha = 0.30f)),
+                )
+                // Legibility scrim — gentle gradient, darker only at the very
+                // bottom edge so the action buttons remain readable. Kept
+                // lighter than before so the frosted glass still shows.
                 Box(
                     modifier =
                         Modifier
@@ -193,17 +209,16 @@ public fun MediaDetailHero(
                             .background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
-                                    0.18f to Color.Black.copy(alpha = 0.10f),
-                                    0.45f to Color.Black.copy(alpha = 0.22f),
-                                    0.75f to Color.Black.copy(alpha = 0.34f),
-                                    1f to Color.Black.copy(alpha = 0.45f),
+                                    0.45f to Color.Transparent,
+                                    0.75f to Color.Black.copy(alpha = 0.12f),
+                                    1f to Color.Black.copy(alpha = 0.28f),
                                 ),
                             ),
                 )
             }
             // Top-of-hero scrim for status-bar legibility — kept separate from
             // the blur band so it covers the full hero height (the blur band
-            // only covers the bottom 62%).
+            // only covers the bottom 50%).
             Box(
                 modifier =
                     Modifier
@@ -212,7 +227,7 @@ public fun MediaDetailHero(
                             Brush.verticalGradient(
                                 0f to Color.Black.copy(alpha = 0.42f),
                                 0.18f to Color.Transparent,
-                                0.40f to Color.Transparent,
+                                0.50f to Color.Transparent,
                             ),
                         ),
             )
@@ -249,9 +264,12 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Title — use a tighter lineHeight than headlineLarge's default
+            // 40sp to avoid the "weird spacing" the user reported when a
+            // playlist title wraps to two lines.
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
                 color = heroContentColor,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -262,19 +280,19 @@ public fun MediaDetailHero(
             subtitle?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(lineHeight = 22.sp),
                     color = heroContentColor.copy(alpha = 0.82f),
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                 )
             }
 
             description?.takeIf(String::isNotBlank)?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = heroContentColor.copy(alpha = 0.76f),
                     textAlign = TextAlign.Center,
                     maxLines = 3,
@@ -295,7 +313,7 @@ public fun MediaDetailHero(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 16.dp),
+                            .padding(top = 12.dp),
                 )
             }
 
@@ -689,6 +707,31 @@ private val MediaDetailActionSpacing = 12.dp
 private val MediaDetailActionEdgeFade = 20.dp
 private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp
+
+/**
+ * Blur modifier used by the hero's backdrop. Uses a hardware-accelerated
+ * [android.graphics.RenderEffect] on API 31+ (Android 12) for a real
+ * Gaussian blur, and falls back to [Modifier.blur] on older API levels
+ * (which itself uses a software fallback in Compose 1.6+).
+ *
+ * The radius (24dp) is tuned to be obviously blurred while still
+ * preserving enough color information that the artwork is recognisable —
+ * a frosted-glass tint is layered on top in the hero to guarantee
+ * legibility regardless of the thumbnail's average color.
+ */
+private val MediaDetailHeroBlurModifier: Modifier =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        Modifier.graphicsLayer {
+            renderEffect =
+                android.graphics.RenderEffect.createBlurEffect(
+                    24f,
+                    24f,
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+        }
+    } else {
+        Modifier.blur(24.dp)
+    }
 
 private enum class MediaDetailActionLayoutId {
     Shuffle,

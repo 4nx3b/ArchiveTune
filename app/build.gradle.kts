@@ -518,11 +518,10 @@ dependencies {
 
     implementation("org.json:json:20240303")
 
-    // Lightweight parallel download library (~50 KB) — used by the segmented
-    // parallel data source to fetch large byte ranges of a single media file
-    // concurrently. Boosts per-song download speed for Qobuz/Tidal FLACs and
-    // YouTube Music streams beyond what cross-file parallelism alone can do.
-    implementation(libs.prdownloader)
+    // PRDownloader + SegmentedParallelDataSource were removed — segmented
+    // byte-range stitching corrupted downloaded FLAC streams
+    // (UnrecognizedInputFormatException, Code 3003). We now rely on OkHttp's
+    // built-in HTTP/2 multiplexing + a 32-song parallel download executor.
 }
 
 androidComponents {

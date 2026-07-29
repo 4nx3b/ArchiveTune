@@ -326,7 +326,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     tonalElevation = 4.dp,
                 ) {
-                    Row(
+                    Column(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -335,86 +335,95 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                                     ),
                                 ).padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        // Count + progress line — full width so the "X of Y selected"
+                        // text never gets squeezed into a vertical strip by the two
+                        // action buttons below it (previously rendered as "1 / o / f / 1 / …").
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.export_downloaded_songs_selected_count,
+                                    selectedIds.size,
+                                    songs.size,
+                                ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                        )
+                        if (isExporting || isDeleting) {
+                            Spacer(Modifier.height(4.dp))
                             Text(
                                 text =
-                                    stringResource(
-                                        R.string.export_downloaded_songs_selected_count,
-                                        selectedIds.size,
-                                        songs.size,
-                                    ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
+                                    if (isExporting) {
+                                        stringResource(
+                                            R.string.export_downloaded_songs_progress,
+                                            exportedCount,
+                                            totalCount,
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.export_downloaded_songs_delete_progress,
+                                            deletedCount,
+                                            totalCount,
+                                        )
+                                    },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
                             )
-                            if (isExporting || isDeleting) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text =
-                                        if (isExporting) {
-                                            stringResource(
-                                                R.string.export_downloaded_songs_progress,
-                                                exportedCount,
-                                                totalCount,
-                                            )
-                                        } else {
-                                            stringResource(
-                                                R.string.export_downloaded_songs_delete_progress,
-                                                deletedCount,
-                                                totalCount,
-                                            )
-                                        },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                         }
-                        Spacer(Modifier.width(8.dp))
-                        // Delete button — destructive action, gated by a confirmation dialog.
-                        OutlinedButton(
-                            onClick = { showDeleteConfirm = true },
-                            enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
-                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (isDeleting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            } else {
-                                Icon(
-                                    painter = painterResource(R.drawable.delete),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
+                            // Delete button — destructive action, gated by a confirmation dialog.
+                            OutlinedButton(
+                                onClick = { showDeleteConfirm = true },
+                                enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                if (isDeleting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                } else {
+                                    Icon(
+                                        painter = painterResource(R.drawable.delete),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.export_downloaded_songs_delete))
                             }
-                            Text(stringResource(R.string.export_downloaded_songs_delete))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        FilledTonalButton(
-                            onClick = { pickFolderLauncher.launch(null) },
-                            enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
-                        ) {
-                            if (isExporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            } else {
-                                Icon(
-                                    painter = painterResource(R.drawable.send),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
+                            FilledTonalButton(
+                                onClick = { pickFolderLauncher.launch(null) },
+                                enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                if (isExporting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                } else {
+                                    Icon(
+                                        painter = painterResource(R.drawable.send),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(stringResource(R.string.export_downloaded_songs_pick_folder))
                             }
-                            Text(stringResource(R.string.export_downloaded_songs_pick_folder))
                         }
                     }
                 }
