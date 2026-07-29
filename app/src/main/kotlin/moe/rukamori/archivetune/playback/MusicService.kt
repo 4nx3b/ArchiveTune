@@ -8823,9 +8823,14 @@ class MusicService :
             ) >= requestedLength
         } ?: return null
 
+        // DataSpec.Builder has no subrange() method (subrange() is defined
+        // on the DataSpec data class, not on its Builder). Use the Builder
+        // equivalents setPosition() / setLength() to scope the cached
+        // request to the bytes that are actually present.
         return dataSpec.buildUpon()
             .setKey(matchingKey)
-            .subrange(0L, requestedLength)
+            .setPosition(0L)
+            .setLength(requestedLength)
             .build()
     }
 
