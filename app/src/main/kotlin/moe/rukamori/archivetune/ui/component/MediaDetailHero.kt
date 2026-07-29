@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -43,7 +42,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -86,15 +84,6 @@ public fun MediaDetailHero(
     metadata: String? = null,
     description: String? = null,
     additionalPrimaryActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    /**
-     * When true, the bottom of the hero is rendered as a blurred duplicate of
-     * the thumbnail instead of a flat surface-color gradient. Looks closer to
-     * modern music apps (Spotify / Apple Music / YouTube Music) which blur the
-     * artwork under the action row.
-     *
-     * Defaults to true — every playlist/album screen in the app opts in.
-     */
-    useBlurredBackdrop: Boolean = true,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
@@ -143,138 +132,46 @@ public fun MediaDetailHero(
             }
         }
 
-        if (useBlurredBackdrop && thumbnailUrl != null) {
-            // ─── Blurred backdrop at the bottom ─────────────────────────────
-            // Render a second copy of the thumbnail, blurred, clipped to the
-            // bottom ~62% of the hero — covering everything from just below
-            // the playlist title down through the play / shuffle / download
-            // action buttons.
-            //
-            // The previous 50% band was too short: the action-button Column
-            // is positioned with `top = systemBarsTopPadding + AppBarHeight +
-            // 96.dp` and its action row sat *just below* the blur band's top
-            // edge, so on tall screens the buttons appeared over a hard
-            // transition line between sharp artwork and blurred backdrop.
-            // 62% guarantees the entire button row is fully inside the blur.
-            //
-            // The blur is the *primary* backdrop layer (replacing the previous
-            // flat surfaceColor gradient). A frosted tint is layered on top
-            // so white text remains readable on bright thumbnails, but the
-            // tint is kept LIGHT enough that the blurred artwork is
-            // unambiguously visible — addressing the previous bug where the
-            // area appeared "completely transparent".
-            //
-            // Layer order (bottom → top):
-            //   1. Original thumbnail (full hero, sharp)
-            //   2. Blurred thumbnail duplicate, clipped to bottom 62%
-            //      — Modifier.blur() (48dp) dispatches to a hardware-
-            //        accelerated RenderEffect on API 31+ and falls back to
-            //        a software blur on older APIs.
-            //   3. Frosted-glass tint (surfaceColor @ 35% alpha) so the blur
-            //      reads as frosted glass rather than just a soft copy of
-            //      the artwork.
-            //   4. Vertical scrim — darker at the very bottom edge so the
-            //      action buttons remain readable on bright thumbnails,
-            //      fading to transparent at the top so the blur shows.
-            //   5. Top-of-band gradient — softly fades the *top* of the blur
-            //      band into the sharp artwork above it (no hard line).
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.62f),
-            ) {
-                AsyncImage(
-                    model =
-                        thumbnailUrl.resize(
-                            width = MediaDetailHeroArtworkSizePx,
-                            height = MediaDetailHeroArtworkSizePx,
-                            sizeBuckets = MediaDetailHeroArtworkSizeBuckets,
-                            ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
+        // ─── Flat gradient backdrop ──────────────────────────────────────
+        // The previous iteration of the hero attempted to render a second
+        // blurred copy of the thumbnail clipped to the bottom ~62% of the
+        // hero, with a frosted-glass tint on top. In practice this rarely
+        // read as "frosted glass" — on dense 2×2 playlist thumbnails the
+        // blur was barely perceptible behind the action-button row, and
+        // on bright thumbnails the frosted tint either washed the artwork
+        // out (35% alpha) or hid the blur entirely (55% alpha).
+        //
+        // We've reverted to the original flat vertical gradient that was
+        // used before the blur was introduced. This gives a clean,
+        // predictable transition from sharp artwork at the top → solid
+        // surfaceColor at the bottom, which is what every playlist /
+        // album / artist screen in the app was originally designed
+        // against. The action-button Column sits on the solid-surface
+        // portion at the bottom, so button contrast is consistent
+        // regardless of the thumbnail's average color.
+        //
+        // Layer order (bottom → top):
+        //   1. Original thumbnail (full hero, sharp)
+        //   2. Vertical gradient:
+        //      - 0.00 → 0.18: black @ 42% → transparent (status-bar legibility)
+        //      - 0.18 → 0.42: transparent (sharp artwork visible)
+        //      - 0.42 → 0.72: transparent → surfaceColor @ 78% (fade into solid)
+        //      - 0.72 → 1.00: surfaceColor @ 78% → surfaceColor (solid backdrop
+        //        for the action-button row)
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.42f),
+                            0.18f to Color.Transparent,
+                            0.42f to Color.Transparent,
+                            0.72f to surfaceColor.copy(alpha = 0.78f),
+                            1f to surfaceColor,
                         ),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .then(MediaDetailHeroBlurModifier),
-                )
-                // Frosted-glass tint — 35% alpha. Strong enough to mute the
-                // sharpest color peaks from the artwork (so white text reads),
-                // light enough that the 48dp blur is still obviously visible.
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .background(surfaceColor.copy(alpha = 0.35f)),
-                )
-                // Top-of-band fade — softly fades the top 22% of the blur
-                // band from transparent → surfaceColor so there is no hard
-                // line where the blurred duplicate meets the sharp artwork
-                // above it. Without this, the eye reads the blur as a
-                // separate panel rather than a continuous frosted surface.
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to surfaceColor.copy(alpha = 0.35f),
-                                    0.22f to Color.Transparent,
-                                    0.50f to Color.Transparent,
-                                ),
-                            ),
-                )
-                // Legibility scrim — darker only at the very bottom edge so
-                // the action buttons remain readable on bright thumbnails.
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    0.55f to Color.Transparent,
-                                    0.80f to Color.Black.copy(alpha = 0.18f),
-                                    1f to Color.Black.copy(alpha = 0.36f),
-                                ),
-                            ),
-                )
-            }
-            // Top-of-hero scrim for status-bar legibility — kept separate from
-            // the blur band so it covers the full hero height (the blur band
-            // only covers the bottom 62%).
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.42f),
-                                0.18f to Color.Transparent,
-                                0.50f to Color.Transparent,
-                            ),
-                        ),
-            )
-        } else {
-            // Legacy flat-gradient backdrop — used when there's no thumbnail
-            // to blur or when the caller explicitly opts out.
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.42f),
-                                0.18f to Color.Transparent,
-                                0.42f to Color.Transparent,
-                                0.72f to surfaceColor.copy(alpha = 0.78f),
-                                1f to surfaceColor,
-                            ),
-                        ),
-            )
-        }
+                    ),
+        )
 
         Column(
             modifier =
@@ -733,27 +630,6 @@ private val MediaDetailActionSpacing = 12.dp
 private val MediaDetailActionEdgeFade = 20.dp
 private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp
-
-/**
- * Blur modifier used by the hero's backdrop. Compose's [Modifier.blur]
- * already dispatches to a hardware-accelerated
- * `android.graphics.RenderEffect` on API 31+ (Android 12) and falls back
- * to a software-rendered blur on older API levels — so calling
- * `RenderEffect.createBlurEffect` directly is unnecessary and produces a
- * type mismatch (`android.graphics.RenderEffect` vs the Compose
- * `androidx.compose.ui.graphics.RenderEffect` expected by
- * `GraphicsLayerScope.renderEffect`).
- *
- * The radius (48dp) is intentionally large — a 24dp blur was still too
- * subtle behind the dense collage of a 2×2 playlist thumbnail and read
- * as "slightly soft" rather than "frosted glass". 48dp produces an
- * unambiguously blurred backdrop that the action-button row can sit on
- * top of, while still preserving enough color information that the
- * artwork is recognisable. A frosted-glass tint is layered on top in
- * the hero to guarantee legibility regardless of the thumbnail's
- * average color.
- */
-private val MediaDetailHeroBlurModifier: Modifier = Modifier.blur(48.dp)
 
 private enum class MediaDetailActionLayoutId {
     Shuffle,
