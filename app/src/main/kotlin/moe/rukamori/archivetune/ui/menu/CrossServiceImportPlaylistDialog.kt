@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
+import moe.rukamori.archivetune.di.SpotifyRepositoryEntryPoint
 import moe.rukamori.archivetune.playlist.CrossServicePlaylistImporter
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import java.time.LocalDateTime
@@ -68,6 +70,18 @@ fun CrossServiceImportPlaylistDialog(
     val database = LocalDatabase.current
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // Hilt entry point giving us access to SpotifyLibraryRepository for
+    // Spotify URL imports (which require an authenticated Spotify account).
+    val spotifyRepository = remember {
+        runCatching {
+            EntryPointAccessors
+                .fromApplication(
+                    context.applicationContext,
+                    SpotifyRepositoryEntryPoint::class.java,
+                ).spotifyLibraryRepository()
+        }.getOrNull()
+    }
 
     var urlValue by remember { mutableStateOf(TextFieldValue("")) }
     var isLoading by remember { mutableStateOf(false) }
@@ -164,62 +178,30 @@ fun CrossServiceImportPlaylistDialog(
                     statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val resolved = CrossServicePlaylistImporter.fetchPlaylist(url)
-                                .getOrElse { e ->
-                                    withContext(Dispatchers.Main) {
-                                        statusMessage = null
-                                        isLoading = false
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(
-                                                R.string.cross_service_import_failed,
-                                                e.message ?: "Unknown error",
-                                            ),
-                                            Toast.LENGTH_LONG,
-                                        ).show()
-                                    }
-                                    return@launch
-                                }
-
-                            if (resolved.tracks.isEmpty()) {
+                            val resolved = CrossServicePlaylistImporter.fetchPlaylistWithSongs(
+                                url = url,
+                                spotifyRepository = spotifyRepository,
+                                onProgress = { done, total ->
+                                    resolvedCount = done
+                                    totalCount = total
+                                },
+                            ).getOrElse { e ->
                                 withContext(Dispatchers.Main) {
                                     statusMessage = null
                                     isLoading = false
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.cross_service_import_no_tracks),
+                                        context.getString(
+                                            R.string.cross_service_import_failed,
+                                            e.message ?: "Unknown error",
+                                        ),
                                         Toast.LENGTH_LONG,
                                     ).show()
                                 }
                                 return@launch
                             }
 
-                            // For YouTube Music imports we already have song ids —
-                            // skip the per-track search step.
-                            val songIds: List<String> =
-                                if (resolved.source == CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC) {
-                                    // Re-resolve via the existing YouTube.playlist path
-                                    // which returns SongItems with their YouTube ids.
-                                    YouTubePlaylistImportFetcher.fetch(resolved.sourcePlaylistId)
-                                } else {
-                                    withContext(Dispatchers.Main) {
-                                        statusMessage = context.getString(
-                                            R.string.cross_service_import_searching_yt,
-                                            resolved.tracks.size,
-                                        )
-                                        totalCount = resolved.tracks.size
-                                        resolvedCount = 0
-                                    }
-                                    CrossServicePlaylistImporter.resolveToYouTubeMusic(
-                                        tracks = resolved.tracks,
-                                        onProgress = { done, total ->
-                                            resolvedCount = done
-                                            totalCount = total
-                                        },
-                                    )
-                                }
-
-                            if (songIds.isEmpty()) {
+                            if (resolved.songs.isEmpty()) {
                                 withContext(Dispatchers.Main) {
                                     statusMessage = null
                                     isLoading = false
@@ -231,6 +213,32 @@ fun CrossServiceImportPlaylistDialog(
                                 }
                                 return@launch
                             }
+
+                            // Show "matching" status only for sources that
+                            // resolve per-track (Spotify/Apple/Amazon/Tidal/Deezer).
+                            // YouTube Music already has the song ids natively
+                            // so there's no per-track resolution phase.
+                            if (resolved.source != CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC) {
+                                withContext(Dispatchers.Main) {
+                                    statusMessage = context.getString(
+                                        R.string.cross_service_import_searching_yt,
+                                        resolved.songs.size,
+                                    )
+                                    totalCount = resolved.songs.size
+                                    resolvedCount = resolved.songs.size
+                                }
+                            }
+
+                            // === Foreign-key-safe insert ===
+                            // playlist_song_map has FK → song.id, so we MUST
+                            // insert the song rows first. We do this in a
+                            // single transaction so a mid-import crash
+                            // doesn't leave half the songs in the DB.
+                            val songsToInsert = resolved.songs
+                            database.withTransaction {
+                                songsToInsert.forEach { meta -> insert(meta) }
+                            }
+                            val songIds = songsToInsert.map { it.id }
 
                             // Create the local playlist and insert the song ids.
                             val playlistName = resolved.title.ifBlank {
@@ -275,7 +283,7 @@ fun CrossServiceImportPlaylistDialog(
                                     context.getString(
                                         R.string.cross_service_import_success,
                                         songIds.size,
-                                        resolved.tracks.size,
+                                        songIds.size,
                                         playlistName,
                                     ),
                                     Toast.LENGTH_LONG,
@@ -305,21 +313,4 @@ fun CrossServiceImportPlaylistDialog(
             }
         },
     )
-}
-
-/**
- * Tiny helper that calls the existing YouTube.playlist() API to fetch
- * SongItems with their YouTube Music ids. Kept separate so the
- * [CrossServiceImportPlaylistDialog] can treat YouTube Music imports
- * the same as foreign-service imports (final result is a list of
- * YouTube Music song ids).
- */
-private object YouTubePlaylistImportFetcher {
-    suspend fun fetch(playlistId: String): List<String> {
-        val page = moe.rukamori.archivetune.innertube.YouTube
-            .playlist(playlistId)
-            .getOrNull()
-            ?: return emptyList()
-        return page.songs.map { it.id }
-    }
 }

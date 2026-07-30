@@ -14,6 +14,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.utils.completed
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
+import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
+import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -21,8 +27,8 @@ import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
 /**
- * Resolves a playlist URL from a foreign music service (Apple Music,
- * Amazon Music, Tidal, Deezer) into a list of `(title, artist)` pairs,
+ * Resolves a playlist URL from a foreign music service (Spotify,
+ * Apple Music, Amazon Music, Tidal, Deezer) into a list of `(title, artist)` pairs,
  * which are then matched against YouTube Music via [YouTube.search] to
  * produce local YouTube Music song ids.
  *
@@ -32,6 +38,7 @@ import java.util.regex.Pattern
  *
  *  - **YouTube Music**: `https://music.youtube.com/playlist?list=...`
  *  - **YouTube**     : `https://www.youtube.com/playlist?list=...`
+ *  - **Spotify**      : `https://open.spotify.com/playlist/{id}`
  *  - **Apple Music** : `https://music.apple.com/{cc}/playlist/{slug}/pl.{id}`
  *  - **Amazon Music**: `https://music.amazon.com/{cc}/playlists/{id}`
  *  - **Tidal**       : `https://tidal.com/browse/playlist/{id}`
@@ -65,6 +72,7 @@ object CrossServicePlaylistImporter {
 
     enum class ImportSource(val displayName: String) {
         YOUTUBE_MUSIC("YouTube Music"),
+        SPOTIFY("Spotify"),
         APPLE_MUSIC("Apple Music"),
         AMAZON_MUSIC("Amazon Music"),
         TIDAL("Tidal"),
@@ -86,6 +94,7 @@ object CrossServicePlaylistImporter {
      */
     fun detectSource(url: String): ImportSource = when {
         url.contains("music.youtube.com") || url.contains("youtube.com/playlist") -> ImportSource.YOUTUBE_MUSIC
+        url.contains("open.spotify.com") || url.contains("spotify.com/playlist") || url.contains("spotify.link/") -> ImportSource.SPOTIFY
         url.contains("music.apple.com") -> ImportSource.APPLE_MUSIC
         url.contains("music.amazon.com") -> ImportSource.AMAZON_MUSIC
         url.contains("tidal.com") -> ImportSource.TIDAL
@@ -124,11 +133,18 @@ object CrossServicePlaylistImporter {
                         },
                     )
                 }
+                ImportSource.SPOTIFY -> {
+                    // Spotify requires the user to be authenticated via the
+                    // SpotifyLibraryRepository. The fetcher below is supplied
+                    // by the call site (which has Hilt access). If null, we
+                    // surface a friendly error.
+                    error("Spotify imports require the authenticated SpotifyLibraryRepository — use fetchPlaylistWithSongs()")
+                }
                 ImportSource.APPLE_MUSIC -> fetchAppleMusicPlaylist(url)
                 ImportSource.AMAZON_MUSIC -> fetchAmazonMusicPlaylist(url)
                 ImportSource.TIDAL -> fetchTidalPlaylist(url)
                 ImportSource.DEEZER -> fetchDeezerPlaylist(url)
-                ImportSource.UNKNOWN -> error("Unrecognized URL — supported: YouTube Music, Apple Music, Amazon Music, Tidal, Deezer")
+                ImportSource.UNKNOWN -> error("Unrecognized URL — supported: YouTube Music, Spotify, Apple Music, Amazon Music, Tidal, Deezer")
             }
         }
     }
@@ -168,6 +184,183 @@ object CrossServicePlaylistImporter {
             onProgress?.invoke(completed, total)
         }
         results
+    }
+
+    /**
+     * The fully-resolved import — playlist metadata + a list of
+     * [MediaMetadata] items ready to be inserted into the local `song`
+     * table before being linked to a playlist.
+     *
+     * This is the preferred entry point for callers that intend to create
+     * a local playlist, because it sidesteps the SQLite FOREIGN KEY
+     * constraint on `playlist_song_map.songId → song.id` by giving the
+     * caller the song rows to insert first.
+     */
+    data class ResolvedImportWithSongs(
+        val source: ImportSource,
+        val sourcePlaylistId: String,
+        val title: String,
+        val thumbnailUrl: String?,
+        val songs: List<MediaMetadata>,
+    )
+
+    /**
+     * One-shot importer: resolves the playlist URL all the way to a list
+     * of [MediaMetadata] items (each already pointing at a YouTube Music
+     * song id), suitable for direct insertion into the local `song` table.
+     *
+     * - For YouTube Music: fetches the full playlist (following
+     *   continuations) via [YouTube.playlist] + `.completed()`, and maps
+     *   each [SongItem] to [MediaMetadata] via [SongItem.toMediaMetadata].
+     * - For Spotify: requires a non-null [spotifyRepository] (the user
+     *   must be authenticated). Fetches the playlist tracks via the
+     *   Spotify Web API and resolves each to a YouTube Music match via
+     *   [SpotifyPlaybackResolver], which uses bigram-similarity scoring
+     *   to pick the best match (and gracefully skips tracks that don't
+     *   clear the match threshold).
+     * - For Apple Music / Amazon Music / Tidal / Deezer: extracts the
+     *   `(title, artist)` pairs as [ForeignTrack]s, then matches each
+     *   against YouTube Music via [YouTube.search]. The first [SongItem]
+     *   result is converted to [MediaMetadata].
+     *
+     * @param spotifyRepository Hilt-injected repository, required only for
+     *        Spotify imports. May be null for non-Spotify URLs.
+     * @param onProgress optional callback invoked with (resolved, total)
+     *        after each track resolves. Lets the UI show a live counter.
+     */
+    suspend fun fetchPlaylistWithSongs(
+        url: String,
+        spotifyRepository: SpotifyLibraryRepository? = null,
+        onProgress: ((Int, Int) -> Unit)? = null,
+    ): Result<ResolvedImportWithSongs> = withContext(Dispatchers.IO) {
+        runCatching {
+            val source = detectSource(url)
+            when (source) {
+                ImportSource.YOUTUBE_MUSIC -> {
+                    val playlistId = extractQuery(url, "list")
+                        ?: error("Missing 'list' query parameter in YouTube URL")
+                    val page = YouTube.playlist(playlistId).completed().getOrNull()
+                        ?: error("Could not fetch YouTube playlist (it may be private)")
+                    ResolvedImportWithSongs(
+                        source = source,
+                        sourcePlaylistId = playlistId,
+                        title = page.playlist.title,
+                        thumbnailUrl = page.playlist.thumbnail,
+                        songs = page.songs.map { it.toMediaMetadata() },
+                    )
+                }
+                ImportSource.SPOTIFY -> {
+                    val repo = spotifyRepository
+                        ?: error("Spotify imports require an authenticated Spotify account — connect Spotify in Settings → Integrations first")
+                    val playlistId = extractSpotifyPlaylistId(url)
+                        ?: error("Couldn't extract Spotify playlist id from URL")
+                    val meta = runCatching { repo.playlist(playlistId) }.getOrNull()
+                    val tracks = repo.playlistTracks(playlistId)
+                    if (tracks.isEmpty()) error("Spotify playlist has no tracks (it may be private or empty)")
+                    val resolved = resolveSpotifyTracksToMetadata(tracks, onProgress)
+                    ResolvedImportWithSongs(
+                        source = source,
+                        sourcePlaylistId = playlistId,
+                        title = meta?.name?.takeIf(String::isNotBlank) ?: "Spotify Playlist",
+                        thumbnailUrl = meta?.images?.firstOrNull()?.url,
+                        songs = resolved,
+                    )
+                }
+                ImportSource.APPLE_MUSIC,
+                ImportSource.AMAZON_MUSIC,
+                ImportSource.TIDAL,
+                ImportSource.DEEZER,
+                -> {
+                    val basic = when (source) {
+                        ImportSource.APPLE_MUSIC -> fetchAppleMusicPlaylist(url)
+                        ImportSource.AMAZON_MUSIC -> fetchAmazonMusicPlaylist(url)
+                        ImportSource.TIDAL -> fetchTidalPlaylist(url)
+                        ImportSource.DEEZER -> fetchDeezerPlaylist(url)
+                        else -> error("unreachable")
+                    }
+                    val resolved = resolveForeignTracksToMetadata(basic.tracks, onProgress)
+                    ResolvedImportWithSongs(
+                        source = source,
+                        sourcePlaylistId = basic.sourcePlaylistId,
+                        title = basic.title,
+                        thumbnailUrl = basic.thumbnailUrl,
+                        songs = resolved,
+                    )
+                }
+                ImportSource.UNKNOWN -> error("Unrecognized URL — supported: YouTube Music, Spotify, Apple Music, Amazon Music, Tidal, Deezer")
+            }
+        }
+    }
+
+    /**
+     * Resolves a list of [ForeignTrack]s to YouTube Music [MediaMetadata]
+     * via [YouTube.search]. Returns the resolved metadata (in input order
+     * where possible) — tracks that can't be matched are skipped.
+     */
+    private suspend fun resolveForeignTracksToMetadata(
+        tracks: List<ForeignTrack>,
+        onProgress: ((Int, Int) -> Unit)? = null,
+    ): List<MediaMetadata> = coroutineScope {
+        val total = tracks.size
+        if (total == 0) return@coroutineScope emptyList()
+        val results = mutableListOf<MediaMetadata>()
+        var completed = 0
+        tracks.chunked(MAX_PARALLEL_SEARCHES).forEach { batch ->
+            val resolved = batch.map { track ->
+                async {
+                    val term = listOfNotNull(track.artist?.takeIf(String::isNotBlank), track.title)
+                        .joinToString(" ")
+                        .ifBlank { return@async null }
+                    val search = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                    val first = search?.items?.firstOrNull { it is SongItem } as? SongItem
+                    first?.toMediaMetadata()
+                }
+            }.awaitAll()
+            resolved.filterNotNull().forEach { results.add(it) }
+            completed += batch.size
+            onProgress?.invoke(completed, total)
+        }
+        results
+    }
+
+    /**
+     * Resolves Spotify tracks to YouTube Music [MediaMetadata] via
+     * [SpotifyPlaybackResolver]. The resolver uses bigram-similarity
+     * scoring to pick the best YouTube Music match for each Spotify track
+     * and gracefully skips tracks that don't clear the match threshold.
+     */
+    private suspend fun resolveSpotifyTracksToMetadata(
+        tracks: List<SpotifyTrack>,
+        onProgress: ((Int, Int) -> Unit)? = null,
+    ): List<MediaMetadata> = coroutineScope {
+        val total = tracks.size
+        if (total == 0) return@coroutineScope emptyList()
+        val results = mutableListOf<MediaMetadata>()
+        var completed = 0
+        // Bounded concurrency to avoid hammering InnerTube.
+        tracks.chunked(MAX_PARALLEL_SEARCHES).forEach { batch ->
+            val resolved = batch.map { track ->
+                async { SpotifyPlaybackResolver.resolveToMetadata(track) }
+            }.awaitAll()
+            resolved.filterNotNull().forEach { results.add(it) }
+            completed += batch.size
+            onProgress?.invoke(completed, total)
+        }
+        results
+    }
+
+    // ─── Spotify URL parsing ────────────────────────────────────────────
+    // URL pattern: https://open.spotify.com/playlist/{id}(. or ?...)
+    // Also handles spotify.link/... short links that redirect to the
+    // canonical open.spotify.com URL — OkHttp follows redirects.
+    private fun extractSpotifyPlaylistId(url: String): String? {
+        // Try the standard playlist path first.
+        val m = Pattern.compile("spotify\\.com/playlist/([a-zA-Z0-9]+)").matcher(url)
+        if (m.find()) return m.group(1)
+        // Fallback: embed URL — https://open.spotify.com/embed/playlist/{id}
+        val e = Pattern.compile("spotify\\.com/embed/playlist/([a-zA-Z0-9]+)").matcher(url)
+        if (e.find()) return e.group(1)
+        return null
     }
 
     // ─── Apple Music ──────────────────────────────────────────────────────
