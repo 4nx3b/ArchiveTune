@@ -812,22 +812,49 @@ fun Queue(
             }
         }
 
+        // Tracks the previous collapsed state so we can detect the exact
+        // moment the queue sheet transitions from collapsed → expanded
+        // (whether via the queue button or a swipe-up gesture) and scroll
+        // to the currently playing song. Without this, the queue opens
+        // scrolled to the top, forcing the user to manually find what's
+        // playing. We avoid re-scrolling on every `currentPlayingUid`
+        // change so the user is free to browse the queue after opening it
+        // without being yanked back to the current song mid-scroll.
+        var prevIsCollapsed by remember { mutableStateOf(state.isCollapsed) }
+
         LaunchedEffect(
             state.isCollapsed,
             scrollToCurrentRequested,
             currentPlayingUid,
             reorderableState.isAnyItemDragging,
         ) {
-            if (
+            val justOpened = prevIsCollapsed && !state.isCollapsed
+            prevIsCollapsed = state.isCollapsed
+            val shouldScroll =
                 !state.isCollapsed &&
-                scrollToCurrentRequested &&
-                currentPlayingUid != null &&
-                !reorderableState.isAnyItemDragging
-            ) {
-                val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
-                    lazyListState.scrollToItem(indexInMutableList + headerItems)
-                    scrollToCurrentRequested = false
+                    (justOpened || scrollToCurrentRequested) &&
+                    currentPlayingUid != null &&
+                    !reorderableState.isAnyItemDragging
+            if (shouldScroll) {
+                // Wait briefly for the queue windows to populate after the
+                // sheet expands. The first composition after expand often has
+                // an empty `mutableQueueWindows` (the Snapshot.withMutableSnapshot
+                // that copies `queueWindows` into `mutableQueueWindows` runs
+                // in a separate LaunchedEffect that hasn't fired yet). A short
+                // retry loop lets the index lookup succeed.
+                var attempts = 0
+                while (attempts < 8) {
+                    val indexInMutableList =
+                        mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
+                    if (indexInMutableList != -1) {
+                        lazyListState.scrollToItem(
+                            (indexInMutableList + headerItems).coerceAtLeast(0),
+                        )
+                        scrollToCurrentRequested = false
+                        break
+                    }
+                    kotlinx.coroutines.delay(50L)
+                    attempts++
                 }
             }
         }
