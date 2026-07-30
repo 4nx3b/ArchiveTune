@@ -84,6 +84,16 @@ public fun MediaDetailHero(
     metadata: String? = null,
     description: String? = null,
     additionalPrimaryActions: (@Composable RowScope.(Color) -> Unit)? = null,
+    // Optional looping animated canvas (Apple Music-style animated cover
+    // art) layered on top of the static thumbnail. When both
+    // `canvasPrimaryUrl` and `canvasFallbackUrl` are null/blank the canvas
+    // layer is skipped entirely and the hero renders as before. Pass the
+    // same URLs the song player uses (artwork.animated / artwork.videoUrl)
+    // to make the album thumbnail loop the same animated visual art on the
+    // album screen.
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
+    canvasIsPlaying: Boolean = false,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
@@ -130,6 +140,24 @@ public fun MediaDetailHero(
                     modifier = Modifier.size(96.dp),
                 )
             }
+        }
+
+        // Looping animated canvas overlay — same component used by the song
+        // player's Apple Music artwork. Stacks on top of the static
+        // thumbnail so when the animated video isn't ready yet (or fails
+        // to load) the user still sees the static cover. The canvas
+        // fades in via its own `animateFloatAsState(tween(300))` once the
+        // first frame is rendered. Only mounted when at least one of the
+        // canvas URLs is non-blank — keeps the cost zero for albums that
+        // don't have an animated cover.
+        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+            moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = canvasIsPlaying,
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.matchParentSize(),
+            )
         }
 
         // ─── Flat gradient backdrop ──────────────────────────────────────

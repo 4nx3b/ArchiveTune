@@ -2051,7 +2051,20 @@ private fun MikoLyricsTransition(
             label = "mikoLyricsTransition",
         )
     val showContent by remember {
-        derivedStateOf { visible || progressState.value > 0.001f }
+        // Defer the heavy LyricsScreen composition until the sheet is
+        // mostly open. Composing LyricsScreen on frame 1 of the slide-up
+        // makes the spring compete for CPU/GPU with: (1) Palette extraction,
+        // (2) the lyrics network/DB fetch, (3) the blurred background
+        // thumbnail (Modifier.blur(46.dp) is a software blur on API < 31
+        // and a RenderEffect on 31+, both of which cost real frame time),
+        // and (4) the inner AnimatedVisibility for player controls. All of
+        // these used to fire on the first frame, causing the open animation
+        // to stutter visibly on low-to-mid-range phones. Deferring until
+        // the spring is past 50% means the slide-up itself runs against
+        // a flat surfaceColor backdrop (cheap), and the heavy composition
+        // only happens once the sheet has covered enough of the screen
+        // that the user isn't seeing the lyrics panel slide into place.
+        derivedStateOf { visible || progressState.value > 0.5f }
     }
 
     if (showContent) {
