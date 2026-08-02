@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
+import moe.rukamori.archivetune.ui.screens.buildVideoPlayerRoute
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
@@ -329,6 +330,7 @@ fun YouTubeSongMenu(
     val addToQueueText = stringResource(R.string.add_to_queue)
     val addToPlaylistText = stringResource(R.string.add_to_playlist)
     val shareText = stringResource(R.string.share)
+    val videoText = stringResource(R.string.action_video)
 
     val primaryActions =
         remember(
@@ -338,8 +340,10 @@ fun YouTubeSongMenu(
             addToQueueText,
             addToPlaylistText,
             shareText,
+            videoText,
             onDismiss,
             playerConnection,
+            navController,
         ) {
             listOf(
                 NewAction(
@@ -418,6 +422,25 @@ fun YouTubeSongMenu(
                             }
                         context.startActivity(Intent.createChooser(intent, null))
                         onDismiss()
+                    },
+                ),
+                NewAction(
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.video),
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    text = videoText,
+                    onClick = {
+                        onDismiss()
+                        // YouTube Music song IDs ARE YouTube video IDs — the IFrame
+                        // Player will play whatever video is at this ID. For audio-only
+                        // ATV variants it shows the cover thumbnail; for OMV/UGC variants
+                        // it plays the actual music video.
+                        navController.navigate(buildVideoPlayerRoute(song.id, song.title))
                     },
                 ),
             )

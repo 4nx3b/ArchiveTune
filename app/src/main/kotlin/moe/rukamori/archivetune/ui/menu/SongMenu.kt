@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
@@ -108,6 +109,7 @@ import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.screens.buildVideoPlayerRoute
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
@@ -454,12 +456,57 @@ fun SongMenu(
     // are hidden for them — they still support play next / add to queue / add to playlist.
     val isTelegramSong = song.song.id.isTelegramMediaId()
 
+    // "Video" action: for songs with a YouTube watch endpoint we navigate
+    // directly to the in-app video player. For local / Telegram songs we
+    // resolve a video by searching YouTube Music for "{title} {artist}"
+    // (FILTER_VIDEO) — the resulting videoId is then handed to the player.
+    var isResolvingVideo by rememberSaveable { mutableStateOf(false) }
+    val onVideoClick: () -> Unit = {
+        if (isLocalSong || isTelegramSong) {
+            coroutineScope.launch {
+                isResolvingVideo = true
+                val term =
+                    listOf(
+                        song.artists.firstOrNull()?.name?.takeIf(String::isNotBlank),
+                        song.title.takeIf(String::isNotBlank),
+                    ).filterNotNull().joinToString(" ").ifBlank {
+                        isResolvingVideo = false
+                        return@launch
+                    }
+                val result =
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            YouTube.search(term, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
+                        }.getOrNull()
+                    }
+                isResolvingVideo = false
+                val videoId =
+                    result?.items
+                        ?.mapNotNull { it as? SongItem }
+                        ?.firstOrNull()
+                        ?.id
+                if (videoId.isNullOrBlank()) {
+                    Toast
+                        .makeText(context, R.string.video_load_failed, Toast.LENGTH_SHORT)
+                        .show()
+                    return@launch
+                }
+                onDismiss()
+                navController.navigate(buildVideoPlayerRoute(videoId, song.title))
+            }
+        } else {
+            onDismiss()
+            navController.navigate(buildVideoPlayerRoute(song.id, song.title))
+        }
+    }
+
     val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
     val addToQueueText = stringResource(R.string.add_to_queue)
     val addToPlaylistText = stringResource(R.string.add_to_playlist)
     val shareText = stringResource(R.string.share)
     val editText = stringResource(R.string.edit)
+    val videoText = stringResource(R.string.action_video)
 
     val primaryActions =
         remember(
@@ -470,9 +517,13 @@ fun SongMenu(
             addToPlaylistText,
             shareText,
             editText,
+            videoText,
             isLocalSong,
+            isTelegramSong,
+            isResolvingVideo,
             onDismiss,
             playerConnection,
+            onVideoClick,
         ) {
             buildList {
                 if (!isLocalSong && !isTelegramSong) {
@@ -581,6 +632,27 @@ fun SongMenu(
                         },
                         text = editText,
                         onClick = { showEditDialog = true },
+                    ),
+                )
+                add(
+                    NewAction(
+                        icon = {
+                            if (isResolvingVideo) {
+                                CircularWavyProgressIndicator(
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.video),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        text = videoText,
+                        enabled = !isResolvingVideo,
+                        onClick = onVideoClick,
                     ),
                 )
             }

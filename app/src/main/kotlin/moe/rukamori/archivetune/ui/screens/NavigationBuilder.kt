@@ -594,4 +594,44 @@ fun NavGraphBuilder.navigationBuilder(
             startUrl = backStackEntry.arguments?.getString(LOGIN_URL_ARGUMENT)?.let(Uri::decode),
         )
     }
+    composable(
+        route = "$VideoPlayerRouteBase/{$VideoPlayerVideoIdArg}?${VideoPlayerTitleArg}={$VideoPlayerTitleArg}",
+        arguments =
+            listOf(
+                navArgument(VideoPlayerVideoIdArg) {
+                    type = NavType.StringType
+                },
+                navArgument(VideoPlayerTitleArg) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+    ) { backStackEntry ->
+        val videoId = backStackEntry.arguments?.getString(VideoPlayerVideoIdArg).orEmpty()
+        val title = backStackEntry.arguments?.getString(VideoPlayerTitleArg)
+        VideoPlayerScreen(
+            navController = navController,
+            videoId = videoId,
+            title = title?.let(Uri::decode),
+        )
+    }
+}
+
+/** Route prefix for the in-app video player screen. */
+const val VideoPlayerRouteBase = "video_player"
+const val VideoPlayerVideoIdArg = "videoId"
+const val VideoPlayerTitleArg = "title"
+
+/**
+ * Builds a navigation route string for the in-app video player. Use this from
+ * menu actions so the URL encoding of the (optional) title is handled
+ * consistently.
+ */
+fun buildVideoPlayerRoute(
+    videoId: String,
+    title: String? = null,
+): String {
+    val safeTitle = title?.takeIf { it.isNotBlank() }?.let { "?title=${Uri.encode(it)}" } ?: ""
+    return "$VideoPlayerRouteBase/$videoId$safeTitle"
 }
