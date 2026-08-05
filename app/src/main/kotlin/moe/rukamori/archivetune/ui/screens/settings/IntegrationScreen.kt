@@ -29,9 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
@@ -51,7 +51,11 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
+fun IntegrationScreen(
+    navController: NavController,
+    scrollTo: String? = null,
+    spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel(),
+) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
     // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the
@@ -59,22 +63,18 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
     // source pool, so most users never need to see raw instance/token fields.
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
-    // Task 3: Spotify account management moved here from Backup & Restore. It's a music-source
-    // integration, not a backup/restore feature — co-locating it with Tidal/Qobuz/Deezer/Telegram
-    // makes the Integration page the single home for all streaming-service connections.
-    val spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel()
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
+
+    var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
+    var showCrossServiceImport by remember { mutableStateOf(false) }
 
     LaunchedEffect(spotifyState.isAuthenticated) {
         if (spotifyState.isAuthenticated) {
             showSpotifyLogin = false
         }
     }
-
-    var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
-    var showCrossServiceImport by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -150,19 +150,6 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
-                // Spotify lives at the top of Music Sources (Task 3). Moved here from
-                // Backup & Restore so all streaming-service integrations are co-located.
-                spotifyAccountPreferences(
-                    state = spotifyState,
-                    showPlaylists = showSpotifyPlaylists,
-                    onConnectClick = { showSpotifyLogin = true },
-                    onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
-                    onReloadClick = spotifyAccountViewModel::reloadPlaylists,
-                    onLogoutClick = {
-                        spotifyAccountViewModel.logout()
-                    },
-                )
-
                 if (manualSourceLogin) {
                     item {
                         PreferenceEntry(
@@ -208,6 +195,24 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                         },
                     )
                 }
+            }
+
+            // "External Sources" hosts Spotify — a read-only playlist import source, not a
+            // playback source like Tidal/Qobuz/Deezer/Telegram above. Separating it from
+            // "Music Sources" makes the distinction clear: Music Sources feed the player,
+            // External Sources feed the Library (playlist sync, scrobbling, etc.).
+            PreferenceGroup(
+                modifier = positions.modifierFor("external_sources"),
+                title = stringResource(R.string.external_sources),
+            ) {
+                spotifyAccountPreferences(
+                    state = spotifyState,
+                    showPlaylists = showSpotifyPlaylists,
+                    onConnectClick = { showSpotifyLogin = true },
+                    onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
+                    onReloadClick = spotifyAccountViewModel::reloadPlaylists,
+                    onLogoutClick = { spotifyAccountViewModel.logout() },
+                )
             }
 
             PreferenceGroup(
