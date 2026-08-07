@@ -46,12 +46,29 @@ import java.util.concurrent.atomic.AtomicReference
  *    Not used here yet — wired in for future lyrics-provider integration.
  *
  * Cloudflare note: dabmusic.xyz is fronted by a Cloudflare "Just a moment..." interstitial that
- * challenges non-browser clients. OkHttp cannot execute the JS challenge, so requests from
- * data-center IPs (and some residential IPs flagged by Cloudflare) will receive HTTP 403 with an
- * HTML body. The provider detects this (response body starts with `<!DOCTYPE` or contains "Just
- * a moment") and returns null so the playback layer falls through to the next source in the
- * chain. On residential mobile IPs the challenge is often NOT triggered and the API is reachable
- * directly — YMMV depending on carrier and region.
+ * challenges non-browser clients. The WAF rule on this gateway whitelists
+ * `POST /api/auth/login` (so the user can authenticate) but applies a "managed challenge" to
+ * `GET /api/search` and `GET /api/stream`. On challenged requests Cloudflare returns HTTP 200
+ * with `Transfer-Encoding: chunked` and drip-feeds the interstitial HTML body over 30+ seconds,
+ * which causes OkHttp's `readTimeout` to fire as a `SocketTimeoutException` (rather than the
+ * fast 403+HTML that data-center IPs see). The provider defends against this in three layers:
+ *
+ *   1. Browser-like headers — `Referer`, `Origin`, `Sec-Fetch-*`, `Accept-Encoding` are sent on
+ *      every request so Cloudflare's heuristics are less likely to flag the client as a bot.
+ *      On residential mobile IPs this is often enough — login works without any extra setup.
+ *
+ *   2. `cf_clearance` cookie — when the user taps "Solve Cloudflare Challenge" in Sources
+ *      settings, an in-app WebView loads `https://dabmusic.xyz/`, the WebView's JS engine
+ *      solves Cloudflare's challenge automatically, and the resulting `cf_clearance` cookie is
+ *      extracted via `CookieManager` and pushed into this provider via [setCfClearance]. The
+ *      cookie is ~30-minute-lived and must be refreshed periodically. With this cookie present,
+ *      Cloudflare passes the request through to the backend and the API returns real JSON.
+ *
+ *   3. Cloudflare detection — when neither (1) nor (2) is sufficient, the provider detects the
+ *      interstitial by inspecting the response body (HTML body, "Just a moment", "cf-challenge",
+ *      "challenge-platform") regardless of status code, and returns null so the playback layer
+ *      falls through to the next source in the chain. The UI also surfaces a
+ *      [LoginResult.CloudflareBlocked]-style signal so the user knows to tap the bypass button.
  *
  * All calls run blocking network I/O and must not be made from the main thread.
  */
@@ -83,9 +100,12 @@ object DabMusicAudioProvider {
     private val client =
         OkHttpClient
             .Builder()
-            .connectTimeout(6, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .callTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            // Cloudflare's managed-challenge drip-feed can take 20+ seconds to either flush the
+            // body or close the connection; 30s gives us a real answer instead of a premature
+            // SocketTimeoutException on slow mobile networks.
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
 
@@ -138,6 +158,16 @@ object DabMusicAudioProvider {
     @Volatile
     private var sessionCookie: String = ""
 
+    /**
+     * The Cloudflare `cf_clearance` cookie obtained by solving the interstitial in an in-app
+     * WebView (see [moe.rukamori.archivetune.dabmusic.DabMusicCloudflareBypass]). When present,
+     * it is appended to the `Cookie` header on every request alongside the `session` cookie.
+     * Blank = no bypass active; the provider will attempt the request and rely on browser-like
+     * headers + Cloudflare detection. ~30-minute-lived; must be refreshed by re-solving.
+     */
+    @Volatile
+    private var cfClearance: String = ""
+
     @Volatile
     var lastResolvedTrackId: String? = null
         private set
@@ -183,11 +213,63 @@ object DabMusicAudioProvider {
         }
     }
 
+    /**
+     * Sets the Cloudflare `cf_clearance` cookie obtained by solving the interstitial in a WebView.
+     * Blank = clear the bypass (e.g. when it expires or the user signs out). Cheap and idempotent;
+     * safe to push the current preference value on every settings change.
+     */
+    fun setCfClearance(cookie: String?) {
+        val trimmed = cookie?.trim().orEmpty()
+        if (cfClearance != trimmed) {
+            cfClearance = trimmed
+            // cf_clearance is request-level — drop caches so we don't serve stale "no match"
+            // results that were computed under the old (or absent) bypass.
+            searchCache.clear()
+            failureCache.clear()
+        }
+    }
+
+    /** Returns true when a cf_clearance cookie is present (the bypass is armed). */
+    fun hasCfClearance(): Boolean = cfClearance.isNotEmpty()
+
     /** Returns the current session cookie (may be blank). The UI uses this to display status. */
     fun getSessionCookie(): String = sessionCookie
 
     /** Returns true when the user has either stored credentials OR a stored session cookie. */
     fun hasAccount(): Boolean = sessionCookie.isNotEmpty() || credentials.get() != null
+
+    /**
+     * Lightweight probe used by the "Solve Cloudflare Challenge" UI to decide whether the bypass
+     * is needed at all. Sends a GET /api/search?q=probe&type=track and inspects the response body
+     * — if it's JSON, the gateway is reachable directly; if it's the Cloudflare interstitial, the
+     * user needs to solve the challenge. Returns true when Cloudflare is blocking (bypass needed),
+     * false when the gateway is reachable (no bypass needed). Never throws.
+     *
+     * Blocking network I/O — must not be called from the main thread.
+     */
+    fun isCloudflareBlocking(): Boolean {
+        val url =
+            baseUrl
+                .toHttpUrl()
+                .newBuilder()
+                .addPathSegment("api")
+                .addPathSegment("search")
+                .addQueryParameter("q", "probe")
+                .addQueryParameter("type", "track")
+                .build()
+        val request = baseRequest(url).get().build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                looksLikeCloudflare(body) || (!response.isSuccessful && response.code != 401)
+            }
+        } catch (e: Exception) {
+            // SocketTimeoutException is the most common symptom of Cloudflare's drip-feed —
+            // treat it as "blocked" so the UI offers the bypass.
+            Timber.tag(TAG).w(e, "reachability probe failed; assuming Cloudflare is blocking")
+            true
+        }
+    }
 
     /**
      * Calls POST /api/auth/login with the stored credentials. On success, persists the session
@@ -399,17 +481,25 @@ object DabMusicAudioProvider {
         val candidates =
             runCatching {
                 client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    // Cloudflare's "managed challenge" can return 200 OK with an HTML body
+                    // (the interstitial page) — detect it regardless of status code so we
+                    // don't waste time trying to parse HTML as JSON.
+                    if (looksLikeCloudflare(body)) {
+                        Timber
+                            .tag(TAG)
+                            .w(
+                                "search blocked by Cloudflare (http=%d, cf-ray=%s, hasCfClearance=%b)",
+                                response.code,
+                                response.header("cf-ray"),
+                                cfClearance.isNotEmpty(),
+                            )
+                        return@use emptyList<TrackMatching.Candidate>()
+                    }
                     if (!response.isSuccessful) {
-                        if (response.code == 403) {
-                            val body = response.body?.string().orEmpty()
-                            if (looksLikeCloudflare(body)) {
-                                Timber.tag(TAG).w("search blocked by Cloudflare (cf-ray=%s)", response.header("cf-ray"))
-                            }
-                        }
                         Timber.tag(TAG).d("search HTTP %d for \"%s\"", response.code, queryString)
                         return@use emptyList<TrackMatching.Candidate>()
                     }
-                    val body = response.body?.string().orEmpty()
                     parseSearchResults(body)
                 }
             }.onFailure { Timber.tag(TAG).w(it, "search network failed") }
@@ -509,17 +599,24 @@ object DabMusicAudioProvider {
                 .build()
         val request = baseRequest(url).get().build()
         client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            // Cloudflare's "managed challenge" can return 200 OK with an HTML body
+            // (the interstitial page) — detect it regardless of status code.
+            if (looksLikeCloudflare(body)) {
+                Timber
+                    .tag(TAG)
+                    .w(
+                        "stream blocked by Cloudflare (http=%d, cf-ray=%s, hasCfClearance=%b)",
+                        response.code,
+                        response.header("cf-ray"),
+                        cfClearance.isNotEmpty(),
+                    )
+                return null
+            }
             if (!response.isSuccessful) {
-                if (response.code == 403) {
-                    val body = response.body?.string().orEmpty()
-                    if (looksLikeCloudflare(body)) {
-                        Timber.tag(TAG).w("stream blocked by Cloudflare (cf-ray=%s)", response.header("cf-ray"))
-                    }
-                }
                 Timber.tag(TAG).d("stream HTTP %d for track %s", response.code, trackId)
                 return null
             }
-            val body = response.body?.string().orEmpty()
             val trimmed = body.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("<")) {
                 Timber.tag(TAG).w("stream returned non-JSON body (likely Cloudflare interstitial)")
@@ -538,25 +635,64 @@ object DabMusicAudioProvider {
         }
     }
 
-    private fun baseRequest(url: okhttp3.HttpUrl): Request.Builder =
-        Request
+    private fun baseRequest(url: okhttp3.HttpUrl): Request.Builder {
+        // Compose the Cookie header. Both cookies are name=value pairs joined with "; ".
+        // cf_clearance is optional (only present after the user solves the WebView challenge);
+        // session is required for all post-login endpoints.
+        val cookieParts = buildList {
+            if (sessionCookie.isNotEmpty()) add("session=$sessionCookie")
+            if (cfClearance.isNotEmpty()) add("cf_clearance=$cfClearance")
+        }
+        // Referer/Origin must match the API host or Cloudflare's WAF will treat the request as
+        // cross-origin and apply stricter heuristics. We use the configured baseUrl's scheme +
+        // host + (non-default) port — path is left off because Cloudflare expects a page-level
+        // Referer, not a deep API path.
+        val origin =
+            buildString {
+                append(url.scheme)
+                append("://")
+                append(url.host)
+                if (url.port != -1 &&
+                    !((url.scheme == "https" && url.port == 443) || (url.scheme == "http" && url.port == 80))
+                ) {
+                    append(":")
+                    append(url.port)
+                }
+            }
+        return Request
             .Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("Referer", "$origin/")
+            .header("Origin", origin)
+            .header("Sec-Fetch-Dest", "empty")
+            .header("Sec-Fetch-Mode", "cors")
+            .header("Sec-Fetch-Site", "same-origin")
             .apply {
-                if (sessionCookie.isNotEmpty()) {
-                    header("Cookie", "session=$sessionCookie")
+                if (cookieParts.isNotEmpty()) {
+                    header("Cookie", cookieParts.joinToString("; "))
                 }
             }
+    }
 
-    /** True when the response body looks like Cloudflare's "Just a moment..." interstitial. */
+    /**
+     * True when the response body looks like Cloudflare's "Just a moment..." interstitial.
+     * Inspects the first 1KB of the body so drip-fed chunked responses (where OkHttp has read
+     * part of the body before readTimeout fires) are still detected as Cloudflare rather than
+     * treated as a malformed JSON response.
+     */
     private fun looksLikeCloudflare(body: String): Boolean {
         if (body.isEmpty()) return false
-        val sample = if (body.length > 512) body.substring(0, 512) else body
+        val sample = if (body.length > 1024) body.substring(0, 1024) else body
         return sample.contains("Just a moment", ignoreCase = true) ||
             sample.contains("cf-challenge", ignoreCase = true) ||
-            (sample.contains("<title>", ignoreCase = true) && sample.contains("cloudflare", ignoreCase = true))
+            sample.contains("cf-chl-bypass", ignoreCase = true) ||
+            sample.contains("challenge-platform", ignoreCase = true) ||
+            (sample.contains("<title>", ignoreCase = true) && sample.contains("cloudflare", ignoreCase = true)) ||
+            (sample.trimStart().startsWith("<!DOCTYPE", ignoreCase = true) &&
+                sample.contains("challenges.cloudflare.com", ignoreCase = true))
     }
 }

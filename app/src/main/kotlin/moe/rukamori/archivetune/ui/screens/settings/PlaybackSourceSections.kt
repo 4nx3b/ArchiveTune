@@ -57,6 +57,7 @@ import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
+import moe.rukamori.archivetune.constants.DabMusicCfClearanceKey
 import moe.rukamori.archivetune.constants.DabMusicEmailKey
 import moe.rukamori.archivetune.constants.DabMusicEnabledKey
 import moe.rukamori.archivetune.constants.DabMusicPasswordKey
@@ -78,6 +79,7 @@ import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
+import moe.rukamori.archivetune.dabmusic.DabMusicCloudflareBypassDialog
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -130,6 +132,8 @@ fun PlaybackSourceSections(navController: NavController) {
     val (dabMusicPassword, onDabMusicPasswordChange) = rememberPreference(DabMusicPasswordKey, "")
     val (dabMusicSessionCookie, onDabMusicSessionCookieChange) =
         rememberPreference(DabMusicSessionCookieKey, "")
+    val (dabMusicCfClearance, onDabMusicCfClearanceChange) =
+        rememberPreference(DabMusicCfClearanceKey, "")
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
 
@@ -481,6 +485,60 @@ fun PlaybackSourceSections(navController: NavController) {
                 onClick = {
                     DabMusicAudioProvider.signOut()
                     onDabMusicSessionCookieChange("")
+                },
+            )
+        }
+
+        // ---------------------------------------------------------------------------------------------
+        // Cloudflare bypass
+        // ---------------------------------------------------------------------------------------------
+        // dabmusic.xyz is fronted by Cloudflare's "managed challenge". /api/auth/login is
+        // whitelisted (so the user can authenticate), but /api/search and /api/stream are
+        // challenged — OkHttp can't solve the JS challenge and the request hangs for the full
+        // readTimeout (30s) before failing with SocketTimeoutException. The bypass opens an
+        // in-app WebView that solves the challenge transparently; we extract the cf_clearance
+        // cookie and send it with every subsequent OkHttp request. ~30-minute-lived.
+        item {
+            val coroutineScope = rememberCoroutineScope()
+            var showBypassDialog by remember { mutableStateOf(false) }
+            val hasBypass = dabMusicCfClearance.isNotEmpty()
+
+            InfoLabel(
+                text = stringResource(
+                    if (hasBypass) R.string.dabmusic_cf_bypass_active
+                    else R.string.dabmusic_cf_bypass_inactive,
+                ),
+            )
+            if (showBypassDialog) {
+                val bypassBaseUrl = dabMusicBaseUrl.ifBlank { DabMusicAudioProvider.DEFAULT_BASE_URL }
+                DabMusicCloudflareBypassDialog(
+                    baseUrl = bypassBaseUrl,
+                    onDismiss = { showBypassDialog = false },
+                    onCfClearanceCaptured = { cfClearance ->
+                        coroutineScope.launch {
+                            onDabMusicCfClearanceChange(cfClearance)
+                        }
+                    },
+                )
+            }
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.dabmusic_cf_bypass)) },
+                description = stringResource(R.string.dabmusic_cf_bypass_description),
+                icon = { Icon(painterResource(R.drawable.security), null) },
+                isEnabled = dabMusicEnabled,
+                onClick = { showBypassDialog = true },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.dabmusic_cf_bypass_clear)) },
+                description = stringResource(R.string.dabmusic_cf_bypass_clear_description),
+                icon = { Icon(painterResource(R.drawable.delete), null) },
+                isEnabled = dabMusicEnabled && dabMusicCfClearance.isNotEmpty(),
+                onClick = {
+                    DabMusicAudioProvider.setCfClearance(null)
+                    onDabMusicCfClearanceChange("")
                 },
             )
         }

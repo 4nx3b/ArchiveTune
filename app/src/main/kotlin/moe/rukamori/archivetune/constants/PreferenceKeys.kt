@@ -1146,6 +1146,16 @@ val DabMusicPasswordKey = stringPreferencesKey("dabMusicPassword")
 // are short-lived and the threat model matches Deezer's ARL handling.
 val DabMusicSessionCookieKey = stringPreferencesKey("dabMusicSessionCookie")
 
+// The Cloudflare `cf_clearance` cookie obtained by solving the interstitial challenge in an
+// in-app WebView. dabmusic.xyz is fronted by Cloudflare's "managed challenge" which 403s
+// non-browser clients on /api/search even when /api/auth/login is allowed through. Without
+// this cookie, OkHttp requests to /api/search typically hang for the full readTimeout and
+// then fail with SocketTimeoutException. The cookie is ~30-minute-lived and must be refreshed
+// periodically by re-solving the challenge. Blank = no bypass cookie; the provider will
+// attempt the request anyway (it may still succeed on residential IPs that Cloudflare does
+// not challenge, or fail with a CloudflareBlocked result that the UI surfaces).
+val DabMusicCfClearanceKey = stringPreferencesKey("dabMusicCfClearance")
+
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")
 val PoTokenPlayerKey = stringPreferencesKey("poTokenPlayer")

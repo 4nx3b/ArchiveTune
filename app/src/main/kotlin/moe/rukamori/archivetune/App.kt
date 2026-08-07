@@ -355,6 +355,18 @@ class App :
                 .collect { cookie -> DabMusicAudioProvider.setSessionCookie(cookie) }
         }
 
+        // Mirrors the DabMusic cf_clearance cookie into the provider. cf_clearance is the
+        // Cloudflare bypass cookie captured by the in-app WebView (see DabMusicCloudflareBypassDialog).
+        // It's ~30-minute-lived; when it expires the user reopens the bypass dialog. Without this
+        // collector the cookie would be lost on cold start and the user would have to re-solve the
+        // challenge every time they restart the app.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[DabMusicCfClearanceKey] ?: "" }
+                .distinctUntilChanged()
+                .collect { cookie -> DabMusicAudioProvider.setCfClearance(cookie) }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it.toPlaybackAuthState() }

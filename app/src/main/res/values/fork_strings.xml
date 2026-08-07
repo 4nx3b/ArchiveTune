@@ -38,4 +38,23 @@
     <string name="dabmusic_not_logged_in">Not logged in — enter your DabMusic email and password, then tap "Log in"</string>
     <string name="dabmusic_sign_out">Sign out of DabMusic</string>
     <string name="dabmusic_sign_out_description">Clears the stored session cookie from this device</string>
+
+    <!-- Cloudflare bypass for DabMusic. dabmusic.xyz sits behind a Cloudflare "managed
+         challenge" that blocks OkHttp on /api/search even when /api/auth/login works. The
+         bypass opens an in-app WebView that loads the dabmusic.xyz homepage — the WebView's
+         JS engine solves Cloudflare's challenge automatically, and we extract the resulting
+         cf_clearance cookie via CookieManager. The cookie is ~30-minute-lived. -->
+    <string name="dabmusic_cf_bypass">Solve Cloudflare Challenge</string>
+    <string name="dabmusic_cf_bypass_description">Opens an in-app browser that solves Cloudflare\'s bot check, then stores a cf_clearance cookie so DabMusic search/stream requests can pass through. Needed when login works but tracks won\'t play.</string>
+    <string name="dabmusic_cf_bypass_active">Cloudflare bypass active — expires in ~30 min</string>
+    <string name="dabmusic_cf_bypass_inactive">No Cloudflare bypass cookie — tap above if tracks won\'t play</string>
+    <string name="dabmusic_cf_bypass_clear">Clear Cloudflare bypass cookie</string>
+    <string name="dabmusic_cf_bypass_clear_description">Removes the stored cf_clearance cookie</string>
+    <string name="dabmusic_cf_bypass_success">Cloudflare bypass cookie captured</string>
+    <string name="dabmusic_cf_bypass_failed">Cloudflare challenge not solved — try again on Wi-Fi or mobile data</string>
+    <string name="dabmusic_cf_bypass_loading">Solving Cloudflare challenge…</string>
+    <string name="dabmusic_cf_bypass_not_needed">Cloudflare is not blocking — no bypass needed</string>
+    <string name="dabmusic_cf_bypass_checking">Checking if Cloudflare is blocking…</string>
+    <string name="dabmusic_cf_bypass_title">DabMusic — Cloudflare Challenge</string>
+    <string name="dabmusic_cf_bypass_hint">Loading dabmusic.xyz in a WebView. The page will refresh automatically once Cloudflare is satisfied. Close this screen when the page shows the DabMusic homepage.</string>
 </resources>
