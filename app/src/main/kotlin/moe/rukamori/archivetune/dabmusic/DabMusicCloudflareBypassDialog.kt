@@ -76,7 +76,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * except to dabmusic.xyz itself. The cf_clearance cookie is shared between the WebView and
  * OkHttp (via the persisted preference), but it is never sent to any third party.
  *
- * @param baseUrl The base URL to load (must be the dabmusic.xyz homepage, NOT an /api/* path —
+ * @param baseUrl The base URL to load (must be the dabmusic.xyz homepage, NOT an /api endpoint —
  *   the challenge is issued on the marketing site, not the API).
  * @param onDismiss Called when the user closes the dialog or the capture completes/fails.
  * @param onCfClearanceCaptured Called on the main thread with the captured cf_clearance cookie
