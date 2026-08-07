@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,14 +45,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
+import moe.rukamori.archivetune.constants.DabMusicEmailKey
 import moe.rukamori.archivetune.constants.DabMusicEnabledKey
+import moe.rukamori.archivetune.constants.DabMusicPasswordKey
+import moe.rukamori.archivetune.constants.DabMusicSessionCookieKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
@@ -68,6 +77,7 @@ import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
+import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -81,6 +91,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import android.widget.Toast
 
 private fun AudioSourceType.displayName(context: android.content.Context): String =
     when (this) {
@@ -115,6 +126,10 @@ fun PlaybackSourceSections(navController: NavController) {
     val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
     val (dabMusicEnabled, onDabMusicEnabledChange) = rememberPreference(DabMusicEnabledKey, false)
     val (dabMusicBaseUrl, onDabMusicBaseUrlChange) = rememberPreference(DabMusicBaseUrlKey, "")
+    val (dabMusicEmail, onDabMusicEmailChange) = rememberPreference(DabMusicEmailKey, "")
+    val (dabMusicPassword, onDabMusicPasswordChange) = rememberPreference(DabMusicPasswordKey, "")
+    val (dabMusicSessionCookie, onDabMusicSessionCookieChange) =
+        rememberPreference(DabMusicSessionCookieKey, "")
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
 
@@ -368,6 +383,105 @@ fun PlaybackSourceSections(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.provider_dabmusic), null) },
                 checked = dabMusicEnabled,
                 onCheckedChange = onDabMusicEnabledChange,
+            )
+        }
+
+        item {
+            val isLoggedIn = dabMusicSessionCookie.isNotEmpty()
+            InfoLabel(
+                text = stringResource(
+                    if (isLoggedIn) R.string.dabmusic_logged_in
+                    else R.string.dabmusic_not_logged_in,
+                ),
+            )
+        }
+
+        item {
+            EditTextPreference(
+                title = { Text(stringResource(R.string.dabmusic_email)) },
+                value = dabMusicEmail,
+                onValueChange = onDabMusicEmailChange,
+                icon = { Icon(painterResource(R.drawable.account), null) },
+                isEnabled = dabMusicEnabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                isInputValid = { it.isBlank() || android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches() },
+            )
+        }
+
+        item {
+            EditTextPreference(
+                title = { Text(stringResource(R.string.dabmusic_password)) },
+                value = dabMusicPassword,
+                onValueChange = onDabMusicPasswordChange,
+                icon = { Icon(painterResource(R.drawable.lock), null) },
+                isEnabled = dabMusicEnabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isInputValid = { it.isNotEmpty() },
+            )
+        }
+
+        item {
+            val coroutineScope = rememberCoroutineScope()
+            var isLoggingIn by remember { mutableStateOf(false) }
+            val isLoggedIn = dabMusicSessionCookie.isNotEmpty()
+            PreferenceEntry(
+                title = {
+                    Text(
+                        stringResource(
+                            if (isLoggedIn) R.string.dabmusic_relogin
+                            else R.string.dabmusic_login,
+                        ),
+                    )
+                },
+                description = stringResource(R.string.dabmusic_login_description),
+                icon = { Icon(painterResource(R.drawable.login), null) },
+                isEnabled = dabMusicEnabled && !isLoggingIn &&
+                    dabMusicEmail.isNotBlank() && dabMusicPassword.isNotBlank(),
+                onClick = {
+                    coroutineScope.launch {
+                        isLoggingIn = true
+                        DabMusicAudioProvider.setCredentials(dabMusicEmail, dabMusicPassword)
+                        val result = withContext(Dispatchers.IO) { DabMusicAudioProvider.login() }
+                        isLoggingIn = false
+                        when (result) {
+                            is DabMusicAudioProvider.LoginResult.Success -> {
+                                onDabMusicSessionCookieChange(DabMusicAudioProvider.getSessionCookie())
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.dabmusic_login_success),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                            is DabMusicAudioProvider.LoginResult.CloudflareBlocked -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.dabmusic_cloudflare_blocked),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                            is DabMusicAudioProvider.LoginResult.Failure -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.dabmusic_login_failed, result.reason),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        }
+                    }
+                },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.dabmusic_sign_out)) },
+                description = stringResource(R.string.dabmusic_sign_out_description),
+                icon = { Icon(painterResource(R.drawable.logout), null) },
+                isEnabled = dabMusicEnabled && dabMusicSessionCookie.isNotEmpty(),
+                onClick = {
+                    DabMusicAudioProvider.signOut()
+                    onDabMusicSessionCookieChange("")
+                },
             )
         }
 

@@ -1121,16 +1121,30 @@ val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 // ---------------------------------------------------------------------------
 // DabMusic source
 // ---------------------------------------------------------------------------
-// DabMusic (https://dabmusic.xyz) is a community-operated lossless stream catalog: the app
-// searches its public REST API for a track and receives a direct playable FLAC/MP3 URL back.
-// Defaults OFF because, unlike YouTube, it requires the upstream service to be reachable and
-// returns no audio when the catalog is missing the requested track.
+// DabMusic (https://dabmusic.xyz) is a community-operated lossless catalog backed by a REST API
+// at /api/search and /api/stream. Unlike YouTube, the API requires authentication: a POST to
+// /api/auth/login with email+password returns a `session` cookie that must be sent on every
+// subsequent request. Defaults OFF because (a) it requires a DabMusic account and (b) the
+// gateway sits behind a Cloudflare interstitial that may block non-browser clients in some
+// regions; when the gateway is unreachable the source degrades gracefully to the next source.
 val DabMusicEnabledKey = booleanPreferencesKey("dabMusicEnabled")
 
 // Optional override for the DabMusic base URL. Blank = built-in default (https://dabmusic.xyz).
 // Exposed so users behind mirrors or self-hosted gateways can repoint the source without a
 // rebuild; the AudioProvider trims trailing slashes before composing endpoints.
 val DabMusicBaseUrlKey = stringPreferencesKey("dabMusicBaseUrl")
+
+// DabMusic account credentials. The email+password pair is sent to /api/auth/login to obtain a
+// session cookie; the session cookie is what actually authorises /api/search and /api/stream.
+// Both fields are blank by default — the user must enter them and tap "Login" in Sources settings.
+val DabMusicEmailKey = stringPreferencesKey("dabMusicEmail")
+val DabMusicPasswordKey = stringPreferencesKey("dabMusicPassword")
+
+// The session cookie obtained from /api/auth/login (or pasted manually by advanced users who
+// extract it from a browser session). Blank = not logged in; the provider returns null for every
+// resolve() call until a valid session cookie is present. Stored unencrypted — DabMusic sessions
+// are short-lived and the threat model matches Deezer's ARL handling.
+val DabMusicSessionCookieKey = stringPreferencesKey("dabMusicSessionCookie")
 
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")

@@ -17,10 +17,25 @@
     <string name="deezer_signed_out">Signed out of Deezer</string>
 
     <!-- DabMusic source (ui/screens/settings/PlaybackSourceSections.kt).
-         DabMusic is a community-operated lossless catalog at https://dabmusic.xyz. -->
+         DabMusic is a community-operated lossless catalog at https://dabmusic.xyz.
+         The API requires authentication: the user enters their DabMusic email + password
+         and taps "Login", which calls POST /api/auth/login and stores the returned session
+         cookie. DabMusic streams lossless FLAC when a matching track is found in the catalog. -->
     <string name="source_dabmusic">DabMusic</string>
     <string name="dabmusic_specific">DabMusic</string>
     <string name="dabmusic_enable">Enable DabMusic streams</string>
-    <string name="dabmusic_enable_description">Stream lossless audio from dabmusic.xyz when a matching track is found</string>
+    <string name="dabmusic_enable_description">Stream lossless audio from dabmusic.xyz when a matching track is found. Requires a DabMusic account — log in below.</string>
     <string name="dabmusic_base_url">DabMusic base URL</string>
+    <string name="dabmusic_email">Email</string>
+    <string name="dabmusic_password">Password</string>
+    <string name="dabmusic_login">Log in to DabMusic</string>
+    <string name="dabmusic_relogin">Re-login to DabMusic</string>
+    <string name="dabmusic_login_description">Authenticates with dabmusic.xyz and stores a session cookie on this device</string>
+    <string name="dabmusic_login_success">Logged in to DabMusic</string>
+    <string name="dabmusic_login_failed">DabMusic login failed: %1$s</string>
+    <string name="dabmusic_cloudflare_blocked">DabMusic is behind Cloudflare bot protection. Try again on a different network (e.g. mobile data), or use a different lossless source.</string>
+    <string name="dabmusic_logged_in">Logged in — DabMusic streams are active</string>
+    <string name="dabmusic_not_logged_in">Not logged in — enter your DabMusic email and password, then tap "Log in"</string>
+    <string name="dabmusic_sign_out">Sign out of DabMusic</string>
+    <string name="dabmusic_sign_out_description">Clears the stored session cookie from this device</string>
 </resources>

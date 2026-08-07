@@ -8466,15 +8466,16 @@ class MusicService :
     }
 
     /**
-     * Resolves a DabMusic stream. DabMusic is a public lossless catalog/proxy at
-     * https://dabmusic.xyz — there are no per-user accounts, so unlike Deezer there is no
-     * PoolAccountManager tier to consult. The base URL is read from [DabMusicBaseUrlKey] and
-     * pushed into [DabMusicAudioProvider] on every resolve so users who point at a mirror or
-     * self-hosted gateway don't need a restart to pick up the change.
+     * Resolves a DabMusic stream. DabMusic (https://dabmusic.xyz) is a community-operated
+     * lossless catalog backed by a REST API at /api/search and /api/stream. Unlike YouTube,
+     * the API requires authentication: a session cookie obtained from /api/auth/login must be
+     * present (configured in Sources settings → DabMusic → Login). The base URL is read from
+     * [DabMusicBaseUrlKey] and pushed into [DabMusicAudioProvider] on every resolve so users
+     * who point at a mirror or self-hosted gateway don't need a restart to pick up the change.
      *
-     * Returns null when the catalog has no acceptable match, when the gateway is unreachable,
-     * or when Cloudflare challenges the request — never throws, so the next source in the chain
-     * takes over.
+     * Returns null when the user is not logged in, when the catalog has no acceptable match,
+     * when the gateway is unreachable, or when Cloudflare challenges the request — never throws,
+     * so the next source in the chain takes over.
      */
     private fun resolveDabMusicStream(query: SourceQuery): DirectStream? {
         DabMusicAudioProvider.setBaseUrl(dataStore.get(DabMusicBaseUrlKey, "").ifBlank { null })
@@ -8491,7 +8492,7 @@ class MusicService :
                                 album = query.album,
                                 durationMs = query.durationMs,
                             ),
-                        format = "FLAC",
+                        quality = DabMusicAudioProvider.QUALITY_FLAC,
                     )?.let { resolved ->
                         DirectStream(
                             uri = resolved.uri,

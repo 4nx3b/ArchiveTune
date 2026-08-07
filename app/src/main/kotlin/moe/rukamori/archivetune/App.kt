@@ -335,6 +335,26 @@ class App :
                 .collect { url -> DabMusicAudioProvider.setBaseUrl(url) }
         }
 
+        // Mirrors the DabMusic account credentials into the provider. The email+password pair is
+        // only used when the user taps "Login" in Sources settings — the provider never auto-logs
+        // in. The session cookie collector below restores a previously-persisted session at cold
+        // start so the user doesn't have to re-login every time the app restarts.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { (it[DabMusicEmailKey] ?: "") to (it[DabMusicPasswordKey] ?: "") }
+                .distinctUntilChanged()
+                .collect { (email, password) ->
+                    DabMusicAudioProvider.setCredentials(email, password)
+                }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { it[DabMusicSessionCookieKey] ?: "" }
+                .distinctUntilChanged()
+                .collect { cookie -> DabMusicAudioProvider.setSessionCookie(cookie) }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it.toPlaybackAuthState() }
