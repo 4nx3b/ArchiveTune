@@ -56,5 +56,5 @@
     <string name="dabmusic_cf_bypass_not_needed">Cloudflare is not blocking — no bypass needed</string>
     <string name="dabmusic_cf_bypass_checking">Checking if Cloudflare is blocking…</string>
     <string name="dabmusic_cf_bypass_title">DabMusic — Cloudflare Challenge</string>
-    <string name="dabmusic_cf_bypass_hint">Loading dabmusic.xyz in a WebView. The page will refresh automatically once Cloudflare is satisfied. Close this screen when the page shows the DabMusic homepage.</string>
+    <string name="dabmusic_cf_bypass_hint">Loading dabmusic.xyz. If a "Verify you are human" checkbox appears, tap it. The dialog closes automatically once the bypass cookie is captured (usually &lt; 5s on mobile data).</string>
 </resources>

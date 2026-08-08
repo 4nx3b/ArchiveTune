@@ -9,18 +9,24 @@ package moe.rukamori.archivetune.dabmusic
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -57,14 +64,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ## How it works
  *
- * 1. The dialog opens a fullscreen WebView with JS enabled.
- * 2. The WebView loads `https://dabmusic.xyz/`.
- * 3. Cloudflare serves the interstitial; the WebView's JS engine solves the challenge.
- * 4. Cloudflare redirects to the real dabmusic.xyz homepage and sets `cf_clearance` via
+ * 1. The dialog opens a near-fullscreen WebView with JS enabled.
+ * 2. The WebView is configured with the SAME [DabMusicAudioProvider.USER_AGENT] used by OkHttp —
+ *    this is critical: Cloudflare binds `cf_clearance` to (IP, User-Agent), so if the WebView
+ *    solves the challenge with the default Android System WebView UA and OkHttp then sends the
+ *    cookie with a desktop Chrome UA, Cloudflare rejects it. Keeping both clients on the same
+ *    UA is what makes the captured cookie valid for OkHttp.
+ * 3. The WebView loads `https://dabmusic.xyz/`.
+ * 4. Cloudflare serves the interstitial; the WebView's JS engine solves the challenge
+ *    automatically (or, for interactive Turnstile widgets, the user taps the checkbox in the
+ *    visible WebView).
+ * 5. Cloudflare redirects to the real dabmusic.xyz homepage and sets `cf_clearance` via
  *    `Set-Cookie`. The WebView's [CookieManager] stores it.
- * 5. On page finish (or after a 30s safety timeout), we read `cf_clearance` from
+ * 6. A polling loop checks [CookieManager.getCookie] every 500ms for the `cf_clearance` entry —
+ *    we don't rely solely on `onPageFinished` because Cloudflare may set the cookie via JS
+ *    without a page load, or fire `onPageFinished` on the interstitial itself.
+ * 7. When the cookie appears (or after a 60s safety timeout), we read it from
  *    [CookieManager.getCookie] and call [onCfClearanceCaptured].
- * 6. The caller persists the cookie in [moe.rukamori.archivetune.constants.DabMusicCfClearanceKey]
+ * 8. The caller persists the cookie in [moe.rukamori.archivetune.constants.DabMusicCfClearanceKey]
  *    and pushes it into [DabMusicAudioProvider.setCfClearance] — every subsequent OkHttp request
  *    includes `cf_clearance=...` in its `Cookie` header and Cloudflare passes it through.
  *
@@ -91,16 +108,27 @@ fun DabMusicCloudflareBypassDialog(
     onCfClearanceCaptured: (cfClearance: String) -> Unit,
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val captureHandled = remember { AtomicBoolean(false) }
     var statusMessage by remember {
         mutableStateOf(context.getString(R.string.dabmusic_cf_bypass_loading))
     }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    // Normalize the URL we pass to CookieManager.getCookie — that API wants a full URL with
+    // scheme + host (no path), otherwise it returns null. The user's base URL preference might
+    // be "https://dabmusic.xyz" (no trailing slash) or "https://dabmusic.xyz/" — both should
+    // resolve to the same cookie jar, but we canonicalize here to be safe.
+    val cookieUrl = remember(baseUrl) {
+        val raw = baseUrl.trim().trimEnd('/')
+        if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "https://$raw"
+    }
 
     fun extractCfClearance(): String? {
         // CookieManager.getCookie returns "name=value; name2=value2" for the given URL, or null.
-        // We split on "; " and look for cf_clearance=. The cookie value itself can contain
+        // We split on ";" and look for cf_clearance=. The cookie value itself can contain
         // URL-safe characters but never ";" or ",", so this parse is safe.
-        val cookies = CookieManager.getInstance().getCookie(baseUrl) ?: return null
+        val cookies = CookieManager.getInstance().getCookie(cookieUrl) ?: return null
         return cookies
             .split(";")
             .asSequence()
@@ -135,14 +163,55 @@ fun DabMusicCloudflareBypassDialog(
         onDismiss()
     }
 
-    // Safety timeout: if Cloudflare's challenge doesn't resolve within 30s (e.g. the user's
-    // network is very slow or Cloudflare is misbehaving), give up and let the user retry.
+    // Poll the WebView's CookieManager for the cf_clearance cookie every 500ms. We do NOT rely
+    // solely on WebViewClient.onPageFinished because:
+    //   - Cloudflare's interstitial itself fires onPageFinished (so the first call sees no
+    //     cf_clearance and we'd dismiss too early if we trusted it),
+    //   - the cookie may be set via JS without a navigation,
+    //   - CookieManager.flush() is asynchronous — the cookie may not be visible immediately
+    //     after onPageFinished returns.
+    // Polling catches all of these cases. The polling loop stops as soon as the cookie appears
+    // (which calls finishCapture → onDismiss → this composable leaves composition → coroutine
+    // is cancelled).
+    LaunchedEffect(cookieUrl) {
+        // Give the WebView a moment to start loading before we begin polling.
+        delay(1_000)
+        while (!captureHandled.get()) {
+            val cf = extractCfClearance()
+            if (!cf.isNullOrBlank()) {
+                statusMessage = context.getString(R.string.dabmusic_cf_bypass_success)
+                delay(300) // small grace period so CookieManager.flush() lands
+                finishCapture()
+                break
+            }
+            delay(500)
+        }
+    }
+
+    // Safety timeout: if Cloudflare's challenge doesn't resolve within 60s (e.g. the user's
+    // network is very slow, or an interactive Turnstile is waiting for a tap the user hasn't
+    // noticed), give up and let the user retry. 60s is generous — Cloudflare's managed
+    // challenge typically resolves in <5s on residential mobile IPs.
     LaunchedEffect(Unit) {
-        delay(30_000)
+        delay(60_000)
         if (!captureHandled.get()) {
             statusMessage = context.getString(R.string.dabmusic_cf_bypass_failed)
             delay(1_500)
             finishCapture()
+        }
+    }
+
+    // Clean up the WebView when the dialog leaves composition. Without this, the WebView keeps
+    // running its JS engine and timers in the background (and leaks the activity on configuration
+    // changes).
+    DisposableEffect(Unit) {
+        onDispose {
+            webViewRef?.apply {
+                stopLoading()
+                removeAllViews()
+                destroy()
+            }
+            webViewRef = null
         }
     }
 
@@ -158,34 +227,15 @@ fun DabMusicCloudflareBypassDialog(
         Box(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .height(600.dp)
-                    .padding(8.dp),
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface),
         ) {
-            Text(
-                text = statusMessage,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(8.dp),
-            )
-            Text(
-                text = stringResource(R.string.dabmusic_cf_bypass_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(8.dp),
-            )
+            // The WebView — fill the entire dialog so Cloudflare's interactive Turnstile widget
+            // (if it appears) is visible AND clickable. The previous version used
+            // wrapContentHeight(CenterVertically) which collapsed the WebView to 0 height on
+            // first composition, hiding the challenge entirely.
             AndroidView(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 32.dp, bottom = 48.dp)
-                        .wrapContentHeight(Alignment.CenterVertically),
+                modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     WebView(ctx).apply {
                         @SuppressLint("SetJavaScriptEnabled")
@@ -196,6 +246,22 @@ fun DabMusicCloudflareBypassDialog(
                             javaScriptCanOpenWindowsAutomatically = true
                             setSupportZoom(false)
                             displayZoomControls = false
+                            // The cf_clearance cookie is bound to (IP, User-Agent). If the
+                            // WebView solves the challenge with Android System WebView's default
+                            // UA and OkHttp later sends the cookie with a different UA, Cloudflare
+                            // rejects the cookie. So we force the WebView to use the SAME UA as
+                            // DabMusicAudioProvider's OkHttp client.
+                            userAgentString = DabMusicAudioProvider.USER_AGENT
+                            // Cloudflare's challenge sometimes checks MediaSource / WebRTC
+                            // availability as part of its bot fingerprinting — keeping these on
+                            // matches a real browser.
+                            mediaPlaybackRequiresUserGesture = false
+                            cacheMode = WebSettings.LOAD_DEFAULT
+                            // Allow mixed content because Cloudflare's interstitial may load
+                            // scripts from challenges.cloudflare.com over HTTPS, but the
+                            // redirect target on dabmusic.xyz should also be HTTPS — keep this
+                            // off (the default) for safety, but set explicitly so we know.
+                            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                         }
                         // Accept cookies so Cloudflare can set cf_clearance.
                         CookieManager.getInstance().setAcceptCookie(true)
@@ -205,28 +271,68 @@ fun DabMusicCloudflareBypassDialog(
                             object : WebViewClient() {
                                 override fun onPageFinished(view: WebView, url: String?) {
                                     super.onPageFinished(view, url)
-                                    // The challenge page itself fires onPageFinished too — we
-                                    // only care about the post-redirect homepage load. The
-                                    // homepage URL is the bare base URL (no path) or "/".
-                                    val host = baseUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')
-                                    if (url != null && url.contains(host) && !url.contains("challenge", ignoreCase = true)) {
-                                        // Cloudflare sets cf_clearance via Set-Cookie during the
-                                        // redirect; CookieManager flushes asynchronously, so we
-                                        // poll for the cookie to appear.
-                                        view.postDelayed({
-                                            if (!captureHandled.get()) {
-                                                statusMessage =
-                                                    context.getString(R.string.dabmusic_cf_bypass_success)
-                                                finishCapture()
-                                            }
-                                        }, 800)
+                                    // Don't act on onPageFinished — the polling loop in the
+                                    // LaunchedEffect above is the source of truth. We just nudge
+                                    // CookieManager to flush its in-memory jar to persistent
+                                    // storage so the polling loop sees the cookie sooner.
+                                    CookieManager.getInstance().flush()
+                                    // Update the status line so the user sees something is
+                                    // happening.
+                                    if (!captureHandled.get()) {
+                                        statusMessage =
+                                            context.getString(R.string.dabmusic_cf_bypass_loading)
                                     }
                                 }
                             }
-                        loadUrl(baseUrl)
+                        loadUrl(cookieUrl)
+                        webViewRef = this
                     }
                 },
             )
+
+            // Status overlay at the top — small, semi-transparent, doesn't block the WebView
+            // (Cloudflare's Turnstile widget is usually centered, so a top strip is safe).
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White,
+                    )
+                    Text(
+                        text = stringResource(R.string.dabmusic_cf_bypass_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.8f),
+                    )
+                }
+            }
+
+            // Loading spinner in the center for the initial page load — disappears once the
+            // WebView paints (we can't easily detect that, so we just hide it after 3s).
+            var showSpinner by remember { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                delay(3_000)
+                showSpinner = false
+            }
+            if (showSpinner) {
+                CircularProgressIndicator(
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(32.dp),
+                    strokeWidth = 3.dp,
+                    color = Color.White,
+                )
+            }
         }
     }
 }

@@ -92,8 +92,13 @@ object DabMusicAudioProvider {
      * A desktop Chrome User-Agent. The DabMusic gateway is behind Cloudflare and serves the
      * interstitial to clients it identifies as bots, so we present as a browser to maximise the
      * chance the REST endpoint is reachable at all.
+     *
+     * This value is ALSO used by [DabMusicCloudflareBypassDialog]'s WebView — Cloudflare binds
+     * the `cf_clearance` cookie to (IP, User-Agent). If the WebView solves the challenge with one
+     * UA and OkHttp later sends the cookie with a different UA, Cloudflare rejects it and the
+     * bypass silently fails. Keeping both clients on the same UA is what makes the cookie valid.
      */
-    private const val USER_AGENT =
+    const val USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/124.0.0.0 Safari/537.36"
 
