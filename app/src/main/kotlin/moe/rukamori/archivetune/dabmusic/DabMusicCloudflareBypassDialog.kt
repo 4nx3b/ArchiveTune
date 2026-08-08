@@ -108,7 +108,6 @@ fun DabMusicCloudflareBypassDialog(
     onCfClearanceCaptured: (cfClearance: String) -> Unit,
 ) {
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
     val captureHandled = remember { AtomicBoolean(false) }
     var statusMessage by remember {
         mutableStateOf(context.getString(R.string.dabmusic_cf_bypass_loading))
