@@ -211,7 +211,6 @@ import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
 import moe.rukamori.archivetune.constants.DabMusicEnabledKey
 import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
-import moe.rukamori.archivetune.morideobfuscator.SOURCE_SWITCH_VOLUME_REASSERT_MS
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -9888,6 +9887,11 @@ class MusicService :
         const val ROOT = "root"
         const val HOME = "home"
         const val HOME_QUICK_PICKS = "home_quick_picks"
+
+        // Delay before re-applying the captured baseline volume after a source switch, so the
+        // user never hears a muted stream when the new source's prepare pipeline settles. The
+        // READY hook cancels this job if it fires first.
+        const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
 
         // Prefix for the dedicated player-cache key used by Tidal streams so their bytes never
         // collide with the YouTube stream cached under the bare media id.
