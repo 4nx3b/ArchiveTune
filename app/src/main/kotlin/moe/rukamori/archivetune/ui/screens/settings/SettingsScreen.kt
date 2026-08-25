@@ -68,23 +68,129 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
 
+/**
+ * Search-result children that are indexed under one page but physically live on another.
+ *
+ * The settings index grew section by section, so a number of children are still listed under the
+ * page that *used* to own them — every Discord activity field under "Integration", every lyrics
+ * provider toggle under "Lyrics", every streaming-source switch under "Playback". Navigating to
+ * the indexed parent opens a screen that does not contain the row at all, so `?scrollTo=` has
+ * nothing to find and the result silently lands at the top of the wrong page.
+ *
+ * Keyed by `"<indexedParent>/<scrollKey>"` rather than by the scroll key alone: several keys are
+ * legitimately indexed twice (`qobuz_enable` under both "Playback" and "Qobuz"), and only the
+ * out-of-place copy should be redirected.
+ *
+ * Fixing the index itself would be the deeper repair, but it would also change the result titles
+ * users see; re-pointing the navigation keeps the search results as they are and simply sends
+ * them somewhere the setting exists.
+ */
+private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
+    buildMap {
+        fun own(
+            owner: String,
+            parent: String,
+            vararg keys: String,
+        ) = keys.forEach { put("$parent/$it", owner) }
+
+        // Integration is a hub of links; the settings themselves live on the per-service screens.
+        own(
+            "discord", "integration",
+            "discord_options", "discord_connection", "discord_activity", "discord_images",
+            "activity_status", "platform_status", "discord_activity_name",
+            "discord_activity_details", "discord_activity_state", "discord_activity_type",
+            "discord_show_when_paused", "large_image", "large_text", "small_image",
+        )
+        own("discord_experimental", "integration", "discord_experimental")
+        own(
+            "lastfm", "integration",
+            "lastfm_options", "lastfm_scrobbling_config", "enable_scrobbling", "lastfm_now_playing",
+            "lastfm_prefer_yt_thumbnails", "scrobble_min_track_duration", "scrobble_delay_percent",
+            "scrobble_delay_minutes", "lastfm_connect_button", "lastfm_connect_librefm_button",
+            "lastfm_connect_custom_button",
+        )
+        own("tidal", "integration", "tidal_account", "tidal_instances")
+        own("qobuz", "integration", "qobuz_account", "qobuz_tokens", "qobuz_instances")
+        own(
+            "telegram", "integration",
+            "telegram_login", "telegram_browse_channels", "telegram_lossless_only",
+            "telegram_logout", "telegram_bots_title",
+        )
+
+        // Lyrics was split into Providers / Romanisation / Animations sub-pages.
+        own(
+            "lyrics_providers", "lyrics",
+            "first_lyrics_provider", "set_first_lyrics_provider", "prioritize_word_synced_lyrics",
+            "enable_tidal_lyrics", "enable_deezer_lyrics", "enable_musixmatch_experimental",
+            "paxsenix_api_key", "paxsenix_endpoint", "paxsenix_stats", "paxsenix_lyrics",
+            "betterlyrics", "betterlyrics_portato", "youlyplus_lyrics", "lrclib", "kugou",
+            "unison_lyrics", "simpmusic_lyrics", "megalobiz_lyrics",
+        )
+        own(
+            "lyrics_romanisation", "lyrics",
+            "lyrics_romanize_japanese", "lyrics_romanize_korean", "lyrics_romanize_chinese",
+            "lyrics_romanize_hindi", "lyrics_romanize_other",
+        )
+        own("lyrics_animations", "lyrics", "lyrics_animations")
+        own("appearance", "lyrics", "lyrics_background_style")
+        // The lyrics translator shipped alongside the Discord experiments and still lives there.
+        own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
+
+        // Source enable/quality switches moved from Playback to the dedicated Sources page.
+        own(
+            "sources", "playback",
+            "preferred_sources", "auto_choose_playback_client", "player_stream_client",
+            "check_source", "spotify_catalog_source", "tidal_enable", "tidal_account_first",
+            "tidal_audio_quality", "tidal_animated_covers", "tidal_manage_instances",
+            "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
+            "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
+        )
+        own("ytdlp", "playback", "ytdlp")
+        own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
+        own("qobuz", "sources", "qobuz")
+        own("tidal", "sources", "tidal")
+
+        // Appearance rows that were moved out to their own pages.
+        own("navigation_bar", "appearance", "frosted_nav_bar", "liquid_glass_nav_bar", "hide_navigation_bar_labels")
+        own("appearance_extras", "appearance", "show_home_category_chips")
+        own("playback", "appearance", "swipe_sensitivity")
+        own("behavior", "appearance", "force_high_refresh_rate")
+        own("appearance_extras", "behavior", "show_tags_in_library")
+        own("downloads", "storage", "downloaded_songs", "download_location")
+    }
+
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
+    // A child indexed under the wrong page is navigated to the page that actually holds it.
+    val ownerKey = CROSS_PAGE_SCROLL_OWNERS["$parentKey/${scrollKey.orEmpty()}"] ?: parentKey
     val route =
-        when (parentKey) {
+        when (ownerKey) {
             "account" -> "settings/account"
             "appearance" -> "settings/appearance"
+            "appearance_extras" -> "settings/appearance/extras"
+            "aod" -> "settings/appearance/aod_customized"
+            "navigation_bar" -> "settings/appearance/navigation_bar"
+            "lyrics_animations" -> "settings/appearance/lyrics_animations"
             "playback" -> "settings/player"
+            "ytdlp" -> "settings/player/ytdlp"
             "sources" -> "settings/sources"
+            "jiosaavn" -> "settings/jiosaavn"
+            "deezer" -> "settings/deezer"
             "lyrics" -> "settings/lyrics"
+            "lyrics_providers" -> "settings/lyrics/providers"
+            "lyrics_romanisation" -> "settings/lyrics/romanisation"
             "content" -> "settings/content"
             "behavior" -> "settings/privacy"
             "integration" -> "settings/integration"
             "internet" -> "settings/internet"
             "storage" -> "settings/storage"
+            "downloads" -> "settings/downloads"
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
+            "logcat" -> "settings/logcat"
+            "music_together" -> "settings/music_together"
             "about" -> "settings/about"
             "discord" -> "settings/discord"
+            "discord_experimental" -> "settings/discord/experimental"
             "tidal" -> "settings/tidal"
             "qobuz" -> "settings/qobuz"
             "telegram" -> "settings/telegram"
@@ -96,48 +202,17 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
         }
     // About / developer-options screens intentionally don't participate in auto-scroll
     // (their contents are mostly static links). All other screens honor ?scrollTo=.
-    val supportsScroll = parentKey !in setOf("developer_options", "about", "po_token", "account")
-    return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
-}
-
-/**
- * Strict, deterministic settings search index. Only settings currently rendered by the
- * settings hierarchy are indexed; stale aliases and hidden/moved entries cannot surface.
- */
-private fun searchSettings(groups: List<SettingsGroup>, query: String): List<SearchResultItem> {
-    val terms = query.lowercase().trim().split(Regex("\\s+")).filter(String::isNotBlank)
-    if (terms.isEmpty()) return emptyList()
-    return groups.asSequence()
-        .flatMap { it.items.asSequence().filterNot(SettingsItem::hidden) }
-        .flatMap { parent ->
-            parent.children.asSequence().map { child -> parent to child }
-        }
-        .filter { (parent, child) ->
-            val searchable = buildList {
-                add(child.title.lowercase())
-                add(child.scrollKey.replace('_', ' ').lowercase())
-                addAll(child.keywords.map(String::lowercase))
-            }
-            // Every word must describe the setting itself. Parent category
-            // words are deliberately excluded so "video", for example, does
-            // not return every unrelated item in the Content category.
-            terms.all { term -> searchable.any { it.contains(term) } }
-        }
-        .map { (parent, child) ->
-            SearchResultItem(
-                title = child.title,
-                parentTitle = parent.title,
-                parentIcon = parent.icon,
-                parentKey = parent.key,
-                parentAccentColor = parent.accentColor,
-                parentRoute = searchableSettingsRoute(parent.key, child.scrollKey),
-                scrollKey = child.scrollKey,
-                onClick = parent.onClick,
-                switchControl = child.switchControl,
+    val supportsScroll =
+        ownerKey !in
+            setOf(
+                "developer_options",
+                "about",
+                "po_token",
+                "account",
+                "logcat",
+                "music_together",
             )
-        }
-        .sortedWith(compareBy<SearchResultItem> { !it.title.lowercase().startsWith(query.trim().lowercase()) }.thenBy { it.title })
-        .toList()
+    return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -196,8 +271,28 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+    // When searching, flatten all individual SettingsChildren across every
+    // category so each matching setting is shown as a separate row.
+    //
+    // Per product decision: settings that ship with an inline switch control
+    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
+    // Persistent queue, etc.) ARE included in search results — the switch is
+    // rendered inline so the user can toggle directly from the results.
+    // Switchless settings navigate to the parent screen and auto-scroll to
+    // the setting's position when tapped.
+    //
+    // The matching itself lives in [SettingsSearch] — see that file for why
+    // multi-word queries used to return nothing.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
-        if (searchQuery.isBlank()) emptyList() else searchSettings(allSettingsGroups, searchQuery)
+        if (searchQuery.isBlank()) {
+            emptyList()
+        } else {
+            SettingsSearch.search(
+                groups = allSettingsGroups,
+                rawQuery = searchQuery,
+                routeFor = { parentKey, scrollKey -> searchableSettingsRoute(parentKey, scrollKey) },
+            )
+        }
     }
     val filteredGroups = remember(allSettingsGroups) {
         allSettingsGroups.map { group ->

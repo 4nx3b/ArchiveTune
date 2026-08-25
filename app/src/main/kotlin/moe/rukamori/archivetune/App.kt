@@ -45,12 +45,15 @@ import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
+import moe.rukamori.archivetune.spotify.Spotify
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -60,6 +63,7 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
+import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
@@ -91,6 +95,13 @@ class App :
     SingletonImageLoader.Factory {
     @Inject
     lateinit var ytDlpRuntime: YtDlpRuntime
+
+    /**
+     * Injected only so the canvas provider can mint a Spotify token on demand — see
+     * [SpotifyLibraryRepository.ensureAccessToken].
+     */
+    @Inject
+    lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -169,6 +180,32 @@ class App :
         // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
+        }
+
+        // Spotify Canvas. The canvas module deliberately has no dependency on the
+        // app's Spotify code, so it takes the access token and the song → Spotify
+        // track mapping as injected callbacks. Both yield null when the user has
+        // no Spotify session, in which case the provider falls back to the
+        // kouzu.in resolver on its own.
+        SpotifyCanvasProvider.logger = { message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(
+                android.util.Log.INFO,
+                "SpotifyCanvas",
+                message,
+            )
+        }
+        // Mint/refresh on demand rather than reading the `Spotify.accessToken` global:
+        // that global is only set as a side effect of an earlier Spotify library call, so
+        // on a fresh launch a connected user still had no token here and the official
+        // Canvas endpoint was skipped entirely.
+        SpotifyCanvasProvider.tokenProvider = { spotifyLibraryRepository.ensureAccessToken() }
+        SpotifyCanvasProvider.trackUriResolver = { _, title, artist ->
+            // Same reason: identifying the track on Spotify needs the session too.
+            spotifyLibraryRepository.ensureAccessToken()
+            resolveSpotifyTrackUri(title, artist)
+        }
+        SpotifyCanvasProvider.extraResolverEndpointsProvider = {
+            CanvasResolverEndpoints.parse(dataStore.get(CanvasResolverEndpointsKey, ""))
         }
 
         // Pre-warm the Apple Music web player JWT on startup so the first
@@ -372,7 +409,7 @@ class App :
                 .distinctUntilChanged()
                 .collect { (key, endpoint) ->
                     PaxsenixLyrics.setApiKey(key)
-                    PaxsenixLyrics.setEndpoint(endpoint)
+                    PaxsenixLyrics.setEndpoint(normalizePaxsenixEndpoint(endpoint))
                 }
         }
 
@@ -571,6 +608,122 @@ internal data class ImageDiskCacheConfig(
     val policy: CachePolicy,
     val maxSizeBytes: Long,
 )
+
+/**
+ * Per-provider sub-paths served by the Paxsenix ("Lyrically") API, longest first
+ * so `apple-music/cache/cleanup` is stripped before `apple-music/cache`.
+ *
+ * [PaxsenixLyrics] appends the sub-path for whichever provider is being queried,
+ * so the configured endpoint has to be the *service root*.
+ */
+private val PAXSENIX_PROVIDER_PATHS =
+    listOf(
+        "apple-music/cache/cleanup",
+        "apple-music/lyrics",
+        "apple-music/cache",
+        "musixmatch/lyrics",
+        "spotify/lyrics",
+        "spotify/search",
+        "spotify/home",
+        "netease/lyrics",
+        "netease/search",
+        "youtube/lyrics",
+        "youtube/search",
+        "deezer/lyrics",
+        "genius/lyrics",
+        "kugou/lyrics",
+        "kugou/search",
+        "qq/lyrics",
+        "qq/search",
+        "api/stats",
+        "playground",
+        "docs",
+    )
+
+/**
+ * Normalises a user-supplied Paxsenix endpoint down to the service root.
+ *
+ * The API documents a *separate* URL per lyrics provider
+ * (`…/apple-music/lyrics`, `…/spotify/lyrics`, and so on), so users reasonably
+ * paste one of those into the endpoint field. [PaxsenixLyrics] then appends its
+ * own provider sub-path, producing `…/apple-music/lyrics/spotify/lyrics` and a
+ * 404 for every request. Stripping any known provider path (plus query string
+ * and fragment) means pasting any documented URL resolves to the same working
+ * root, and a blank value still falls through to the built-in default.
+ */
+private fun normalizePaxsenixEndpoint(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+
+    var url = trimmed.substringBefore('?').substringBefore('#').trimEnd('/')
+    for (path in PAXSENIX_PROVIDER_PATHS) {
+        if (url.endsWith("/$path", ignoreCase = true)) {
+            url = url.removeRange(url.length - path.length - 1, url.length)
+            break
+        }
+        if (url.endsWith(path, ignoreCase = true)) {
+            url = url.removeRange(url.length - path.length, url.length)
+            break
+        }
+    }
+    return url.trimEnd('/').ifBlank { "" }
+}
+
+/**
+ * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider]
+ * can ask Spotify for the track's Canvas.
+ *
+ * Returns null when the user has no Spotify session, when there is nothing to
+ * search on, or when no result looks like the same song. The artist check matters:
+ * an unrelated track's canvas is worse than no canvas, and the search is a plain
+ * text match that will happily return a cover or a remix.
+ *
+ * Callers are rate-limited by [SpotifyCanvasProvider]'s own one-hour result cache,
+ * so this runs at most once per song per hour.
+ */
+private suspend fun resolveSpotifyTrackUri(
+    title: String?,
+    artist: String?,
+): String? {
+    if (!Spotify.isAuthenticated()) return null
+    val cleanTitle = title?.trim().orEmpty()
+    val cleanArtist = artist?.trim().orEmpty()
+    if (cleanTitle.isBlank()) return null
+
+    val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+    val tracks =
+        Spotify
+            .search(query = query, types = listOf("track"), limit = 5)
+            .getOrNull()
+            ?.tracks
+            ?.items
+            .orEmpty()
+    if (tracks.isEmpty()) return null
+
+    fun matchesTitle(name: String): Boolean =
+        name.equals(cleanTitle, ignoreCase = true) ||
+            name.contains(cleanTitle, ignoreCase = true) ||
+            cleanTitle.contains(name, ignoreCase = true)
+
+    fun matchesArtist(names: List<String>): Boolean =
+        cleanArtist.isBlank() ||
+            names.any { candidate ->
+                candidate.isNotBlank() &&
+                    (
+                        candidate.equals(cleanArtist, ignoreCase = true) ||
+                            candidate.contains(cleanArtist, ignoreCase = true) ||
+                            cleanArtist.contains(candidate, ignoreCase = true)
+                    )
+            }
+
+    val match =
+        tracks.firstOrNull { track ->
+            matchesTitle(track.name) && matchesArtist(track.artists.map { it.name })
+        } ?: return null
+
+    return match.uri?.takeIf { it.startsWith("spotify:track:") }
+        ?: match.id.takeIf { it.isNotBlank() }?.let { "spotify:track:$it" }
+}
 
 internal fun resolveImageDiskCacheConfig(maxImageCacheSizeMb: Int?): ImageDiskCacheConfig {
     val sizeMb = maxImageCacheSizeMb ?: 512
