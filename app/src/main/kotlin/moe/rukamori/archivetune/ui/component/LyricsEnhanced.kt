@@ -18,6 +18,8 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -79,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -185,6 +188,11 @@ private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
 // short enough to settle before the next line change in almost all songs,
 // while still looking smooth rather than instant.
 private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
+// The lines stay transparent until the active one has been placed, then fade in
+// over this long. See `awaitingFirstFocus`.
+private const val LYRIC_FIRST_FOCUS_FADE_MS = 200
+// Hard ceiling on how long the lines may stay hidden waiting for that placement.
+private const val LYRIC_FIRST_FOCUS_TIMEOUT_MS = 400L
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 // Minimum backward position jump (in ms) that we treat as a "reset" trigger —
 // large enough to ride through ExoPlayer's normal position jitter (which is
@@ -308,29 +316,42 @@ fun LyricsEnhanced(
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics!!) }
 
-    val lyricsEntries: List<LyricsEntry> =
-        remember(lyrics) {
-            if (lyrics == null || lyrics == LYRICS_NOT_FOUND) return@remember emptyList()
-            when {
-                isTtml(lyrics!!) -> {
-                    parseTtml(lyrics!!)
-                }
-
-                isLineSyncedLrc(lyrics!!) -> {
-                    parseLyrics(lyrics!!)
-                }
-
-                else -> {
-                    lyrics!!
-                        .lines()
-                        .filter { it.isNotBlank() }
-                        .map { line -> LyricsEntry(time = -1L, text = line.trim()) }
+    // Parsed off the composition thread. `null` means "not parsed yet" — the render `when` below
+    // keeps the shimmer up on that state instead of falling through to "lyrics not found".
+    //
+    // parseTtml/parseLyrics used to run right here, synchronously, and buildSyncedLyrics below
+    // walked the result again in the same composition. For word-synced TTML that is an XML parse
+    // plus one object per syllable, twice — landing on the exact frame the Apple Music
+    // COVER->LYRICS morph starts, which is what made switching to the lyrics page stutter. Both
+    // now run on Dispatchers.Default, the dispatcher the romanization pass below already uses.
+    var parsedEntries by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
+    LaunchedEffect(lyrics) {
+        val text = lyrics
+        if (text == null || text == LYRICS_NOT_FOUND) {
+            parsedEntries = emptyList()
+            return@LaunchedEffect
+        }
+        parsedEntries =
+            withContext(Dispatchers.Default) {
+                when {
+                    isTtml(text) -> parseTtml(text)
+                    isLineSyncedLrc(text) -> parseLyrics(text)
+                    else ->
+                        text
+                            .lines()
+                            .filter { it.isNotBlank() }
+                            .map { line -> LyricsEntry(time = -1L, text = line.trim()) }
                 }
             }
-        }
+    }
+    val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
 
-    var syncedLyrics by remember(lyricsEntries, isTtmlFormat) {
-        mutableStateOf(buildSyncedLyrics(lyricsEntries, isTtmlFormat, emptyMap()))
+    // Keyed on the raw lyrics text, not on lyricsEntries: the entries now arrive a beat after the
+    // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
+    // back on the main thread the moment the parse lands. The effect below publishes the real
+    // build from Default, so this only ever supplies the empty starting value.
+    var syncedLyrics by remember(lyrics, isTtmlFormat) {
+        mutableStateOf(SyncedLyrics(emptyList()))
     }
 
     LaunchedEffect(lyricsEntries, romanizationPreferences) {
@@ -452,6 +473,44 @@ fun LyricsEnhanced(
     // and every effect that drives scrolling is keyed on the same counter so they all
     // observe the live state.
     val listState = key(lyricsSessionKey, positionResetCounter) { rememberLazyListState() }
+
+    // ── First-frame placement ──
+    // A fresh LazyListState starts at line 0 and the auto-scroll collector below
+    // walks it to the active line. Drawing during that trip is what made the
+    // lyrics visibly reposition themselves every time the view was opened — most
+    // obvious in the Apple Music player, which composes this view from scratch on
+    // every open, so the user saw the first verse for a frame and then a jump
+    // plus a 280ms settle to wherever the song actually is.
+    //
+    // So: keep the lines invisible until the active one has been placed (the
+    // first placement snaps instead of animating, since nothing is on screen to
+    // animate), then fade them in. Re-armed when the number of lines changes so
+    // lyrics that arrive after the view is already open — a slow provider, a
+    // translation — get the same treatment instead of jumping.
+    var awaitingFirstFocus by
+        remember(lyricsSessionKey, positionResetCounter, syncedLyrics.lines.size) {
+            mutableStateOf(isSynced && syncedLyrics.lines.isNotEmpty())
+        }
+    // Safety net: nothing may keep the lyrics hidden. If the placement hasn't
+    // happened by the time this fires (no viewport, auto-scroll preference off,
+    // an index that never lands in range) the lines are shown as they are.
+    LaunchedEffect(awaitingFirstFocus) {
+        if (!awaitingFirstFocus) return@LaunchedEffect
+        delay(LYRIC_FIRST_FOCUS_TIMEOUT_MS)
+        awaitingFirstFocus = false
+    }
+    // Read only from the draw phase (graphicsLayer), so the fade never
+    // recomposes the karaoke view.
+    val firstFocusAlpha =
+        animateFloatAsState(
+            targetValue = if (awaitingFirstFocus) 0f else 1f,
+            animationSpec =
+                tween(
+                    durationMillis = if (awaitingFirstFocus) 0 else LYRIC_FIRST_FOCUS_FADE_MS,
+                    easing = LinearEasing,
+                ),
+            label = "lyrics-first-focus-alpha",
+        )
 
     LaunchedEffect(lyricsSessionKey) {
         playbackPositionMs.longValue = player.currentPosition.coerceAtLeast(0L)
@@ -680,7 +739,10 @@ fun LyricsEnhanced(
     // observes the first new active line. Keeping listState stable means the
     // collector always targets the list currently on screen.
     LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
-        if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
+        if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) {
+            awaitingFirstFocus = false
+            return@LaunchedEffect
+        }
         snapshotFlow {
             listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
         }.first { it }
@@ -700,12 +762,19 @@ fun LyricsEnhanced(
                     return@collectLatest
                 }
 
+                // The first placement of a session is a snap: the list is still
+                // transparent, so animating it would only spend frames on a
+                // motion nobody can see — and it is the animation that used to
+                // read as the lyrics repositioning themselves.
+                val isFirstFocus = awaitingFirstFocus
                 listState.scrollLyricIntoFocus(
                     index = index,
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
+                    snap = isFirstFocus,
                 )
                 forceNextScroll = false
+                if (isFirstFocus) awaitingFirstFocus = false
             }
     }
 
@@ -877,7 +946,10 @@ fun LyricsEnhanced(
                 }
             }
 
-            lyrics == null -> {
+            // parsedEntries == null means the off-thread parse above hasn't published yet.
+            // Shimmer on that state — without it the two "lyrics not found" branches below
+            // would flash for the frames the parse takes.
+            lyrics == null || parsedEntries == null -> {
                 ShimmerHost {
                     repeat(6) { TextPlaceholder() }
                 }
@@ -934,7 +1006,11 @@ fun LyricsEnhanced(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .nestedScroll(nestedScrollConnection),
+                            .nestedScroll(nestedScrollConnection)
+                            // Draw-phase read: holds the lines back until the
+                            // active one is in place (see awaitingFirstFocus),
+                            // then fades them in without recomposing anything.
+                            .graphicsLayer { alpha = firstFocusAlpha.value },
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
@@ -1372,6 +1448,9 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     index: Int,
     animateToNearbyItem: Boolean,
     force: Boolean,
+    // Placement for a view that isn't visible yet: skip both animations so the
+    // active line is already in place on the frame the lyrics fade in.
+    snap: Boolean = false,
 ) {
     val itemCount = layoutInfo.totalItemsCount
     if (itemCount == 0) return
@@ -1380,7 +1459,7 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     var itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { item -> item.index == targetIndex }
     if (itemInfo == null) {
         val distance = abs(targetIndex - firstVisibleItemIndex)
-        if (animateToNearbyItem && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
+        if (!snap && animateToNearbyItem && distance <= LYRIC_FOCUS_ANIMATED_DISTANCE) {
             animateScrollToItem(targetIndex)
         } else {
             scrollToItem(targetIndex)
@@ -1414,7 +1493,7 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
         // Larger deltas (return from manual scroll, large seeks) still
         // animate so the motion stays smooth over long distances.
         val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
-        if (abs(scrollDelta) <= instantThreshold && !force) {
+        if (snap || (abs(scrollDelta) <= instantThreshold && !force)) {
             scrollBy(scrollDelta.toFloat())
         } else {
             animateScrollBy(

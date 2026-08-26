@@ -220,10 +220,10 @@ import moe.rukamori.archivetune.deezer.DeezerCrypto
 import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
-import moe.rukamori.archivetune.audiosource.FlacStreamInfo
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
@@ -567,6 +567,15 @@ class MusicService :
     @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
+
+    // Initial-buffer-stall recovery (ported from Metrolist's "fix: playback once again").
+    // A stream can stall in STATE_BUFFERING forever without surfacing an HTTP error the
+    // onPlayerError recovery paths can act on — the player just spins, then the user skips.
+    // Watchdog: if playback is BUFFERING with playWhenReady at the very start of a track for
+    // longer than INITIAL_BUFFER_STALL_DELAY_MS, invalidate the resolved stream caches and
+    // re-prepare so the resolver picks a fresh (possibly different-client) stream URL.
+    private var initialBufferRecoveryJob: Job? = null
+    private var initialBufferRecoveryAttemptedMediaId: String? = null
 
     // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
     //
@@ -3833,6 +3842,47 @@ class MusicService :
         player.prepare()
         if (shouldResume) player.play()
         return true
+    }
+
+    private fun updateInitialBufferRecovery(@Player.State playbackState: Int) {
+        val mediaId = player.currentMediaItem?.mediaId
+        val shouldWatch =
+            playbackState == Player.STATE_BUFFERING &&
+                player.playWhenReady &&
+                player.currentPosition < INITIAL_BUFFER_STALL_POSITION_MS &&
+                mediaId != null &&
+                initialBufferRecoveryAttemptedMediaId != mediaId
+
+        if (!shouldWatch) {
+            initialBufferRecoveryJob?.cancel()
+            initialBufferRecoveryJob = null
+            return
+        }
+        if (initialBufferRecoveryJob?.isActive == true) return
+
+        initialBufferRecoveryJob =
+            scope.launch {
+                delay(INITIAL_BUFFER_STALL_DELAY_MS)
+                if (player.playbackState != Player.STATE_BUFFERING ||
+                    !player.playWhenReady ||
+                    player.currentPosition >= INITIAL_BUFFER_STALL_POSITION_MS ||
+                    player.currentMediaItem?.mediaId != mediaId
+                ) {
+                    return@launch
+                }
+
+                initialBufferRecoveryAttemptedMediaId = mediaId
+                Timber.tag(TAG).w(
+                    "Initial buffer stalled for %s; invalidating stream caches and re-preparing",
+                    mediaId,
+                )
+                playbackUrlCache.remove(mediaId)
+                YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+                if (playbackStreamRecoveryTracker.registerRetryAttempt(mediaId)) {
+                    player.prepare()
+                    if (player.playWhenReady) player.play()
+                }
+            }
     }
 
 
@@ -7343,6 +7393,12 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
         mediaItem?.metadata?.let { queuedMetadataByMediaId[mediaItem.mediaId] = it }
 
+        // New item: reset the initial-buffer-stall watchdog for the next track.
+        initialBufferRecoveryJob?.cancel()
+        initialBufferRecoveryJob = null
+        initialBufferRecoveryAttemptedMediaId = null
+        updateInitialBufferRecovery(player.playbackState)
+
         // Catch-all for user-initiated skips that bypass PlayerConnection (notification, lock
         // screen, Bluetooth, Android Auto): a SEEK transition while a crossfade fade loop is still
         // running — but NOT the crossfade's own handoff seek (crossfadeHandoffInProgress) — means
@@ -7596,6 +7652,7 @@ class MusicService :
         super.onPlaybackStateChanged(playbackState)
 
         updateHistoryTrackingPlaybackState()
+        updateInitialBufferRecovery(playbackState)
         if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
             enqueueCurrentHistorySessionForFinalization()
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
@@ -7695,6 +7752,7 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        updateInitialBufferRecovery(player.playbackState)
         secondaryCrossfadePlayer?.let { secondaryPlayer ->
             if (isCrossfading && !crossfadeHandoffInProgress) {
                 if (isPlaying) {
@@ -8463,6 +8521,7 @@ class MusicService :
             }
         val directFactory = createResolvedUpstreamDataSourceFactory()
         val telegramFactory = TelegramDataSource.Factory()
+        val tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient)
         // Deezer needs its own chain rather than cachedFactory's: that one runs the YouTube
         // resolver over the dataSpec, which would rewrite our deezer:// URI. Decryption sits below
         // the cache so what gets cached is already-decrypted audio, letting a replay skip both the
@@ -8483,6 +8542,7 @@ class MusicService :
                 directFactory = directFactory,
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
+                tidalProgressiveDashFactory = tidalProgressiveDashFactory,
             )
         }
     }
@@ -8493,13 +8553,28 @@ class MusicService :
                 this,
                 OkHttpDataSource.Factory(mediaOkHttpClient),
             )
-        val routingFactory = youtubeMediaFactory
+        // Resolved source URIs pass through this factory a second time after the outer resolver has
+        // selected a provider. Route those private schemes here instead of asking DefaultDataSource
+        // to handle an unknown `deezer://` or `tidal-dash://` URI.
+        val routingFactory =
+            DataSource.Factory {
+                ResolvedSchemeRoutingDataSource(
+                    defaultFactory = youtubeMediaFactory,
+                    deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
+                    tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                )
+            }
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
-            resolvePlaybackDataSpec(
-                dataSpec = dataSpec,
-                allowCacheShortCircuit = false,
-            )
+            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
+            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+                dataSpec
+            } else {
+                resolvePlaybackDataSpec(
+                    dataSpec = dataSpec,
+                    allowCacheShortCircuit = false,
+                )
+            }
         }
     }
 
@@ -9626,7 +9701,7 @@ class MusicService :
                         ),
                     cacheDir = cacheDir,
                     preferAtmos = false,
-                    preferLiveDash = false,
+                    preferLiveDash = true,
                     audioQuality = quality,
                 )
             }.onFailure { error ->
@@ -9709,258 +9784,70 @@ class MusicService :
     }
 
     /**
-     * Backup Qobuz stream resolver: https://mlc-ytify.kouzu.in/api/stream?id=<youtube_id>
+     * Resolves a **Qobuz backup** stream — the community-hosted `mlc-ytify.kouzu.in` mirror, which
+     * serves a FLAC per YouTube video id.
      *
-     * Two-step flow:
-     *   1. GET the resolver endpoint — returns a small JSON envelope:
-     *        { "id": "<yt_id>", "url": "https://velamhere-img.hf.space/song/<yt_id>", ... }
-     *      The `url` field points at the actual lossless audio stream on the CDN.
-     *   2. ExoPlayer streams from the resolved CDN URL — the same mediaOkHttpClient
-     *      is used, so the x-request-source: muzo header (injected for kouzu.in hosts
-     *      by the interceptor) is applied to the resolver call. The CDN host
-     *      (velamhere-img.hf.space) doesn't need the header.
+     * The two-step resolve (envelope → mirror probe) lives in
+     * [QobuzBackupProvider.resolveStream], shared with the download path
+     * (`LosslessStreamResolver.resolveQobuzBackup`). It used to be duplicated here, which is how
+     * the two drifted: the playback copy was fixed to prefer the `lossless` mirror over the lossy
+     * `url` one while the download path had no Qobuz-backup support at all.
      *
-     * The `x-request-source: muzo` header MUST be sent on every kouzu.in request —
-     * without it the server rate-limits the client aggressively. The header is
-     * injected centrally by the [mediaOkHttpClient] interceptor for any kouzu.in
-     * host request.
+     * [mediaOkHttpClient] is passed in so the probe goes out through the same proxy-aware client
+     * that will fetch the bytes, and so the interceptor adds `x-request-source: muzo` — without
+     * that header kouzu.in rate-limits aggressively.
      *
-     * Returns null when:
-     *   - mediaId is blank or not a YouTube video id (not 11 chars)
-     *   - the resolver is unreachable / returns a non-2xx
-     *   - the JSON envelope has no `url` field
+     * Returns null when the id is not a YouTube video id, the mirror has nothing for it, or no
+     * candidate mirror serves audio.
      *
-     * Marked [trustedDirectId] = true because the user has explicitly chosen the
-     * Qobuz backup source — the YouTube mediaId IS the authoritative identity for
-     * the song the user is playing, so we skip the title/artist metadata gate.
+     * Marked [DirectStream.trustedDirectId] because the mirror is keyed by the very id we asked
+     * for: the YouTube media id IS the authoritative identity here, so the title/artist gate that
+     * guards catalogue-search sources has nothing to check.
      */
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
-        // An explicit pick from the "Play from" popup addresses a specific mirror entry,
-        // which is usually NOT the playing song's own id — honour it when present and
-        // fall back to the media id for the automatic path.
+        // An explicit pick from the "Play from" popup addresses a specific mirror entry, which is
+        // usually NOT the playing song's own id — honour it when present and fall back to the media
+        // id for the automatic path.
         val ytId = (query.directQobuzBackupVideoId ?: query.mediaId).trim()
-        // YouTube video ids are 11 characters. Anything else isn't a valid id for
-        // the kouzu.in endpoint — bail early so we don't waste a network call.
-        if (ytId.length != 11 || ytId.any { !it.isLetterOrDigit() && it != '_' && it != '-' }) {
-            Timber.tag("MusicService").d("Qobuz backup skip: mediaId=%s is not a valid YT id", ytId)
-            return null
-        }
-        return runCatching {
-            runBlocking(Dispatchers.IO) {
-                // Step 1: call the resolver endpoint. It returns a small JSON envelope
-                // with the actual stream URL on the velamhere-img.hf.space CDN.
-                val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$ytId"
-                // NOTE: GET (not HEAD) — the endpoint returns 405 Method Not Allowed
-                // for HEAD. We only need the first chunk of the response to parse the
-                // JSON envelope (the body is ~150 bytes), so we use a small byte range
-                // to avoid downloading the full envelope unnecessarily.
-                val resolverRequest =
-                    okhttp3.Request
-                        .Builder()
-                        .url(resolverUrl)
-                        .get()
-                        .header("User-Agent", "ArchiveTune-Android")
-                        .header("Accept", "application/json")
-                        .build()
-                val resolvedCandidates = mediaOkHttpClient.newCall(resolverRequest).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Timber.tag("MusicService").d(
-                            "Qobuz backup resolver miss for %s: HTTP %d",
-                            ytId,
-                            response.code,
-                        )
-                        return@runBlocking null
-                    }
-                    val body = response.body?.string().orEmpty()
-                    if (body.isBlank()) {
-                        Timber.tag("MusicService").d("Qobuz backup resolver miss for %s: empty body", ytId)
-                        return@runBlocking null
-                    }
-                    val root = runCatching { org.json.JSONObject(body) }.getOrNull()
-                    if (root == null) {
-                        Timber.tag("MusicService").d(
-                            "Qobuz backup resolver miss for %s: body is not JSON (first 100 chars: %s)",
-                            ytId,
-                            body.take(100),
-                        )
-                        return@runBlocking null
-                    }
-                    // The resolver envelope carries TWO mirrors for the same track:
-                    //   "url"      → https://…/song/<id>     lossy AAC-in-MP4 transcode
-                    //   "lossless" → https://…/lossless/<id> the real FLAC
-                    // Reading only `url` is why "Qobuz backup" never actually played
-                    // lossless: the lossy mirror was picked every time and the FLAC
-                    // mirror was ignored. Try lossless first and keep the lossy
-                    // mirror as a fallback for entries that have no FLAC yet.
-                    val candidates =
-                        buildList {
-                            root.optString("lossless").takeIf { it.isNotBlank() }?.let(::add)
-                            root.optString("flac").takeIf { it.isNotBlank() }?.let(::add)
-                            root.optString("url").takeIf { it.isNotBlank() }?.let(::add)
-                            root.optString("canvas_url").takeIf { it.isNotBlank() }?.let(::add)
-                            root.optString("video_url").takeIf { it.isNotBlank() }?.let(::add)
-                        }.distinct()
-                    if (candidates.isEmpty()) {
-                        Timber.tag("MusicService").d(
-                            "Qobuz backup resolver miss for %s: no url field in response (first 200 chars: %s)",
-                            ytId,
-                            body.take(200),
-                        )
-                        return@runBlocking null
-                    }
-                    candidates
-                } ?: return@runBlocking null
-
-                // Step 2: probe each candidate mirror with a two-byte ranged GET and
-                // take the first that answers with real audio.
-                //
-                // This used to be a HEAD probe, which could never succeed: the CDN
-                // answers HEAD with `405 Method Not Allowed` and `allow: GET`. The
-                // old code papered over that by falling through to the URL anyway
-                // and hardcoding `audio/mp4`, so a FLAC mirror would have been
-                // mislabelled as AAC even if it had been selected. A ranged GET is
-                // honoured (206 + Content-Type + Content-Range) so we learn the real
-                // container and the real length, and we can tell a genuine 404 for
-                // this track apart from a method-not-allowed.
-                val probe =
-                    resolvedCandidates.firstNotNullOfOrNull { candidate ->
-                        probeQobuzBackupMirror(candidate)
-                    }
-                if (probe == null) {
-                    Timber.tag("MusicService").d(
-                        "Qobuz backup CDN miss for %s: no candidate mirror served audio (tried %d)",
-                        ytId,
-                        resolvedCandidates.size,
-                    )
-                    return@runBlocking null
+        val resolved =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    QobuzBackupProvider.resolveStream(ytId, mediaOkHttpClient)
                 }
-                Timber.tag("MusicService").i(
-                    "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s%s]",
-                    query.title,
-                    probe.url.take(80),
-                    probe.contentType,
-                    if (probe.isLossless) ", lossless" else "",
-                    probe.sampleRate?.let { rate ->
-                        ", ${probe.bitDepth?.toString() ?: "?"}bit/${rate / 1000f}kHz"
-                    }.orEmpty(),
-                )
-                DirectStream(
-                    uri = probe.url,
-                    mimeType = probe.mimeType,
-                    codecs = probe.codecs,
-                    contentLength = probe.contentLength,
-                    label = if (probe.isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)",
-                    source = AudioSourceType.QOBUZ_BACKUP,
-                    sampleRate = probe.sampleRate,
-                    bitDepth = probe.bitDepth,
-                    // The YouTube mediaId is the authoritative identity of the
-                    // song the user is playing — we trust it without requiring
-                    // the backup server to echo back matching metadata.
-                    trustedDirectId = true,
-                    matchedTitle = query.title,
-                    matchedArtist = query.artists.joinToString(", ").ifBlank { null },
-                    matchedAlbum = query.album,
-                    // The FLAC header's own sample count is the exact length of the file
-                    // being served; prefer it over the catalogue duration so the Details
-                    // card and the measured bitrate are both computed from the real file.
-                    matchedDurationMs = probe.durationMs ?: query.durationMs,
-                )
-            }
-        }.onFailure { error ->
-            Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
-        }.getOrNull()
+            }.onFailure { error ->
+                Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
+            }.getOrNull() ?: return null
+
+        Timber.tag("MusicService").i(
+            "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s%s]",
+            query.title,
+            resolved.uri.take(80),
+            resolved.contentType,
+            if (resolved.isLossless) ", lossless" else "",
+            resolved.sampleRate?.let { rate ->
+                ", ${resolved.bitDepth?.toString() ?: "?"}bit/${rate / 1000f}kHz"
+            }.orEmpty(),
+        )
+        return DirectStream(
+            uri = resolved.uri,
+            mimeType = resolved.mimeType,
+            codecs = resolved.codecs,
+            contentLength = resolved.contentLength,
+            label = resolved.label,
+            source = AudioSourceType.QOBUZ_BACKUP,
+            sampleRate = resolved.sampleRate,
+            bitDepth = resolved.bitDepth,
+            trustedDirectId = true,
+            matchedTitle = query.title,
+            matchedArtist = query.artists.joinToString(", ").ifBlank { null },
+            matchedAlbum = query.album,
+            // The FLAC header's own sample count is the exact length of the file being served;
+            // prefer it over the catalogue duration so the Details card and the measured bitrate
+            // are both computed from the real file.
+            matchedDurationMs = resolved.durationMs ?: query.durationMs,
+        )
     }
 
-    /**
-     * A Qobuz-backup CDN mirror that answered a probe with real audio bytes.
-     *
-     * [contentLength] is the *full* resource size taken from the `Content-Range`
-     * total (`bytes 0-1/40802970`), not the two bytes the probe actually asked
-     * for — ExoPlayer wants the whole-resource length.
-     */
-    private data class QobuzBackupProbe(
-        val url: String,
-        val mimeType: String,
-        val codecs: String,
-        val contentLength: Long?,
-        val contentType: String,
-        val isLossless: Boolean,
-        /**
-         * Real stream properties read out of the FLAC STREAMINFO block that the probe
-         * already downloads. Null for the lossy mirror (and for any FLAC whose header
-         * did not parse), in which case the Details card falls back to its tier
-         * heuristic rather than inventing precision.
-         */
-        val sampleRate: Int? = null,
-        val bitDepth: Int? = null,
-        val durationMs: Long? = null,
-    )
-
-    /**
-     * Issues a 2-byte ranged GET against a Qobuz-backup CDN mirror and maps the
-     * response to a [QobuzBackupProbe], or null when the mirror doesn't exist
-     * (404) or doesn't serve audio.
-     *
-     * HEAD is deliberately not used: the CDN replies `405 Method Not Allowed`
-     * with `allow: GET` for HEAD on every object, so a HEAD probe can only ever
-     * fail. The range is sized to exactly cover a FLAC `STREAMINFO` block
-     * ([FlacStreamInfo.REQUIRED_BYTES]) so the same round trip that establishes
-     * reachability also yields the track's real sample rate, bit depth and length —
-     * that is what stops every lossless track from showing the same numbers in the
-     * player's Details card.
-     */
-    private fun probeQobuzBackupMirror(url: String): QobuzBackupProbe? =
-        runCatching {
-            val request =
-                okhttp3.Request
-                    .Builder()
-                    .url(url)
-                    .get()
-                    .header("User-Agent", "ArchiveTune-Android")
-                    .header("Range", "bytes=0-${FlacStreamInfo.REQUIRED_BYTES - 1}")
-                    .build()
-            mediaOkHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val headerBytes = runCatching { response.body?.bytes() }.getOrNull()
-                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
-                // A JSON body here is the CDN's {"detail":"Not Found"} envelope for a
-                // mirror that hasn't been populated for this track yet.
-                if (contentType.contains("json") || contentType.contains("html")) return@use null
-                if (contentType.isNotBlank() &&
-                    !contentType.startsWith("audio/") &&
-                    !contentType.startsWith("video/") &&
-                    !contentType.contains("octet-stream")
-                ) {
-                    return@use null
-                }
-                // Prefer the Content-Range total ("bytes 0-1/40802970") — Content-Length
-                // on a 206 is just the two probed bytes.
-                val totalLength =
-                    response
-                        .header("Content-Range")
-                        ?.substringAfter('/', "")
-                        ?.trim()
-                        ?.toLongOrNull()
-                        ?: response.header("Content-Length")?.toLongOrNull()?.takeIf { response.code != 206 }
-                // Trust the bytes over the labels: a mirror that serves FLAC is FLAC even
-                // if the CDN mislabels the Content-Type, and the header is already here.
-                val streamInfo = headerBytes?.let(FlacStreamInfo::parse)
-                val isFlac = streamInfo != null || contentType.contains("flac") || url.contains("/lossless/")
-                QobuzBackupProbe(
-                    url = url,
-                    mimeType = if (isFlac) "audio/flac" else "audio/mp4",
-                    codecs = if (isFlac) "flac" else "mp4a.40.2",
-                    contentLength = totalLength?.takeIf { it > 0 },
-                    contentType = contentType.ifBlank { "unknown" },
-                    isLossless = isFlac,
-                    sampleRate = streamInfo?.sampleRate,
-                    bitDepth = streamInfo?.bitDepth,
-                    durationMs = streamInfo?.durationMs,
-                )
-            }
-        }.onFailure { error ->
-            Timber.tag("MusicService").d(error, "Qobuz backup mirror probe failed for %s", url.take(80))
-        }.getOrNull()
 
     private fun parseQobuzInstances(): List<String> =
         dataStore
@@ -10795,6 +10682,8 @@ class MusicService :
             normalizedScheme == "file" ||
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram" ||
+            normalizedScheme == DeezerCrypto.SCHEME ||
+            normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -10831,6 +10720,7 @@ class MusicService :
         private val directFactory: DataSource.Factory,
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
+        private val tidalProgressiveDashFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10850,6 +10740,10 @@ class MusicService :
                 } else if (normalizedScheme == DeezerCrypto.SCHEME) {
                     // Carries its own cache; the YouTube resolver would rewrite the URI.
                     deezerFactory
+                } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+                    // Streams through its own progressive-DASH source; the YouTube resolver
+                    // would rewrite the URI.
+                    tidalProgressiveDashFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
@@ -10881,7 +10775,49 @@ class MusicService :
         }
     }
 
+    /** Routes provider URIs after the resolving/cache layers have already selected a stream. */
+    private class ResolvedSchemeRoutingDataSource(
+        private val defaultFactory: DataSource.Factory,
+        private val deezerFactory: DataSource.Factory,
+        private val tidalProgressiveDashFactory: DataSource.Factory,
+    ) : DataSource {
+        private val transferListeners = mutableListOf<TransferListener>()
+        private var delegate: DataSource? = null
 
+        override fun addTransferListener(transferListener: TransferListener) {
+            transferListeners += transferListener
+            delegate?.addTransferListener(transferListener)
+        }
+
+        override fun open(dataSpec: DataSpec): Long {
+            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
+            val factory =
+                when (scheme) {
+                    DeezerCrypto.SCHEME -> deezerFactory
+                    TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                    else -> defaultFactory
+                }
+            val selected = factory.createDataSource()
+            transferListeners.forEach(selected::addTransferListener)
+            delegate = selected
+            return selected.open(dataSpec)
+        }
+
+        override fun read(
+            buffer: ByteArray,
+            offset: Int,
+            length: Int,
+        ): Int = checkNotNull(delegate).read(buffer, offset, length)
+
+        override fun getUri(): Uri? = delegate?.uri
+
+        override fun getResponseHeaders(): Map<String, List<String>> = delegate?.responseHeaders ?: emptyMap()
+
+        override fun close() {
+            delegate?.close()
+            delegate = null
+        }
+    }
 
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
@@ -11411,6 +11347,7 @@ class MusicService :
             localPlayer.removeListener(audioEffectPlayerListener)
             player.removeListener(this)
             player.removeListener(sleepTimer)
+            initialBufferRecoveryJob?.cancel()
             player.release()
             castPlaybackRepository.releasePlayer(player)
         } catch (_: Exception) {
@@ -11646,6 +11583,8 @@ class MusicService :
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 8 * 1024 * 1024L
         val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
+        private const val INITIAL_BUFFER_STALL_DELAY_MS = 15_000L
+        private const val INITIAL_BUFFER_STALL_POSITION_MS = 5_000L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
