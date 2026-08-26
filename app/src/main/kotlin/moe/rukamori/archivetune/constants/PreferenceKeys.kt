@@ -15,6 +15,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.util.Locale
 
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 val CustomThemeColorKey = stringPreferencesKey("customThemeColor")
@@ -271,6 +272,14 @@ enum class DownloadSource {
     AUTO,
 
     QOBUZ,
+
+    /**
+     * Community-hosted Qobuz mirror (mlc-ytify.kouzu.in), keyed by YouTube video id
+     * rather than a Qobuz catalogue id, so it needs no Source Pool account at all.
+     * Mirrors [AudioSourceType.QOBUZ_BACKUP] on the playback side and is gated by the
+     * same `QobuzBackupEnabledKey` toggle. Not in [DownloadSourceConfig.REQUIRES_POOL].
+     */
+    QOBUZ_BACKUP,
     TIDAL,
 
     /**
@@ -311,6 +320,7 @@ object DownloadSourceConfig {
     val DEFAULT_ORDER: List<DownloadSource> =
         listOf(
             DownloadSource.QOBUZ,
+            DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
@@ -320,6 +330,28 @@ object DownloadSourceConfig {
     /** Sources that need a Source Pool account configured to be usable for downloads. */
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
+
+    /**
+     * Cache-key prefix a source's downloaded bytes are stored under, e.g. `"qobuz_backup:"`.
+     *
+     * `DownloadUtil` namespaces each source's cache entries so bytes from one source can never be
+     * served for another, then has to check every prefix when deciding whether a song is already
+     * fully cached. Deriving the list here rather than writing it out at each of those call sites
+     * is what keeps a newly added source from being silently skipped by the cache lookups — which
+     * is exactly what happened to [DownloadSource.QOBUZ_BACKUP] and [DownloadSource.JIOSAAVN]: they
+     * resolved and downloaded fine, but their cached bytes were invisible to the completeness check
+     * and to the purge-on-failure path, so a download that had already succeeded was fetched again.
+     *
+     * [DownloadSource.AUTO] and [DownloadSource.YOUTUBE_MUSIC] are excluded: neither ever writes a
+     * prefixed key (the YouTube fallback uses the bare media id).
+     *
+     * `Locale.US` matters — `TIDAL` and `JIOSAAVN` both contain `I`, which lowercases to a dotless
+     * `ı` under a Turkish locale and would not match the key that was written.
+     */
+    val CACHE_KEY_PREFIXES: List<String> =
+        DownloadSource.entries
+            .filterNot { it == DownloadSource.AUTO || it == DownloadSource.YOUTUBE_MUSIC }
+            .map { "${it.name.lowercase(Locale.US)}:" }
 
     private fun parseType(name: String): DownloadSource? =
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
@@ -1143,6 +1175,11 @@ val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
+
+// Avatar that goes with AccountNameKey. Persisted for the same reason the name is: the visible
+// account identity has to survive a cold start (including the one the region picker triggers)
+// without waiting on, or depending on, a live accountMenu call.
+val AccountImageUrlKey = stringPreferencesKey("accountImageUrl")
 val SavedAccountsKey = stringPreferencesKey("savedAccounts")
 val UseLoginForBrowse = booleanPreferencesKey("useLoginForBrowse")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")
@@ -1524,6 +1561,11 @@ val CountryCodeToName =
 // App rating / star prompt preferences
 val LaunchCountKey = intPreferencesKey("launch_count")
 val OnboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
+
+// Last onboarding page the user was on. The onboarding ViewModel's page index is plain
+// in-memory state; without persisting it, process death or activity recreation resets the
+// flow to page 1 even though the user was mid-way through.
+val OnboardingCurrentPageKey = intPreferencesKey("onboarding_current_page")
 val HasPressedStarKey = booleanPreferencesKey("has_pressed_star")
 val RemindAfterKey = intPreferencesKey("remind_after")
 

@@ -16,11 +16,6 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -82,6 +77,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -94,6 +90,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -165,6 +162,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.abs
 
 private val AppleMusicFallbackGradient =
     listOf(
@@ -172,6 +170,16 @@ private val AppleMusicFallbackGradient =
         Color(0xFF141414),
         Color(0xFF050505),
     )
+
+private val LyricsSwipeStartRegion = 144.dp
+
+// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus
+// the 64dp blur: at 2.4x the artwork overhangs 0.7*W per edge (252dp on a 360dp screen)
+// against the 150 + 64 = 214dp needed. Kept in sync with AmLyricsBlurDriftScale in
+// AppleMusicPlayer.kt. Was 1.9x, which was sized for an older, smaller drift and let the
+// blur sample transparent pixels at full offset — a dark band along the trailing edge.
+private const val MovingBlurDriftScale = 2.4f
+private val LyricsSwipeDismissThreshold = 96.dp
 
 /**
  * Plumbs the lyrics-scroll signal up from [LyricsEnhanced] / [LyricsV2] (which own the
@@ -228,11 +236,14 @@ fun LyricsScreen(
     val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
     val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
     val foregroundColor = Color.White
+    val density = LocalDensity.current
+    val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
+    val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
+        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
     var playerControlsExpanded by remember(mediaMetadata.id, showPlayerControlsEnabled) {
         mutableStateOf(showPlayerControlsEnabled)
     }
@@ -573,7 +584,46 @@ fun LyricsScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music lyrics
+                // behaviour). This handler sits on the ROOT container so it is an ancestor of
+                // every hit path: Compose delivers pointer events to the hit node and its
+                // ancestors, so taps land here even when the lyrics LazyColumn consumes them
+                // for scrolling. The previous implementation was a sibling Box UNDER the
+                // content — hit-testing stops at the topmost hit sibling (the lyrics list),
+                // so the poke only ever fired in the padding gutters, which is why the
+                // tappable area felt so small.
+                .pointerInput(
+                    showPlayerControlsEnabled,
+                    autoHidePlayerControls,
+                    swipeStartRegionPx,
+                    swipeDismissThresholdPx,
+                    onBackClick,
+                ) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (showPlayerControlsEnabled && autoHidePlayerControls) {
+                            pokePlayerControlsVisibility()
+                        }
+
+                        if (down.position.y <= swipeStartRegionPx) {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+
+                                val deltaX = change.position.x - down.position.x
+                                val deltaY = change.position.y - down.position.y
+                                if (deltaY < 0f || abs(deltaX) > abs(deltaY)) break
+                                if (deltaY >= swipeDismissThresholdPx) {
+                                    change.consume()
+                                    onBackClick()
+                                    break
+                                }
+                            }
+                        }
+                    }
+                },
     ) {
         LyricsScreenBackground(
             style = lyricsBackground,
@@ -587,18 +637,13 @@ fun LyricsScreen(
             playerCustomBrightness = playerCustomBrightness,
         )
 
+        // Keeps unconsumed taps from falling through to whatever is layered below the
+        // lyrics screen (e.g. the player behind it).
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .consumeUnhandledPointerInput()
-                    .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
-                        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            pokePlayerControlsVisibility()
-                        }
-                    },
+                    .consumeUnhandledPointerInput(),
         )
 
         CompositionLocalProvider(LocalLyricsScrollListener provides { scrolling ->
@@ -884,31 +929,21 @@ private fun MovingBlurBackground(
     //
     // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
     // no-op and the bitmap stays pinned.
-    // Apple-Music-style "breathing" drift. Previously 19 s / 27 s half-cycles made the motion
-    // nearly imperceptible (≈6 dp/s on X, ≈3 dp/s on Y against a 64-dp blur that masks motion
-    // under ~16 dp). Drop to 4 s / 6 s half-cycles and widen the range to ±160 / ±120 — that's
-    // ~5× faster perceived motion and a clearly visible pan.
-    val transition = rememberInfiniteTransition(label = "moving-blur-drift")
-    val animatedDriftX by transition.animateFloat(
-        initialValue = -160f,
-        targetValue = 160f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4_000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "moving-blur-x",
-    )
-    val animatedDriftY by transition.animateFloat(
-        initialValue = -120f,
-        targetValue = 120f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "moving-blur-y",
-    )
-    val driftX = if (isPreS) 0f else animatedDriftX
-    val driftY = if (isPreS) 0f else animatedDriftY
+    // Wandering backdrop, shared with the Apple-Music-style player — see [BlurWanderDrift] for
+    // the path. It walks between random waypoints with eased legs, so the artwork always finishes
+    // the leg it is on and comes to rest before setting off in a new, randomly chosen direction.
+    // Neither of the earlier versions did that: a pair of RepeatMode.Reverse tweens turned around
+    // at full speed at ±160 / ±120 (the backdrop "whipping around"), and the Lissajous path that
+    // replaced them still spent half of every cycle retracing its way back, which reads as the
+    // colours suddenly travelling the other way.
+    //
+    // The offsets are deliberately left inside FloatState and read only from the graphicsLayer
+    // lambda below, which is a draw-phase read. Unwrapping them here would invalidate this whole
+    // composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every animation
+    // frame, competing with the lyric scroll and the karaoke sweep for frame budget.
+    //
+    // Pre-S doesn't drift at all (see below), so the frame loop is not started there.
+    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
             modifier
@@ -918,14 +953,13 @@ private fun MovingBlurBackground(
     ) {
         val preSDriftScale =
             if (isPreS) {
-                val driftMaxX = 160.dp
-                val driftMaxY = 120.dp
+                val driftMax = BlurWanderDrift.WanderRadiusDp.dp
                 val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
+                val requiredScaleX = 1f + 2f * (driftMax.value + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (driftMax.value + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
-                1.9f
+                MovingBlurDriftScale
             }
 
         AnimatedContent(
@@ -969,7 +1003,8 @@ private fun MovingBlurBackground(
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
                                 }
-                                .offset(x = driftX.dp, y = driftY.dp)
+                                // No offset: the pre-S fallback pins its single pre-blurred
+                                // bitmap (see above), so there is nothing to animate here.
                                 .alpha(0.95f),
                         )
                     }
@@ -986,15 +1021,13 @@ private fun MovingBlurBackground(
                             // translation is applied to the blurred result. This prevents
                             // the blur from sampling transparent areas at the translated
                             // image's trailing edge — the root cause of the corner flicker.
-                            //
-                            // Scale 1.9 extends the image 0.45*W beyond each edge
-                            // (162dp for W=360), which covers drift(±60) + blur(64)
-                            // = 124dp with a 38dp safety margin.
+                            // See [MovingBlurDriftScale] for the covering budget.
                             .graphicsLayer {
-                                scaleX = 1.9f
-                                scaleY = 1.9f
-                                translationX = driftX.dp.toPx()
-                                translationY = driftY.dp.toPx()
+                                scaleX = MovingBlurDriftScale
+                                scaleY = MovingBlurDriftScale
+                                // Deferred read — see blurWander above.
+                                translationX = blurWander.xDp.floatValue.dp.toPx()
+                                translationY = blurWander.yDp.floatValue.dp.toPx()
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .blur(64.dp)

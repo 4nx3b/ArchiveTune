@@ -25,13 +25,8 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -91,6 +86,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -181,6 +177,43 @@ private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
+
+// ─── Lyrics backdrop "moving blur" wander ────────────────────────────
+// The drift itself lives in [BlurWanderDrift], shared with MovingBlurBackground
+// in LyricsScreen.kt so both lyrics surfaces move identically. Offsets are in dp
+// and are applied as graphicsLayer translations (see driftGraphicsLayer below).
+//
+// [AmLyricsBlurDriftScale] has to cover the drift plus the blur radius:
+//     (scale - 1) / 2 * screenWidthDp  >=  maxDrift + blurRadius
+// or the blurred artwork stops covering the parent at maximum drift and the blur
+// samples transparent pixels, which shows up as a dark band on the trailing
+// edge. For the narrowest common phone (360dp) that means
+//     (2.4 - 1) / 2 * 360 = 252dp  >=  150 + 64 = 214dp.  ✔
+private const val AmLyricsBlurDriftScale = 2.4f
+
+// Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
+// zooms from here to [AmLyricsBlurDriftScale] over [AmLyricsBackdropMorphMs].
+private const val AmCoverBlurScale = 1.2f
+
+// How long the backdrop takes to travel between the COVER look (no drift, 1.2x)
+// and the LYRICS look (drifting, 2.4x). Also the duration of the canvas →
+// still-artwork cross-dissolve, and the delay before the canvas TextureView is
+// torn down, so the video surface only disappears once the still artwork that
+// replaces it is fully opaque.
+private const val AmLyricsBackdropMorphMs = 650
+
+// Blur radius of the artwork backdrop. Applied INSIDE the drift/zoom transform
+// (see driftGraphicsLayer), so the on-screen radius is this times the current
+// scale: ~77dp in COVER, ~154dp with lyrics open. Keeping the radius itself
+// constant means the RenderEffect is built once instead of being rebuilt on
+// every frame of the zoom.
+private val AmBackdropBlurRadius = 64.dp
+
+private const val AppleMusicLyricsContentDeferMs = 350L
+
+// How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
+// still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
+private val AmCanvasSeamFadeDp = 88.dp
 
 /**
  * A [Shape] that interpolates the corner radius based on the element's size.
@@ -311,8 +344,9 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
-    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
+    val showLyricsPlayerControlsState = rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val showLyricsPlayerControls by showLyricsPlayerControlsState
+    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -347,17 +381,20 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // Copied from main branch: simple auto-hide that always shows controls
-    // for 4 seconds when lyrics or queue opens, then hides them.
-    // No preference checks — the controls ALWAYS show first, then auto-hide.
+    // Auto-hide follows the shared Lyrics settings (AutoHideLyricsPlayerControlsKey),
+    // matching Apple Music's lyrics view: the controls are shown when the lyrics or
+    // queue opens, then clear after five seconds so the lyrics own the full screen —
+    // "Initially, you'll see other controls on the screen. But after five seconds,
+    // the lyrics will automatically start showing on the full screen." Tapping
+    // anywhere brings them back (see the pointerInput on the content Column/Row).
     var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 4_000L
+    val autoHideDelayMs = 5_000L
 
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
             playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
@@ -365,7 +402,7 @@ fun AppleMusicPlayerContent(
     LaunchedEffect(queueOpen) {
         if (queueOpen) {
             playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
@@ -379,8 +416,14 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide: show controls for 4s, then hide. Fires for both lyrics and queue.
-    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick) {
+    // Auto-hide timer: show controls for 5s, then hide. Fires for both lyrics and queue,
+    // but ONLY when the Auto-hide controls preference is on. Turning the preference off
+    // mid-session immediately restores the controls and keeps them.
+    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick, autoHideLyricsPlayerControls) {
+        if (!autoHideLyricsPlayerControls) {
+            playerControlsExpanded = true
+            return@LaunchedEffect
+        }
         if (!lyricsOpen && !queueOpen) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
@@ -388,27 +431,55 @@ fun AppleMusicPlayerContent(
     }
 
     // Deferred canvas-visible state: when lyrics opens, the canvas
-    // TextureView teardown (visible = false) + ExoPlayer pause are delayed by
-    // 250ms so they don't compete with the COVER→LYRICS sharedBounds morph
-    // for the main thread on the same frame. Without this deferral, the
-    // TextureView teardown + static image overlay composition + lyrics
-    // composable initialization + morph animation all fire simultaneously,
-    // causing a visible stutter in the thumbnail transition (issue 3).
-    // 250ms is enough for the morph spring to get past its initial phase
-    // (the non-bouncy StiffnessMediumLow spring reaches ~70% of target in
-    // ~250ms); the canvas teardown then happens smoothly behind the
-    // already-moving overlay. When lyrics closes, the canvas restores
-    // immediately (no delay) so there's no visible gap.
+    // TextureView teardown (visible = false) + ExoPlayer pause are delayed so
+    // they don't compete with the COVER→LYRICS sharedBounds morph for the main
+    // thread on the same frame. Without this deferral, the TextureView
+    // teardown + static image composition + lyrics composable initialization
+    // AND the morph animation all fire simultaneously, causing a visible
+    // stutter in the thumbnail transition (issue 3).
+    //
+    // The delay is [AmLyricsBackdropMorphMs] — the length of the backdrop
+    // cross-dissolve — so the canvas surface is only removed once the still
+    // blurred artwork underneath has faded up to full opacity. Shorter delays
+    // (this used to be 250ms while the still artwork appeared at 350ms) left a
+    // window where the canvas was already gone and the still artwork had not
+    // arrived, which is what made the backdrop visibly jump. When lyrics
+    // closes, the canvas restores immediately so there's no visible gap.
     var canvasVisibleForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
-            // Keep canvas visible briefly while the morph starts
+            // Keep canvas visible while the backdrop cross-dissolve runs.
             canvasVisibleForLyrics = true
-            delay(250)
+            delay(AmLyricsBackdropMorphMs.toLong())
             canvasVisibleForLyrics = false
         } else {
             canvasVisibleForLyrics = true
         }
+    }
+    // True while the lyrics backdrop (zoom + drift) is on screen OR still
+    // animating back out. Gates the wander frame loop so it isn't burning a
+    // frame callback every 16ms while the player sits in the COVER state.
+    var lyricsBackdropActive by remember { mutableStateOf(false) }
+    LaunchedEffect(lyricsOpen) {
+        if (lyricsOpen) {
+            lyricsBackdropActive = true
+        } else {
+            delay(AmLyricsBackdropMorphMs.toLong())
+            lyricsBackdropActive = false
+        }
+    }
+    var lyricsContentReady by remember { mutableStateOf(false) }
+    LaunchedEffect(lyricsOpen) {
+        if (!lyricsOpen) {
+            lyricsContentReady = false
+            return@LaunchedEffect
+        }
+        // Parse/building a large TTML/LRC model is synchronous during the first composition of
+        // LyricsEnhanced/LyricsV2. Let the artwork morph and canvas handoff render first so that
+        // this one-time CPU burst cannot land on the same frame as the shared-bounds animation.
+        lyricsContentReady = false
+        delay(AppleMusicLyricsContentDeferMs)
+        lyricsContentReady = true
     }
     val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
         {
@@ -447,59 +518,69 @@ fun AppleMusicPlayerContent(
         { sliderPositionState.value }
     }
 
-    // === Moving blur drift for the backdrop when lyrics is open ===
+    // === Moving blur wander for the backdrop when lyrics is open ===
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
-    // slowly drifts horizontally and vertically, creating an ambient motion
-    // behind the lyrics. Only active when lyricsOpen = true.
+    // wanders behind the lyrics. See [BlurWanderDrift] for the path itself —
+    // random waypoints joined by eased legs, so the colours always finish the
+    // leg they are on, settle, and then set off again somewhere new, instead of
+    // suddenly doubling back the way a closed periodic path does.
     //
-    // FLICKER FIX: the previous scale (1.4f) was too small for the drift range
-    // (±80dp X / ±60dp Y) + blur radius (64dp). At max drift, the image's
-    // trailing edge was INSIDE the parent's bounds (0.2*W - 80 < 0 for W=360),
-    // so the blur sampled transparent areas at the trailing edge — appearing
-    // as a flickering dark band at the screen corners/edges. Now using scale
-    // 1.9 with drift ±60/±45 and blur 64dp: the image extends 0.45*W beyond
-    // each edge (162dp for W=360), which is > drift(60) + blur(64) = 124dp,
-    // so the image always covers the parent with a comfortable safety margin.
+    // The offsets are bounded by BlurWanderDrift.WanderRadiusDp (150dp), which
+    // is what [AmLyricsBlurDriftScale] is sized against: at 2.4x the artwork
+    // overhangs 0.7*W per edge (252dp on a 360dp screen), covering the 150dp of
+    // drift plus the 64dp blur with margin to spare. A smaller scale would let
+    // the trailing edge pull inside the parent at maximum drift, and the blur
+    // would sample transparent pixels — the flickering dark band at the screen
+    // edges that an earlier 1.4x scale produced.
     //
-    // SPEED: uses LinearEasing instead of FastOutSlowInEasing. The previous
-    // FastOutSlowInEasing made the drift feel fast at the start but slow at
-    // the turnaround points (the easing decelerates into each endpoint then
-    // accelerates back out). LinearEasing gives a constant, uniform speed
-    // throughout the entire cycle — no perceived "slowdown" at the edges.
-    // Duration kept at 14s/20s (already increased from the original 19s/27s).
-    //
-    // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
-    // the animation values are read ONLY inside Modifier.graphicsLayer { }
-    // lambdas (draw-phase deferred reads). Reading them during composition —
-    // e.g. `val backdropDriftX = if (lyricsOpen) blurDriftX else 0f` — would
+    // CRITICAL PERF: the offsets stay wrapped in FloatState and are read ONLY
+    // inside Modifier.graphicsLayer { } lambdas (draw-phase deferred reads).
+    // Reading them during composition — e.g.
+    // `val driftX = if (lyricsOpen) wander.xDp.floatValue else 0f` — would
     // invalidate the ENTIRE AppleMusicPlayerContent composable every frame
     // (SharedTransitionLayout, AnimatedContent, ControlsColumn, and the inline
     // LyricsEnhanced all recompose at ~60fps), stealing the frame budget from
     // the karaoke syllable sweep. This was the root cause of the Apple-Music-
-    // style-only lyrics jank — LyricsScreen.kt doesn't have it because its
-    // drift lives in a separate MovingBlurBackground composable.
-    val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
-    val blurDriftXState = blurTransition.animateFloat(
-        initialValue = -60f,
-        targetValue = 60f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "am-lyrics-drift-x",
-    )
-    val blurDriftYState = blurTransition.animateFloat(
-        initialValue = -45f,
-        targetValue = 45f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "am-lyrics-drift-y",
-    )
+    // style-only lyrics jank.
+    //
+    // Gated on lyricsBackdropActive: the walk is driven by a frame loop, and
+    // leaving it running while the player sits on the cover (which is what
+    // rememberInfiniteTransition did) keeps the choreographer — and with it the
+    // whole Compose frame pipeline — awake for a value nothing is reading.
+    val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
+
+    // === COVER ↔ LYRICS backdrop hand-off ===
+    // The backdrop used to be built from two different nodes: 72dp blur at 1.2x
+    // for COVER/QUEUE, and a separate "64dp blur at 2.4x with drift" node that
+    // replaced it the instant `lyricsContentReady` flipped, 350ms after the
+    // morph began. Swapping nodes is what made the background change abruptly:
+    //
+    //  • the effective on-screen blur more than doubled in one frame (64dp
+    //    applied inside a 2.4x zoom reads as ~154dp, against 72dp at 1.2x),
+    //  • the artwork jumped from 1.2x to 2.4x — a 2x zoom with no in-between,
+    //  • and the drift snapped straight to wherever the always-running wander
+    //    had got to, i.e. up to 150dp of instant translation,
+    //  • while on canvas songs the video surface had already been pulled 100ms
+    //    earlier, so the un-drifted fallback flashed in between.
+    //
+    // Now there is ONE backdrop node whose graphicsLayer interpolates between
+    // the two looks off this progress value: scale 1.2 → 2.4, drift amplitude
+    // 0 → 1, and (for canvas songs) the video's opacity 1 → 0 underneath it.
+    // Both endpoints look exactly as they did before; only the trip between
+    // them changed, from one frame to [AmLyricsBackdropMorphMs].
+    val lyricsBackdropProgress =
+        animateFloatAsState(
+            targetValue = if (lyricsOpen) 1f else 0f,
+            animationSpec =
+                tween(
+                    durationMillis = AmLyricsBackdropMorphMs,
+                    easing = FastOutSlowInEasing,
+                ),
+            label = "am-lyrics-backdrop-progress",
+        )
 
     // Hoist the thumbnail corner radius preference so it can be used both
     // for the COVER state's artwork clip AND for the sharedBounds overlay
@@ -598,16 +679,25 @@ fun AppleMusicPlayerContent(
     }
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows lyric actions. Control visibility is governed
-            // by the shared Lyrics settings, so the Apple Music style does not duplicate those toggles.
+            // When lyrics is open, the overflow menu shows lyric actions plus the
+            // player-control toggles, identical to the standalone lyrics screen.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    showPlayerControlsState = showLyricsPlayerControlsState,
+                    onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
+                    onAutoHidePlayerControlsChange = { enabled ->
+                        if (enabled) {
+                            playerControlsVisibilityTick++
+                        } else {
+                            playerControlsExpanded = true
+                        }
+                    },
                     onDismiss = menuState::dismiss,
-                    showControlsToggles = false,
+                    showControlsToggles = true,
                 )
             }
         } else {
@@ -657,6 +747,12 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
+        // Height of the artwork stage (the weight(1f) morph area). Captured here so the backdrop —
+        // which is composed before the Column and so cannot see its layout — knows where the
+        // bottom controls begin. Read only from a draw-phase lambda, so a change costs a redraw
+        // rather than a recomposition.
+        var morphAreaHeightPx by remember { mutableIntStateOf(0) }
+
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -674,7 +770,14 @@ fun AppleMusicPlayerContent(
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || canvasActive) {
+            // Pre-S has no RenderEffect, so Modifier.blur is a no-op there and the
+            // blur has to be baked into a bitmap off the main thread instead.
+            // Gated on useCanvasBackdrop rather than canvasActive: pre-S never
+            // uses the canvas as its backdrop (blurring a video surface without
+            // RenderEffect isn't possible), so a canvas song still needs the
+            // blurred artwork — without this it fell through to an unblurred
+            // AsyncImage and showed a sharp backdrop.
+            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || useCanvasBackdrop) {
                 value = null
                 return@produceState
             }
@@ -701,45 +804,61 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            // Backdrop rendering — keeps the canvas ExoPlayer alive across
-            // lyrics open/close to avoid the multi-second reload delay that
-            // left a black gap behind the bottom controls.
+            // Backdrop rendering — one blurred-artwork node for every state,
+            // plus (on canvas songs) the live canvas video composited over it.
             //
-            // • COVER / QUEUE state (canvas) — render the live canvas with
-            //   heavy blur (72.dp), fixed 1.2x scale, no drift. The canvas
-            //   keeps playing continuously across COVER↔QUEUE morphs because
-            //   it lives outside the SharedTransitionLayout / AnimatedContent.
+            // • COVER / QUEUE state — the artwork sits at [AmCoverBlurScale]
+            //   with no drift. On canvas songs the canvas video covers it
+            //   completely, so what the user sees is the blurred canvas; the
+            //   artwork underneath is the fallback for while the canvas video
+            //   is still buffering.
             //
-            // • LYRICS state (canvas) — the canvas is PAUSED (isPlaying=false)
-            //   to free GPU for the karaoke syllable sweep, but the ExoPlayer
-            //   instance is retained (no disposal). A static AsyncImage with
-            //   blur + drift is overlaid ON TOP of the paused canvas so the
-            //   user sees the moving-blur aesthetic. When lyrics closes, the
-            //   canvas resumes instantly — no reload delay.
+            // • LYRICS state — the same artwork node zooms to
+            //   [AmLyricsBlurDriftScale] and starts drifting, and the canvas
+            //   fades out over it before its TextureView is torn down (the
+            //   ExoPlayer instance is retained either way, so closing lyrics
+            //   resumes the canvas instantly instead of reloading it).
             //
-            // • Non-canvas backdrop (no Spotify Canvas) — same as before:
-            //   static album art with blur, drift enabled during lyrics.
-            //
-            // Helper: deferred-read graphicsLayer for the drift. Reads the
-            // animation State<Float> inside the lambda (draw phase) so the
-            // parent composable is NOT invalidated every frame.
+            // Everything animates off `lyricsBackdropProgress`, and every read
+            // of it happens inside a graphicsLayer lambda — i.e. in the draw
+            // phase — so the zoom/drift/fade costs a redraw of an
+            // already-rasterized blur layer per frame and NOT a recomposition.
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
-                // lyricsOpen is a stable Boolean state — reading it here is a
-                // deferred read that only triggers a layer update on toggle.
-                val active = lyricsOpen
-                // Scale 1.9 (lyricsOpen) ensures the image extends 0.45*W beyond
-                // each edge — enough to cover drift(±60) + blur(64dp) = 124dp
-                // even on a 360dp-wide screen (162dp > 124dp). The old 1.4f scale
-                // only extended 72dp, which was less than drift(80) alone —
-                // causing the trailing edge to expose transparent areas at max
-                // drift, which the blur then sampled as a flickering dark band.
-                val scale = if (active) 1.9f else 1.2f
+                // Deferred state reads: draw phase only. See the comment on
+                // lyricsBackdropProgress for why this is a continuous ramp
+                // rather than the `if (lyricsOpen && lyricsContentReady)` step
+                // it replaced.
+                val progress = lyricsBackdropProgress.value
+                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) ensures the
+                // image extends 0.7*W beyond each edge — enough to cover
+                // drift(±150) + blur(64dp) = 214dp even on a 360dp-wide screen
+                // (252dp > 214dp). A smaller scale would let the trailing edge
+                // expose transparent areas at max drift, which the blur then
+                // sampled as a flickering dark band.
+                //
+                // Drift amplitude scales with the same progress, so the drift
+                // never outruns the zoom that has to cover it: at progress p
+                // the image overhangs (0.2 + 1.2p) / 2 * W while the drift asks
+                // for 150p + 64. On a 360dp screen those cross at p ≈ 0.42 and
+                // the margin only widens from there to the 252 vs 214 above.
+                //
+                // Below p ≈ 0.42 the overhang is short of the *blur radius*
+                // alone (36dp vs 64dp at p = 0) — but that is the COVER state,
+                // which has zero drift and looked exactly this way before the
+                // ramp existed (it was a 72dp blur at a fixed 1.2x, i.e. a
+                // slightly larger shortfall). What the ramp has to avoid is
+                // translation outrunning the zoom, and it does.
+                val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
-                if (active) {
-                    // State.value reads are deferred to the draw phase.
-                    translationX = blurDriftXState.value * driftDpToPx
-                    translationY = blurDriftYState.value * driftDpToPx
+                if (progress > 0f) {
+                    // Ramping the amplitude with `progress` is what keeps the
+                    // wander from snapping in: the phase advances the whole
+                    // time lyrics is open, so without the multiplier the very
+                    // first drifted frame would teleport the artwork by
+                    // however far along the path the phase already was.
+                    translationX = blurWander.xDp.floatValue * driftDpToPx * progress
+                    translationY = blurWander.yDp.floatValue * driftDpToPx * progress
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is
@@ -753,141 +872,50 @@ fun AppleMusicPlayerContent(
                 // its own syllables and is less sensitive to GPU pressure).
                 compositingStrategy = CompositingStrategy.Offscreen
             }
-            if (useCanvasBackdrop) {
-                // Fallback: blurred album art BEHIND the canvas. Visible while
-                // the canvas video is loading (isVideoReady = false → canvas
-                // alpha = 0). Without this, the user sees a black gap behind
-                // the bottom controls during the initial song load (when the
-                // canvas ExoPlayer is first created and buffering). Once the
-                // canvas is ready, it covers this fallback entirely.
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .then(
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    Modifier.blur(72.dp)
-                                } else {
-                                    Modifier
-                                },
-                            ).graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
-                )
-                // Canvas backdrop — the ExoPlayer is ALWAYS retained (never
-                // disposed across lyrics open/close) so the canvas resumes
-                // instantly when lyrics closes — no multi-second reload delay.
-                //
-                // PERFORMANCE (lyrics lag fix): the TextureView is HIDDEN
-                // (`visible = canvasVisibleForLyrics`) when lyrics is open. A
-                // paused TextureView with Modifier.blur(72.dp) still costs a
-                // full per-frame GPU composite + blur pass because the
-                // RenderEffect is re-applied every frame even when the surface
-                // content hasn't changed. This steals the frame budget from
-                // the karaoke syllable sweep, causing the "lyrics lag after
-                // ~20s" symptom. Hiding the TextureView entirely frees that
-                // budget. The static image overlay below visually replaces the
-                // canvas so the user still sees the moving-blur aesthetic.
-                //
-                // STUTTER FIX (issue 3): canvasVisibleForLyrics is deferred
-                // by 250ms when lyrics opens (see the LaunchedEffect above).
-                // This prevents the TextureView teardown, ExoPlayer pause,
-                // static image composition, lyrics init, AND the sharedBounds
-                // morph from all firing on the same frame — which was causing
-                // a visible stutter in the thumbnail transition.
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasVisibleForLyrics,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    visible = canvasVisibleForLyrics,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .blur(72.dp)
-                            .graphicsLayer {
-                                // Fixed 1.2x scale (no drift) — the canvas is
-                                // paused during lyrics so drift would be wasted.
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
-                )
-                // Static image overlay for lyrics — rendered ON TOP of the
-                // (paused) canvas so the user sees the moving-blur aesthetic.
-                // Without this, the paused canvas's last frame would show.
-                if (lyricsOpen) {
-                    if (isPreS && preBlurredBitmap != null) {
-                        Image(
-                            bitmap = preBlurredBitmap!!.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier
-                                    .matchParentSize()
-                                    .graphicsLayer(driftGraphicsLayer),
-                        )
-                    } else {
-                        AsyncImage(
-                            model = artworkRequest ?: artworkUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier
-                                    .matchParentSize()
-                                    // graphicsLayer OUTSIDE blur: the blur is applied
-                                    // to the centered image (inside graphicsLayer), then
-                                    // the scale + translation is applied to the blurred
-                                    // result. This prevents the blur from sampling
-                                    // transparent areas at the translated image's edges.
-                                    .graphicsLayer(driftGraphicsLayer)
-                                    .then(
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            Modifier.blur(64.dp)
-                                        } else {
-                                            Modifier
-                                        },
-                                    ),
-                        )
-                    }
-                }
-            } else if (lyricsOpen) {
-                // Non-canvas backdrop, LYRICS state: static image with blur + drift.
-                if (isPreS && preBlurredBitmap != null) {
-                    Image(
-                        bitmap = preBlurredBitmap!!.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .matchParentSize()
-                                .graphicsLayer(driftGraphicsLayer),
-                    )
+
+            // ── Canvas → still-art seam ──
+            // The blurred canvas layer used to run the full height of the player, so a
+            // BetterLyrics/Spotify canvas kept playing — blurred — behind the bottom controls.
+            // Apple Music ends the animated artwork at the artwork stage and carries the same
+            // colours on underneath the controls as a still gradient.
+            //
+            // This dissolves the canvas over the last [AmCanvasSeamFadeDp] of the artwork stage
+            // using the same DstIn trick AppleMusicSharpArtwork's fadeBottom uses. Below the seam
+            // what shows is the blurred album art already rendered underneath the canvas — same
+            // scrim on top, colours continuing across the join with nothing to give the seam
+            // away, and nothing moving behind the controls.
+            //
+            // Portrait only: in landscape the controls sit beside the artwork, not below it, so
+            // there is no seam to hide.
+            val canvasSeamFade: Modifier =
+                if (landscape) {
+                    Modifier
                 } else {
-                    AsyncImage(
-                        model = artworkRequest ?: artworkUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .matchParentSize()
-                                // graphicsLayer OUTSIDE blur: see canvas+lyrics path
-                                // above for the full rationale.
-                                .graphicsLayer(driftGraphicsLayer)
-                                .then(
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(64.dp)
-                                    } else {
-                                        Modifier
-                                    },
-                                ),
-                    )
+                    Modifier
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            val seam = morphAreaHeightPx.toFloat()
+                            // Before the stage has been measured there is nothing to fade to.
+                            if (seam <= 0f || seam >= size.height) return@drawWithContent
+                            val fadeStart = ((seam - AmCanvasSeamFadeDp.toPx()) / size.height).coerceIn(0f, 1f)
+                            drawRect(
+                                brush =
+                                    Brush.verticalGradient(
+                                        fadeStart to Color.Black,
+                                        (seam / size.height) to Color.Transparent,
+                                    ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                            )
+                        }
                 }
-            } else if (isPreS && preBlurredBitmap != null) {
-                // Non-canvas backdrop, COVER/QUEUE state, pre-S with pre-blurred bitmap.
+
+            // The artwork backdrop. Composed in every state so there is no node
+            // swap (and so no re-decode, no new RenderEffect, no one-frame
+            // discontinuity) when lyrics opens or closes.
+            if (isPreS && preBlurredBitmap != null) {
+                // Pre-Android-12 has no RenderEffect, so the blur was baked
+                // into the bitmap on a background thread instead.
                 Image(
                     bitmap = preBlurredBitmap!!.asImageBitmap(),
                     contentDescription = null,
@@ -898,7 +926,6 @@ fun AppleMusicPlayerContent(
                             .graphicsLayer(driftGraphicsLayer),
                 )
             } else {
-                // Non-canvas backdrop, COVER/QUEUE state, S+ or loading.
                 AsyncImage(
                     model = artworkRequest ?: artworkUrl,
                     contentDescription = null,
@@ -906,13 +933,61 @@ fun AppleMusicPlayerContent(
                     modifier =
                         Modifier
                             .matchParentSize()
+                            // graphicsLayer OUTSIDE blur: the blur is applied to
+                            // the centered image (inside the layer), then the
+                            // scale + translation is applied to the blurred
+                            // result. Blurring after the transform would sample
+                            // the translated image's edges instead.
+                            .graphicsLayer(driftGraphicsLayer)
                             .then(
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    Modifier.blur(72.dp)
+                                    Modifier.blur(AmBackdropBlurRadius)
                                 } else {
                                     Modifier
                                 },
-                            ).graphicsLayer(driftGraphicsLayer),
+                            ),
+                )
+            }
+
+            if (useCanvasBackdrop) {
+                // Canvas backdrop — the ExoPlayer is ALWAYS retained (never
+                // disposed across lyrics open/close) so the canvas resumes
+                // instantly when lyrics closes — no multi-second reload delay.
+                //
+                // PERFORMANCE (lyrics lag fix): the TextureView is HIDDEN
+                // (`visible = canvasVisibleForLyrics`) once lyrics is open. A
+                // paused TextureView with Modifier.blur still costs a full
+                // per-frame GPU composite + blur pass because the RenderEffect
+                // is re-applied every frame even when the surface content
+                // hasn't changed. This steals the frame budget from the karaoke
+                // syllable sweep, causing the "lyrics lag after ~20s" symptom.
+                // Hiding the TextureView entirely frees that budget; the
+                // blurred artwork behind it has already faded up by then.
+                //
+                // The alpha ramp (draw phase) is what makes that hand-off
+                // invisible: the canvas dissolves into the artwork over
+                // [AmLyricsBackdropMorphMs] while the artwork zooms, instead of
+                // the surface being yanked out from under a hard-swapped
+                // overlay.
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying && canvasVisibleForLyrics,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    visible = canvasVisibleForLyrics,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            // Outside the blur so the mask is applied to the blurred result.
+                            .then(canvasSeamFade)
+                            .blur(72.dp)
+                            .graphicsLayer {
+                                // Fixed scale (no drift) — the canvas is on its
+                                // way out by the time the drift matters.
+                                scaleX = AmCoverBlurScale
+                                scaleY = AmCoverBlurScale
+                                alpha = 1f - lyricsBackdropProgress.value
+                            },
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
@@ -934,7 +1009,22 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
-            Row(Modifier.fillMaxSize()) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
+                        // lyrics behaviour). A parent-level handler observes every tap in the
+                        // subtree regardless of which child consumes the gesture, so the whole
+                        // screen — lyrics, queue list, controls — is one large tap target.
+                        .pointerInput(lyricsOpen, queueOpen) {
+                            if (!lyricsOpen && !queueOpen) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                pokePlayerControlsVisibility()
+                            }
+                        },
+            ) {
                 AppleMusicSharpArtwork(
                     artworkRequest = artworkRequest,
                     artworkUrl = artworkUrl,
@@ -1018,9 +1108,27 @@ fun AppleMusicPlayerContent(
             //    weighted Box, and the controls live in a separate AnimatedVisibility
             //    below the Box — touches on the controls go directly to the controls.
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
+                        // lyrics behaviour). A parent-level handler observes every tap in the
+                        // subtree regardless of which child consumes the gesture, so the whole
+                        // player — lyrics overlay, queue sheet, controls — is one large tap
+                        // target. This also covers the controls themselves: an interaction on
+                        // the seekbar or transport restarts the auto-hide timer.
+                        .pointerInput(lyricsOpen, queueOpen) {
+                            if (!lyricsOpen && !queueOpen) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                pokePlayerControlsVisibility()
+                            }
+                        },
             ) {
-                BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                BoxWithConstraints(
+                    // Reports the artwork stage height to canvasSeamFade above.
+                    modifier = Modifier.weight(1f).onSizeChanged { morphAreaHeightPx = it.height },
+                ) {
                 // Mini header height = artwork size + vertical padding (8.dp top + 8.dp bottom)
                 // + top system bar inset (status bar / notch). The overlay must start
                 // BELOW this height so it doesn't intercept taps on the mini header's
@@ -1332,14 +1440,7 @@ fun AppleMusicPlayerContent(
                             Modifier
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
-                                .offset(y = miniHeaderHeight)
-                                .pointerInput(lyricsOpen) {
-                                    if (!lyricsOpen) return@pointerInput
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        pokePlayerControlsVisibility()
-                                    }
-                                },
+                                .offset(y = miniHeaderHeight),
                     ) {
                         // HORIZONTAL PADDING — compensate for the mocharealm
                         // KaraokeLineText library's INTERNAL 16dp horizontal padding
@@ -1388,21 +1489,23 @@ fun AppleMusicPlayerContent(
                         // allowed to extend into the empty padded area and only gets
                         // clipped by the physical screen edge if truly necessary.
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
-                        when (lyricsMode) {
-                            LyricsMode.V2 -> LyricsV2(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
-                            LyricsMode.ENHANCED -> LyricsEnhanced(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
+                        if (lyricsContentReady) {
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = lyricsHorizontalPadding),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = lyricsHorizontalPadding),
+                                )
+                            }
                         }
                     }
                 }
@@ -1419,7 +1522,10 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) || playerControlsExpanded,
+                    visible =
+                        (!lyricsOpen && !queueOpen) ||
+                            (queueOpen && playerControlsExpanded) ||
+                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {

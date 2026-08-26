@@ -163,7 +163,10 @@ class SpotifyLibraryRepository
                         prefs.remove(SpotifyAccessTokenExpiresAtKey)
                     }
                 }
-                if (credentialsChanged) Spotify.accessToken = null
+                if (credentialsChanged) {
+                    Spotify.accessToken = null
+                    clearCatalogCaches()
+                }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 refreshAccessToken(spDc = spDc, spKey = spKey).getOrThrow()
@@ -189,6 +192,7 @@ class SpotifyLibraryRepository
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 Spotify.accessToken = null
+                clearCatalogCaches()
                 runCatching { clearWebAuthSession(context) }
                     .onFailure(::reportException)
             }
@@ -266,6 +270,27 @@ class SpotifyLibraryRepository
                     if (page.items.isEmpty()) break
                     val pageTracks = page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
                     tracks += pageTracks
+                    offset += page.items.size
+                    if (offset >= page.total || page.items.size < limit) break
+                }
+
+                tracks
+            }
+
+        suspend fun likedSongs(): List<SpotifyTrack> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                val tracks = ArrayList<SpotifyTrack>()
+                var offset = 0
+                val limit = 50
+
+                while (true) {
+                    val page =
+                        spotifyCallWithTokenRetry {
+                            Spotify.likedSongs(limit = limit, offset = offset).getOrThrow()
+                        }
+                    if (page.items.isEmpty()) break
+                    tracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
                     offset += page.items.size
                     if (offset >= page.total || page.items.size < limit) break
                 }
@@ -379,6 +404,11 @@ class SpotifyLibraryRepository
                 }
                 enriched
             }
+
+        private fun clearCatalogCaches() {
+            synchronized(searchCache) { searchCache.clear() }
+            synchronized(metadataCache) { metadataCache.clear() }
+        }
 
 
         /**

@@ -28,6 +28,7 @@ import moe.rukamori.archivetune.aicontentfilter.ObserveAiContentFilterUseCase
 import moe.rukamori.archivetune.auth.SwitchSavedYouTubeAccountUseCase
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
+import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.ContentCountryKey
 import moe.rukamori.archivetune.constants.ContentLanguageKey
@@ -825,8 +826,17 @@ class HomeViewModel
             }
 
         private suspend fun refreshAccountIdentity() {
-            _accountName.value = ""
-            _accountImageUrl.value = null
+            // Seed from the identity persisted at login before touching the network. accountInfo()
+            // is a live call, and this used to start by blanking the name and avatar and blank them
+            // again on failure — so any failed refresh made the app report that no account was
+            // connected even though the session was intact. That is what picking a YouTube Music
+            // region looked like: the picker restarts the process, the first identity fetch after
+            // the restart races the region/proxy restore in App.initializeDeferredAsync(), and a
+            // single failure left the top bar signed out until the next successful fetch.
+            context.dataStore.data.first().let { prefs ->
+                prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
+                prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }
+            }
             _accountChannelsState.value = AccountChannelsState.Loading
 
             try {
@@ -835,7 +845,12 @@ class HomeViewModel
                     .onSuccess { info ->
                         _accountName.value = info.name
                         _accountImageUrl.value = info.thumbnailUrl
+                        context.dataStore.edit { preferences ->
+                            preferences[AccountNameKey] = info.name
+                            info.thumbnailUrl?.let { preferences[AccountImageUrlKey] = it }
+                        }
                     }.onFailure { error ->
+                        // A failed refresh is not a logout: keep whatever was seeded above.
                         Timber.w(error, "Failed to fetch account info")
                     }
 
@@ -1124,6 +1139,22 @@ class HomeViewModel
 
             viewModelScope.launch(Dispatchers.IO) {
                 aiContentFilterSettings
+                    .drop(1)
+                    .collectLatest {
+                        isLoading.filter { loading -> !loading }.first()
+                        load()
+                    }
+            }
+
+            // Re-filter the feed as soon as the user hits "Don't recommend this song again"
+            // (or undoes it). The blocked set is applied while each section is built, so
+            // without this the song the user just dismissed stayed on screen until the next
+            // manual pull-to-refresh — which read as the action not working at all.
+            viewModelScope.launch(Dispatchers.IO) {
+                database
+                    .blockedSongIds()
+                    .map { it.toSet() }
+                    .distinctUntilChanged()
                     .drop(1)
                     .collectLatest {
                         isLoading.filter { loading -> !loading }.first()
