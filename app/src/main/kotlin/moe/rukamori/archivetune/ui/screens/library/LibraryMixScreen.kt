@@ -273,12 +273,82 @@ fun LibraryMixScreen(
                     }
                 }
 
-                // 2. Shortcuts Grid
+                // 2. Shortcuts Grid — packed 2-column layout that reflows when tiles are hidden.
+                //    Builds a flat list of the visible cards (preserving order), then lays them
+                //    out in 2-wide rows. The trailing card on an odd row spans the full width
+                //    so we never leave a static gap on the right.
                 item(key = "shortcuts_grid", contentType = "shortcuts_grid") {
-                    val showRow1 = !hideLikedSongsCard || !hideOfflineCard
-                    val showRow2 = !hideCachedCard || !hideLocalFilesCard
-                    val showRow3 = !hideTop50Card
-                    if (showRow1 || showRow2 || showRow3) {
+                    data class ShortcutItem(
+                        val title: String,
+                        val countText: String,
+                        val iconRes: Int,
+                        val containerColor: Color,
+                        val iconColor: Color,
+                        val onClick: () -> Unit,
+                    )
+                    val visibleShortcuts = buildList {
+                        if (!hideLikedSongsCard) {
+                            add(
+                                ShortcutItem(
+                                    title = stringResource(R.string.liked_songs),
+                                    countText = "$likedSongsCount ${stringResource(R.string.tracks_label)}",
+                                    iconRes = R.drawable.favorite,
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                                    iconColor = MaterialTheme.colorScheme.error,
+                                    onClick = { navController.navigate("auto_playlist/liked") },
+                                ),
+                            )
+                        }
+                        if (!hideOfflineCard) {
+                            add(
+                                ShortcutItem(
+                                    title = stringResource(R.string.offline_shortcut),
+                                    countText = stringResource(R.string.downloaded_desc),
+                                    iconRes = R.drawable.offline,
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                    iconColor = MaterialTheme.colorScheme.primary,
+                                    onClick = { navController.navigate("auto_playlist/downloaded") },
+                                ),
+                            )
+                        }
+                        if (!hideCachedCard) {
+                            add(
+                                ShortcutItem(
+                                    title = stringResource(R.string.cached),
+                                    countText = stringResource(R.string.instant_playback),
+                                    iconRes = R.drawable.cached,
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                                    iconColor = MaterialTheme.colorScheme.tertiary,
+                                    onClick = { navController.navigate("cache_playlist/cached") },
+                                ),
+                            )
+                        }
+                        if (!hideLocalFilesCard) {
+                            add(
+                                ShortcutItem(
+                                    title = stringResource(R.string.local_files),
+                                    countText = stringResource(R.string.on_device),
+                                    iconRes = R.drawable.snippet_folder,
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                    iconColor = MaterialTheme.colorScheme.secondary,
+                                    onClick = { navController.navigate("local_songs") },
+                                ),
+                            )
+                        }
+                        if (!hideTop50Card) {
+                            add(
+                                ShortcutItem(
+                                    title = topPlaylistTitle,
+                                    countText = stringResource(R.string.all_time),
+                                    iconRes = R.drawable.trending_up,
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                    iconColor = MaterialTheme.colorScheme.secondary,
+                                    onClick = { navController.navigate("top_playlist/$topSize") },
+                                ),
+                            )
+                        }
+                    }
+                    if (visibleShortcuts.isNotEmpty()) {
                         Column(
                             modifier =
                                 Modifier
@@ -286,92 +356,35 @@ fun LibraryMixScreen(
                                     .padding(horizontal = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            if (showRow1) {
+                            // Chunk into rows of 2; the last lone card on an odd row spans full width
+                            // (no trailing Spacer — that was the static-gap bug).
+                            visibleShortcuts.chunked(2).forEach { rowItems ->
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
-                                    if (!hideLikedSongsCard) {
-                                        ShortcutCard(
-                                            title = stringResource(R.string.liked_songs),
-                                            countText = "$likedSongsCount ${stringResource(R.string.tracks_label)}",
-                                            iconRes = R.drawable.favorite,
-                                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
-                                            iconColor = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { navController.navigate("auto_playlist/liked") },
-                                        )
-                                    } else {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-
-                                    if (!hideOfflineCard) {
-                                        ShortcutCard(
-                                            title = stringResource(R.string.offline_shortcut),
-                                            countText = stringResource(R.string.downloaded_desc),
-                                            iconRes = R.drawable.offline,
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                            iconColor = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { navController.navigate("auto_playlist/downloaded") },
-                                        )
-                                    } else {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-                                }
-                            }
-
-                            if (showRow2) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    if (!hideCachedCard) {
-                                        ShortcutCard(
-                                            title = stringResource(R.string.cached),
-                                            countText = stringResource(R.string.instant_playback),
-                                            iconRes = R.drawable.cached,
-                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
-                                            iconColor = MaterialTheme.colorScheme.tertiary,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { navController.navigate("cache_playlist/cached") },
-                                        )
-                                    } else {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-
-                                    if (!hideLocalFilesCard) {
-                                        ShortcutCard(
-                                            title = stringResource(R.string.local_files),
-                                            countText = stringResource(R.string.on_device),
-                                            iconRes = R.drawable.snippet_folder,
-                                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                            iconColor = MaterialTheme.colorScheme.secondary,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { navController.navigate("local_songs") },
-                                        )
-                                    } else {
-                                        Spacer(Modifier.weight(1f))
-                                    }
-                                }
-                            }
-
-                            if (showRow3) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
+                                    val first = rowItems[0]
+                                    val second = rowItems.getOrNull(1)
                                     ShortcutCard(
-                                        title = topPlaylistTitle,
-                                        countText = stringResource(R.string.all_time),
-                                        iconRes = R.drawable.trending_up,
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                        iconColor = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { navController.navigate("top_playlist/$topSize") },
+                                        title = first.title,
+                                        countText = first.countText,
+                                        iconRes = first.iconRes,
+                                        containerColor = first.containerColor,
+                                        iconColor = first.iconColor,
+                                        modifier = Modifier.weight(if (second == null) 2f else 1f),
+                                        onClick = first.onClick,
                                     )
-
-                                    Spacer(modifier = Modifier.weight(1f))
+                                    if (second != null) {
+                                        ShortcutCard(
+                                            title = second.title,
+                                            countText = second.countText,
+                                            iconRes = second.iconRes,
+                                            containerColor = second.containerColor,
+                                            iconColor = second.iconColor,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = second.onClick,
+                                        )
+                                    }
                                 }
                             }
                         }

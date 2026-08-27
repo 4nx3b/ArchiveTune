@@ -136,7 +136,6 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -154,7 +153,6 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
@@ -349,9 +347,14 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val showLyricsPlayerControlsState = rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
-    val showLyricsPlayerControls by showLyricsPlayerControlsState
-    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
+    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
+    // Lyrics settings UI by user request. The Apple Music lyrics view now ALWAYS shows
+    // the bottom transport controls while lyrics/queue is open and ALWAYS auto-hides
+    // them after 5 s. The preferences are still read so legacy installs (where the user
+    // previously set them to false) get upgraded to the new "always on" behavior — i.e.
+    // we ignore their stored value and treat both as `true`.
+    val showLyricsPlayerControls = true
+    val autoHideLyricsPlayerControls = true
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -706,25 +709,22 @@ fun AppleMusicPlayerContent(
     }
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows lyric actions plus the
-            // player-control toggles, identical to the standalone lyrics screen.
+            // When lyrics is open, the overflow menu shows lyric actions. The
+            // "Show player controls" / "Auto-hide controls" toggles used to live here
+            // too, but were removed by user request — the controls now always show
+            // and always auto-hide after 5 s. showControlsToggles = false hides those
+            // rows in LyricsMenu.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    showPlayerControlsState = showLyricsPlayerControlsState,
-                    onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
-                    onAutoHidePlayerControlsChange = { enabled ->
-                        if (enabled) {
-                            playerControlsVisibilityTick++
-                        } else {
-                            playerControlsExpanded = true
-                        }
-                    },
+                    showPlayerControlsState = null,
+                    onShowPlayerControlsChange = null,
+                    onAutoHidePlayerControlsChange = {},
                     onDismiss = menuState::dismiss,
-                    showControlsToggles = true,
+                    showControlsToggles = false,
                 )
             }
         } else {

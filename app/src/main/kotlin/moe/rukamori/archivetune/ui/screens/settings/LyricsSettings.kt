@@ -195,10 +195,10 @@ fun LyricsSettings(
             deserializeLyricsProviderOrder(providerOrderStr)
         }
     val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
-    val (showPlayerControls, onShowPlayerControlsChange) =
-        rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
-    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
+    // The "Show player controls" and "Auto-hide controls" toggles were removed from the UI
+    // by user request — the bottom player controls now ALWAYS auto-hide after 5 s in the
+    // Apple Music style lyrics view, with no opt-out. The backing preference keys are kept
+    // (and forced to `true` in the player code) so existing installs don't break on upgrade.
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
@@ -475,28 +475,15 @@ fun LyricsSettings(
                     onCheckedChange = onLyricsScrollChange,
                 )
             }
-            item {
-                SwitchPreference(
-                    modifier = positions.modifierFor("show_lyrics_player_controls"),
-                    title = { Text(stringResource(R.string.show_lyrics_player_controls)) },
-                    icon = { Icon(painterResource(R.drawable.play), null) },
-                    checked = showPlayerControls,
-                    onCheckedChange = onShowPlayerControlsChange,
-                )
-            }
 
-            item {
-                SwitchPreference(
-                    modifier = positions.modifierFor("auto_hide_lyrics_player_controls"),
-                    title = { Text(stringResource(R.string.auto_hide_lyrics_player_controls)) },
-                    description = stringResource(R.string.auto_hide_lyrics_player_controls_description),
-                    icon = { Icon(painterResource(R.drawable.timer), null) },
-                    checked = autoHidePlayerControls,
-                    onCheckedChange = onAutoHidePlayerControlsChange,
-                    isEnabled = showPlayerControls,
-                )
-            }
-
+            // ── Removed by user request ──────────────────────────────────────────
+            // "Show player controls" and "Auto-hide controls" toggles used to live here.
+            // Both are now hardcoded on — the Apple Music lyrics view always shows the
+            // bottom controls and always auto-hides them after 5 s (tap anywhere to bring
+            // them back). The preferences (ShowLyricsPlayerControlsKey,
+            // AutoHideLyricsPlayerControlsKey) are kept in PreferenceKeys.kt so legacy
+            // installs don't see a DataStore corruption error on upgrade.
+            // ─────────────────────────────────────────────────────────────────────
 
             item {
                 SwitchPreference(

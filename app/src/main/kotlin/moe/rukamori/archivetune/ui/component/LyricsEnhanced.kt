@@ -113,6 +113,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -219,6 +220,55 @@ private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // small enough to catch any real seek-backward or REPEAT_MODE_ONE wrap (which
 // is typically a jump from near the end of the song back to 0, i.e. minutes).
 private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
+
+// ── Romanisation hand-off ──
+// How long the first build waits for the built-in romanisation pass before giving up and publishing
+// without it. Romanising every line is local work (ICU tables, or one Kuromoji tokenize per line)
+// and normally lands well inside this, so the very first build the karaoke view ever sees already
+// carries its phonetics — which is what keeps KaraokeLyricsView from freezing the on-screen lines
+// on a layout that has none. See [KaraokeBuild] for why that matters, and note the cost of missing
+// the window is only that the shimmer holds a moment longer.
+private const val ROMANIZATION_FIRST_BUILD_GRACE_MS = 700L
+
+/**
+ * One published [SyncedLyrics] plus the identity of the romanisation baked into it.
+ *
+ * ### Why the generation counter exists
+ *
+ * `KaraokeLyricsView` caches a measured layout per line index and, once a line has been composed,
+ * derives everything it draws from a `remember {}` with no keys — so a line that was first composed
+ * from a layout without phonetics keeps drawing that layout for as long as its composition lives,
+ * no matter what arrives in the line data afterwards. The view's own `Crossfade` does rebuild the
+ * subtree when the lyrics object changes, but its layout cache is remembered *outside* that
+ * crossfade and is only cleared from a `LaunchedEffect` — i.e. one frame *after* the replacement
+ * lines have already been composed against the stale entries.
+ *
+ * The result was reported as "romanisation only shows up after the first two or three lines": the
+ * handful of lines on screen when romanisation landed were pinned to their phonetic-less layout,
+ * while every line composed later — as the song scrolled on — picked the phonetics up normally.
+ *
+ * [generation] is bumped whenever a build replaces an already-visible one with different
+ * romanisation, and it participates in the `key(...)` around the karaoke view. That disposes the
+ * view together with its layout cache, so the replacement lines are measured from scratch. It is
+ * deliberately NOT bumped for the first build of a session (there is nothing on screen to
+ * invalidate), nor when only the translation changed — translations are drawn by an ordinary `Text`
+ * that recomposes on its own, and AI translations land ~30-60s in, where a re-key would be very
+ * visible.
+ */
+private data class KaraokeBuild(
+    val lyrics: SyncedLyrics,
+    val romanization: Map<Int, List<String?>>,
+    val generation: Int,
+)
+
+/**
+ * The part of a romanisation map that changes what is drawn: entries whose every value is
+ * null/blank produce no phonetics at all, so a map full of them is indistinguishable from an empty
+ * one and must not count as a change (otherwise a song with nothing romanisable would re-key the
+ * karaoke view for a build that looks identical).
+ */
+private fun Map<Int, List<String?>>.renderedRomanization(): Map<Int, List<String?>> =
+    filterValues { values -> values.any { !it.isNullOrBlank() } }
 
 @Composable
 fun LyricsEnhanced(
@@ -373,9 +423,13 @@ fun LyricsEnhanced(
     // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
     // back on the main thread the moment the parse lands. The effect below publishes the real
     // build from Default, so this only ever supplies the empty starting value.
-    var syncedLyrics by remember(lyrics, isTtmlFormat) {
-        mutableStateOf(SyncedLyrics(emptyList()))
+    var karaokeBuild by remember(lyrics, isTtmlFormat) {
+        mutableStateOf(KaraokeBuild(SyncedLyrics(emptyList()), emptyMap(), generation = 0))
     }
+    val syncedLyrics = karaokeBuild.lyrics
+    // Bumped alongside the lyrics object whenever a build replaces an already-visible one with
+    // different romanisation; see KaraokeBuild for why the karaoke view has to be re-keyed on it.
+    val karaokeGeneration = karaokeBuild.generation
 
     // ── AI romanisation ──
     // Runs once per track instead of once per line (network + billed), so it can't hang off the
@@ -411,64 +465,105 @@ fun LyricsEnhanced(
         // used to inherit the main dispatcher and could stutter the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
         withContext(Dispatchers.Default) {
-        val aiMap = aiRomanizationMap(lyricsEntries, isTtmlFormat, aiRomanizedLines)
-        syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, aiMap)
-        if (!romanizationPreferences.isEnabled) return@withContext
-
-        val toRomanize =
-            lyricsEntries.mapIndexedNotNull { index, entry ->
-                val hasProviderRomanization =
-                    providedRomanizedTextForEntry(entry, romanizationPreferences) != null
-                if (hasProviderRomanization || shouldRomanizeLyricsLine(entry.text, romanizationPreferences)) {
-                    index to entry
-                } else {
-                    null
-                }
-            }
-        if (toRomanize.isEmpty()) return@withContext
-
-        val jobs =
-            toRomanize.map { (index, entry) ->
-                async {
-                    val romanized: List<String?> =
-                        try {
-                            if (isTtmlFormat && entry.words != null) {
-                                val mainWordCount = entry.words!!.count { !it.isBackground }
-                                providedRomanizedWordsForEntry(entry, mainWordCount, romanizationPreferences)
-                                    ?: romanizeWordsForLine(
-                                        // Japanese: single-pass line tokenization (6x fewer
-                                        // Kuromoji calls than per-word). Other languages:
-                                        // per-word character-by-character (already cheap).
-                                        words = entry.words!!.filter { !it.isBackground }.map { it.text },
-                                        lineText = entry.text,
-                                        preferences = romanizationPreferences,
-                                    )
-                            } else {
-                                listOf(
-                                    providedRomanizedTextForEntry(entry, romanizationPreferences)
-                                        ?: romanizeLyricsLine(entry.text, romanizationPreferences),
-                                )
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            reportException(e)
-                            if (isTtmlFormat && entry.words != null) {
-                                List(entry.words!!.count { !it.isBackground }) { null }
-                            } else {
-                                listOf(null)
-                            }
-                        }
-                    index to romanized
-                }
-            }
-        val tempMap = mutableMapOf<Int, List<String?>>()
-        jobs.awaitAll().forEach { (index, romanized) ->
-            tempMap[index] = romanized
-        }
         // Publishing new lyrics as state (instead of bumping a key that tears the whole karaoke
-        // subtree down mid-playback) lets the view pick up romanization without a re-layout hitch.
-        syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, tempMap)
+        // subtree down mid-playback) lets the view pick up a *translation* without a re-layout
+        // hitch. Romanisation is not so lucky — the library pins each line's glyph layout to
+        // whatever it measured the first time that line was composed — so a build that changes the
+        // romanisation of lines already on screen has to carry a new generation with it. See
+        // KaraokeBuild.
+        fun publish(romanization: Map<Int, List<String?>>) {
+            val previous = karaokeBuild
+            val changesVisibleLines =
+                previous.lyrics.lines.isNotEmpty() &&
+                    romanization.renderedRomanization() != previous.romanization.renderedRomanization()
+            karaokeBuild =
+                KaraokeBuild(
+                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization),
+                    romanization = romanization,
+                    generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
+                )
+        }
+
+        val aiMap = aiRomanizationMap(lyricsEntries, isTtmlFormat, aiRomanizedLines)
+
+        val toRomanize: List<Pair<Int, LyricsEntry>> =
+            if (!romanizationPreferences.isEnabled) {
+                // Romanisation is off, or the AI engine owns it — `aiMap` is already everything
+                // this build will ever have.
+                emptyList()
+            } else {
+                lyricsEntries.mapIndexedNotNull { index, entry ->
+                    val hasProviderRomanization =
+                        providedRomanizedTextForEntry(entry, romanizationPreferences) != null
+                    if (hasProviderRomanization || shouldRomanizeLyricsLine(entry.text, romanizationPreferences)) {
+                        index to entry
+                    } else {
+                        null
+                    }
+                }
+            }
+        if (toRomanize.isEmpty()) {
+            publish(aiMap)
+            return@withContext
+        }
+
+        val romanization =
+            async {
+                val jobs =
+                    toRomanize.map { (index, entry) ->
+                        async {
+                            val romanized: List<String?> =
+                                try {
+                                    if (isTtmlFormat && entry.words != null) {
+                                        val mainWordCount = entry.words!!.count { !it.isBackground }
+                                        providedRomanizedWordsForEntry(entry, mainWordCount, romanizationPreferences)
+                                            ?: romanizeWordsForLine(
+                                                // Japanese: single-pass line tokenization (6x fewer
+                                                // Kuromoji calls than per-word). Other languages:
+                                                // per-word character-by-character (already cheap).
+                                                words = entry.words!!.filter { !it.isBackground }.map { it.text },
+                                                lineText = entry.text,
+                                                preferences = romanizationPreferences,
+                                            )
+                                    } else {
+                                        listOf(
+                                            providedRomanizedTextForEntry(entry, romanizationPreferences)
+                                                ?: romanizeLyricsLine(entry.text, romanizationPreferences),
+                                        )
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    reportException(e)
+                                    if (isTtmlFormat && entry.words != null) {
+                                        List(entry.words!!.count { !it.isBackground }) { null }
+                                    } else {
+                                        listOf(null)
+                                    }
+                                }
+                            index to romanized
+                        }
+                    }
+                jobs.awaitAll().toMap()
+            }
+
+        // ── Why the un-romanised build is not published up front ──
+        // It used to be, unconditionally, and the romanised one replaced it a moment later. That
+        // second build is exactly the case KaraokeBuild describes: the lines on screen when it
+        // landed kept their phonetic-less layout for good. Waiting a beat for the local pass means
+        // the first build the view ever sees already has the phonetics, so nothing has to be
+        // replaced at all — and the shimmer is already up, so the wait costs no visible state.
+        //
+        // The timeout is what keeps that from becoming a stall: it does not cancel the pass (the
+        // deferred belongs to the enclosing scope, not to withTimeoutOrNull), it only stops waiting
+        // on it, and the two-build path below is then taken with the re-key that makes it correct.
+        val quickRomanization = withTimeoutOrNull(ROMANIZATION_FIRST_BUILD_GRACE_MS) { romanization.await() }
+        if (quickRomanization != null) {
+            publish(quickRomanization)
+            return@withContext
+        }
+        publish(aiMap)
+        publish(romanization.await())
         }
     }
 
@@ -516,16 +611,18 @@ fun LyricsEnhanced(
     // The scroll state is recreated together with the subtree that owns it.
     //
     // The karaoke view is re-keyed on [positionResetCounter] (see the KaraokeLyricsView
-    // call site) because the mocharealm library keeps no per-play state of its own. That
-    // re-key disposes one LazyColumn and composes another; keeping a single hoisted
+    // call site) because the mocharealm library keeps no per-play state of its own, and on
+    // [karaokeGeneration] because it keeps a per-line layout cache that outlives the lyrics
+    // object it was measured from (see [KaraokeBuild]). Either re-key
+    // disposes one LazyColumn and composes another; keeping a single hoisted
     // LazyListState across the swap left the state briefly bound to two lazy layouts and
     // then owned by the disposed one, so scrolls silently went nowhere and layoutInfo
     // reported a stale viewport — the list snapped to the first line and then sat there,
     // which is the "resets on repeat but never animates again, fixed only by reopening
     // the lyrics" symptom. Recreating the state with its layout keeps the two in step,
-    // and every effect that drives scrolling is keyed on the same counter so they all
+    // and every effect that drives scrolling is keyed on the same counters so they all
     // observe the live state.
-    val listState = key(lyricsSessionKey, positionResetCounter) { rememberLazyListState() }
+    val listState = key(lyricsSessionKey, positionResetCounter, karaokeGeneration) { rememberLazyListState() }
 
     // ── First-frame placement ──
     // A fresh LazyListState starts at line 0 and the auto-scroll collector below
@@ -552,9 +649,12 @@ fun LyricsEnhanced(
     // `isSynced` is derived synchronously from the raw lyrics text, so it is already correct on
     // frame 1: the gate arms before anything is drawn and is only ever disarmed, never re-armed.
     // A late-arriving *session* (new track, new lyrics text, repeat) still re-arms it, because
-    // lyricsSessionKey covers all three.
+    // lyricsSessionKey covers all three — and so does a late romanisation, via
+    // [karaokeGeneration], because that re-keys the karaoke view and its fresh LazyListState
+    // starts back at line 0. The gate is what hides that trip; it is only ever armed for the
+    // build that actually replaces visible lines, never for the first build of a session.
     var awaitingFirstFocus by
-        remember(lyricsSessionKey, positionResetCounter) {
+        remember(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
             mutableStateOf(isSynced)
         }
     // Safety net: nothing may keep the lyrics hidden. If the placement hasn't
@@ -800,11 +900,11 @@ fun LyricsEnhanced(
     // and updates `currentLineIndexState`, which flows through the snapshotFlow
     // and triggers a normal (non-forced) scroll.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
-    // Restart this collector after a repeat. The karaoke view is re-keyed at
-    // the same time, and the fresh collector resets its focus state before it
-    // observes the first new active line. Keeping listState stable means the
-    // collector always targets the list currently on screen.
-    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
+    // Restart this collector after a repeat, or after a romanisation re-key. The karaoke view is
+    // re-keyed at the same time, and the fresh collector resets its focus state before it
+    // observes the first new active line. Keeping listState stable means the collector
+    // always targets the list currently on screen.
+    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter, karaokeGeneration) {
         if (!isSynced) {
             awaitingFirstFocus = false
             return@LaunchedEffect
@@ -1119,56 +1219,84 @@ fun LyricsEnhanced(
                     // backward position jumps, so without this re-key the
                     // karaoke animation freezes at the line that was active
                     // just before the repeat.
-                    key(lyricsSessionKey, positionResetCounter) {
-                        KaraokeLyricsView(
-                            listState = listState,
-                            lyrics = syncedLyrics,
-                            currentPosition = playbackSyncPosition,
-                            onLineClicked = { line ->
-                                if (isSelectionModeActive) {
-                                    toggleSelectedLine(line.selectionKey())
-                                } else if (lyricsClick && isSynced && line.start > 0) {
-                                    player.seekTo(line.start.toLong())
-                                }
-                            },
-                            onLinePressed = { line ->
-                                val lineKey = line.selectionKey()
-                                if (!isSelectionModeActive) {
-                                    isSelectionModeActive = true
-                                    if (!selectedLineKeys.contains(lineKey)) {
-                                        selectedLineKeys.add(lineKey)
+                    //
+                    // [karaokeGeneration] is in the key for the same reason at a different
+                    // layer: the library caches one measured glyph layout per line index in a
+                    // map remembered here, outside its own Crossfade, and each line pins what it
+                    // draws to whichever entry that map held when the line was first composed.
+                    // A build that adds romanisation to lines already on screen therefore has to
+                    // dispose the cache along with them, or those lines never show it. See
+                    // [KaraokeBuild].
+                    key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+                        // ── Force the translation slot to use the small phonetic style ──
+                        // The mocharealm KaraokeLineText renders the `translation` slot with
+                        // `LocalTextStyle.current` (no explicit style), while the `phonetic`
+                        // slot uses `phoneticTextStyle`. With the romanisation swap in
+                        // buildSyncedLyrics / buildLineSyncedLrcLine, the `translation` slot
+                        // now carries the romanisation and the `phonetic` slot carries the
+                        // actual translation. Without this CompositionLocal override, the
+                        // romanisation would render at the ambient bodyLarge size (much
+                        // larger than the translation below it). Pinning LocalTextStyle to
+                        // the same small phoneticTextStyle makes both rows visually
+                        // consistent — "romanisation should be small text just like
+                        // translation" — and is local to this lyrics subtree so the rest
+                        // of the app is unaffected. KaraokeLyricsView's explicit
+                        // `normalLineTextStyle` / `accompanimentLineTextStyle` /
+                        // `phoneticTextStyle` parameters all bypass LocalTextStyle, so the
+                        // active karaoke line itself is not affected.
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
+                        ) {
+                            KaraokeLyricsView(
+                                listState = listState,
+                                lyrics = syncedLyrics,
+                                currentPosition = playbackSyncPosition,
+                                onLineClicked = { line ->
+                                    if (isSelectionModeActive) {
+                                        toggleSelectedLine(line.selectionKey())
+                                    } else if (lyricsClick && isSynced && line.start > 0) {
+                                        player.seekTo(line.start.toLong())
                                     }
-                                } else if (!selectedLineKeys.contains(lineKey)) {
-                                    toggleSelectedLine(lineKey)
-                                }
-                            },
-                            textColor = textColor,
-                            normalLineTextStyle = normalTextStyle,
-                            accompanimentLineTextStyle = accompanimentTextStyle,
-                            phoneticTextStyle = phoneticTextStyle,
-                            blendMode = BlendMode.SrcOver,
-                            // Per-line RenderEffect blur is the single heaviest per-frame cost in
-                            // this view; drop it when animations are disabled (low-RAM default).
-                            useBlurEffect = lyricsLineBlur && !animationsDisabled,
-                            showTranslation = showTranslations,
-                            showPhonetic = romanizationPreferences.showsRomanization,
-                            offset = lyricsViewportOffset,
-                            // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
-                            // many items outside the viewport are kept composed (not
-                            // disposed) — each kept-alive item still participates in
-                            // the per-frame measure pass during auto-scroll. The
-                            // mocharealm KaraokeLyricsView library measures every
-                            // kept-alive karaoke line on every scroll event; each line
-                            // contains N syllables that each need a fill-ratio
-                            // computation. 8dp keeps at most ~1 line alive on each
-                            // side of the viewport, minimizing the measure cost
-                            // during the instant `scrollBy` snap on line changes.
-                            // This is the single biggest lever we have for reducing
-                            // the word-synced lyrics lag in Enhanced style (V2 uses
-                            // its own renderer and doesn't have this cost).
-                            keepAliveZone = 8.dp,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                },
+                                onLinePressed = { line ->
+                                    val lineKey = line.selectionKey()
+                                    if (!isSelectionModeActive) {
+                                        isSelectionModeActive = true
+                                        if (!selectedLineKeys.contains(lineKey)) {
+                                            selectedLineKeys.add(lineKey)
+                                        }
+                                    } else if (!selectedLineKeys.contains(lineKey)) {
+                                        toggleSelectedLine(lineKey)
+                                    }
+                                },
+                                textColor = textColor,
+                                normalLineTextStyle = normalTextStyle,
+                                accompanimentLineTextStyle = accompanimentTextStyle,
+                                phoneticTextStyle = phoneticTextStyle,
+                                blendMode = BlendMode.SrcOver,
+                                // Per-line RenderEffect blur is the single heaviest per-frame cost in
+                                // this view; drop it when animations are disabled (low-RAM default).
+                                useBlurEffect = lyricsLineBlur && !animationsDisabled,
+                                showTranslation = showTranslations,
+                                showPhonetic = romanizationPreferences.showsRomanization,
+                                offset = lyricsViewportOffset,
+                                // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
+                                // many items outside the viewport are kept composed (not
+                                // disposed) — each kept-alive item still participates in
+                                // the per-frame measure pass during auto-scroll. The
+                                // mocharealm KaraokeLyricsView library measures every
+                                // kept-alive karaoke line on every scroll event; each line
+                                // contains N syllables that each need a fill-ratio
+                                // computation. 8dp keeps at most ~1 line alive on each
+                                // side of the viewport, minimizing the measure cost
+                                // during the instant `scrollBy` snap on line changes.
+                                // This is the single biggest lever we have for reducing
+                                // the word-synced lyrics lag in Enhanced style (V2 uses
+                                // its own renderer and doesn't have this cost).
+                                keepAliveZone = 8.dp,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -1739,6 +1867,20 @@ private fun buildSyncedLyrics(
             val lineEnd = mainSyllables.last().end
             if (lineEnd <= lineStart) return@forEachIndexed
 
+            // Build a single joined romanisation string for the line-level slot. Each
+            // syllable's per-word phonetic still sits above its own word (small text in
+            // the karaoke Canvas), AND a single per-line romanisation string is placed
+            // in the `translation` slot so it renders directly below the active line.
+            // See buildLineSyncedLrcLine for why `translation` = romanisation and
+            // `phonetic` = translation (the field swap that puts romanisation between
+            // the active lyric and the translation).
+            val lineRomanized =
+                wordPhonetics
+                    .filterNotNull()
+                    .joinToString(" ")
+                    .trim()
+                    .takeIf { it.isNotEmpty() }
+
             val accompanimentLines =
                 if (mainWords.isNotEmpty() && bgWords.isNotEmpty()) {
                     val bgSyllables = bgWords.toKaraokeSyllables(emptyList())
@@ -1765,11 +1907,11 @@ private fun buildSyncedLyrics(
             lines.add(
                 KaraokeLine.MainKaraokeLine(
                     syllables = mainSyllables,
-                    translation = translation,
+                    translation = lineRomanized ?: translation,
                     alignment = alignment,
                     start = lineStart,
                     end = lineEnd,
-                    phonetic = null,
+                    phonetic = if (lineRomanized != null) translation else null,
                     accompanimentLines = accompanimentLines,
                 ),
             )
@@ -1847,12 +1989,28 @@ private fun buildLineSyncedLrcLine(
             start = start,
         )
 
+    // ── Romanisation between active lyric and translation ──
+    // The mocharealm KaraokeLineText renders in this fixed order:
+    //   1. Active karaoke line (Canvas with per-syllable phonetic above each word)
+    //   2. `translation` slot  — Text using LocalTextStyle.current  (immediately below active)
+    //   3. `phonetic` slot    — Text using phoneticTextStyle         (below translation)
+    // To place the romanisation BETWEEN the active lyric and the translation (per user
+    // request — Apple-Music-style layout where romanisation sits directly under the
+    // sung line and the translation sits under that), we swap the field assignments:
+    //   - `translation` slot ← romanisation   (renders first, right below the active line)
+    //   - `phonetic` slot   ← translation     (renders second, below the romanisation)
+    // The phoneticTextStyle passed into KaraokeLyricsView is also force-applied to the
+    // translation slot via a CompositionLocalProvider (see the call site) so both rows
+    // render at the same small size — matching "romanisation should be small text just
+    // like translation". The line-level content (lineText() / selectionKey) reads from
+    // `syllables.content` and is unaffected by the swap.
     return KaraokeLine.MainKaraokeLine(
         syllables = syllables,
-        translation = translation,
+        translation = normalizedRomanizedText,
         alignment = KaraokeAlignment.Start,
         start = start,
         end = end,
+        phonetic = translation,
     )
 }
 

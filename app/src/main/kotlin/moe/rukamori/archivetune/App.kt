@@ -153,7 +153,16 @@ class App :
     private fun initializeCriticalSync() {
         runCatching {
             val config = com.downloader.PRDownloaderConfig.newBuilder()
-                .setReadTimeout(60_000)
+                // ── Read timeout bumped 60s → 300s ──
+                // The 60s read timeout was the prime cause of "songs interrupted halfway through":
+                // if the network stalled for > 60 s mid-stream (mobile data handoff, congested
+                // WiFi, CDN throttle), OkHttp threw SocketTimeoutException, PRDownloader
+                // reported onError, and the download failed even though the connection would
+                // have recovered on its own. 300 s is generous enough to ride through the
+                // common stalls without making a real disconnect look like it's still
+                // downloading for too long. The connect timeout stays at 15 s — a stalled
+                // *initial* connection is genuinely dead and should fail fast.
+                .setReadTimeout(300_000)
                 .setConnectTimeout(15_000)
                 .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
                 .build()
