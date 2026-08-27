@@ -124,34 +124,51 @@ fun LibraryBackPill(
  * bottom inset padding so the button sits above the floating navigation
  * toolbar / mini-player.
  *
+ * **Liquid glass mode:** Pass a non-null [backdrop] (typically created via
+ * [rememberBackdrop] and applied to a sibling `LazyColumn` via
+ * [Modifier.layerBackdrop]) to switch the dock to real kyant `drawBackdrop`
+ * rendering (vibrancy + blur + lens), matching the top-start
+ * `LiquidGlassActionPill` in `LocalPlaylistScreen`. The dock MUST be a
+ * sibling of the composable carrying `layerBackdrop` — nesting inside the
+ * source crashes the RuntimeShader. When [backdrop] is `null` (the
+ * default), the dock degrades to the translucent `surfaceContainer` surface.
+ *
  * @param onClick Tap action — typically `navController.backToMain()`.
  * @param modifier Modifier for the outer layout.
  * @param iconRes The home icon drawable. Defaults to `R.drawable.home_filled`
  *                so the dock button reads as a filled pink home glyph at
  *                rest, matching the reference.
+ * @param backdrop Optional kyant `LayerBackdrop` to sample for real liquid
+ *                glass. Pass `null` (default) to use the translucent surface
+ *                fallback.
  */
 @Composable
 fun LibraryHomeDockButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     iconRes: Int = R.drawable.home_filled,
+    backdrop: PlatformBackdrop? = null,
 ) {
-    val baseColor = MaterialTheme.colorScheme.surfaceContainer
-    Surface(
-        modifier =
-            modifier
-                .size(48.dp)
-                .clip(CircleShape),
-        shape = CircleShape,
-        color = baseColor.copy(alpha = 0.55f),
-    ) {
+    if (backdrop != null) {
+        // Real liquid glass path — same kyant `drawBackdrop` effect stack
+        // (vibrancy + blur + lens) used by the top-start LiquidGlassActionPill
+        // in LocalPlaylistScreen. The dock samples whatever was recorded into
+        // the backdrop by `Modifier.layerBackdrop(backdrop)` applied to a
+        // sibling composable (the LazyColumn carrying the scrolling content).
+        // MUST be a sibling — nesting inside the source crashes the
+        // RuntimeShader.
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = CircleShape,
+                        interactive = false,
+                    ),
             contentAlignment = Alignment.Center,
         ) {
-            // Use the local `IconButton` (same package) which supports both
-            // onClick and onLongClick — pass an empty long-click since the
-            // Home dock only needs the tap action.
             IconButton(
                 onClick = onClick,
                 onLongClick = {},
@@ -162,6 +179,37 @@ fun LibraryHomeDockButton(
                     tint = AppleMusicStyleAccentColor,
                     modifier = Modifier.size(22.dp),
                 )
+            }
+        }
+    } else {
+        // Fallback path: translucent surface (no real backdrop blur).
+        val baseColor = MaterialTheme.colorScheme.surfaceContainer
+        Surface(
+            modifier =
+                modifier
+                    .size(48.dp)
+                    .clip(CircleShape),
+            shape = CircleShape,
+            color = baseColor.copy(alpha = 0.55f),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                // Use the local `IconButton` (same package) which supports both
+                // onClick and onLongClick — pass an empty long-click since the
+                // Home dock only needs the tap action.
+                IconButton(
+                    onClick = onClick,
+                    onLongClick = {},
+                ) {
+                    Icon(
+                        painter = painterResource(iconRes),
+                        contentDescription = stringResource(R.string.home),
+                        tint = AppleMusicStyleAccentColor,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
     }
