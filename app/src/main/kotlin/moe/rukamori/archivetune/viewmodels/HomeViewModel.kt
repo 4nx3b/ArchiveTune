@@ -278,6 +278,20 @@ class HomeViewModel
         // listening-preference-based picks each time the user opens the app
         // or pulls to refresh, instead of always showing the last-played 3.
         private val heroPicks = MutableStateFlow<List<Song>>(emptyList())
+        // Stable view of `heroPicks` that only emits when the SET of song IDs
+        // actually changes — not when the same 3 picks are re-ordered by a
+        // re-shuffle. `refreshHeroPicks` runs on every quickPicks update, which
+        // in LAST_LISTEN mode fires on every track skip. Without this de-dup,
+        // each skip re-emitted a new List<Song> reference (same songs, new
+        // order), `combine` propagated it, and HomeContent recomposed + re-issued
+        // 3 Coil AsyncImage requests for artwork that hadn't actually changed.
+        private val stableHeroPicks =
+            heroPicks
+                .distinctUntilChanged { old, new ->
+                    if (old.size != new.size) return@distinctUntilChanged false
+                    val oldIds = old.map { it.id }.toHashSet()
+                    new.all { it.id in oldIds }
+                }
         private val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
         private val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
         private val homePage = MutableStateFlow<HomePage?>(null)
@@ -319,7 +333,7 @@ class HomeViewModel
                     keepListening = keepListening,
                     recentlyPlayed = recentlyPlayed,
                 )
-            }.combine(heroPicks) { stage, heroPicks ->
+            }.combine(stableHeroPicks) { stage, heroPicks ->
                 HomeLocalContent(
                     quickPicks = stage.quickPicks.orEmpty(),
                     speedDialItems = stage.speedDialItems,

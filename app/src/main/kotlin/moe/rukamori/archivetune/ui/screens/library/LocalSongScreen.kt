@@ -25,6 +25,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,6 +100,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_HEADER
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
 import moe.rukamori.archivetune.constants.LocalSongsExcludedFoldersKey
@@ -112,10 +114,15 @@ import moe.rukamori.archivetune.localmedia.LocalSongScanConfig
 import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalSongsScanState
 import moe.rukamori.archivetune.viewmodels.LocalSongsViewModel
@@ -314,13 +321,19 @@ fun LocalSongScreen(
         )
     }
 
-    Scaffold(
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
+                .background(MaterialTheme.colorScheme.surface),
+    ) {
+        Scaffold(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = Color.Transparent,
+            topBar = {
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -379,8 +392,9 @@ fun LocalSongScreen(
                     ) {}
                 } else {
                     LargeFrostedTopAppBar(
-                        titleRes = R.string.local_history,
+                        titleRes = R.string.local_files,
                         onBack = navController::navigateUp,
+                        onBackLongClick = { navController.backToMain() },
                         actions = {
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(
@@ -418,29 +432,93 @@ fun LocalSongScreen(
                 key = "controls",
                 contentType = CONTENT_TYPE_HEADER,
             ) {
-                LocalSongControlsCard(
-                    sortType = sortType,
-                    sortDescending = sortDescending,
-                    visibleSongCount = visibleSongs.size,
-                    shuffleEnabled = queueItems.isNotEmpty(),
-                    onSortTypeChange = { onSortTypeNameChange(it.name) },
-                    onSortDescendingChange = onSortDescendingChange,
-                    onShuffleClick = {
+                val localFilesLabel = stringResource(R.string.local_files)
+                AppleMusicPlaylistHero(
+                    sectionLabel = localFilesLabel,
+                    title = localFilesLabel,
+                    subtitle =
+                        pluralStringResource(
+                            R.plurals.n_song,
+                            visibleSongs.size,
+                            visibleSongs.size,
+                        ),
+                    onPlay =
                         if (queueItems.isNotEmpty()) {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title =
-                                        if (query.isBlank()) {
-                                            context.getString(R.string.local_history)
-                                        } else {
-                                            context.getString(R.string.queue_searched_songs)
-                                        },
-                                    items = queueItems.shuffled(),
-                                ),
-                            )
-                        }
-                    },
+                            {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title =
+                                            if (query.isBlank()) {
+                                                context.getString(R.string.local_files)
+                                            } else {
+                                                context.getString(R.string.queue_searched_songs)
+                                            },
+                                        items = queueItems,
+                                    ),
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    onShuffle =
+                        if (queueItems.isNotEmpty()) {
+                            {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title =
+                                            if (query.isBlank()) {
+                                                context.getString(R.string.local_files)
+                                            } else {
+                                                context.getString(R.string.queue_searched_songs)
+                                            },
+                                        items = queueItems.shuffled(),
+                                    ),
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    onPrimaryTrailing = { showScanSheet = true },
+                    primaryTrailingIcon = R.drawable.settings,
+                    primaryTrailingDescription = R.string.settings,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
                 )
+            }
+
+            // Sort header — pulled out of the old LocalSongControlsCard row
+            // so it lives in its own item below the hero, matching the
+            // AutoPlaylistScreen / CachePlaylistScreen pattern.
+            if (visibleSongs.isNotEmpty()) {
+                item(
+                    key = "sortHeader",
+                    contentType = CONTENT_TYPE_HEADER,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                    ) {
+                        SortHeader(
+                            sortType = sortType,
+                            sortDescending = sortDescending,
+                            onSortTypeChange = { onSortTypeNameChange(it.name) },
+                            onSortDescendingChange = onSortDescendingChange,
+                            sortTypeText = { selectedSort ->
+                                when (selectedSort) {
+                                    LocalSongSortType.MODIFIED -> R.string.sort_by_last_updated
+                                    LocalSongSortType.NAME -> R.string.sort_by_name
+                                    LocalSongSortType.ARTIST -> R.string.sort_by_artist
+                                    LocalSongSortType.ALBUM -> R.string.sort_by_album
+                                }
+                            },
+                        )
+                    }
+                }
             }
 
             if (visibleSongs.isEmpty()) {
@@ -500,7 +578,7 @@ fun LocalSongScreen(
                                                 ListQueue(
                                                     title =
                                                         if (query.isBlank()) {
-                                                            context.getString(R.string.local_history)
+                                                            context.getString(R.string.local_files)
                                                         } else {
                                                             context.getString(R.string.queue_searched_songs)
                                                         },
@@ -520,66 +598,46 @@ fun LocalSongScreen(
                                             )
                                         }
                                     },
-                                ).padding(horizontal = 16.dp)
-                                .animateItem(),
+                                ).padding(horizontal = 16.dp),
                     )
                 }
             }
         }
-    }
-}
+        } // end Scaffold content lambda
 
-@Composable
-private fun LocalSongControlsCard(
-    sortType: LocalSongSortType,
-    sortDescending: Boolean,
-    visibleSongCount: Int,
-    shuffleEnabled: Boolean,
-    onSortTypeChange: (LocalSongSortType) -> Unit,
-    onSortDescendingChange: (Boolean) -> Unit,
-    onShuffleClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 8.dp),
-    ) {
-        SortHeader(
-            sortType = sortType,
-            sortDescending = sortDescending,
-            onSortTypeChange = onSortTypeChange,
-            onSortDescendingChange = onSortDescendingChange,
-            sortTypeText = { selectedSort ->
-                when (selectedSort) {
-                    LocalSongSortType.MODIFIED -> R.string.sort_by_last_updated
-                    LocalSongSortType.NAME -> R.string.sort_by_name
-                    LocalSongSortType.ARTIST -> R.string.sort_by_artist
-                    LocalSongSortType.ALBUM -> R.string.sort_by_album
-                }
-            },
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        IconButton(
-            onClick = onShuffleClick,
-            enabled = shuffleEnabled,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.shuffle),
-                contentDescription = stringResource(R.string.shuffle),
+        // Bottom fade overlay — vertical gradient that fades the bottom of
+        // the scrolling local-files list into the page background, matching
+        // the iOS Music reference screenshot. Only rendered while the user
+        // has scrolled past the hero header so the first frame doesn't show
+        // a stray fade band over the hero's Play/Shuffle/Settings pills.
+        val isListScrolling by remember {
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 ||
+                    listState.firstVisibleItemScrollOffset > 0
+            }
+        }
+        val bottomInset =
+            LocalPlayerAwareWindowInsets.current
+                .asPaddingValues()
+                .calculateBottomPadding()
+        if (isListScrolling) {
+            BottomFadeOverlay(
+                visible = true,
+                fadeColor = MaterialTheme.colorScheme.surface,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = bottomInset),
+            )
+            LibraryHomeDockButton(
+                onClick = { navController.backToMain() },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = bottomInset + 12.dp),
             )
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = pluralStringResource(R.plurals.n_song, visibleSongCount, visibleSongCount),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.secondary,
-        )
     }
 }
 

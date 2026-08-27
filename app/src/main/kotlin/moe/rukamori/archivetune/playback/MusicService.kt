@@ -8345,6 +8345,13 @@ class MusicService :
                 playbackUrlCache[currentMediaId]?.url
             playbackUrlCache.remove(currentMediaId)
             contentLengthCache.remove(currentMediaId)
+            // Drop the cached QobuzBackup/Tidal/Qobuz/Deezer resolution so the next
+            // prepare() re-resolves from scratch. Without this the multi-source
+            // cache HIT path (resolveMultiSourceDataSpec) re-serves the same broken
+            // mirror URL and the same parser error 3003 fires again on retry — the
+            // user observed exactly this loop on T5GzEN6fsGo (kouzu.in FLAC-mislabeled
+            // fMP4 stream → FragmentedMp4Extractor → "atom length > 2147483647").
+            directStreamCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             failedUrl
                 ?.let(StreamClientUtils::resolveRequestProfile)
