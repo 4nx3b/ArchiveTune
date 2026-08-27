@@ -794,14 +794,14 @@ fun AppleMusicPlayerContent(
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    showPlayerControlsState = showLyricsPlayerControlsState,
-                    onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
-                    onAutoHidePlayerControlsChange = {
-                        // LyricsMenu already persists the preference; the countdown effect
-                        // keys off it, so all this has to do is reveal the controls again so
-                        // the change is immediately visible.
-                        pokePlayerControlsVisibility()
-                    },
+                    // showPlayerControlsState / onShowPlayerControlsChange / onAutoHidePlayerControlsChange
+                    // are no-ops / null because the toggles were removed from the UI. The backing
+                    // preferences are still hardcoded to true in this composable (see
+                    // showLyricsPlayerControls / autoHideLyricsPlayerControls above), so the
+                    // controls always show and always auto-hide after 5 s.
+                    showPlayerControlsState = null,
+                    onShowPlayerControlsChange = null,
+                    onAutoHidePlayerControlsChange = {},
                     onDismiss = menuState::dismiss,
                     showControlsToggles = false,
                 )
