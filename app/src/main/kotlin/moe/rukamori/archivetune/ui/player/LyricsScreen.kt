@@ -127,7 +127,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.LyricsMode
@@ -138,7 +137,6 @@ import moe.rukamori.archivetune.constants.PlayerCustomBlurKey
 import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
@@ -242,13 +240,15 @@ fun LyricsScreen(
     val density = LocalDensity.current
     val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
-    val showPlayerControlsState =
-        rememberPreference(ShowLyricsPlayerControlsKey, true)
-    val showPlayerControlsEnabled by showPlayerControlsState
-    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
-    var playerControlsExpanded by remember(mediaMetadata.id, showPlayerControlsEnabled) {
-        mutableStateOf(showPlayerControlsEnabled)
+    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
+    // Lyrics settings UI by user request. The standalone lyrics page now ALWAYS shows
+    // the bottom transport controls and ALWAYS auto-hides them after 5 s. The original
+    // preferences are not read at all — they're left in PreferenceKeys.kt purely so
+    // existing DataStore entries don't cause migration errors on upgrade.
+    val showPlayerControlsEnabled = true
+    val autoHidePlayerControls = true
+    var playerControlsExpanded by remember(mediaMetadata.id) {
+        mutableStateOf(true)
     }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) {
         mutableIntStateOf(0)
@@ -256,37 +256,21 @@ fun LyricsScreen(
     val autoHideDelayMs = 5_000L
     // Tracks whether the user is actively scrolling the lyrics list. Hoisted up from
     // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
-    // controls can slide in on scroll even when "Show lyrics player controls" is OFF.
+    // controls can slide in on scroll.
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
-    val onShowPlayerControlsChange =
-        remember(showPlayerControlsState) {
-            { showControls: Boolean ->
-                showPlayerControlsState.value = showControls
-                playerControlsExpanded = showControls
-            }
-        }
-    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { enabled ->
-        onAutoHidePlayerControlsChange(enabled)
-        if (showPlayerControlsEnabled) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
-        }
+    val onShowPlayerControlsChange: (Boolean) -> Unit = { _ ->
+        // No-op: setting was removed from the UI; behavior is hardcoded on.
+    }
+    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { _ ->
+        // No-op: setting was removed from the UI; behavior is hardcoded on.
     }
 
     fun pokePlayerControlsVisibility() {
-        if (!showPlayerControlsEnabled) return
         playerControlsExpanded = true
-        if (autoHidePlayerControls) {
-            playerControlsVisibilityTick++
-        }
+        playerControlsVisibilityTick++
     }
 
-    LaunchedEffect(showPlayerControlsEnabled) {
-        playerControlsExpanded = showPlayerControlsEnabled
-    }
-
-    LaunchedEffect(autoHidePlayerControls, showPlayerControlsEnabled, playerControlsVisibilityTick, mediaMetadata.id) {
-        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@LaunchedEffect
+    LaunchedEffect(playerControlsVisibilityTick, mediaMetadata.id) {
         playerControlsExpanded = true
         kotlinx.coroutines.delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -547,10 +531,11 @@ fun LyricsScreen(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = showPlayerControlsState,
-                onShowPlayerControlsChange = onShowPlayerControlsChange,
-                onAutoHidePlayerControlsChange = onAutoHidePlayerControlsToggle,
+                showPlayerControlsState = null,
+                onShowPlayerControlsChange = null,
+                onAutoHidePlayerControlsChange = {},
                 onDismiss = menuState::dismiss,
+                showControlsToggles = false,
             )
         }
     }
