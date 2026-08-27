@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,7 +72,12 @@ fun LibraryBackPill(
 ) {
     FrostedHeaderPill(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AppIconButton(
+            // The local `IconButton` (in the same package) supports both
+            // onClick and onLongClick — matching the back-button semantics
+            // used elsewhere in the app (tap to navigate up, long-press to
+            // jump to the Home tab). The Material3 `IconButton` is shadowed
+            // here, so we reference the local overload directly.
+            IconButton(
                 onClick = onClick,
                 onLongClick = onLongClick ?: {},
             ) {
@@ -145,7 +149,13 @@ fun LibraryHomeDockButton(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            IconButton(onClick = onClick) {
+            // Use the local `IconButton` (same package) which supports both
+            // onClick and onLongClick — pass an empty long-click since the
+            // Home dock only needs the tap action.
+            IconButton(
+                onClick = onClick,
+                onLongClick = {},
+            ) {
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = stringResource(R.string.home),
