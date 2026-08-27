@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -152,6 +153,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -564,6 +566,18 @@ fun LocalPlaylistScreen(
         }
     }
 
+    // Whether the user has scrolled past the hero header — used to trigger
+    // the SimpMusic-style mini player "shrink + dock to right of Home
+    // button" behavior. Hoisted here so it can be propagated to the
+    // MiniPlayer subtree via CompositionLocalProvider wrapping the
+    // ExpressivePullToRefreshBox.
+    val isListScrolling by remember {
+        derivedStateOf {
+            lazyListState.firstVisibleItemIndex > 0 ||
+                lazyListState.firstVisibleItemScrollOffset > 0
+        }
+    }
+
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val transparentAppBar by remember {
@@ -576,8 +590,23 @@ fun LocalPlaylistScreen(
     // handle). The actual content recording only happens when
     // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
     // which is gated on `liquidGlassHeaderActive`.
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    //
+    // The initial backdrop color is the page surface color (NOT Color.Black).
+    // When the persistent liquid glass pills sample the backdrop at a position
+    // where the LazyColumn has no content (e.g. the empty band above the hero
+    // header item that has top padding = systemBarsTopPadding + AppBarHeight),
+    // the backdrop layer is transparent and the initial color shows through.
+    // Using the surface color makes those areas blend with the page background
+    // instead of showing a hard black band behind the pill.
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
+    // Wrap the entire screen subtree in a CompositionLocalProvider so the
+    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
+    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
+    // scrolls past the hero header.
+    CompositionLocalProvider(
+        LocalMiniPlayerDocked provides isListScrolling,
+    ) {
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
@@ -1416,12 +1445,6 @@ fun LocalPlaylistScreen(
         // show a stray fade band over the hero's Play/Shuffle/Download
         // pills. Skipped during search/selection so the overlay doesn't
         // interfere with the search/selection toolbar at the bottom.
-        val isListScrolling by remember {
-            derivedStateOf {
-                lazyListState.firstVisibleItemIndex > 0 ||
-                    lazyListState.firstVisibleItemScrollOffset > 0
-            }
-        }
         val bottomInset = LocalPlayerAwareWindowInsets.current
             .asPaddingValues()
             .calculateBottomPadding()
@@ -1464,7 +1487,8 @@ fun LocalPlaylistScreen(
                     .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime))
                     .align(Alignment.BottomCenter),
         )
-    }
+    } // end ExpressivePullToRefreshBox
+    } // end CompositionLocalProvider
 }
 
 private const val MediaDetailMetadataSeparator = "  •  "

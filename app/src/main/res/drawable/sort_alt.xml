@@ -1,0 +1,29 @@
+<!-- Sort icon — three horizontal lines with descending bars on the right,
+     matching the iOS Music sort control aesthetic. Stroke uses
+     `?attr/colorOnSurface` so the Icon's `tint` parameter applies
+     correctly (vector drawables with hardcoded colors ignore the
+     Compose `tint` override). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurface">
+  <path
+      android:pathData="M3 6h11M3 12h8M3 18h5"
+      android:strokeColor="?attr/colorOnSurface"
+      android:strokeWidth="2"
+      android:strokeLineCap="round"/>
+  <path
+      android:pathData="M16 14l4 4l-4 4"
+      android:strokeColor="?attr/colorOnSurface"
+      android:strokeWidth="2"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:fillColor="transparent"/>
+  <path
+      android:pathData="M20 4v12"
+      android:strokeColor="?attr/colorOnSurface"
+      android:strokeWidth="2"
+      android:strokeLineCap="round"/>
+</vector>
