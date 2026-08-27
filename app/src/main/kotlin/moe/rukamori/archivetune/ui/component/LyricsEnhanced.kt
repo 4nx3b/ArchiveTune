@@ -1228,34 +1228,23 @@ fun LyricsEnhanced(
                     // dispose the cache along with them, or those lines never show it. See
                     // [KaraokeBuild].
                     key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
-                        // ── Force the translation slot to use the small phonetic style ──
-                        // The mocharealm KaraokeLineText renders the `translation` slot with
-                        // `LocalTextStyle.current` (no explicit style), while the `phonetic`
-                        // slot uses `phoneticTextStyle`. With the romanisation swap in
-                        // buildSyncedLyrics / buildLineSyncedLrcLine, the `translation` slot
-                        // now carries the romanisation and the `phonetic` slot carries the
-                        // actual translation. Without this CompositionLocal override, the
-                        // romanisation would render at the ambient bodyLarge size (much
-                        // larger than the translation below it). Pinning LocalTextStyle to
-                        // the same small phoneticTextStyle makes both rows visually
-                        // consistent — "romanisation should be small text just like
-                        // translation" — and is local to this lyrics subtree so the rest
-                        // of the app is unaffected. KaraokeLyricsView's explicit
-                        // `normalLineTextStyle` / `accompanimentLineTextStyle` /
-                        // `phoneticTextStyle` parameters all bypass LocalTextStyle, so the
-                        // active karaoke line itself is not affected.
-                        androidx.compose.runtime.CompositionLocalProvider(
-                            androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
-                        ) {
-                            KaraokeLyricsView(
-                                listState = listState,
-                                lyrics = syncedLyrics,
-                                currentPosition = playbackSyncPosition,
-                                onLineClicked = { line ->
-                                    if (isSelectionModeActive) {
-                                        toggleSelectedLine(line.selectionKey())
-                                    } else if (lyricsClick && isSynced && line.start > 0) {
-                                        player.seekTo(line.start.toLong())
+                        KaraokeLyricsView(
+                            listState = listState,
+                            lyrics = syncedLyrics,
+                            currentPosition = playbackSyncPosition,
+                            onLineClicked = { line ->
+                                if (isSelectionModeActive) {
+                                    toggleSelectedLine(line.selectionKey())
+                                } else if (lyricsClick && isSynced && line.start > 0) {
+                                    player.seekTo(line.start.toLong())
+                                }
+                            },
+                            onLinePressed = { line ->
+                                val lineKey = line.selectionKey()
+                                if (!isSelectionModeActive) {
+                                    isSelectionModeActive = true
+                                    if (!selectedLineKeys.contains(lineKey)) {
+                                        selectedLineKeys.add(lineKey)
                                     }
                                 },
                                 onLinePressed = { line ->
