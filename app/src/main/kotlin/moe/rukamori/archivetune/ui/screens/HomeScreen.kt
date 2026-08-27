@@ -317,6 +317,24 @@ private fun HomeContent(
                         )
                     }
 
+                // Partition remote sections into Live-performance and other.
+                // Hoisted outside the LazyColumn content lambda (which is NOT a
+                // @Composable scope) so `remember` is valid here. Without this,
+                // the two `.filter` calls would allocate fresh lists on every
+                // recomposition of HomeContent even when the sections hadn't
+                // changed — a measurable contributor to home-screen jank.
+                val allRemoteSections = uiState.homePage?.sections.orEmpty()
+                val (livePerformanceSections, otherRemoteSections) =
+                    remember(allRemoteSections) {
+                        val live = allRemoteSections.filter { section ->
+                            section.title.contains("Live performance", ignoreCase = true)
+                        }
+                        val other = allRemoteSections.filter { section ->
+                            !section.title.contains("Live performance", ignoreCase = true)
+                        }
+                        live to other
+                    }
+
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -366,30 +384,6 @@ private fun HomeContent(
                     // populated home screen.
 
                     val minimalMode = uiState.minimalHomeMode
-
-                    // Partition remote sections into Live-performance and other.
-                    // Live-performance shelves are rendered in a dedicated block
-                    // right after Speed Dial (both modes); other remote shelves
-                    // are rendered at the bottom (full mode only).
-                    //
-                    // Hoisted outside the item lambdas (and keyed on the sections
-                    // list reference) so we don't re-allocate two new filtered lists
-                    // on every recomposition of `HomeContent`. This was a measurable
-                    // contributor to home-screen jank: the LazyColumn content lambda
-                    // re-runs on every parent recomposition, and the two `.filter`
-                    // calls allocated fresh lists each time even when the underlying
-                    // `uiState.homePage?.sections` had not changed.
-                    val allRemoteSections = uiState.homePage?.sections.orEmpty()
-                    val (livePerformanceSections, otherRemoteSections) =
-                        remember(allRemoteSections) {
-                            val live = allRemoteSections.filter { section ->
-                                section.title.contains("Live performance", ignoreCase = true)
-                            }
-                            val other = allRemoteSections.filter { section ->
-                                !section.title.contains("Live performance", ignoreCase = true)
-                            }
-                            live to other
-                        }
 
                     // "Jump back in" hero — large card + 2 stacked side cards.
                     // Uses `heroPicks` (3 random songs from listening-preference

@@ -9270,7 +9270,6 @@ class MusicService :
                     .buildUpon()
                     .setUri(cached.stream.uri.toUri())
                     .setKey(cacheKey)
-                    .setMimeType(cached.stream.mimeType.substringBefore(";").takeIf { it.isNotBlank() })
                     .build()
             }
             // Cache entry doesn't match the per-song override or low-data
@@ -10094,7 +10093,6 @@ class MusicService :
             .buildUpon()
             .setUri(stream.uri.toUri())
             .setKey(cacheKey)
-            .setMimeType(stream.mimeType.substringBefore(";").takeIf { it.isNotBlank() })
             .build()
     }
 
