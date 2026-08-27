@@ -38,6 +38,11 @@ import moe.rukamori.archivetune.R
  * on Android 12+, and degrade to a semi-transparent `surfaceContainer` on pre-S or when no
  * backdrop is available.
  *
+ * Pass a non-null [backdrop] (created via [rememberBackdrop] and applied to a sibling
+ * `LazyColumn` via [Modifier.layerBackdrop]) to switch all three pills (title / nav icon /
+ * actions) to real kyant liquid glass. The pills MUST be siblings of the composable carrying
+ * `layerBackdrop` — nesting inside the source creates a render-feedback loop.
+ *
  * Usage: drop-in replacement for a standard `TopAppBar` that has a title, a back arrow,
  * and optional actions. For screens that need a more custom title (e.g. with an avatar or
  * animated content), use [FrostedHeaderPill] directly.
@@ -50,12 +55,14 @@ fun FrostedTopAppBar(
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
+    backdrop: PlatformBackdrop? = null,
 ) {
     FrostedTopAppBar(
         title = { Text(stringResource(titleRes)) },
         onBack = onBack,
         onBackLongClick = onBackLongClick,
         actions = actions,
+        backdrop = backdrop,
     )
 }
 
@@ -66,6 +73,7 @@ fun FrostedTopAppBar(
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
+    backdrop: PlatformBackdrop? = null,
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -76,12 +84,12 @@ fun FrostedTopAppBar(
             actionIconContentColor = MaterialTheme.colorScheme.onSurface,
         ),
         title = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 title()
             }
         },
         navigationIcon = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 IconButton(
                     onClick = onBack,
                     onLongClick = onBackLongClick,
@@ -97,6 +105,7 @@ fun FrostedTopAppBar(
             {
                 FrostedHeaderPill(
                     modifier = Modifier.padding(end = 8.dp),
+                    backdrop = backdrop,
                 ) {
                     actions()
                 }
@@ -110,6 +119,11 @@ fun FrostedTopAppBar(
 /**
  * Large variant: wraps a [LargeFlexibleTopAppBar] with frosted pills around the title, nav icon,
  * and actions. Use for screens that have a hero header which collapses on scroll.
+ *
+ * Pass a non-null [backdrop] (created via [rememberBackdrop] and applied to a sibling
+ * `LazyColumn` via [Modifier.layerBackdrop]) to switch all three pills to real kyant liquid
+ * glass. The pills MUST be siblings of the composable carrying `layerBackdrop` — nesting
+ * inside the source creates a render-feedback loop.
  */
 @Composable
 fun LargeFrostedTopAppBar(
@@ -118,6 +132,7 @@ fun LargeFrostedTopAppBar(
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
+    backdrop: PlatformBackdrop? = null,
 ) {
     LargeFlexibleTopAppBar(
         colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -125,7 +140,7 @@ fun LargeFrostedTopAppBar(
             scrolledContainerColor = Color.Transparent,
         ),
         title = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 Text(
                     text = stringResource(titleRes),
                     fontWeight = FontWeight.Bold,
@@ -134,7 +149,7 @@ fun LargeFrostedTopAppBar(
             }
         },
         navigationIcon = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 IconButton(
                     onClick = onBack,
                     onLongClick = onBackLongClick,
@@ -150,6 +165,7 @@ fun LargeFrostedTopAppBar(
             {
                 FrostedHeaderPill(
                     modifier = Modifier.padding(end = 8.dp),
+                    backdrop = backdrop,
                 ) {
                     actions()
                 }
@@ -169,6 +185,7 @@ fun LargeFrostedTopAppBar(
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
+    backdrop: PlatformBackdrop? = null,
 ) {
     LargeFlexibleTopAppBar(
         colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -176,12 +193,12 @@ fun LargeFrostedTopAppBar(
             scrolledContainerColor = Color.Transparent,
         ),
         title = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 title()
             }
         },
         navigationIcon = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(backdrop = backdrop) {
                 IconButton(
                     onClick = onBack,
                     onLongClick = onBackLongClick,
@@ -197,6 +214,7 @@ fun LargeFrostedTopAppBar(
             {
                 FrostedHeaderPill(
                     modifier = Modifier.padding(end = 8.dp),
+                    backdrop = backdrop,
                 ) {
                     actions()
                 }
