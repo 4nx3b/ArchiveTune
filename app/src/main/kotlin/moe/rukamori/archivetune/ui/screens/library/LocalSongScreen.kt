@@ -103,6 +103,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_HEADER
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LocalSongsExcludedFoldersKey
 import moe.rukamori.archivetune.constants.LocalSongsIncludedFoldersKey
 import moe.rukamori.archivetune.constants.LocalSongsMinDurationSecondsKey
@@ -119,9 +120,13 @@ import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalSongsScanState
@@ -155,6 +160,25 @@ fun LocalSongScreen(
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
+
+    // Liquid Glass header setup. Mirror LocalPlaylistScreen's pattern: read
+    // the master toggle, gate on Android 12+ (kyant RuntimeShader requires
+    // API 31+), and suspend the layerBackdrop while the full-screen lyrics
+    // overlay is open on top of this screen — otherwise the per-frame GPU
+    // recording steals budget from the 60 Hz karaoke lyrics sweep.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
+    // content recording only happens when `Modifier.layerBackdrop(backdrop)`
+    // is applied to the LazyColumn below, gated on `layerBackdropActive`.
+    val backdrop = rememberBackdrop(Color.Black)
+    // When Liquid Glass is active, pass the backdrop to the LargeFrostedTopAppBar
+    // (for the title / nav icon / actions pills) and to the LibraryHomeDockButton.
+    // When inactive, both fall back to the translucent surface path.
+    val pillBackdrop: PlatformBackdrop? = backdrop.takeIf { layerBackdropActive }
     val (sortDescending, onSortDescendingChange) = rememberPreference(LocalSongsSortDescendingKey, true)
     val (sortTypeName, onSortTypeNameChange) = rememberPreference(LocalSongsSortTypeKey, LocalSongSortType.MODIFIED.name)
     val (minimumDurationSeconds, onMinimumDurationSecondsChange) =
@@ -395,6 +419,7 @@ fun LocalSongScreen(
                         titleRes = R.string.local_files,
                         onBack = navController::navigateUp,
                         onBackLongClick = { navController.backToMain() },
+                        backdrop = pillBackdrop,
                         actions = {
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(
@@ -420,6 +445,13 @@ fun LocalSongScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .then(
+                        if (layerBackdropActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(paddingValues),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding =
@@ -636,6 +668,7 @@ fun LocalSongScreen(
                     Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 16.dp, bottom = bottomInset + 12.dp),
+                backdrop = pillBackdrop,
             )
         }
     }
