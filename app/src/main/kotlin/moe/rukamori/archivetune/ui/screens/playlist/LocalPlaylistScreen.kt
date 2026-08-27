@@ -1453,6 +1453,7 @@ fun LocalPlaylistScreen(
                             start = 16.dp,
                             bottom = bottomInset + 12.dp,
                         ),
+                backdrop = artworkBackdrop.takeIf { layerBackdropActive },
             )
         }
 
