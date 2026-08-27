@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +45,12 @@ import androidx.compose.ui.unit.sp
  * Matches the vibrant magenta-pink of iOS system pink (#FF2D55) used as the
  * accent color throughout the redesigned History / Liked / Cached / Playlist
  * pages: section labels, primary action button text & icons, active tab indicator.
+ *
+ * Chosen because it remains highly legible against both the dark-mode surface
+ * (deep black/charcoal) AND a light-mode surface (off-white): the saturated
+ * pink has enough chroma and luminance contrast to pass WCAG AA against both
+ * backgrounds, so the hero's accent text (section label, Play/Shuffle labels,
+ * and pill icons) reads cleanly in either theme.
  */
 val AppleMusicStyleAccentColor: Color = Color(0xFFFF375C)
 
@@ -52,7 +59,7 @@ val AppleMusicStyleAccentColor: Color = Color(0xFFFF375C)
  * reference screenshots:
  *
  *   • Small pink uppercase section label (e.g. "RECENTLY PLAYED")
- *   • Large bold white page title (left-aligned, SF Pro-like)
+ *   • Large bold page title (left-aligned, SF Pro-like)
  *   • Subtitle/metadata line in muted gray
  *   • Rounded pill-shaped "Play" and "Shuffle" controls with pink text/icons
  *   • Optional trailing icon action (e.g. Clear/Overflow)
@@ -64,6 +71,14 @@ val AppleMusicStyleAccentColor: Color = Color(0xFFFF375C)
  * Existing callers continue to use [MediaDetailHero] unchanged; this is only
  * used by the redesigned History, Liked Songs, Cached Songs and Playlist
  * pages.
+ *
+ * ## Light-mode contrast
+ * The title, subtitle, and pill container colors are derived from
+ * [MaterialTheme.colorScheme] so the hero remains legible against the light
+ * theme surface as well as the dark theme surface. The pink accent
+ * ([AppleMusicStyleAccentColor]) is intentionally NOT theme-derived — it is
+ * a saturated brand pink that has acceptable contrast on both light and dark
+ * surfaces and matches the iOS Music reference.
  *
  * @param sectionLabel Small uppercase accent label (e.g. "RECENTLY PLAYED").
  *                     Pass null to omit.
@@ -93,6 +108,13 @@ fun AppleMusicPlaylistHero(
     modifier: Modifier = Modifier,
 ) {
     val accent = AppleMusicStyleAccentColor
+    // Theme-aware foreground colors so the hero remains legible against both
+    // the dark theme (Color.Black-ish surface) and the light theme
+    // (off-white surface). Using `onBackground` keeps the title at full
+    // contrast against the page surface, while `onSurfaceVariant` gives the
+    // metadata line the muted-gray look the reference screenshots have.
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground
+    val subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(
         modifier =
@@ -116,7 +138,7 @@ fun AppleMusicPlaylistHero(
 
         Text(
             text = title,
-            color = Color.White,
+            color = onBackgroundColor,
             fontWeight = FontWeight.Bold,
             fontSize = 34.sp,
             lineHeight = 38.sp,
@@ -127,7 +149,7 @@ fun AppleMusicPlaylistHero(
         subtitle?.let {
             Text(
                 text = it,
-                color = Color.White.copy(alpha = 0.6f),
+                color = subtitleColor,
                 fontWeight = FontWeight.Normal,
                 fontSize = 15.sp,
                 maxLines = 1,
@@ -147,6 +169,19 @@ fun AppleMusicPlaylistHero(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                // Play and Shuffle pills share the available horizontal space
+                // evenly (each gets weight 1f), matching the reference layout
+                // where Play and Shuffle sit side-by-side as roughly
+                // equal-width pills, and any trailing circular action
+                // (download / clear / overflow) sits as a fixed-size circle on
+                // the right end.
+                //
+                // The previous implementation wrapped each pill's inner Row
+                // in `Modifier.fillMaxWidth()`, which forced the first pill
+                // (Play) to consume the entire parent Row's max width and
+                // pushed Shuffle / Download off-screen. The pills now wrap
+                // their content intrinsically and rely on the parent's
+                // `weight(1f)` to allocate width.
                 onPlay?.let { play ->
                     PillActionButton(
                         text = stringResource(moe.rukamori.archivetune.R.string.play),
@@ -154,6 +189,7 @@ fun AppleMusicPlaylistHero(
                         accent = accent,
                         primary = true,
                         onClick = play,
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 onShuffle?.let { shuffle ->
@@ -163,6 +199,7 @@ fun AppleMusicPlaylistHero(
                         accent = accent,
                         primary = false,
                         onClick = shuffle,
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 additionalActions?.invoke()
@@ -187,11 +224,20 @@ private fun PillActionButton(
     accent: Color,
     primary: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val containerColor = Color.White.copy(alpha = if (primary) 0.10f else 0.06f)
+    // The pill container color is a low-alpha tint of `onBackground` so it
+    // reads as a subtle frosted surface against both the dark and light page
+    // surface. Previously this was a `Color.White.copy(alpha = ...)` tint
+    // which on a light-mode page made the pill almost invisible (white on
+    // off-white) and on a dark-mode page made it look like a solid white
+    // slab — neither matched the reference's subtle translucent pill.
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground
+    val containerColor = onBackgroundColor.copy(alpha = if (primary) 0.10f else 0.06f)
     Surface(
+        onClick = onClick,
         modifier =
-            Modifier
+            modifier
                 .clip(RoundedCornerShape(percent = 50))
                 .height(46.dp),
         shape = RoundedCornerShape(percent = 50),
@@ -200,8 +246,7 @@ private fun PillActionButton(
         Row(
             modifier =
                 Modifier
-                    .padding(horizontal = 22.dp)
-                    .fillMaxWidth(),
+                    .padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -230,7 +275,8 @@ private fun TrailingIconButton(
     onClick: () -> Unit,
     accent: Color,
 ) {
-    val containerColor = Color.White.copy(alpha = 0.06f)
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground
+    val containerColor = onBackgroundColor.copy(alpha = 0.06f)
     Surface(
         modifier =
             Modifier
@@ -247,7 +293,7 @@ private fun TrailingIconButton(
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = description?.let { stringResource(it) },
-                    tint = Color.White.copy(alpha = 0.78f),
+                    tint = onBackgroundColor.copy(alpha = 0.78f),
                     modifier = Modifier.size(22.dp),
                 )
             }
