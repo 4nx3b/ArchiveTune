@@ -629,12 +629,9 @@ fun HistoryScreen(
                     },
                     scrollBehavior = scrollBehavior,
                     colors =
-                        TopAppBarDefaults.topAppBarColors(
+                        TopAppBarDefaults.largeTopAppBarColors(
                             containerColor = Color.Transparent,
                             scrolledContainerColor = Color.Transparent,
-                            navigationIconContentColor = Color.White,
-                            titleContentColor = Color.White,
-                            actionIconContentColor = Color.White,
                         ),
                 )
             }
