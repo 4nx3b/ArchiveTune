@@ -371,13 +371,25 @@ private fun HomeContent(
                     // Live-performance shelves are rendered in a dedicated block
                     // right after Speed Dial (both modes); other remote shelves
                     // are rendered at the bottom (full mode only).
+                    //
+                    // Hoisted outside the item lambdas (and keyed on the sections
+                    // list reference) so we don't re-allocate two new filtered lists
+                    // on every recomposition of `HomeContent`. This was a measurable
+                    // contributor to home-screen jank: the LazyColumn content lambda
+                    // re-runs on every parent recomposition, and the two `.filter`
+                    // calls allocated fresh lists each time even when the underlying
+                    // `uiState.homePage?.sections` had not changed.
                     val allRemoteSections = uiState.homePage?.sections.orEmpty()
-                    val livePerformanceSections = allRemoteSections.filter { section ->
-                        section.title.contains("Live performance", ignoreCase = true)
-                    }
-                    val otherRemoteSections = allRemoteSections.filter { section ->
-                        !section.title.contains("Live performance", ignoreCase = true)
-                    }
+                    val (livePerformanceSections, otherRemoteSections) =
+                        remember(allRemoteSections) {
+                            val live = allRemoteSections.filter { section ->
+                                section.title.contains("Live performance", ignoreCase = true)
+                            }
+                            val other = allRemoteSections.filter { section ->
+                                !section.title.contains("Live performance", ignoreCase = true)
+                            }
+                            live to other
+                        }
 
                     // "Jump back in" hero — large card + 2 stacked side cards.
                     // Uses `heroPicks` (3 random songs from listening-preference
@@ -399,7 +411,6 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -413,7 +424,6 @@ private fun HomeContent(
                                 chips = uiState.homePage?.chips.orEmpty(),
                                 selectedChip = uiState.selectedChip,
                                 onChipSelected = { onAction(HomeAction.SelectChip(it)) },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -430,7 +440,6 @@ private fun HomeContent(
                                     leadingIcon = {
                                         HomeSectionLeadingIcon(iconRes = R.drawable.discover_tune)
                                     },
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -446,7 +455,6 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }
@@ -475,7 +483,6 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.history)
                                 },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -490,7 +497,6 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -512,7 +518,6 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -528,7 +533,6 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -545,7 +549,6 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.listening)
                                 },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -561,7 +564,6 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -581,7 +583,6 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -597,7 +598,6 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -617,7 +617,6 @@ private fun HomeContent(
                             HomePageSectionTitle(
                                 section = section,
                                 navController = navController,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -633,7 +632,6 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -644,7 +642,7 @@ private fun HomeContent(
                             key = "home_account_playlists",
                             contentType = "media_shelf",
                         ) {
-                            Column(modifier = Modifier.animateItem()) {
+                            Column {
                                 AccountPlaylistsTitle(
                                     accountName = uiState.accountName,
                                     accountImageUrl = uiState.accountImageUrl,
@@ -675,7 +673,6 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.cached)
                                 },
-                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -693,7 +690,6 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
-                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -708,7 +704,6 @@ private fun HomeContent(
                                 SimilarRecommendationsTitle(
                                     recommendation = recommendation,
                                     navController = navController,
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -724,7 +719,6 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }
@@ -751,7 +745,6 @@ private fun HomeContent(
                                 HomePageSectionTitle(
                                     section = section,
                                     navController = navController,
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -767,7 +760,6 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
-                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }
@@ -784,7 +776,6 @@ private fun HomeContent(
                                     Modifier
                                         .fillMaxWidth()
                                         .padding(32.dp)
-                                        .animateItem(),
                             ) {
                                 LoadingIndicator()
                             }

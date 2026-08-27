@@ -96,6 +96,7 @@ import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -360,6 +361,24 @@ fun CachePlaylistScreen(
                                     ),
                                 )
                             },
+                            additionalActions = {
+                                // Export-all pill integrated into the hero row,
+                                // matching the iOS redesign pill aesthetic (rounded
+                                // capsule + pink accent) instead of a separate
+                                // FilledTonalButton below the hero that broke the
+                                // visual rhythm of the redesigned page.
+                                MediaDetailAction(
+                                    contentDescription = R.string.export_all_songs,
+                                    contentColor = Color.White,
+                                    onClick = { exportAllLauncher.launch(null) },
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.download),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
@@ -367,27 +386,6 @@ fun CachePlaylistScreen(
                                         top = systemBarsTopPadding + AppBarHeight + 8.dp,
                                     ),
                         )
-                    }
-
-                    // Export all button below the hero
-                    item(key = "export_all") {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FilledTonalButton(
-                                onClick = { exportAllLauncher.launch(null) },
-                                content = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.download),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                    Spacer(modifier = Modifier.size(8.dp))
-                                    Text(stringResource(R.string.export_all_songs))
-                                },
-                            )
-                        }
                     }
                 }
 
@@ -499,9 +497,11 @@ fun CachePlaylistScreen(
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
-                        navigationIconContentColor = Color.White,
-                        titleContentColor = Color.White,
-                        actionIconContentColor = Color.White,
+                        // Theme-aware: hardcoded Color.White was invisible on
+                        // light surfaces. onBackground adapts to the active theme.
+                        navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                        actionIconContentColor = MaterialTheme.colorScheme.onBackground,
                     )
                 } else {
                     TopAppBarDefaults.topAppBarColors(
@@ -548,10 +548,12 @@ fun CachePlaylistScreen(
                     }
 
                     showTopBarTitle -> {
-                        Text(
-                            text = stringResource(R.string.cached_playlist),
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        FrostedHeaderPill {
+                            Text(
+                                text = stringResource(R.string.cached_playlist),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        }
                     }
                 }
             },
@@ -652,32 +654,36 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
+                    FrostedHeaderPill {
+                        androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = null,
+                            )
+                        }
                     }
                     if (wrappedSongs.isNotEmpty()) {
-                        androidx.compose.material3.IconButton(
-                            onClick = {
-                                menuState.show {
-                                    SelectionSongMenu(
-                                        songSelection = wrappedSongs.map { it.item },
-                                        onDismiss = menuState::dismiss,
-                                        clearAction = {},
-                                        isFromCache = true,
-                                        onRemoveFromCache = { songs ->
-                                            songs.forEach { viewModel.removeSongFromCache(it.id) }
-                                        },
-                                    )
-                                }
-                            },
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
-                            )
+                        FrostedHeaderPill {
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        SelectionSongMenu(
+                                            songSelection = wrappedSongs.map { it.item },
+                                            onDismiss = menuState::dismiss,
+                                            clearAction = {},
+                                            isFromCache = true,
+                                            onRemoveFromCache = { songs ->
+                                                songs.forEach { viewModel.removeSongFromCache(it.id) }
+                                            },
+                                        )
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }

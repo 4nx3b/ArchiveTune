@@ -582,9 +582,13 @@ fun AutoPlaylistScreen(
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
-                        navigationIconContentColor = Color.White,
-                        titleContentColor = Color.White,
-                        actionIconContentColor = Color.White,
+                        // Theme-aware: hardcoded Color.White was invisible on
+                        // light surfaces. onBackground adapts to the active theme
+                        // so the back pill, title, and action icons stay legible
+                        // in both light and dark modes.
+                        navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                        actionIconContentColor = MaterialTheme.colorScheme.onBackground,
                     )
                 } else {
                     TopAppBarDefaults.topAppBarColors(
@@ -630,10 +634,12 @@ fun AutoPlaylistScreen(
                     }
 
                     showTopBarTitle -> {
-                        Text(
-                            text = playlist,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        FrostedHeaderPill {
+                            Text(
+                                text = playlist,
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        }
                     }
                 }
             },
@@ -736,30 +742,34 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    androidx.compose.material3.IconButton(
-                        onClick = { isSearching = true },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
-                    }
-                    if (songs.isNotEmpty()) {
+                    FrostedHeaderPill {
                         androidx.compose.material3.IconButton(
-                            onClick = {
-                                menuState.show {
-                                    SelectionSongMenu(
-                                        songSelection = songs,
-                                        onDismiss = menuState::dismiss,
-                                        clearAction = {},
-                                    )
-                                }
-                            },
+                            onClick = { isSearching = true },
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = null,
                             )
+                        }
+                    }
+                    if (songs.isNotEmpty()) {
+                        FrostedHeaderPill {
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        SelectionSongMenu(
+                                            songSelection = songs,
+                                            onDismiss = menuState::dismiss,
+                                            clearAction = {},
+                                        )
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }
