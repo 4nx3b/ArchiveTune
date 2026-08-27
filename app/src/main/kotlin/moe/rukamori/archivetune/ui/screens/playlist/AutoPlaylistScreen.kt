@@ -84,13 +84,13 @@ import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
-import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
@@ -345,17 +345,25 @@ fun AutoPlaylistScreen(
                 }
             } else {
                 if (!isSearching) {
-                    // Hero Header Item
+                    // Hero Header Item — iOS-inspired Apple Music style: small pink
+                    // accent label, large bold white title, metadata line, rounded
+                    // Play/Shuffle/Download pill controls. No large artwork backdrop;
+                    // the page's plain surface color shows through, matching the
+                    // reference screenshots supplied by the user.
                     item(
                         key = "header",
                         contentType = CONTENT_TYPE_HEADER,
                     ) {
-                        MediaDetailHero(
+                        val sectionLabelRes =
+                            if (playlistId == "liked") {
+                                R.string.liked
+                            } else {
+                                R.string.offline
+                            }
+                        AppleMusicPlaylistHero(
+                            sectionLabel = stringResource(sectionLabelRes),
                             title = playlist,
-                            thumbnailUrl = songs.firstOrNull()?.song?.thumbnailUrl,
-                            fallbackIcon = R.drawable.music_note,
-                            systemBarsTopPadding = systemBarsTopPadding,
-                            metadata =
+                            subtitle =
                                 listOf(
                                     pluralStringResource(
                                         R.plurals.n_song,
@@ -364,17 +372,6 @@ fun AutoPlaylistScreen(
                                     ),
                                     makeTimeString(likeLength * 1000L),
                                 ).joinToString(MediaDetailMetadataSeparator),
-                            isAdded = false,
-                            addContentDescription = R.string.add_to_queue,
-                            removeContentDescription = R.string.remove_from_queue,
-                            onShuffle = {
-                                playerConnection.playQueue(
-                                    ListQueue(
-                                        title = playlist,
-                                        items = songs.shuffled().map { it.toMediaItem() },
-                                    ),
-                                )
-                            },
                             onPlay = {
                                 playerConnection.playQueue(
                                     ListQueue(
@@ -383,8 +380,15 @@ fun AutoPlaylistScreen(
                                     ),
                                 )
                             },
-                            onToggleAdd = null,
-                            additionalPrimaryActions = { contentColor ->
+                            onShuffle = {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = playlist,
+                                        items = songs.shuffled().map { it.toMediaItem() },
+                                    ),
+                                )
+                            },
+                            additionalActions = {
                                 val isCompleted = downloadState == HeaderDownloadState.Completed
                                 MediaDetailAction(
                                     contentDescription =
@@ -393,7 +397,7 @@ fun AutoPlaylistScreen(
                                         } else {
                                             R.string.download
                                         },
-                                    contentColor = contentColor,
+                                    contentColor = Color.White,
                                     onClick = {
                                         when (downloadState) {
                                             HeaderDownloadState.Completed -> {
@@ -423,29 +427,35 @@ fun AutoPlaylistScreen(
                                 ) {
                                     when (val state = downloadState) {
                                         HeaderDownloadState.Completed -> {
-                                             Icon(
-                                                 painter = painterResource(R.drawable.offline),
-                                                 contentDescription = null,
-                                                 modifier = Modifier.size(22.dp),
-                                             )
+                                            Icon(
+                                                painter = painterResource(R.drawable.offline),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(22.dp),
+                                            )
                                         }
                                         is HeaderDownloadState.Partial -> {
-                                             HeaderDownloadProgressIndicator(
-                                                 progress = state.progress,
-                                                 paused = state.paused,
-                                                 icon = R.drawable.download,
-                                             )
+                                            HeaderDownloadProgressIndicator(
+                                                progress = state.progress,
+                                                paused = state.paused,
+                                                icon = R.drawable.download,
+                                            )
                                         }
                                         HeaderDownloadState.None -> {
-                                             Icon(
-                                                 painter = painterResource(R.drawable.download),
-                                                 contentDescription = null,
-                                                 modifier = Modifier.size(22.dp),
-                                             )
+                                            Icon(
+                                                painter = painterResource(R.drawable.download),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(22.dp),
+                                            )
                                         }
                                     }
                                 }
                             },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        top = systemBarsTopPadding + AppBarHeight + 8.dp,
+                                    ),
                         )
                     }
                 }

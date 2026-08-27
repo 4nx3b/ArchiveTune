@@ -93,6 +93,7 @@ import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -326,30 +327,18 @@ fun CachePlaylistScreen(
                 }
             } else {
                 if (filteredSongs.isNotEmpty() && !isSearching) {
-                    // Hero Header Item
+                    // Hero Header Item — iOS-inspired Apple Music style.
                     item(key = "header") {
-                        MediaDetailHero(
-                            title = stringResource(R.string.cached_playlist),
-                            thumbnailUrl = filteredSongs.firstOrNull()?.item?.thumbnailUrl,
-                            fallbackIcon = R.drawable.music_note,
-                            systemBarsTopPadding = systemBarsTopPadding,
-                            metadata =
+                        val cachedLabel = stringResource(R.string.cached_playlist)
+                        AppleMusicPlaylistHero(
+                            sectionLabel = cachedLabel,
+                            title = cachedLabel,
+                            subtitle =
                                 pluralStringResource(
                                     R.plurals.n_song,
                                     filteredSongs.size,
                                     filteredSongs.size,
                                 ),
-                            isAdded = false,
-                            addContentDescription = R.string.add_to_queue,
-                            removeContentDescription = R.string.remove_from_queue,
-                            onShuffle = {
-                                playerConnection.playQueue(
-                                    ListQueue(
-                                        title = "Cache Songs",
-                                        items = filteredSongs.shuffled().map { it.item.toMediaItem() },
-                                    ),
-                                )
-                            },
                             onPlay = {
                                 playerConnection.playQueue(
                                     ListQueue(
@@ -358,11 +347,24 @@ fun CachePlaylistScreen(
                                     ),
                                 )
                             },
-                            onToggleAdd = null,
+                            onShuffle = {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = "Cache Songs",
+                                        items = filteredSongs.shuffled().map { it.item.toMediaItem() },
+                                    ),
+                                )
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        top = systemBarsTopPadding + AppBarHeight + 8.dp,
+                                    ),
                         )
                     }
 
-                    // Export all button below the song count
+                    // Export all button below the hero
                     item(key = "export_all") {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp),

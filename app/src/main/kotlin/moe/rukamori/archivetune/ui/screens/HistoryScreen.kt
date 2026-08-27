@@ -105,7 +105,9 @@ import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HistorySource
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.db.entities.EventWithSong
@@ -118,6 +120,9 @@ import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -277,32 +282,129 @@ fun HistoryScreen(
             localVisibleEvents.size
         }
 
-    val historySourceDock: @Composable () -> Unit = {
-        HistorySourceDock(
-            visibleSongCount = currentVisibleCount,
-            availableSources = availableSources,
-            currentSource = historySource,
-            onSourceChange = { newSource ->
-                if (newSource == historySource) return@HistorySourceDock
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-                viewModel.historySource.value = newSource
-                if (newSource == HistorySource.REMOTE) {
-                    when (remoteHistoryState) {
-                        is RemoteHistoryUiState.Error -> {
-                            viewModel.fetchRemoteHistory()
-                        }
-
-                        is RemoteHistoryUiState.Empty -> {
-                            viewModel.enqueueSilentFetch()
-                        }
-
-                        else -> {
-                            Unit
-                        }
-                    }
+    if (showClearHistoryDialog) {
+        DefaultDialog(
+            onDismiss = { showClearHistoryDialog = false },
+            title = { Text(text = stringResource(R.string.history)) },
+            content = {
+                Text(
+                    text = stringResource(R.string.remove_from_history_confirm),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+            },
+            buttons = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showClearHistoryDialog = false },
+                    shapes = androidx.compose.material3.ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showClearHistoryDialog = false
+                        val allEventIds = localVisibleEvents.map { it.event.id }
+                        viewModel.removeEventsFromHistory(allEventIds)
+                    },
+                    shapes = androidx.compose.material3.ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(android.R.string.ok))
                 }
             },
         )
+    }
+
+    val historySourceDock: @Composable () -> Unit = {
+        // iOS-inspired hero with small pink accent label, large bold title,
+        // metadata line, and rounded Play/Shuffle/Clear pill controls. The
+        // existing local/remote source selector is preserved below the hero
+        // actions so the user can still switch between local and YouTube
+        // remote history — only the visual treatment changed, not the logic.
+        Column(modifier = Modifier.fillMaxWidth()) {
+            AppleMusicPlaylistHero(
+                sectionLabel = stringResource(R.string.recently_played),
+                title = stringResource(R.string.history),
+                subtitle = pluralStringResource(R.plurals.n_song, currentVisibleCount, currentVisibleCount),
+                onPlay = {
+                    if (historySource == HistorySource.REMOTE) {
+                        if (remoteVisibleSongs.isNotEmpty()) {
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = context.getString(R.string.history),
+                                    items = remoteVisibleSongs.map { it.toMediaItem() },
+                                ),
+                            )
+                        }
+                    } else if (localVisibleEvents.isNotEmpty()) {
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = context.getString(R.string.history),
+                                items = localVisibleEvents.map { it.song.toMediaItem() },
+                            ),
+                        )
+                    }
+                },
+                onShuffle = {
+                    if (historySource == HistorySource.REMOTE) {
+                        if (remoteVisibleSongs.isNotEmpty()) {
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = context.getString(R.string.history),
+                                    items = remoteVisibleSongs.map { it.toMediaItem() }.shuffled(),
+                                ),
+                            )
+                        }
+                    } else if (localVisibleEvents.isNotEmpty()) {
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = context.getString(R.string.history),
+                                items = localVisibleEvents.map { it.song.toMediaItem() }.shuffled(),
+                            ),
+                        )
+                    }
+                },
+                onPrimaryTrailing =
+                    if (historySource == HistorySource.LOCAL && localVisibleEvents.isNotEmpty()) {
+                        { showClearHistoryDialog = true }
+                    } else {
+                        null
+                    },
+                primaryTrailingIcon = R.drawable.close,
+                primaryTrailingDescription = R.string.clear,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+            )
+            if (availableSources.size > 1) {
+                HistorySourceSelector(
+                    currentSource = historySource,
+                    availableSources = availableSources,
+                    onSourceChange = { newSource ->
+                        if (newSource == historySource) return@HistorySourceSelector
+
+                        viewModel.historySource.value = newSource
+                        if (newSource == HistorySource.REMOTE) {
+                            when (remoteHistoryState) {
+                                is RemoteHistoryUiState.Error -> {
+                                    viewModel.fetchRemoteHistory()
+                                }
+
+                                is RemoteHistoryUiState.Empty -> {
+                                    viewModel.enqueueSilentFetch()
+                                }
+
+                                else -> {
+                                    Unit
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
     }
 
     val historyContent: @Composable (Dp, Boolean) -> Unit = { topPadding, searchMode ->
@@ -472,88 +574,67 @@ fun HistoryScreen(
             if (!showSearchBar) {
                 LargeFlexibleTopAppBar(
                     title = {
-                        Text(
-                            text =
-                                if (selectionCount > 0) {
-                                    pluralStringResource(R.plurals.n_song, selectionCount, selectionCount)
-                                } else {
-                                    stringResource(R.string.history)
-                                },
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    navigationIcon = {
-                        AppIconButton(
-                            onClick = {
-                                if (selectionCount > 0) {
-                                    clearSelection()
-                                } else {
-                                    navController.navigateUp()
-                                }
-                            },
-                            onLongClick = {
-                                if (selectionCount == 0) {
-                                    navController.backToMain()
-                                }
-                            },
-                        ) {
-                            Icon(
-                                painter =
-                                    painterResource(
-                                        if (selectionCount > 0) R.drawable.close else R.drawable.arrow_back,
-                                    ),
-                                contentDescription = null,
+                        FrostedHeaderPill {
+                            Text(
+                                text =
+                                    if (selectionCount > 0) {
+                                        pluralStringResource(R.plurals.n_song, selectionCount, selectionCount)
+                                    } else {
+                                        stringResource(R.string.history)
+                                    },
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     },
-                    actions = {
-                        if (selectionCount == 0) {
+                    navigationIcon = {
+                        FrostedHeaderPill {
                             AppIconButton(
-                                onClick = { isSearching = true },
-                                onLongClick = {},
+                                onClick = {
+                                    if (selectionCount > 0) {
+                                        clearSelection()
+                                    } else {
+                                        navController.navigateUp()
+                                    }
+                                },
+                                onLongClick = {
+                                    if (selectionCount == 0) {
+                                        navController.backToMain()
+                                    }
+                                },
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.search),
+                                    painter =
+                                        painterResource(
+                                            if (selectionCount > 0) R.drawable.close else R.drawable.arrow_back,
+                                        ),
                                     contentDescription = null,
                                 )
                             }
                         }
                     },
+                    actions = {
+                        if (selectionCount == 0) {
+                            FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp)) {
+                                AppIconButton(
+                                    onClick = { isSearching = true },
+                                    onLongClick = {},
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.search),
+                                        contentDescription = null,
+                                    )
+                                }
+                            }
+                        }
+                    },
                     scrollBehavior = scrollBehavior,
                     colors =
-                        TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
+                        TopAppBarDefaults.largeTopAppBarColors(
+                            containerColor = Color.Transparent,
                             scrolledContainerColor = Color.Transparent,
                         ),
                 )
             }
-        },
-        floatingActionButton = {
-            HideOnScrollFAB(
-                visible = !showSearchBar && selectionCount == 0 && currentVisibleCount > 0,
-                lazyListState = activeListState,
-                icon = R.drawable.shuffle,
-                label = stringResource(R.string.shuffle),
-                onClick = {
-                    if (historySource == HistorySource.REMOTE) {
-                        if (remoteVisibleSongs.isNotEmpty()) {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = context.getString(R.string.history),
-                                    items = remoteVisibleSongs.map { it.toMediaItem() }.shuffled(),
-                                ),
-                            )
-                        }
-                    } else if (localVisibleEvents.isNotEmpty()) {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = context.getString(R.string.history),
-                                items = localVisibleEvents.map { it.song.toMediaItem() }.shuffled(),
-                            ),
-                        )
-                    }
-                },
-            )
         },
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {

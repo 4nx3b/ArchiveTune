@@ -161,12 +161,12 @@ import kotlin.math.abs
 // ──────────────────────────────────────────────────────────────────────
 
 /** Lead time offset for LRC-style line-synced lyrics (ms). */
-private const val LRC_LEAD_MS = 300L
+private const val LRC_LEAD_MS = 0L
 
 /** Lead time offset for TTML word-synced lyrics (ms). */
 private const val TTML_LEAD_MS = 0L
 
-private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
+private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 
 /**
  * Minimum duration (ms) for the per-word letter-by-letter sweep animation.
@@ -891,7 +891,7 @@ fun LyricsV2(
                     targetValue = if (isActive) 1f else 0.95f,
                     animationSpec =
                         androidx.compose.animation.core.tween(
-                            durationMillis = 166,
+                            durationMillis = 100,
                             easing = androidx.compose.animation.core.FastOutSlowInEasing,
                         ),
                     label = "v2LineScale",
@@ -900,7 +900,7 @@ fun LyricsV2(
                     targetValue = lineAlpha,
                     animationSpec =
                         androidx.compose.animation.core.tween(
-                            durationMillis = if (isActive) 330 else 500,
+                            durationMillis = if (isActive) 150 else 400,
                             easing = androidx.compose.animation.core.FastOutSlowInEasing,
                         ),
                     label = "v2LineAlpha",
@@ -1043,19 +1043,6 @@ fun LyricsV2(
                                 )
                             }
 
-                        if (romanizedText != null) {
-                            Text(
-                                text = romanizedText,
-                                style = supplementaryTextStyle,
-                                color = textColor.copy(alpha = if (isActive) 0.76f else 0.42f),
-                                textAlign = textAlign,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = (lyricsTextSize * 0.18f).dp),
-                            )
-                        }
-
                         if (item.words != null && isSynced && wordSyncCache.getOrCompute(item)) {
                             LyricsLineV2(
                                 words = item.words!!,
@@ -1100,6 +1087,22 @@ fun LyricsV2(
                                 color = textColor.copy(alpha = if (isActive) 1f else 0.52f),
                                 textAlign = textAlign,
                                 modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+
+                        // Romanisation renders BELOW the lyric, between the lyric and the
+                        // translation — the same layout the Enhanced style now uses. Previously
+                        // it sat ABOVE the lyric, which the user explicitly rejected.
+                        if (romanizedText != null) {
+                            Text(
+                                text = romanizedText,
+                                style = supplementaryTextStyle,
+                                color = textColor.copy(alpha = if (isActive) 0.76f else 0.42f),
+                                textAlign = textAlign,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = (lyricsTextSize * 0.18f).dp),
                             )
                         }
 
@@ -1729,7 +1732,7 @@ private fun LyricsLineLrcBounce(
         if (!isActive || bounceFactor == 0f) return@LaunchedEffect
         words.indices.forEach { i ->
             launch {
-                delay(i * 40L)
+                delay(i * 20L)
                 try {
                     scaleAnimatables[i].animateTo(
                         targetValue = 1f + 0.045f * bounceFactor,
@@ -1752,7 +1755,7 @@ private fun LyricsLineLrcBounce(
                 }
             }
             launch {
-                delay(i * 40L)
+                delay(i * 20L)
                 try {
                     floatAnimatables[i].animateTo(
                         targetValue = -5f * bounceFactor,
