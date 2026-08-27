@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -121,9 +122,11 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
+import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
@@ -587,6 +590,12 @@ fun HistoryScreen(
                         }
                     },
                     navigationIcon = {
+                        // iOS-inspired back pill: translucent frosted capsule
+                        // containing a left-pointing chevron followed by the
+                        // text "Library", matching the user's reference
+                        // screenshot. Tapping it pops back to the previous
+                        // destination (or clears the multi-selection);
+                        // long-pressing it jumps straight to the Home tab.
                         FrostedHeaderPill {
                             AppIconButton(
                                 onClick = {
@@ -610,6 +619,13 @@ fun HistoryScreen(
                                     contentDescription = null,
                                 )
                             }
+                            Text(
+                                text = stringResource(R.string.library),
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
                         }
                     },
                     actions = {
@@ -640,6 +656,53 @@ fun HistoryScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             if (!showSearchBar) {
                 historyContent(innerPadding.calculateTopPadding(), false)
+            }
+
+            // Bottom fade overlay — a vertical gradient that fades the bottom
+            // of the scrolling history list into the page background, matching
+            // the iOS Music reference screenshot. Only visible when the user
+            // has scrolled past the hero header, so the first frame (hero
+            // visible, list not yet scrolling) doesn't show a stray fade band
+            // overlapping the hero's Play/Shuffle/Clear pills.
+            val isListScrolling by remember {
+                derivedStateOf {
+                    val activeState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
+                    activeState.firstVisibleItemIndex > 0 ||
+                        activeState.firstVisibleItemScrollOffset > 0
+                }
+            }
+            val bottomInset = LocalPlayerAwareWindowInsets.current
+                .asPaddingValues()
+                .calculateBottomPadding()
+            if (!showSearchBar && isListScrolling) {
+                BottomFadeOverlay(
+                    visible = true,
+                    fadeColor = MaterialTheme.colorScheme.surface,
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = bottomInset),
+                )
+            }
+
+            // Floating Home dock button — circular frosted-glass pill at the
+            // bottom-start corner, matching the iOS Music reference
+            // screenshot. Visible only when the user has scrolled past the
+            // hero header so it doesn't compete with the hero's action row
+            // when the user is at the top of the page. Tapping it jumps
+            // straight to the Home tab.
+            if (!showSearchBar && isListScrolling) {
+                LibraryHomeDockButton(
+                    onClick = { navController.backToMain() },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(
+                                start = 16.dp,
+                                bottom = bottomInset + 12.dp,
+                            ),
+                )
             }
 
             AnimatedVisibility(
