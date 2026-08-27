@@ -2043,6 +2043,7 @@ class MainActivity : ComponentActivity() {
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
+                        moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
                     ) {
                         Row {
                             AnimatedVisibility(

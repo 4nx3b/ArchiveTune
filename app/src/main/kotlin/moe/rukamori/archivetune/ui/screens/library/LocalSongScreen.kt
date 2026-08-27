@@ -72,6 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -126,6 +127,7 @@ import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -161,6 +163,16 @@ fun LocalSongScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
 
+    // Whether the user has scrolled past the hero header — hoisted here
+    // so it can be propagated to the MiniPlayer subtree via
+    // CompositionLocalProvider wrapping the Box below.
+    val isListScrolling by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 ||
+                listState.firstVisibleItemScrollOffset > 0
+        }
+    }
+
     // Liquid Glass header setup. Mirror LocalPlaylistScreen's pattern: read
     // the master toggle, gate on Android 12+ (kyant RuntimeShader requires
     // API 31+), and suspend the layerBackdrop while the full-screen lyrics
@@ -174,7 +186,12 @@ fun LocalSongScreen(
     // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
     // content recording only happens when `Modifier.layerBackdrop(backdrop)`
     // is applied to the LazyColumn below, gated on `layerBackdropActive`.
-    val backdrop = rememberBackdrop(Color.Black)
+    //
+    // Initial backdrop color is the page surface color (NOT Color.Black)
+    // so empty areas where the LazyColumn has no content blend with the
+    // page background instead of showing a hard black band behind the
+    // liquid glass pills.
+    val backdrop = rememberBackdrop(MaterialTheme.colorScheme.surface)
     // When Liquid Glass is active, pass the backdrop to the LargeFrostedTopAppBar
     // (for the title / nav icon / actions pills) and to the LibraryHomeDockButton.
     // When inactive, both fall back to the translucent surface path.
@@ -345,6 +362,13 @@ fun LocalSongScreen(
         )
     }
 
+    // Wrap the entire screen subtree in a CompositionLocalProvider so the
+    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
+    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
+    // scrolls past the hero header.
+    CompositionLocalProvider(
+        LocalMiniPlayerDocked provides isListScrolling,
+    ) {
     Box(
         modifier =
             Modifier
@@ -642,12 +666,6 @@ fun LocalSongScreen(
         // the iOS Music reference screenshot. Only rendered while the user
         // has scrolled past the hero header so the first frame doesn't show
         // a stray fade band over the hero's Play/Shuffle/Settings pills.
-        val isListScrolling by remember {
-            derivedStateOf {
-                listState.firstVisibleItemIndex > 0 ||
-                    listState.firstVisibleItemScrollOffset > 0
-            }
-        }
         val bottomInset =
             LocalPlayerAwareWindowInsets.current
                 .asPaddingValues()
@@ -671,7 +689,8 @@ fun LocalSongScreen(
                 backdrop = pillBackdrop,
             )
         }
-    }
+    } // end Box
+    } // end CompositionLocalProvider
 }
 
 @Composable

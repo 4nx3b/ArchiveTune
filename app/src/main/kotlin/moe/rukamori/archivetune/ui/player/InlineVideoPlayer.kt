@@ -219,6 +219,24 @@ val LocalIsInPipMode = compositionLocalOf { false }
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
 /**
+ * Tracks whether the current screen wants the [MiniPlayer] to shrink into
+ * a compact "docked" form factor and position itself at the bottom-start
+ * corner, immediately to the right of the floating Home dock button.
+ *
+ * Set to `true` by the playlist-style screens (Liked / Cached / Local
+ * storage / Local / Online / Spotify playlist) when the user has scrolled
+ * past the hero header. The MiniPlayer reads this and applies a
+ * `graphicsLayer` scale + translationX transformation so it visually
+ * shrinks and slides to the bottom-start corner — matching the
+ * SimpMusic behavior the user referenced (mini player "shrinks
+ * automatically and sits between Home button on the left and search
+ * button on the right").
+ *
+ * Default: false (most screens don't shrink the mini player).
+ */
+val LocalMiniPlayerDocked = compositionLocalOf { false }
+
+/**
  * Provides a [VideoFullscreenStateHolder] to the content subtree.
  *
  * The holder is created with `remember` (not `rememberSaveable`) because
