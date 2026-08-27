@@ -78,8 +78,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastSumBy
@@ -112,13 +114,16 @@ import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.LocalMixQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AssignTagsDialog
+import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -1085,17 +1090,41 @@ fun LocalPlaylistScreen(
         // compiler can't smart-cast the property directly).
         val currentPlaylist = playlist
         if (layerBackdropActive && !selection && !isSearching && currentPlaylist != null) {
-            LiquidGlassIconButton(
+            // iOS-inspired back pill: persistent translucent liquid-glass
+            // capsule containing a left-pointing chevron followed by the
+            // text "Library", matching the user's reference screenshot.
+            // The pill samples the artworkBackdrop (the entire scrolling
+            // content) to render the liquid-glass blur. Tapping it pops
+            // back to the previous destination; long-pressing it jumps
+            // straight to the Home tab.
+            LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = null,
+                interactive = true,
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
-                        .size(48.dp),
-                onClick = { navController.navigateUp() },
-            )
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = { navController.navigateUp() },
+                    onLongClick = { navController.backToMain() },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.library),
+                        tint = Color.White,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.library),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -1379,6 +1408,53 @@ fun LocalPlaylistScreen(
             },
         )
         } // end if (!liquidGlassHeaderActive || selection || isSearching)
+
+        // Bottom fade overlay — vertical gradient that fades the bottom of
+        // the scrolling playlist list into the page background, matching
+        // the iOS Music reference screenshot. Only rendered while the user
+        // has scrolled past the hero header so the first frame doesn't
+        // show a stray fade band over the hero's Play/Shuffle/Download
+        // pills. Skipped during search/selection so the overlay doesn't
+        // interfere with the search/selection toolbar at the bottom.
+        val isListScrolling by remember {
+            derivedStateOf {
+                lazyListState.firstVisibleItemIndex > 0 ||
+                    lazyListState.firstVisibleItemScrollOffset > 0
+            }
+        }
+        val bottomInset = LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateBottomPadding()
+        if (!isSearching && !selection && isListScrolling) {
+            BottomFadeOverlay(
+                visible = true,
+                fadeColor = MaterialTheme.colorScheme.surface,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = bottomInset),
+            )
+        }
+
+        // Floating Home dock button — circular frosted-glass pill at the
+        // bottom-start corner, matching the iOS Music reference screenshot.
+        // Visible only while the user has scrolled past the hero header so
+        // it doesn't compete with the hero's action row. Tapping it jumps
+        // straight to the Home tab. Skipped during search/selection so it
+        // doesn't overlap the selection toolbar.
+        if (!isSearching && !selection && isListScrolling) {
+            LibraryHomeDockButton(
+                onClick = { navController.backToMain() },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = 16.dp,
+                            bottom = bottomInset + 12.dp,
+                        ),
+            )
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,

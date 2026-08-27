@@ -65,8 +65,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -89,11 +91,14 @@ import moe.rukamori.archivetune.constants.SongSortTypeKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -551,33 +556,48 @@ fun CachePlaylistScreen(
                 }
             },
             navigationIcon = {
-                IconButton(onClick = {
-                    when {
-                        isSearching -> {
-                            isSearching = false
-                            query = TextFieldValue()
-                            focusManager.clearFocus()
-                        }
+                // iOS-inspired back pill: translucent frosted capsule containing
+                // a left-pointing chevron followed by the text "Library",
+                // matching the user's reference screenshot. Tapping it pops
+                // back to the previous destination (or clears selection /
+                // closes search); long-pressing it jumps straight to the
+                // Home tab.
+                FrostedHeaderPill {
+                    IconButton(onClick = {
+                        when {
+                            isSearching -> {
+                                isSearching = false
+                                query = TextFieldValue()
+                                focusManager.clearFocus()
+                            }
 
-                        selection -> {
-                            selection = false
-                        }
+                            selection -> {
+                                selection = false
+                            }
 
-                        else -> {
-                            navController.navigateUp()
+                            else -> {
+                                navController.navigateUp()
+                            }
                         }
+                    }, onLongClick = {
+                        if (!isSearching && !selection) {
+                            navController.backToMain()
+                        }
+                    }) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (selection) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
                     }
-                }, onLongClick = {
-                    if (!isSearching && !selection) {
-                        navController.backToMain()
-                    }
-                }) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selection) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
+                    Text(
+                        text = stringResource(R.string.library),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier.padding(end = 4.dp),
                     )
                 }
             },
@@ -663,6 +683,50 @@ fun CachePlaylistScreen(
                 }
             },
         )
+
+        // Bottom fade overlay — vertical gradient that fades the bottom of
+        // the scrolling cache list into the page background, matching the
+        // iOS Music reference screenshot. Only rendered while the user has
+        // scrolled past the hero header so the first frame doesn't show a
+        // stray fade band over the hero's Play/Shuffle pills.
+        val isListScrolling by remember {
+            derivedStateOf {
+                lazyListState.firstVisibleItemIndex > 0 ||
+                    lazyListState.firstVisibleItemScrollOffset > 0
+            }
+        }
+        val bottomInset = LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateBottomPadding()
+        if (isListScrolling) {
+            BottomFadeOverlay(
+                visible = true,
+                fadeColor = MaterialTheme.colorScheme.surface,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = bottomInset),
+            )
+        }
+
+        // Floating Home dock button — circular frosted-glass pill at the
+        // bottom-start corner, matching the iOS Music reference screenshot.
+        // Visible only while the user has scrolled past the hero header so
+        // it doesn't compete with the hero's action row. Tapping it jumps
+        // straight to the Home tab.
+        if (isListScrolling) {
+            LibraryHomeDockButton(
+                onClick = { navController.backToMain() },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = 16.dp,
+                            bottom = bottomInset + 12.dp,
+                        ),
+            )
+        }
     }
 }
 
