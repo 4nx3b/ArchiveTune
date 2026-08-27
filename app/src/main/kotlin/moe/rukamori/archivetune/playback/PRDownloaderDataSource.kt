@@ -119,6 +119,42 @@ internal class PRDownloaderDataSource private constructor(
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
         val url = dataSpec.uri.toString()
+
+        // ── Retry loop ──
+        // PRDownloader 1.0.2 has two failure modes that both produce "song interrupted halfway
+        // through" from the user's perspective:
+        //   (a) a transient network stall mid-stream throws SocketTimeoutException inside
+        //       PRDownloader's OkHttp, fires onError, and the whole download fails.
+        //   (b) PRDownloader's `onDownloadComplete()` fires on a partial file when the upstream
+        //       connection drops mid-stream on chunked-transfer CDNs (e.g. Qobuz). The size
+        //       verification below catches this when Content-Length is known, but only after
+        //       the user has waited for what looked like a complete download.
+        //
+        // The retry below addresses (a). Each attempt deletes the temp file and starts fresh
+        // (PRDownloader has no resume support), but the user gets 3 chances for the network
+        // to recover rather than failing on the first transient stall. The size verification
+        // below continues to catch (b) and convert it to a retry rather than a hard failure.
+        var lastError: IOException? = null
+        for (attempt in 1..MAX_DOWNLOAD_ATTEMPTS) {
+            try {
+                return openSingle(dataSpec, url, attempt)
+            } catch (e: IOException) {
+                lastError = e
+                // Don't sleep after the last attempt — just propagate.
+                if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+                    try {
+                        Thread.sleep(RETRY_DELAY_MS * attempt)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw e
+                    }
+                }
+            }
+        }
+        throw lastError ?: IOException("PRDownloader failed after $MAX_DOWNLOAD_ATTEMPTS attempts for $url")
+    }
+
+    private fun openSingle(dataSpec: DataSpec, url: String, attempt: Int): Long {
         // PRDownloader is initialized once at app start (see App.kt).
         // If it isn't initialized, we fail fast — there's no graceful
         // degradation possible without a fetcher.
@@ -344,45 +380,68 @@ internal class PRDownloaderDataSource private constructor(
      *     (set by DownloadUtil.prewarmSongForDownload from FormatEntity).
      *  2. A synchronous HEAD request to the URL (best-effort, with a
      *     short timeout — if it fails or returns no Content-Length, we
-     *     return 0 and the verification step is skipped).
+     *     try the next strategy).
+     *  3. A `GET` with `Range: bytes=0-0` — many CDNs (incl. Qobuz's chunked-
+     *     transfer endpoint) reject HEAD on media URLs but DO answer a
+     *     1-byte range GET with a `Content-Range: bytes 0-0/<total>` header.
+     *     This is the fallback that catches the "Qobuz download interrupted
+     *     halfway because Content-Length was unknown" failure mode.
      *
-     * Returns 0 if no expected length can be determined (chunked transfer
-     * with no upstream metadata) — in that case the file is accepted as-is
-     * to avoid false negatives for CDNs that genuinely don't expose size.
+     * Returns 0 if no expected length can be determined — in that case the
+     * file is accepted as-is to avoid false negatives for CDNs that
+     * genuinely don't expose size.
      */
     private fun resolveExpectedContentLength(url: String, dataSpec: DataSpec): Long {
         // (1) Upstream-provided hint (set by prewarm from FormatEntity).
         dataSpec.httpRequestHeaders["X-Expected-Content-Length"]?.toLongOrNull()
             ?.let { if (it > 0L) return it }
 
-        // (2) HEAD request — best-effort. Some CDNs (e.g. YouTube
-        // googlevideo) reject HEAD on media URLs, so we silently fall
-        // through if the request fails.
-        return runCatching {
-            // Resolve stream-client profile (UA / Origin / Referer) for
-            // YouTube URLs, mirroring the main download path.
-            val youTubeMediaProfile = runCatching {
-                StreamClientUtils.resolveRequestProfile(url)
-            }.getOrNull()
-            val resolvedUserAgent = youTubeMediaProfile?.userAgent?.takeIf(String::isNotBlank)
-                ?: userAgent
+        // Resolve stream-client profile (UA / Origin / Referer) for YouTube URLs,
+        // mirroring the main download path. Hoisted out so both the HEAD and the
+        // range-GET below share it.
+        val youTubeMediaProfile = runCatching {
+            StreamClientUtils.resolveRequestProfile(url)
+        }.getOrNull()
+        val resolvedUserAgent = youTubeMediaProfile?.userAgent?.takeIf(String::isNotBlank)
+            ?: userAgent
+        val origin = youTubeMediaProfile?.origin?.takeIf(String::isNotBlank)
+        val referer = youTubeMediaProfile?.referer?.takeIf(String::isNotBlank)
+
+        // (2) HEAD request — best-effort. Some CDNs (e.g. YouTube googlevideo)
+        // reject HEAD on media URLs, so we silently fall through if it fails.
+        val headLength = runCatching {
             val builder = Request.Builder().url(url).head()
                 .header("User-Agent", resolvedUserAgent)
                 .header("Accept-Encoding", "identity")
-            youTubeMediaProfile?.origin?.takeIf(String::isNotBlank)?.let {
-                builder.header("Origin", it)
-            }
-            youTubeMediaProfile?.referer?.takeIf(String::isNotBlank)?.let {
-                builder.header("Referer", it)
-            }
+            origin?.let { builder.header("Origin", it) }
+            referer?.let { builder.header("Referer", it) }
             headClient.newCall(builder.build()).execute().use { response ->
-                val cl = response.header("Content-Length")?.toLongOrNull() ?: 0L
                 if (!response.isSuccessful && response.code != 200 && response.code != 206) {
-                    // HEAD not supported / rejected — don't fail the download.
                     0L
                 } else {
-                    cl
+                    response.header("Content-Length")?.toLongOrNull() ?: 0L
                 }
+            }
+        }.getOrDefault(0L)
+        if (headLength > 0L) return headLength
+
+        // (3) Range GET for the first byte only — fallback for CDNs that don't
+        // support HEAD but do honour Range requests. The response carries
+        // `Content-Range: bytes 0-0/<total>` from which we can recover <total>.
+        return runCatching {
+            val builder = Request.Builder().url(url)
+                .header("Range", "bytes=0-0")
+                .header("User-Agent", resolvedUserAgent)
+                .header("Accept-Encoding", "identity")
+            origin?.let { builder.header("Origin", it) }
+            referer?.let { builder.header("Referer", it) }
+            headClient.newCall(builder.build()).execute().use { response ->
+                if (response.code != 206) return@use 0L
+                val contentRange = response.header("Content-Range") ?: return@use 0L
+                // Format: "bytes 0-0/12345"
+                val slashIdx = contentRange.lastIndexOf('/')
+                if (slashIdx < 0 || slashIdx == contentRange.length - 1) return@use 0L
+                contentRange.substring(slashIdx + 1).trim().toLongOrNull() ?: 0L
             }
         }.getOrDefault(0L)
     }
@@ -404,5 +463,14 @@ internal class PRDownloaderDataSource private constructor(
     companion object {
         private const val DEFAULT_USER_AGENT = "ArchiveTune"
         private const val DOWNLOAD_WAIT_TIMEOUT_MINUTES = 30L
+        // How many times to retry a download that failed transiently (network stall,
+        // partial file detected by size verification). PRDownloader has no resume, so
+        // each retry re-downloads from byte 0 — but retrying is still much better than
+        // surfacing "download failed" to the user on the first transient blip.
+        private const val MAX_DOWNLOAD_ATTEMPTS = 3
+        // Linear back-off between retry attempts (RETRY_DELAY_MS * attempt). 1.5 s on the
+        // first retry, 3 s on the second — short enough that the user doesn't think the
+        // download hung, long enough for a congested WiFi or mobile handoff to clear.
+        private const val RETRY_DELAY_MS = 1_500L
     }
 }

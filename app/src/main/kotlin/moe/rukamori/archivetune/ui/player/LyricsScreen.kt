@@ -128,7 +128,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.LyricsMode
@@ -139,7 +138,6 @@ import moe.rukamori.archivetune.constants.PlayerCustomBlurKey
 import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
@@ -255,7 +253,7 @@ fun LyricsScreen(
     val autoHideDelayMs = 5_000L
     // Tracks whether the user is actively scrolling the lyrics list. Hoisted up from
     // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
-    // controls can slide in on scroll even when "Show lyrics player controls" is OFF.
+    // controls can slide in on scroll.
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
     val onShowPlayerControlsChange =
         remember(showPlayerControlsState) {
@@ -554,10 +552,11 @@ fun LyricsScreen(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = showPlayerControlsState,
-                onShowPlayerControlsChange = onShowPlayerControlsChange,
-                onAutoHidePlayerControlsChange = onAutoHidePlayerControlsToggle,
+                showPlayerControlsState = null,
+                onShowPlayerControlsChange = null,
+                onAutoHidePlayerControlsChange = {},
                 onDismiss = menuState::dismiss,
+                showControlsToggles = false,
             )
         }
     }

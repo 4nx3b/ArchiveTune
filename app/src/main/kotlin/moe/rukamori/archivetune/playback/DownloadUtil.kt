@@ -158,7 +158,16 @@ class DownloadUtil
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
                 .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
+                // ── Read timeout 60s → 300s ──
+                // Same rationale as PRDownloader's readTimeout bump in App.kt: a 60 s read
+                // timeout was the prime cause of "songs interrupted halfway through" — the
+                // prewarm fetch (fetchStreamIntoPlayerCache) reads from this client, and a
+                // network stall > 60 s mid-stream threw SocketTimeoutException, purged the
+                // partial cache, and forced a fallback that often resolved to a different
+                // (often YouTube) source. 300 s rides through the common mobile-data and
+                // congested-WiFi stalls without making a real disconnect look like it's
+                // still downloading for too long.
+                .readTimeout(300, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .callTimeout(0, TimeUnit.SECONDS) // no overall cap — let large FLAC files download to completion
                 .dispatcher(

@@ -1246,37 +1246,46 @@ fun LyricsEnhanced(
                                     if (!selectedLineKeys.contains(lineKey)) {
                                         selectedLineKeys.add(lineKey)
                                     }
-                                } else if (!selectedLineKeys.contains(lineKey)) {
-                                    toggleSelectedLine(lineKey)
-                                }
-                            },
-                            textColor = textColor,
-                            normalLineTextStyle = normalTextStyle,
-                            accompanimentLineTextStyle = accompanimentTextStyle,
-                            phoneticTextStyle = phoneticTextStyle,
-                            blendMode = BlendMode.SrcOver,
-                            // Per-line RenderEffect blur is the single heaviest per-frame cost in
-                            // this view; drop it when animations are disabled (low-RAM default).
-                            useBlurEffect = lyricsLineBlur && !animationsDisabled,
-                            showTranslation = showTranslations,
-                            showPhonetic = romanizationPreferences.showsRomanization,
-                            offset = lyricsViewportOffset,
-                            // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
-                            // many items outside the viewport are kept composed (not
-                            // disposed) — each kept-alive item still participates in
-                            // the per-frame measure pass during auto-scroll. The
-                            // mocharealm KaraokeLyricsView library measures every
-                            // kept-alive karaoke line on every scroll event; each line
-                            // contains N syllables that each need a fill-ratio
-                            // computation. 8dp keeps at most ~1 line alive on each
-                            // side of the viewport, minimizing the measure cost
-                            // during the instant `scrollBy` snap on line changes.
-                            // This is the single biggest lever we have for reducing
-                            // the word-synced lyrics lag in Enhanced style (V2 uses
-                            // its own renderer and doesn't have this cost).
-                            keepAliveZone = 8.dp,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                },
+                                onLinePressed = { line ->
+                                    val lineKey = line.selectionKey()
+                                    if (!isSelectionModeActive) {
+                                        isSelectionModeActive = true
+                                        if (!selectedLineKeys.contains(lineKey)) {
+                                            selectedLineKeys.add(lineKey)
+                                        }
+                                    } else if (!selectedLineKeys.contains(lineKey)) {
+                                        toggleSelectedLine(lineKey)
+                                    }
+                                },
+                                textColor = textColor,
+                                normalLineTextStyle = normalTextStyle,
+                                accompanimentLineTextStyle = accompanimentTextStyle,
+                                phoneticTextStyle = phoneticTextStyle,
+                                blendMode = BlendMode.SrcOver,
+                                // Per-line RenderEffect blur is the single heaviest per-frame cost in
+                                // this view; drop it when animations are disabled (low-RAM default).
+                                useBlurEffect = lyricsLineBlur && !animationsDisabled,
+                                showTranslation = showTranslations,
+                                showPhonetic = romanizationPreferences.showsRomanization,
+                                offset = lyricsViewportOffset,
+                                // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
+                                // many items outside the viewport are kept composed (not
+                                // disposed) — each kept-alive item still participates in
+                                // the per-frame measure pass during auto-scroll. The
+                                // mocharealm KaraokeLyricsView library measures every
+                                // kept-alive karaoke line on every scroll event; each line
+                                // contains N syllables that each need a fill-ratio
+                                // computation. 8dp keeps at most ~1 line alive on each
+                                // side of the viewport, minimizing the measure cost
+                                // during the instant `scrollBy` snap on line changes.
+                                // This is the single biggest lever we have for reducing
+                                // the word-synced lyrics lag in Enhanced style (V2 uses
+                                // its own renderer and doesn't have this cost).
+                                keepAliveZone = 8.dp,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -1847,6 +1856,20 @@ private fun buildSyncedLyrics(
             val lineEnd = mainSyllables.last().end
             if (lineEnd <= lineStart) return@forEachIndexed
 
+            // Build a single joined romanisation string for the line-level slot. Each
+            // syllable's per-word phonetic still sits above its own word (small text in
+            // the karaoke Canvas), AND a single per-line romanisation string is placed
+            // in the `translation` slot so it renders directly below the active line.
+            // See buildLineSyncedLrcLine for why `translation` = romanisation and
+            // `phonetic` = translation (the field swap that puts romanisation between
+            // the active lyric and the translation).
+            val lineRomanized =
+                wordPhonetics
+                    .filterNotNull()
+                    .joinToString(" ")
+                    .trim()
+                    .takeIf { it.isNotEmpty() }
+
             val accompanimentLines =
                 if (mainWords.isNotEmpty() && bgWords.isNotEmpty()) {
                     val bgSyllables = bgWords.toKaraokeSyllables(emptyList())
@@ -1873,11 +1896,11 @@ private fun buildSyncedLyrics(
             lines.add(
                 KaraokeLine.MainKaraokeLine(
                     syllables = mainSyllables,
-                    translation = translation,
+                    translation = lineRomanized ?: translation,
                     alignment = alignment,
                     start = lineStart,
                     end = lineEnd,
-                    phonetic = null,
+                    phonetic = if (lineRomanized != null) translation else null,
                     accompanimentLines = accompanimentLines,
                 ),
             )
@@ -1955,12 +1978,28 @@ private fun buildLineSyncedLrcLine(
             start = start,
         )
 
+    // ── Romanisation between active lyric and translation ──
+    // The mocharealm KaraokeLineText renders in this fixed order:
+    //   1. Active karaoke line (Canvas with per-syllable phonetic above each word)
+    //   2. `translation` slot  — Text using LocalTextStyle.current  (immediately below active)
+    //   3. `phonetic` slot    — Text using phoneticTextStyle         (below translation)
+    // To place the romanisation BETWEEN the active lyric and the translation (per user
+    // request — Apple-Music-style layout where romanisation sits directly under the
+    // sung line and the translation sits under that), we swap the field assignments:
+    //   - `translation` slot ← romanisation   (renders first, right below the active line)
+    //   - `phonetic` slot   ← translation     (renders second, below the romanisation)
+    // The phoneticTextStyle passed into KaraokeLyricsView is also force-applied to the
+    // translation slot via a CompositionLocalProvider (see the call site) so both rows
+    // render at the same small size — matching "romanisation should be small text just
+    // like translation". The line-level content (lineText() / selectionKey) reads from
+    // `syllables.content` and is unaffected by the swap.
     return KaraokeLine.MainKaraokeLine(
         syllables = syllables,
-        translation = translation,
+        translation = normalizedRomanizedText,
         alignment = KaraokeAlignment.Start,
         start = start,
         end = end,
+        phonetic = translation,
     )
 }
 
