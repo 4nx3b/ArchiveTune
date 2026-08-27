@@ -1229,20 +1229,22 @@ fun LyricsEnhanced(
                     // [KaraokeBuild].
                     key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
                         // ── Force the translation slot to use the small phonetic style ──
-                        // The mocharealm KaraokeLineText renders the `translation` slot with
-                        // `LocalTextStyle.current` (no explicit style), while the `phonetic`
-                        // slot uses `phoneticTextStyle`. With the romanisation swap in
-                        // buildSyncedLyrics / buildLineSyncedLrcLine (translation field carries
-                        // romanisation, phonetic field carries actual translation), the
-                        // translation slot would render at the ambient bodyLarge size — much
-                        // larger than the translation below it. Pinning LocalTextStyle to the
-                        // same small phoneticTextStyle makes both rows visually consistent —
-                        // "romanisation should be small text just like translation" — and is
-                        // local to this lyrics subtree so the rest of the app is unaffected.
-                        // KaraokeLyricsView's explicit `normalLineTextStyle` /
-                        // `accompanimentLineTextStyle` / `phoneticTextStyle` parameters all
-                        // bypass LocalTextStyle, so the active karaoke line itself is not
-                        // affected.
+                        // The mocharealm KaraokeLineText / SyncedLineText renderers
+                        // render the `translation` slot with `LocalTextStyle.current`
+                        // (no explicit style), while per-syllable `phonetic` slots use
+                        // `phoneticTextStyle`. For word-synced lyrics the translation
+                        // slot carries the actual translation; for line-synced lyrics
+                        // it carries the folded romanisation + translation (see
+                        // buildLineSyncedLrcLine). In both cases the translation slot
+                        // would otherwise render at the ambient bodyLarge size — much
+                        // larger than the per-syllable phonetics above. Pinning
+                        // LocalTextStyle to the same small phoneticTextStyle keeps the
+                        // translation row visually consistent with the per-syllable
+                        // phonetic row, and is local to this lyrics subtree so the
+                        // rest of the app is unaffected. KaraokeLyricsView's explicit
+                        // `normalLineTextStyle` / `accompanimentLineTextStyle` /
+                        // `phoneticTextStyle` parameters all bypass LocalTextStyle, so
+                        // the active karaoke line itself is not affected.
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
                         ) {
@@ -1277,14 +1279,20 @@ fun LyricsEnhanced(
                                 // this view; drop it when animations are disabled (low-RAM default).
                                 useBlurEffect = lyricsLineBlur && !animationsDisabled,
                                 showTranslation = showTranslations,
-                                // Per-syllable phonetics in the KaraokeLineText renderer are drawn
-                                // ABOVE each glyph. The user wants romanisation BELOW the lyric, as
-                                // small text just like the translation, sitting between translation
-                                // and active line. We achieve that by folding romanisation into the
-                                // translation slot (see buildLineSyncedLrcLine and the word-synced
-                                // branch in buildSyncedLyrics), so per-syllable phonetics must be
-                                // turned off entirely.
-                                showPhonetic = false,
+                                // Per-syllable phonetics in the KaraokeLineText
+                                // renderer are drawn ABOVE each glyph — this is
+                                // what the user wants for word-synced lyrics
+                                // ("romanisation should also display word by
+                                // word above the active words like before").
+                                //
+                                // For line-synced lyrics the renderer uses
+                                // SyncedLineText (which has no per-syllable
+                                // phonetic slot), so this flag has no effect
+                                // there — romanisation still folds into the
+                                // translation slot below the lyric, between
+                                // the active line and the actual translation
+                                // (see buildLineSyncedLrcLine).
+                                showPhonetic = true,
                                 offset = lyricsViewportOffset,
                                 // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
                                 // many items outside the viewport are kept composed (not
@@ -1873,34 +1881,25 @@ private fun buildSyncedLyrics(
             val lineEnd = mainSyllables.last().end
             if (lineEnd <= lineStart) return@forEachIndexed
 
-            // Romanisation for word-synced lyrics: the user wants it BELOW the lyric,
-            // between translation and the active line, as small text just like the
-            // translation. The library's KaraokeLineText renders `line.translation`
-            // (small dim text) below the karaoke canvas, and `line.phonetic` (also
-            // small) below that. We fold romanisation into the translation slot so
-            // it appears first (just below the lyric), and the actual translation
-            // follows on the next line:
-            //   LYRIC
-            //   romanisation (small)
-            //   translation (small)
-            // Per-syllable phonetics above each glyph are turned off via
-            // `showPhonetic = false` at the KaraokeLyricsView call site.
+            // Romanisation for word-synced lyrics: the user wants it ABOVE
+            // each active word — rendered as small per-syllable phonetics
+            // by the library's KaraokeLineText renderer when
+            // `showPhonetic = true` is set at the KaraokeLyricsView call
+            // site. Each syllable in [mainSyllables] already carries its
+            // phonetic text (populated by `toKaraokeSyllables(wordPhonetics)`
+            // above), so the only remaining job here is to NOT fold the
+            // romanisation into the translation slot. The translation slot
+            // is reserved for the actual translation (if any), rendered as
+            // small dim text BELOW the lyric — keeping the two slots
+            // visually distinct: per-syllable phonetic above, translation
+            // below.
             //
-            // The romanizationMap carries both built-in (provider + on-the-fly)
-            // and AI romanisation as a per-word list (one entry per non-background
-            // word, in order). Joining with spaces reconstructs the per-line string.
-            val lineRomanization =
-                romanizationMap[index]
-                    ?.filterNotNull()
-                    ?.filter { it.isNotBlank() }
-                    ?.joinToString(" ")
-                    ?.takeIf { it.isNotEmpty() }
-            val combinedTranslation =
-                when {
-                    lineRomanization == null -> translation
-                    translation.isNullOrBlank() -> lineRomanization
-                    else -> "$lineRomanization\n$translation"
-                }
+            // The romanizationMap carries both built-in (provider +
+            // on-the-fly) and AI romanisation as a per-word list (one entry
+            // per non-background word, in order). `toKaraokeSyllables`
+            // already mapped these onto the per-syllable `phonetic` field,
+            // so there is no per-line romanisation string to assemble here.
+            val lineTranslation = translation
 
             val accompanimentLines =
                 if (mainWords.isNotEmpty() && bgWords.isNotEmpty()) {
@@ -1928,7 +1927,7 @@ private fun buildSyncedLyrics(
             lines.add(
                 KaraokeLine.MainKaraokeLine(
                     syllables = mainSyllables,
-                    translation = combinedTranslation,
+                    translation = lineTranslation,
                     alignment = alignment,
                     start = lineStart,
                     end = lineEnd,
@@ -1999,13 +1998,20 @@ private fun buildLineSyncedLrcLine(
     // wants romanisation BELOW the lyric, between translation and the active line, as
     // small text just like the translation. SyncedLine has no `phonetic` field, so the
     // only path that puts romanisation below is to fold it into the translation slot:
-    //   translation = "<romanised>\n<translation>"
-    // The library's SyncedLineText renders translation as small dim text below the
-    // content; the embedded newline puts romanisation first (just below the lyric) and
-    // the actual translation second, matching the requested order:
+    //   translation = "<romanised>\n\n<translation>"
+    // The library's SyncedLineText renders translation as a single `Text` (with the
+    // ambient LocalTextStyle — pinned to phoneticTextStyle at the KaraokeLyricsView
+    // call site so it renders small). The embedded "\n\n" puts romanisation first
+    // (just below the lyric), then a blank line, then the actual translation — giving
+    // clear visual separation between the two:
     //   LYRIC
     //   romanisation (small)
+    //   <blank line>
     //   translation (small)
+    //
+    // The user explicitly requested increased spacing between romanisation and
+    // translation in line-synced lyrics; the previous single "\n" put them on
+    // consecutive lines with only the ambient line-height between them.
     if (normalizedRomanizedText == null) {
         return SyncedLine(
             content = entry.text,
@@ -2018,7 +2024,7 @@ private fun buildLineSyncedLrcLine(
     val combinedTranslation =
         when {
             translation.isNullOrBlank() -> normalizedRomanizedText
-            else -> "$normalizedRomanizedText\n$translation"
+            else -> "$normalizedRomanizedText\n\n$translation"
         }
 
     return SyncedLine(

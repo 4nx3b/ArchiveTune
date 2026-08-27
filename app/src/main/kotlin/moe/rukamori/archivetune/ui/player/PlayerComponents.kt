@@ -133,7 +133,6 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
-import moe.rukamori.archivetune.ui.utils.fadingEdge
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -209,15 +208,16 @@ internal fun PlayerTitleText(
 internal fun PlayerTextBackdrop(
     textColor: Color,
     modifier: Modifier = Modifier,
-    edgeFadeWidth: Dp = 24.dp,
+    @Suppress("UNUSED_PARAMETER") edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // Keep the fade on the bounded wrapper, not after basicMarquee(). The shared helper uses
-    // explicit viewport coordinates for both edges, so scrolling text fades into any backdrop
-    // instead of placing the gradient at the marquee's unbounded intrinsic width.
-    Box(
-        modifier = modifier.fadingEdge(left = edgeFadeWidth, right = edgeFadeWidth),
-    ) {
+    // The user explicitly asked to remove the player text edge fade — the
+    // gradient mask that faded scrolling marquee text into the player
+    // background at both ends. The parameter is retained so existing call
+    // sites compile unchanged, but the [fadingEdge] modifier is no longer
+    // applied. The wrapper Box is kept so the marquee measurement still has
+    // a stable bounded container (see the comment in PlayerTitleSection).
+    Box(modifier = modifier) {
         content()
     }
 }

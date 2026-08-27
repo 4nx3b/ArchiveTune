@@ -8213,10 +8213,39 @@ class MusicService :
             val mediaItemIndex = player.currentMediaItemIndex
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
 
+            // Detect "the offline download itself is corrupt" so we can purge
+            // the download cache too — otherwise the player re-reads the same
+            // corrupt bytes, fails the same way, exhausts the retry budget,
+            // and the user sees a stuck error with no way to recover without
+            // manually removing the download. The signature is a
+            // ParserException cause whose message contains "Skipping atom
+            // with length" (the MP4 container parser bailing on a length
+            // field that exceeds Int.MAX_VALUE — typical of a truncated or
+            // mid-stream-corrupted file). Any other cache-corruption
+            // signature (EOFException, "unexpected end of stream", etc.)
+            // falls back to the conservative behavior of keeping the
+            // offline download in place.
+            val isOfflineDownloadCorrupt =
+                isFullyDownloadedMedia && run {
+                    var t: Throwable? = error.cause
+                    while (t != null) {
+                        val msg = t.message
+                        if (t is ParserException &&
+                            msg != null &&
+                            msg.contains("Skipping atom with length", ignoreCase = true)
+                        ) {
+                            break
+                        }
+                        t = t.cause
+                    }
+                    t != null
+                }
+
             Timber.tag("MusicService").w(
-                "Cache corruption / truncated stream for %s (fullyCached=%b); purging caches then retrying",
+                "Cache corruption / truncated stream for %s (fullyCached=%b, downloadCorrupt=%b); purging caches then retrying",
                 currentMediaId,
                 isFullyDownloadedMedia,
+                isOfflineDownloadCorrupt,
             )
 
             playbackUrlCache.remove(currentMediaId)
@@ -8227,9 +8256,28 @@ class MusicService :
                 // Always purge the streaming/player cache.
                 runCatching { playerCache.removeResource(currentMediaId) }
                 // Keep a complete offline download in place; deleting a user's saved download
-                // to recover from a read error is surprising. Only purge partial entries.
-                if (!isFullyDownloadedMedia) {
+                // to recover from a read error is surprising. Only purge partial entries —
+                // UNLESS the download itself is the source of the corruption (a ParserException
+                // with "Skipping atom with length" against a fully-cached file), in which case
+                // keeping it would mean re-reading the same corrupt bytes on every retry until
+                // the retry budget is exhausted and the user is stuck. Purge and let the next
+                // prepare fall through to a fresh download.
+                if (!isFullyDownloadedMedia || isOfflineDownloadCorrupt) {
                     runCatching { downloadCache.removeResource(currentMediaId) }
+                    if (isOfflineDownloadCorrupt) {
+                        // Also clear any source-prefixed download cache entries
+                        // (qobuz:, tidal:, deezer:) so a fresh download is forced
+                        // from the respective source.
+                        for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                            runCatching {
+                                downloadCache.removeResource("$sourcePrefix$currentMediaId")
+                            }
+                        }
+                        Timber.tag("MusicService").w(
+                            "Purged corrupt offline download for %s; will re-download on next prepare",
+                            currentMediaId,
+                        )
+                    }
                 } else {
                     Timber.tag("MusicService").w(
                         "Keeping offline download for %s; corruption may require manual re-download",
