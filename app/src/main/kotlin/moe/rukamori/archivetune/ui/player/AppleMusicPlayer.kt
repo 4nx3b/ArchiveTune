@@ -16,6 +16,7 @@ package moe.rukamori.archivetune.ui.player
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -57,6 +58,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -85,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -186,14 +189,13 @@ private val AppleMusicMiniArtworkSize = 56.dp
 // the walk also rotates, which is what lets a colour reach the far side of the
 // screen at all.
 //
-// [AmLyricsBlurDriftScale] has to cover the drift plus the blur radius, measured
-// to the container's furthest *corner* because the layer rotates:
-//     1.2 * max(W, H) - blurRadius * scale  >=  hypot(W, H) / 2 + maxDrift
-// ContentScale.Crop renders the square artwork at side max(W, H), so at 2.4x its
-// inscribed circle has radius 1.2 * max(W, H) and the outer 64 * 2.4 = 154dp of
-// that is softened by the blur. For a 360x800 phone:
-//     1.2 * 800 - 154 = 806dp  >=  439 + 120 = 559dp.  ✔
-// (320x480, the smallest screen this could ever run on, still clears it: 422 vs 408.)
+// The rotation is why the backdrop node is NOT sized to the player: Modifier.blur
+// clips the layer it creates to that node's bounds, and a rotated rectangle only
+// reliably covers its own inscribed circle — the radius of its *short* side. A
+// screen-shaped node therefore leaves the screen's corners exposed however far it
+// is scaled up. [blurBackdropFootprint] sizes the node so it cannot; see its docs
+// for the derivation, and note that it takes BOTH ends of the zoom below, because
+// the resting scale is the tighter of the two.
 private const val AmLyricsBlurDriftScale = 2.4f
 
 // Scale of the blurred backdrop in the COVER/QUEUE states. The LYRICS state
@@ -215,6 +217,12 @@ private const val AmLyricsBackdropMorphMs = 650
 private val AmBackdropBlurRadius = 64.dp
 
 private const val AppleMusicLyricsContentDeferMs = 160L
+
+// Minimum spacing between auto-hide-timer pokes coming from a CONTINUOUS gesture (seekbar
+// scrub, volume drag). See pokePlayerControlsVisibilityThrottled in AppleMusicPlayerContent:
+// each poke recomposes the player, so an unthrottled per-delta poke would spend the lyrics
+// view's frame budget on composition. Well under the five second window it keeps alive.
+private const val ControlsGesturePokeThrottleMs = 1_000L
 
 // How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
 // still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
@@ -392,26 +400,69 @@ fun AppleMusicPlayerContent(
     // "Initially, you'll see other controls on the screen. But after five seconds,
     // the lyrics will automatically start showing on the full screen." Tapping
     // anywhere brings them back (see the pointerInput on the content Column/Row).
-    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
-    var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    //
+    // The player sheet is composed with keepContentAlive = true (see [BottomSheet]), so
+    // collapsing to the mini player only sets alpha = 0 — this composable is never
+    // unmounted, and `lyricsOpen` / `playerControlsExpanded` survive the collapse. The
+    // reveal therefore has to key off "the lyrics view is actually on screen", not off the
+    // `lyricsOpen` transition alone. See the countdown below.
+    var playerControlsExpanded by remember { mutableStateOf(true) }
+    var controlsRevealToken by remember { mutableIntStateOf(0) }
     val autoHideDelayMs = 5_000L
+    val playerExpanded = state.isExpanded
 
-    LaunchedEffect(lyricsOpen) {
-        if (lyricsOpen) {
-            playerControlsExpanded = true
-            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
-        } else {
-            playerControlsExpanded = true
+    // Bumping the token reveals the controls and restarts the countdown. Deliberately
+    // remembered with NO keys: the lambda closes over the token state and nothing else, so
+    // it stays valid for the life of the composable. The previous version was
+    // remember(lyricsOpen, queueOpen) while the state it wrote was
+    // remember(mediaMetadata.id) — after a track change it kept writing to the discarded
+    // MutableState, so tap-to-reveal silently stopped working.
+    val pokePlayerControlsVisibility: () -> Unit = remember { { controlsRevealToken++ } }
+
+    // Same poke, throttled, for CONTINUOUS gestures (seekbar scrub, volume drag).
+    //
+    // The tap-anywhere handler below only fires on the initial down, so a scrub or volume
+    // drag that outlasted the five second window had the controls — and therefore the very
+    // slider under the user's finger — animate away mid-gesture, cancelling the drag. These
+    // callbacks re-poke while the gesture runs.
+    //
+    // Throttled because bumping the token invalidates this composable (the countdown reads
+    // it as a LaunchedEffect key), and recomposing the whole Apple Music player on every
+    // drag delta is exactly the kind of frame-budget theft the lyrics view cannot afford.
+    // The timestamp lives in a plain array, NOT in a snapshot state, so reading and writing
+    // it costs no invalidation of its own. One poke per second is enough: the window is five.
+    val lastGesturePokeMs = remember { longArrayOf(0L) }
+    val pokePlayerControlsVisibilityThrottled: () -> Unit =
+        remember {
+            {
+                val now = SystemClock.uptimeMillis()
+                if (now - lastGesturePokeMs[0] >= ControlsGesturePokeThrottleMs) {
+                    lastGesturePokeMs[0] = now
+                    controlsRevealToken++
+                }
+            }
         }
-    }
-    LaunchedEffect(queueOpen) {
-        if (queueOpen) {
-            playerControlsExpanded = true
-            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
-        } else {
-            playerControlsExpanded = true
+    val onControlsSliderValueChange: (Long) -> Unit =
+        remember(onSliderValueChange) {
+            { position ->
+                pokePlayerControlsVisibilityThrottled()
+                onSliderValueChange(position)
+            }
         }
-    }
+    val onControlsSliderValueChangeFinished: () -> Unit =
+        remember(onSliderValueChangeFinished) {
+            {
+                pokePlayerControlsVisibility()
+                onSliderValueChangeFinished()
+            }
+        }
+    val onControlsVolumeChange: (Float) -> Unit =
+        remember(onVolumeChange) {
+            { newVolume ->
+                pokePlayerControlsVisibilityThrottled()
+                onVolumeChange(newVolume)
+            }
+        }
 
     // ISSUE 1 FIX: propagate inline-lyrics visibility to the parent so back-stack
     // screens suspend their GPU work during the morph.
@@ -421,16 +472,48 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide timer: show controls for 5s, then hide. Fires for both lyrics and queue,
-    // but ONLY when the Auto-hide controls preference is on. Turning the preference off
-    // mid-session immediately restores the controls and keeps them.
-    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick, autoHideLyricsPlayerControls) {
-        if (!autoHideLyricsPlayerControls) {
-            playerControlsExpanded = true
-            return@LaunchedEffect
-        }
-        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+    // Auto-hide timer: show the controls, then hide them after 5s. Fires for both lyrics
+    // and queue, but ONLY when the Auto-hide controls preference is on. Turning the
+    // preference off restores the controls and keeps them.
+    //
+    // ONE countdown, with every reveal trigger as a key. This used to be three effects:
+    // two that bumped a tick which the third used as its timer key, so the countdown was
+    // launched, cancelled and relaunched across two frames and the ordering was
+    // load-bearing. Setting `playerControlsExpanded = true` unconditionally at the top
+    // means any key change reveals the controls FIRST and only then decides whether to
+    // start hiding them — that is what guarantees the full five second window.
+    //
+    // `playerExpanded` is a key because of the keepContentAlive note above: re-expanding
+    // the player from the mini player used to restore the lyrics view with the controls
+    // already hidden by the PREVIOUS visit's expired timer — no five second window at all,
+    // just an instant hide, with a tap as the only way to get them back.
+    // `mediaMetadata.id` is a key so a track change re-reveals them too.
+    //
+    // `showLyricsPlayerControls` is a key, and the countdown bails out while it is off,
+    // because the visibility condition below ANDs it with `playerControlsExpanded`: with the
+    // timer running behind a hidden view, the five second window was silently burned in the
+    // background, so switching "Show player controls" back on in the Apple Music player
+    // revealed nothing at all — the setting looked dead and only a tap brought the controls
+    // back. Holding the flag expanded while the controls are suppressed means the toggle
+    // both shows them immediately and grants the full five seconds. Queue mode is not
+    // gated: the preference is lyrics-only, and its controls stay on the auto-hide cycle.
+    LaunchedEffect(
+        lyricsOpen,
+        queueOpen,
+        playerExpanded,
+        mediaMetadata.id,
+        controlsRevealToken,
+        autoHideLyricsPlayerControls,
+        showLyricsPlayerControls,
+    ) {
         playerControlsExpanded = true
+        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+        // Collapsed: there is nothing on screen to auto-hide, and burning the window here
+        // is exactly what caused the instant hide on re-expand.
+        if (!playerExpanded) return@LaunchedEffect
+        if (!autoHideLyricsPlayerControls) return@LaunchedEffect
+        // Lyrics with the controls suppressed: nothing on screen to hide, same reasoning.
+        if (lyricsOpen && !queueOpen && !showLyricsPlayerControls) return@LaunchedEffect
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
@@ -493,15 +576,6 @@ fun AppleMusicPlayerContent(
         delay(AppleMusicLyricsContentDeferMs)
         lyricsContentReady = true
     }
-    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
-        {
-            if (lyricsOpen || queueOpen) {
-                playerControlsExpanded = true
-                playerControlsVisibilityTick++
-            }
-        }
-    }
-
     // === Deferred position reads for the lyrics overlay ===
     // `sliderPosition` is non-null ONLY while the user is actively scrubbing
     // the seekbar. When null, LyricsEnhanced/LyricsV2 fall back to reading
@@ -716,12 +790,11 @@ fun AppleMusicPlayerContent(
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                     showPlayerControlsState = showLyricsPlayerControlsState,
                     onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
-                    onAutoHidePlayerControlsChange = { enabled ->
-                        if (enabled) {
-                            playerControlsVisibilityTick++
-                        } else {
-                            playerControlsExpanded = true
-                        }
+                    onAutoHidePlayerControlsChange = {
+                        // LyricsMenu already persists the preference; the countdown effect
+                        // keys off it, so all this has to do is reveal the controls again so
+                        // the change is immediately visible.
+                        pokePlayerControlsVisibility()
                     },
                     onDismiss = menuState::dismiss,
                     showControlsToggles = true,
@@ -856,25 +929,22 @@ fun AppleMusicPlayerContent(
                 // rather than the `if (lyricsOpen && lyricsContentReady)` step
                 // it replaced.
                 val progress = lyricsBackdropProgress.value
-                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) leaves the
-                // solid part of the rotated image covering a circle of radius
-                // 806dp on a 360x800 screen, against the 559dp the corner plus
-                // drift(±120) asks for — see the constant's own comment for the
-                // full budget. A smaller scale would let a corner expose
-                // transparent areas, which the blur then sampled as a flickering
-                // dark band.
+                // Scale [AmLyricsBlurDriftScale] (lyrics fully open) together with
+                // the [backdropFootprint] the node is sized to leaves the rotated
+                // layer covering every screen corner plus the ±120dp drift — see
+                // blurBackdropFootprint for the budget. Scale on its own cannot do
+                // it: the blur clips the layer to the node's bounds, so a rotated
+                // screen-shaped rectangle exposes the corners at any scale, which
+                // is what used to read as dark wedges sweeping round the corners.
                 //
                 // Drift and rotation both scale with the same progress, so
                 // neither can outrun the zoom that has to cover them: at p = 0
                 // there is no translation and no rotation at all, and both reach
-                // full amplitude only once the zoom does.
-                //
-                // At low p the overhang is short of the *blur radius* alone (36dp
-                // vs 64dp at p = 0) — but that is the COVER state, which has zero
-                // drift and zero rotation and looked exactly this way before the
-                // ramp existed (a 72dp blur at a fixed 1.2x, i.e. a slightly
-                // larger shortfall). What the ramp has to avoid is motion
-                // outrunning the zoom, and it does.
+                // full amplitude only once the zoom does. The footprint is sized
+                // for both ends of that ramp, because the resting scale
+                // ([AmCoverBlurScale]) is the tighter of the two — rotation can be
+                // at any angle for any p > 0, since BlurWanderDrift.rotationDeg
+                // accumulates.
                 val scale = AmCoverBlurScale + (AmLyricsBlurDriftScale - AmCoverBlurScale) * progress
                 scaleX = scale
                 scaleY = scale
@@ -946,40 +1016,66 @@ fun AppleMusicPlayerContent(
             // The artwork backdrop. Composed in every state so there is no node
             // swap (and so no re-decode, no new RenderEffect, no one-frame
             // discontinuity) when lyrics opens or closes.
-            if (isPreS && preBlurredBitmap != null) {
-                // Pre-Android-12 has no RenderEffect, so the blur was baked
-                // into the bitmap on a background thread instead.
-                Image(
-                    bitmap = preBlurredBitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer(driftGraphicsLayer),
-                )
-            } else {
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            // graphicsLayer OUTSIDE blur: the blur is applied to
-                            // the centered image (inside the layer), then the
-                            // scale + translation is applied to the blurred
-                            // result. Blurring after the transform would sample
-                            // the translated image's edges instead.
-                            .graphicsLayer(driftGraphicsLayer)
-                            .then(
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    Modifier.blur(AmBackdropBlurRadius)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                )
+            //
+            // Deliberately larger than the player and centred inside it: the drift
+            // rotates this node, and Modifier.blur clips its result to the node's
+            // own bounds, so a node the size of the player would swing its corners
+            // into view. requiredSize is what lets it ignore the incoming
+            // constraints; the wrapper clips the overhang back to the player so it
+            // cannot bleed over anything else. See blurBackdropFootprint.
+            val backdropFootprint =
+                remember(maxWidth, maxHeight) {
+                    blurBackdropFootprint(
+                        width = maxWidth,
+                        height = maxHeight,
+                        restScale = AmCoverBlurScale,
+                        driftScale = AmLyricsBlurDriftScale,
+                    )
+                }
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .clipToBounds(),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isPreS && preBlurredBitmap != null) {
+                    // Pre-Android-12 has no RenderEffect, so the blur was baked
+                    // into the bitmap on a background thread instead. It still goes
+                    // through driftGraphicsLayer, rotation included, so it needs the
+                    // same footprint.
+                    Image(
+                        bitmap = preBlurredBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .requiredSize(backdropFootprint)
+                                .graphicsLayer(driftGraphicsLayer),
+                    )
+                } else {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .requiredSize(backdropFootprint)
+                                // graphicsLayer OUTSIDE blur: the blur is applied to
+                                // the centered image (inside the layer), then the
+                                // scale + translation is applied to the blurred
+                                // result. Blurring after the transform would sample
+                                // the translated image's edges instead.
+                                .graphicsLayer(driftGraphicsLayer)
+                                .then(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Modifier.blur(AmBackdropBlurRadius)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                    )
+                }
             }
 
             if (useCanvasBackdrop) {
@@ -1094,15 +1190,15 @@ fun AppleMusicPlayerContent(
                         playerConnection = playerConnection,
                         currentSongLiked = currentSongLiked,
                         volume = volume,
-                        onVolumeChange = onVolumeChange,
+                        onVolumeChange = onControlsVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
                         onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = onQueueClick,
                         onLyricsClick = onLyricsClick,
-                        onSliderValueChange = onSliderValueChange,
-                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        onSliderValueChange = onControlsSliderValueChange,
+                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
                         currentFormat = currentFormat,
                         onQualityChipClick = {
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
@@ -1582,15 +1678,15 @@ fun AppleMusicPlayerContent(
                         playerConnection = playerConnection,
                         currentSongLiked = currentSongLiked,
                         volume = volume,
-                        onVolumeChange = onVolumeChange,
+                        onVolumeChange = onControlsVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
                         onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = toggleQueue,
                         onLyricsClick = toggleLyrics,
-                        onSliderValueChange = onSliderValueChange,
-                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        onSliderValueChange = onControlsSliderValueChange,
+                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
                         currentFormat = currentFormat,
                         onQualityChipClick = {
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
