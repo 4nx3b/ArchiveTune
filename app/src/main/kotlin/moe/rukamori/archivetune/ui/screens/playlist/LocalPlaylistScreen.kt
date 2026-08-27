@@ -117,11 +117,11 @@ import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
-import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
@@ -637,7 +637,6 @@ fun LocalPlaylistScreen(
                                         .takeIf { it > 0 }
                                         ?.let { makeTimeString(it * 1000L) },
                                 ).joinToString(MediaDetailMetadataSeparator)
-                            val isBookmarked = playlist.playlist.bookmarkedAt != null
 
                             // SimpMusic-style liquid glass backdrop source: the
                             // LazyColumn itself carries the layerBackdrop modifier
@@ -650,19 +649,29 @@ fun LocalPlaylistScreen(
                             // it. They are PERSISTENT — they stay at the top of the
                             // screen no matter how far the user scrolls.
                             //
-                            // The hero item itself just renders the MediaDetailHero;
-                            // no inner Box / layerBackdrop wrapper is needed here.
-                            MediaDetailHero(
+                            // The hero item now renders the iOS-inspired
+                            // AppleMusicPlaylistHero: small pink accent label,
+                            // large bold white title, metadata line, rounded
+                            // Play/Shuffle/Download pill controls. No large
+                            // artwork backdrop — matches the user's reference
+                            // screenshots (plain dark page with confident title).
+                            AppleMusicPlaylistHero(
+                                sectionLabel = stringResource(R.string.playlist),
                                 title = playlist.playlist.name,
-                                thumbnailUrl =
-                                    playlist.playlist.thumbnailUrl
-                                        ?: playlist.thumbnails.firstOrNull(),
-                                fallbackIcon = R.drawable.queue_music,
-                                systemBarsTopPadding = systemBarsTopPadding,
-                                metadata = metadata,
-                                isAdded = isBookmarked,
-                                addContentDescription = R.string.add_to_library,
-                                removeContentDescription = R.string.remove_from_library,
+                                subtitle = metadata,
+                                onPlay =
+                                    if (songs.isEmpty()) {
+                                        null
+                                    } else {
+                                        {
+                                            playerConnection.playQueue(
+                                                ListQueue(
+                                                    title = playlist.playlist.name,
+                                                    items = songs.map { it.song.toMediaItem() },
+                                                ),
+                                            )
+                                        }
+                                    },
                                 onShuffle =
                                     if (songs.isEmpty()) {
                                         null
@@ -679,92 +688,80 @@ fun LocalPlaylistScreen(
                                             )
                                         }
                                     },
-                                onPlay =
-                                    if (songs.isEmpty()) {
-                                        null
-                                    } else {
-                                        {
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = playlist.playlist.name,
-                                                    items = songs.map { it.song.toMediaItem() },
-                                                ),
-                                            )
-                                        }
-                                    },
-                                onToggleAdd = null,
-                                additionalPrimaryActions = { contentColor ->
+                                additionalActions =
                                     if (songs.isNotEmpty()) {
-                                        MediaDetailAction(
-                                            contentDescription =
-                                                if (downloadState == HeaderDownloadState.Completed) {
-                                                    R.string.remove_download
-                                                } else {
-                                                    R.string.download
+                                        {
+                                            val isCompleted =
+                                                downloadState == HeaderDownloadState.Completed
+                                            MediaDetailAction(
+                                                contentDescription =
+                                                    if (isCompleted) {
+                                                        R.string.remove_download
+                                                    } else {
+                                                        R.string.download
+                                                    },
+                                                contentColor = Color.White,
+                                                onClick = {
+                                                    when (downloadState) {
+                                                        HeaderDownloadState.Completed -> {
+                                                            showRemoveDownloadDialog = true
+                                                        }
+                                                        is HeaderDownloadState.Partial -> {
+                                                            sendRemoveDownloads(
+                                                                context = context,
+                                                                songIds = songs.map { it.song.id },
+                                                            )
+                                                        }
+                                                        HeaderDownloadState.None -> {
+                                                            sendAddMissingDownloads(
+                                                                context = context,
+                                                                songs =
+                                                                    songs.map {
+                                                                        HeaderDownloadItem(
+                                                                            id = it.song.id,
+                                                                            title = it.song.song.title,
+                                                                        )
+                                                                    },
+                                                                downloads = downloads,
+                                                            )
+                                                        }
+                                                    }
                                                 },
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                when (downloadState) {
+                                            ) {
+                                                when (val state = downloadState) {
                                                     HeaderDownloadState.Completed -> {
-                                                        showRemoveDownloadDialog = true
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.offline),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(22.dp),
+                                                        )
                                                     }
                                                     is HeaderDownloadState.Partial -> {
-                                                        sendRemoveDownloads(
-                                                            context = context,
-                                                            songIds = songs.map { it.song.id },
+                                                        HeaderDownloadProgressIndicator(
+                                                            progress = state.progress,
+                                                            paused = state.paused,
+                                                            icon = R.drawable.download,
                                                         )
                                                     }
                                                     HeaderDownloadState.None -> {
-                                                        sendAddMissingDownloads(
-                                                            context = context,
-                                                            songs =
-                                                songs.map {
-                                                                    HeaderDownloadItem(
-                                                                        id = it.song.id,
-                                                                        title = it.song.song.title,
-                                                                    )
-                                                                },
-                                                            downloads = downloads,
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.download),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(22.dp),
                                                         )
                                                     }
                                                 }
-                                            },
-                                        ) {
-                                            when (val state = downloadState) {
-                                                HeaderDownloadState.Completed -> {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.offline),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(22.dp),
-                                                    )
-                                                }
-                                                is HeaderDownloadState.Partial -> {
-                                                    HeaderDownloadProgressIndicator(
-                                                        progress = state.progress,
-                                                        paused = state.paused,
-                                                        icon = R.drawable.download,
-                                                    )
-                                                }
-                                                HeaderDownloadState.None -> {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.download),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(22.dp),
-                                                    )
-                                                }
                                             }
                                         }
-                                    }
-                                },
-                                // REMOVED Modifier.animateItem(): the header is a
-                                // static first item that never needs placement
-                                // animation. animateItem() was causing the header
-                                // to briefly shift position ("goes up for a split
-                                // second and comes back") when a LiquidGlass header
-                                // icon was clicked — the state change triggered a
-                                // LazyColumn layout pass, and animateItem()
-                                // animated the resulting placement delta.
-                                useBlurredPlayButton = liquidGlassHeaderActive,
+                                    } else {
+                                        null
+                                    },
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            top = systemBarsTopPadding + AppBarHeight + 8.dp,
+                                        ),
                             )
                         }
                     }
