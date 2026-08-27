@@ -16,6 +16,7 @@ package moe.rukamori.archivetune.ui.player
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -217,6 +218,12 @@ private val AmBackdropBlurRadius = 64.dp
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
+// Minimum spacing between auto-hide-timer pokes coming from a CONTINUOUS gesture (seekbar
+// scrub, volume drag). See pokePlayerControlsVisibilityThrottled in AppleMusicPlayerContent:
+// each poke recomposes the player, so an unthrottled per-delta poke would spend the lyrics
+// view's frame budget on composition. Well under the five second window it keeps alive.
+private const val ControlsGesturePokeThrottleMs = 1_000L
+
 // How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
 // still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
 private val AmCanvasSeamFadeDp = 88.dp
@@ -393,26 +400,69 @@ fun AppleMusicPlayerContent(
     // "Initially, you'll see other controls on the screen. But after five seconds,
     // the lyrics will automatically start showing on the full screen." Tapping
     // anywhere brings them back (see the pointerInput on the content Column/Row).
-    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
-    var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    //
+    // The player sheet is composed with keepContentAlive = true (see [BottomSheet]), so
+    // collapsing to the mini player only sets alpha = 0 — this composable is never
+    // unmounted, and `lyricsOpen` / `playerControlsExpanded` survive the collapse. The
+    // reveal therefore has to key off "the lyrics view is actually on screen", not off the
+    // `lyricsOpen` transition alone. See the countdown below.
+    var playerControlsExpanded by remember { mutableStateOf(true) }
+    var controlsRevealToken by remember { mutableIntStateOf(0) }
     val autoHideDelayMs = 5_000L
+    val playerExpanded = state.isExpanded
 
-    LaunchedEffect(lyricsOpen) {
-        if (lyricsOpen) {
-            playerControlsExpanded = true
-            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
-        } else {
-            playerControlsExpanded = true
+    // Bumping the token reveals the controls and restarts the countdown. Deliberately
+    // remembered with NO keys: the lambda closes over the token state and nothing else, so
+    // it stays valid for the life of the composable. The previous version was
+    // remember(lyricsOpen, queueOpen) while the state it wrote was
+    // remember(mediaMetadata.id) — after a track change it kept writing to the discarded
+    // MutableState, so tap-to-reveal silently stopped working.
+    val pokePlayerControlsVisibility: () -> Unit = remember { { controlsRevealToken++ } }
+
+    // Same poke, throttled, for CONTINUOUS gestures (seekbar scrub, volume drag).
+    //
+    // The tap-anywhere handler below only fires on the initial down, so a scrub or volume
+    // drag that outlasted the five second window had the controls — and therefore the very
+    // slider under the user's finger — animate away mid-gesture, cancelling the drag. These
+    // callbacks re-poke while the gesture runs.
+    //
+    // Throttled because bumping the token invalidates this composable (the countdown reads
+    // it as a LaunchedEffect key), and recomposing the whole Apple Music player on every
+    // drag delta is exactly the kind of frame-budget theft the lyrics view cannot afford.
+    // The timestamp lives in a plain array, NOT in a snapshot state, so reading and writing
+    // it costs no invalidation of its own. One poke per second is enough: the window is five.
+    val lastGesturePokeMs = remember { longArrayOf(0L) }
+    val pokePlayerControlsVisibilityThrottled: () -> Unit =
+        remember {
+            {
+                val now = SystemClock.uptimeMillis()
+                if (now - lastGesturePokeMs[0] >= ControlsGesturePokeThrottleMs) {
+                    lastGesturePokeMs[0] = now
+                    controlsRevealToken++
+                }
+            }
         }
-    }
-    LaunchedEffect(queueOpen) {
-        if (queueOpen) {
-            playerControlsExpanded = true
-            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
-        } else {
-            playerControlsExpanded = true
+    val onControlsSliderValueChange: (Long) -> Unit =
+        remember(onSliderValueChange) {
+            { position ->
+                pokePlayerControlsVisibilityThrottled()
+                onSliderValueChange(position)
+            }
         }
-    }
+    val onControlsSliderValueChangeFinished: () -> Unit =
+        remember(onSliderValueChangeFinished) {
+            {
+                pokePlayerControlsVisibility()
+                onSliderValueChangeFinished()
+            }
+        }
+    val onControlsVolumeChange: (Float) -> Unit =
+        remember(onVolumeChange) {
+            { newVolume ->
+                pokePlayerControlsVisibilityThrottled()
+                onVolumeChange(newVolume)
+            }
+        }
 
     // ISSUE 1 FIX: propagate inline-lyrics visibility to the parent so back-stack
     // screens suspend their GPU work during the morph.
@@ -422,16 +472,48 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide timer: show controls for 5s, then hide. Fires for both lyrics and queue,
-    // but ONLY when the Auto-hide controls preference is on. Turning the preference off
-    // mid-session immediately restores the controls and keeps them.
-    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick, autoHideLyricsPlayerControls) {
-        if (!autoHideLyricsPlayerControls) {
-            playerControlsExpanded = true
-            return@LaunchedEffect
-        }
-        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+    // Auto-hide timer: show the controls, then hide them after 5s. Fires for both lyrics
+    // and queue, but ONLY when the Auto-hide controls preference is on. Turning the
+    // preference off restores the controls and keeps them.
+    //
+    // ONE countdown, with every reveal trigger as a key. This used to be three effects:
+    // two that bumped a tick which the third used as its timer key, so the countdown was
+    // launched, cancelled and relaunched across two frames and the ordering was
+    // load-bearing. Setting `playerControlsExpanded = true` unconditionally at the top
+    // means any key change reveals the controls FIRST and only then decides whether to
+    // start hiding them — that is what guarantees the full five second window.
+    //
+    // `playerExpanded` is a key because of the keepContentAlive note above: re-expanding
+    // the player from the mini player used to restore the lyrics view with the controls
+    // already hidden by the PREVIOUS visit's expired timer — no five second window at all,
+    // just an instant hide, with a tap as the only way to get them back.
+    // `mediaMetadata.id` is a key so a track change re-reveals them too.
+    //
+    // `showLyricsPlayerControls` is a key, and the countdown bails out while it is off,
+    // because the visibility condition below ANDs it with `playerControlsExpanded`: with the
+    // timer running behind a hidden view, the five second window was silently burned in the
+    // background, so switching "Show player controls" back on in the Apple Music player
+    // revealed nothing at all — the setting looked dead and only a tap brought the controls
+    // back. Holding the flag expanded while the controls are suppressed means the toggle
+    // both shows them immediately and grants the full five seconds. Queue mode is not
+    // gated: the preference is lyrics-only, and its controls stay on the auto-hide cycle.
+    LaunchedEffect(
+        lyricsOpen,
+        queueOpen,
+        playerExpanded,
+        mediaMetadata.id,
+        controlsRevealToken,
+        autoHideLyricsPlayerControls,
+        showLyricsPlayerControls,
+    ) {
         playerControlsExpanded = true
+        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+        // Collapsed: there is nothing on screen to auto-hide, and burning the window here
+        // is exactly what caused the instant hide on re-expand.
+        if (!playerExpanded) return@LaunchedEffect
+        if (!autoHideLyricsPlayerControls) return@LaunchedEffect
+        // Lyrics with the controls suppressed: nothing on screen to hide, same reasoning.
+        if (lyricsOpen && !queueOpen && !showLyricsPlayerControls) return@LaunchedEffect
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
@@ -494,15 +576,6 @@ fun AppleMusicPlayerContent(
         delay(AppleMusicLyricsContentDeferMs)
         lyricsContentReady = true
     }
-    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
-        {
-            if (lyricsOpen || queueOpen) {
-                playerControlsExpanded = true
-                playerControlsVisibilityTick++
-            }
-        }
-    }
-
     // === Deferred position reads for the lyrics overlay ===
     // `sliderPosition` is non-null ONLY while the user is actively scrubbing
     // the seekbar. When null, LyricsEnhanced/LyricsV2 fall back to reading
@@ -717,12 +790,11 @@ fun AppleMusicPlayerContent(
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                     showPlayerControlsState = showLyricsPlayerControlsState,
                     onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
-                    onAutoHidePlayerControlsChange = { enabled ->
-                        if (enabled) {
-                            playerControlsVisibilityTick++
-                        } else {
-                            playerControlsExpanded = true
-                        }
+                    onAutoHidePlayerControlsChange = {
+                        // LyricsMenu already persists the preference; the countdown effect
+                        // keys off it, so all this has to do is reveal the controls again so
+                        // the change is immediately visible.
+                        pokePlayerControlsVisibility()
                     },
                     onDismiss = menuState::dismiss,
                     showControlsToggles = true,
@@ -1118,15 +1190,15 @@ fun AppleMusicPlayerContent(
                         playerConnection = playerConnection,
                         currentSongLiked = currentSongLiked,
                         volume = volume,
-                        onVolumeChange = onVolumeChange,
+                        onVolumeChange = onControlsVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
                         onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = onQueueClick,
                         onLyricsClick = onLyricsClick,
-                        onSliderValueChange = onSliderValueChange,
-                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        onSliderValueChange = onControlsSliderValueChange,
+                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
                         currentFormat = currentFormat,
                         onQualityChipClick = {
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
@@ -1606,15 +1678,15 @@ fun AppleMusicPlayerContent(
                         playerConnection = playerConnection,
                         currentSongLiked = currentSongLiked,
                         volume = volume,
-                        onVolumeChange = onVolumeChange,
+                        onVolumeChange = onControlsVolumeChange,
                         titleActions = titleActions,
                         onPlayPauseClick = onPlayPauseClick,
                         onMoreClick = onMoreClick,
                         onOutputClick = onOutputClick,
                         onQueueClick = toggleQueue,
                         onLyricsClick = toggleLyrics,
-                        onSliderValueChange = onSliderValueChange,
-                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        onSliderValueChange = onControlsSliderValueChange,
+                        onSliderValueChangeFinished = onControlsSliderValueChangeFinished,
                         currentFormat = currentFormat,
                         onQualityChipClick = {
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }

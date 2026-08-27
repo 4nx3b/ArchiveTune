@@ -250,12 +250,8 @@ fun LyricsScreen(
     val showPlayerControlsEnabled by showPlayerControlsState
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, true)
-    var playerControlsExpanded by remember(mediaMetadata.id, showPlayerControlsEnabled) {
-        mutableStateOf(showPlayerControlsEnabled)
-    }
-    var playerControlsVisibilityTick by remember(mediaMetadata.id) {
-        mutableIntStateOf(0)
-    }
+    var playerControlsExpanded by remember { mutableStateOf(true) }
+    var controlsRevealToken by remember { mutableIntStateOf(0) }
     val autoHideDelayMs = 5_000L
     // Tracks whether the user is actively scrolling the lyrics list. Hoisted up from
     // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
@@ -270,27 +266,35 @@ fun LyricsScreen(
         }
     val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { enabled ->
         onAutoHidePlayerControlsChange(enabled)
-        if (showPlayerControlsEnabled) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
-        }
+        controlsRevealToken++
     }
 
-    fun pokePlayerControlsVisibility() {
-        if (!showPlayerControlsEnabled) return
+    // Bumping the token reveals the controls and restarts the countdown below.
+    //
+    // Deliberately remembered with NO keys, and the state it writes is likewise unkeyed:
+    // the root `pointerInput` that calls this only restarts on its own keys, so it holds
+    // this closure across track changes. When the state above was
+    // remember(mediaMetadata.id, showPlayerControlsEnabled) and this was a plain local fun,
+    // that captured closure kept writing to the MutableState discarded by the track change
+    // and tap-to-reveal silently stopped working. The countdown effect takes
+    // mediaMetadata.id and the preferences as keys instead, so those events still re-reveal
+    // the controls without swapping the state objects underneath.
+    val pokePlayerControlsVisibility: () -> Unit = remember { { controlsRevealToken++ } }
+
+    // Single countdown, with every reveal trigger as a key. Setting
+    // `playerControlsExpanded = true` unconditionally at the top means any key change
+    // reveals the controls FIRST and only then decides whether to start hiding them, which
+    // is what guarantees the full five second window. This replaced a pair of effects where
+    // one bumped the tick that the other used as its timer key, so the countdown was
+    // launched, cancelled and relaunched across two frames.
+    LaunchedEffect(
+        autoHidePlayerControls,
+        showPlayerControlsEnabled,
+        controlsRevealToken,
+        mediaMetadata.id,
+    ) {
         playerControlsExpanded = true
-        if (autoHidePlayerControls) {
-            playerControlsVisibilityTick++
-        }
-    }
-
-    LaunchedEffect(showPlayerControlsEnabled) {
-        playerControlsExpanded = showPlayerControlsEnabled
-    }
-
-    LaunchedEffect(autoHidePlayerControls, showPlayerControlsEnabled, playerControlsVisibilityTick, mediaMetadata.id) {
         if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@LaunchedEffect
-        playerControlsExpanded = true
         kotlinx.coroutines.delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
