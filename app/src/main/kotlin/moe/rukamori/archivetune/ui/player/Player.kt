@@ -24,6 +24,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -2581,14 +2582,20 @@ private fun MikoLyricsTransition(
                 targetValue = if (visible) 1f else 0f,
                 animationSpec =
                     if (visible) {
-                        // OPEN — keep the premium slow glide (~500 ms).
-                        spring(
-                            dampingRatio = 1f,
-                            stiffness = 160f,
-                            visibilityThreshold = 0.001f,
+                        // OPEN — slowed down from the old spring(stiffness = 160f, ~500 ms)
+                        // to a ~900 ms tween with FastOutSlowInEasing. The old spring snapped
+                        // the sheet up so quickly that the MovingBlurBackground inside
+                        // LyricsScreen "popped in" at full alpha and immediately started its
+                        // drift animation, which read as "backdrop blur is too fast and looks
+                        // bad". The longer tween gives the eye time to settle and pairs with
+                        // the alpha fade-in on the inner content Box below.
+                        tween(
+                            durationMillis = 900,
+                            easing = FastOutSlowInEasing,
                         )
                     } else {
-                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        // CLOSE — keep the existing ~700 ms spring (slow close, per prior
+                        // user request).
                         spring(
                             dampingRatio = 1f,
                             stiffness = 80f,
@@ -2633,15 +2640,35 @@ private fun MikoLyricsTransition(
                             clip = true
                         }.background(surfaceColor),
             ) {
-                LyricsScreen(
-                    mediaMetadata = mediaMetadata,
-                    onBackClick = onDismiss,
-                    navController = navController,
-                    lyricsSyncOffset = lyricsSyncOffset,
-                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    onQueueClick = onQueueClick,
-                    backHandlerEnabled = backHandlerEnabled,
-                )
+                // Inner content fade: the LyricsScreen subtree (which owns the
+                // MovingBlurBackground + the drift animation) is faded in over the
+                // slide-up transition tied to the same progress. The outer Box keeps
+                // its opaque surfaceColor so the sliding sheet is always a solid shape;
+                // only the inner content (blur + lyrics + controls) eases in. This is
+                // the fix for "backdrop blur is too fast and looks bad": instead of
+                // the blur arriving at full alpha the instant the sheet starts moving,
+                // it ramps from 0 → 1 across the ~900 ms slide.
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // Pull the fade-in forward slightly so the blur is at full
+                                // strength just before the sheet arrives (avoids feeling like
+                                // the lyrics are "still loading" when the slide finishes).
+                                alpha = (progressState.value * 1.35f).coerceIn(0f, 1f)
+                            },
+                ) {
+                    LyricsScreen(
+                        mediaMetadata = mediaMetadata,
+                        onBackClick = onDismiss,
+                        navController = navController,
+                        lyricsSyncOffset = lyricsSyncOffset,
+                        onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                        onQueueClick = onQueueClick,
+                        backHandlerEnabled = backHandlerEnabled,
+                    )
+                }
             }
         }
     }
