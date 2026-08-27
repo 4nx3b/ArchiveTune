@@ -8,6 +8,9 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.os.Build
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -41,6 +44,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -82,10 +86,58 @@ fun MiniPlayer(
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
 ) {
+    // Read the per-screen "docked" flag. When a playlist-style screen has
+    // scrolled past its hero header, it sets LocalMiniPlayerDocked = true
+    // via a CompositionLocalProvider in its own subtree. The MiniPlayer
+    // then visually shrinks and slides to the bottom-start corner, sitting
+    // to the right of the floating Home dock button — matching the
+    // SimpMusic behavior the user requested. When the user scrolls back up
+    // to the hero, the flag flips back to false and the MiniPlayer springs
+    // back to its full-width form.
+    val docked = LocalMiniPlayerDocked.current
+    // Animate scale + translationX for a smooth spring transition between
+    // full-width and docked forms.
+    val dockedAnim by animateFloatAsState(
+        targetValue = if (docked) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "MiniPlayerDockedAnim",
+    )
+    val density = LocalDensity.current
+    val translationXPx = with(density) { (-160).dp.toPx() }
+    val translationYPx = with(density) { 10.dp.toPx() }
+    val dockedModifier =
+        if (dockedAnim > 0.001f) {
+            // Scale down to ~50% so the mini player reads as a small
+            // docked icon rather than a full-width bar, and translate
+            // left so its left edge lines up to the right of the Home
+            // dock button (which sits at start=16dp, width=48dp). The
+            // translation is in pixels; we use density to convert from
+            // dp so the math is resolution-independent.
+            //
+            // Slight downward nudge so the scaled-down pill sits at
+            // the same vertical center as the Home dock button
+            // instead of the original MiniPlayer's center (the
+            // BottomSheet reserves 70dp at the bottom; the Home dock
+            // is 48dp tall + 12dp bottom padding, so its center is
+            // ~10dp below the MiniPlayer's center).
+            val scale = 1f - 0.5f * dockedAnim // 1.0 -> 0.5
+            modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = translationXPx * dockedAnim
+                    translationY = translationYPx * dockedAnim
+                }
+        } else {
+            modifier
+        }
     NewMiniPlayer(
         position = position,
         duration = duration,
-        modifier = modifier,
+        modifier = dockedModifier,
         pureBlack = pureBlack,
         isPairedWithNavigation = isPairedWithNavigation,
     )
