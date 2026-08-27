@@ -451,7 +451,13 @@ object QobuzBackupProvider {
                 // Trust the bytes over the labels: a mirror that serves FLAC is FLAC even when the
                 // CDN mislabels the Content-Type, and the header is already in hand.
                 val streamInfo = headerBytes?.let(FlacStreamInfo::parse)
-                val isFlac = streamInfo != null || contentType.contains("flac") || url.contains("/lossless/")
+                // Only believe the bytes and the Content-Type header. The URL path
+                // (".../lossless/<id>") is NOT a reliable signal — the kouzu.in mirror
+                // occasionally serves an AAC-in-fMP4 transcode (or a stale CDN response)
+                // from the /lossless/ endpoint. Mislabeling that as "audio/flac" makes
+                // ExoPlayer sniff → pick FragmentedMp4Extractor → trip
+                // "Skipping atom with length > 2147483647 (unsupported)" (error 3003).
+                val isFlac = streamInfo != null || contentType.contains("flac")
                 ResolvedStream(
                     uri = url,
                     mimeType = if (isFlac) "audio/flac" else "audio/mp4",
