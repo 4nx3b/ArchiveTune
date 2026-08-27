@@ -243,11 +243,21 @@ fun LyricsScreen(
     val density = LocalDensity.current
     val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
-    val showPlayerControlsState =
-        rememberPreference(ShowLyricsPlayerControlsKey, true)
-    val showPlayerControlsEnabled by showPlayerControlsState
-    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
+    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
+    // Lyrics settings UI by user request. The standalone lyrics page now ALWAYS shows
+    // the bottom transport controls and ALWAYS auto-hides them after 5 s. The original
+    // preferences are not read at all — they're left in PreferenceKeys.kt purely so
+    // existing DataStore entries don't cause migration errors on upgrade.
+    //
+    // The state hoisting follows the pattern from the b0da4f969 fix on dev: `remember`
+    // with NO keys so the closure survives track changes, and a single countdown
+    // LaunchedEffect with every reveal trigger as a key (instead of a pair where one
+    // bumped the tick that the other used as its timer key, which relaunched across two
+    // frames). Setting `playerControlsExpanded = true` unconditionally at the top means
+    // any key change reveals the controls FIRST and only then decides whether to start
+    // hiding them — that is what guarantees the full five second window.
+    val showPlayerControlsEnabled = true
+    val autoHidePlayerControls = true
     var playerControlsExpanded by remember { mutableStateOf(true) }
     var controlsRevealToken by remember { mutableIntStateOf(0) }
     val autoHideDelayMs = 5_000L
@@ -255,16 +265,11 @@ fun LyricsScreen(
     // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
     // controls can slide in on scroll.
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
-    val onShowPlayerControlsChange =
-        remember(showPlayerControlsState) {
-            { showControls: Boolean ->
-                showPlayerControlsState.value = showControls
-                playerControlsExpanded = showControls
-            }
-        }
-    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { enabled ->
-        onAutoHidePlayerControlsChange(enabled)
-        controlsRevealToken++
+    val onShowPlayerControlsChange: (Boolean) -> Unit = { _ ->
+        // No-op: setting was removed from the UI; behavior is hardcoded on.
+    }
+    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { _ ->
+        // No-op: setting was removed from the UI; behavior is hardcoded on.
     }
 
     // Bumping the token reveals the controls and restarts the countdown below.
