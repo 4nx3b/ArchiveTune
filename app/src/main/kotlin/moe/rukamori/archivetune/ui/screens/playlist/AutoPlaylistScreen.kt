@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.playlist
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -82,6 +83,7 @@ import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AutoPlaylistSongSortDescendingKey
 import moe.rukamori.archivetune.constants.AutoPlaylistSongSortType
 import moe.rukamori.archivetune.constants.AutoPlaylistSongSortTypeKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -95,6 +97,10 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -301,9 +307,29 @@ fun AutoPlaylistScreen(
         }
     }
 
+    // Liquid Glass header setup. Mirror LocalPlaylistScreen's pattern: read
+    // the master toggle, gate on Android 12+ (kyant RuntimeShader requires
+    // API 31+), and suspend the layerBackdrop while the full-screen lyrics
+    // overlay is open on top of this screen — otherwise the per-frame GPU
+    // recording steals budget from the 60 Hz karaoke lyrics sweep.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
+    // content recording only happens when `Modifier.layerBackdrop(backdrop)`
+    // is applied to the LazyColumn below, gated on `layerBackdropActive`.
+    val backdrop = rememberBackdrop(Color.Black)
+    // When Liquid Glass is active, force the TopAppBar container to stay
+    // transparent so the liquid glass pills can sample the LazyColumn
+    // backdrop through it. Otherwise the surface-tinted container would
+    // hide the backdrop sample at certain scroll positions.
+    val pillBackdrop: PlatformBackdrop? = backdrop.takeIf { layerBackdropActive }
+
     val transparentAppBar by remember {
         derivedStateOf {
-            !selection && !isSearching && !showTopBarTitle
+            (!selection && !isSearching && !showTopBarTitle) || liquidGlassHeaderActive
         }
     }
 
@@ -327,6 +353,13 @@ fun AutoPlaylistScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .then(
+                        if (layerBackdropActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(
                         top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
                     ),
@@ -634,7 +667,7 @@ fun AutoPlaylistScreen(
                     }
 
                     showTopBarTitle -> {
-                        FrostedHeaderPill {
+                        FrostedHeaderPill(backdrop = pillBackdrop) {
                             Text(
                                 text = playlist,
                                 style = MaterialTheme.typography.titleLarge,
@@ -655,7 +688,7 @@ fun AutoPlaylistScreen(
                 // active and the hero is fully visible, the persistent
                 // LiquidGlass back button at the top-start handles back
                 // navigation instead.
-                FrostedHeaderPill {
+                FrostedHeaderPill(backdrop = pillBackdrop) {
                     IconButton(
                         onClick = {
                             when {
@@ -742,7 +775,7 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(backdrop = pillBackdrop) {
                         androidx.compose.material3.IconButton(
                             onClick = { isSearching = true },
                         ) {
@@ -753,7 +786,7 @@ fun AutoPlaylistScreen(
                         }
                     }
                     if (songs.isNotEmpty()) {
-                        FrostedHeaderPill {
+                        FrostedHeaderPill(backdrop = pillBackdrop) {
                             androidx.compose.material3.IconButton(
                                 onClick = {
                                     menuState.show {
@@ -817,6 +850,7 @@ fun AutoPlaylistScreen(
                             start = 16.dp,
                             bottom = bottomInset + 12.dp,
                         ),
+                backdrop = pillBackdrop,
             )
         }
     }

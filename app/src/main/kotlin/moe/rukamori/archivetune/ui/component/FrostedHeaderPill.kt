@@ -16,6 +16,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -37,25 +38,60 @@ import androidx.compose.ui.unit.dp
  * as "transparent" rather than a solid bar) while still keeping the title/icons legible against
  * busy backgrounds like album art.
  *
+ * **Liquid glass mode:** Pass a non-null [backdrop] (typically created via [rememberBackdrop]
+ * and applied to a sibling `LazyColumn` via [Modifier.layerBackdrop]) to switch the pill to
+ * real kyant `drawBackdrop` rendering (vibrancy + blur + lens). The pill MUST be a sibling
+ * of the composable carrying `layerBackdrop` — nesting it inside the source creates a
+ * render-feedback loop that crashes the RuntimeShader. When [backdrop] is `null` (the
+ * default), the pill degrades to the translucent `surfaceContainer` surface described above.
+ *
  * Usage: wrap the title / actions of a `TopAppBar` (or any header) in this pill. The
  * outer `TopAppBar` should have `containerColor = Color.Transparent`.
  *
  * @param modifier Modifier for the pill's outer layout.
+ * @param backdrop Optional kyant `LayerBackdrop` to sample for real liquid glass.
+ *                 Pass `null` (default) to use the translucent surface fallback.
  * @param content The header content (text, icons) to display inside the pill.
  */
 @Composable
 fun FrostedHeaderPill(
     modifier: Modifier = Modifier,
+    backdrop: PlatformBackdrop? = null,
     content: @Composable () -> Unit,
 ) {
-    val baseColor = MaterialTheme.colorScheme.surfaceContainer
-    Surface(
-        modifier = modifier.clip(RoundedCornerShape(percent = 50)),
-        shape = RoundedCornerShape(percent = 50),
-        color = baseColor.copy(alpha = 0.55f),
-    ) {
-        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+    val pillShape = RoundedCornerShape(percent = 50)
+    if (backdrop != null) {
+        // Real liquid glass path: kyant `drawBackdrop` effect stack (vibrancy +
+        // blur + lens). The pill samples whatever was recorded into the backdrop
+        // by `Modifier.layerBackdrop(backdrop)` applied to a sibling composable
+        // (typically the LazyColumn carrying the scrolling content beneath this
+        // header). MUST be a sibling — nesting inside the source crashes the
+        // RuntimeShader.
+        Row(
+            modifier =
+                modifier
+                    .clip(pillShape)
+                    .liquidGlass(
+                        backdrop = backdrop,
+                        shape = pillShape,
+                        interactive = false,
+                    )
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             content()
+        }
+    } else {
+        // Fallback path: translucent surface (no real backdrop blur).
+        val baseColor = MaterialTheme.colorScheme.surfaceContainer
+        Surface(
+            modifier = modifier.clip(pillShape),
+            shape = pillShape,
+            color = baseColor.copy(alpha = 0.55f),
+        ) {
+            Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                content()
+            }
         }
     }
 }
