@@ -764,6 +764,8 @@
     <string name="hide_local_files_card_desc">Hide the Local Files quick-access card on the Library Mix screen</string>
     <string name="hide_top50_card">Hide My top 50 card</string>
     <string name="hide_top50_card_desc">Hide the My top 50 quick-access card on the Library Mix screen</string>
+    <string name="my_top_50">My top 50</string>
+    <string name="recently_liked">Recently Liked</string>
     <string name="about_lead_developer">Lead Developer</string>
     <string name="about_archive_tune_team">Team</string>
     <string name="about_respecter">Respecter</string>
