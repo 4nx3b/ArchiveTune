@@ -61,8 +61,7 @@ fun FrostedHeaderPill(
     content: @Composable () -> Unit,
 ) {
     val pillShape = RoundedCornerShape(percent = 50)
-    val effectiveBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
-    if (effectiveBackdrop != null) {
+    if (backdrop != null) {
         // Real liquid glass path: kyant `drawBackdrop` effect stack (vibrancy +
         // blur + lens). The pill samples whatever was recorded into the backdrop
         // by `Modifier.layerBackdrop(backdrop)` applied to a sibling composable
@@ -74,7 +73,7 @@ fun FrostedHeaderPill(
                 modifier
                     .clip(pillShape)
                     .liquidGlass(
-                        backdrop = effectiveBackdrop,
+                        backdrop = backdrop,
                         shape = pillShape,
                         interactive = false,
                     )

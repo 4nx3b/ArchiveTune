@@ -436,11 +436,23 @@ class LyricsMenuViewModel
 
         private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
             captureLyricsBeforeTranslation(mediaId)
+            // Preserve the ORIGINAL provider's name so the in-lyrics-stream
+            // "Lyrics from [provider]" header does not disappear the moment
+            // AI translation saves a new LyricsEntity. Previously the AI
+            // translation path called `replaceLyrics(id, lyrics, source=AI_TRANSLATION)`
+            // without passing `providerName`, which defaulted to "" —
+            // wiping the provider attribution and causing both the constant
+            // overlay header AND the in-stream SyncedLine header injected by
+            // `buildSyncedLyrics(providerHeader = lyricsProviderLabel)` to
+            // vanish on translation. The undo snapshot captured just above
+            // already retains the original providerName, so reuse it here.
+            val preservedProviderName = _translationUndo.value?.providerName.orEmpty()
             database.query {
                 replaceLyrics(
                     id = mediaId,
                     lyrics = lyrics,
                     source = LyricsEntity.Source.AI_TRANSLATION.value,
+                    providerName = preservedProviderName,
                 )
             }
         }

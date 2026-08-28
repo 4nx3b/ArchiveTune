@@ -268,6 +268,30 @@ fun OnlinePlaylistScreen(
         }
     } else if (selection) {
         BackHandler { selection = false }
+    } else {
+        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
+        // the Library tab when the user is on an online playlist sub-page —
+        // not on the Home tab. Matches the LocalPlaylistScreen /
+        // SpotifyPlaylistScreen pattern. Per user report (2026-08-29):
+        // "I can't use the navigation gesture in playlists either" — the
+        // previous commit removed this block, leaving the default NavHost
+        // back behavior, which pops the back stack. When the user came
+        // from Home (deep-link), the back stack was [home, online_playlist]
+        // so the gesture landed them on Home, not Library.
+        //
+        // Now: ALWAYS redirect to the Library tab on back, popping
+        // everything above the graph's start destination (preserving
+        // its state) and switching to "library" with launchSingleTop +
+        // restoreState. NOTE: do not hard-code "home" — if the user's
+        // default tab is Library, the back stack starts at "library" and
+        // `popUpTo("home")` would throw IllegalArgumentException.
+        BackHandler {
+            navController.navigate("library") {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+            }
+        }
     }
 
     val wrappedSongs =
