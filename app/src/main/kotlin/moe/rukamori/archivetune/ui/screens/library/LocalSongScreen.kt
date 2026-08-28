@@ -99,6 +99,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalMiniPlayerVisible
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
@@ -666,10 +667,18 @@ fun LocalSongScreen(
         // the iOS Music reference screenshot. Only rendered while the user
         // has scrolled past the hero header so the first frame doesn't show
         // a stray fade band over the hero's Play/Shuffle/Settings pills.
+        //
+        // When a mini player is visible, the fade anchors THROUGH the mini
+        // player's area (instead of cutting off at the top of the mini player)
+        // so there's no straight-cut horizontal line at the mini player's top
+        // edge. When no mini player is visible, the fade anchors at the
+        // home-icon dock pill as before.
         val bottomInset =
             LocalPlayerAwareWindowInsets.current
                 .asPaddingValues()
                 .calculateBottomPadding()
+        val miniPlayerVisible = LocalMiniPlayerVisible.current
+        val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
         if (isListScrolling) {
             BottomFadeOverlay(
                 visible = true,
@@ -678,7 +687,7 @@ fun LocalSongScreen(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(bottom = bottomInset),
+                        .padding(bottom = fadeBottomPadding),
             )
             LibraryHomeDockButton(
                 onClick = { navController.backToMain() },

@@ -97,6 +97,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalMiniPlayerVisible
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -1445,9 +1446,19 @@ fun LocalPlaylistScreen(
         // show a stray fade band over the hero's Play/Shuffle/Download
         // pills. Skipped during search/selection so the overlay doesn't
         // interfere with the search/selection toolbar at the bottom.
+        //
+        // Fade anchoring (per user feedback on the mini-player straight-cut
+        // issue): when the floating MiniPlayer bar is on screen, the fade
+        // band extends down THROUGH the mini player's area (the mini player
+        // is rendered outside this screen so it overlays the fade), instead
+        // of ending in a sharp horizontal cut at the TOP of the mini player.
+        // When no mini player is visible (nothing playing / dismissed), the
+        // fade anchors at the home-icon dock pill as before.
         val bottomInset = LocalPlayerAwareWindowInsets.current
             .asPaddingValues()
             .calculateBottomPadding()
+        val miniPlayerVisible = LocalMiniPlayerVisible.current
+        val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
         if (!isSearching && !selection && isListScrolling) {
             BottomFadeOverlay(
                 visible = true,
@@ -1456,7 +1467,7 @@ fun LocalPlaylistScreen(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(bottom = bottomInset),
+                        .padding(bottom = fadeBottomPadding),
             )
         }
 

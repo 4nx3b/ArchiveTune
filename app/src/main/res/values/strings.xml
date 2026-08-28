@@ -565,11 +565,8 @@
     <string name="frosted_blur">Frosted blur</string>
     <string name="frosted_mini_player_unsupported">Frosted mini player is not supported on Android versions below 12</string>
     <string name="moving_blur_static_disclaimer">Blur will be static for Android versions below 12</string>
-    <string name="lyrics_animation_style">Lyrics animation style</string>
-    <string name="lyrics_mode">Lyrics mode</string>
-    <string name="lyrics_mode_v2">V2 Legacy</string>
-    <string name="lyrics_mode_enhanced">Enhanced</string>
-    <string name="lyrics_animation_style_v2_only">Available only in V2 lyrics mode</string>
+    <!-- Lyrics mode + animation style strings removed — the V2 Legacy / Enhanced picker and the
+         lyrics animation style page are gone; Enhanced is the sole renderer now. -->
     <string name="lyrics_line_spacing">Lyrics line spacing</string>
     <string name="content">Content</string>
     <string name="action_logout">Log out</string>
