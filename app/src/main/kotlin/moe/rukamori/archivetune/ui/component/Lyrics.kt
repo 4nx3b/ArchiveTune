@@ -806,22 +806,8 @@ fun Lyrics(
                 )
             }
         } else {
-            // "Lyrics from [provider]" header is rendered as the FIRST item of
-            // the LazyColumn below (not as a floating overlay) so it scrolls
-            // naturally with the lyrics — the user requested this behave "as
-            // if it's a lyrics line itself" rather than a constant watermark
-            // that fades on scroll. The visual design matches the "Written by"
-            // footer item at the end of the list (same color, weight, size,
-            // alignment) so the two attribution labels read as a matched
-            // pair bracketing the lyrics.
-            //
-            // "Written by [artists]" is rendered as the LAST item of the
-            // LazyColumn for the same reason — it scrolls naturally with the
-            // lyrics and visually closes the lyrics block. We use the song's
-            // artist list (composer credits are not tracked in MediaMetadata)
-            // as a proxy for the "written by" attribution, matching the
-            // user's previous request to surface this credit at the bottom
-            // of the lyrics page.
+            // The source attribution is a LazyColumn item rather than a
+            // floating overlay, so it scrolls away together with the lyrics.
             LazyColumn(
                 state = lazyListState,
                 contentPadding =

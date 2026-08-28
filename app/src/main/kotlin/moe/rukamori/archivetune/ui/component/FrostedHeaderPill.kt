@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.component
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BorderStroke
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,9 +35,9 @@ import androidx.compose.ui.unit.dp
  * fallback those paths already used when no backdrop was available, and matches how the pill
  * behaves in rail layouts where the backdrop is null.
  *
- * The alpha is tuned low enough that the scrolling content shows through (so the header reads
- * as "transparent" rather than a solid bar) while still keeping the title/icons legible against
- * busy backgrounds like album art.
+ * The fallback deliberately uses a dense frosted material rather than a nearly transparent
+ * surface. Settings pages cannot safely sample the app-wide backdrop from inside the NavHost,
+ * but their controls must still read as a visible glass surface instead of an empty pill.
  *
  * **Liquid glass mode:** Pass a non-null [backdrop] (typically created via [rememberBackdrop]
  * and applied to a sibling `LazyColumn` via [Modifier.layerBackdrop]) to switch the pill to
@@ -82,12 +83,16 @@ fun FrostedHeaderPill(
             content()
         }
     } else {
-        // Fallback path: translucent surface (no real backdrop blur).
-        val baseColor = MaterialTheme.colorScheme.surfaceContainer
+        // Fallback path for NavHost-owned screens such as Settings. Sampling
+        // the app-wide backdrop here would create a render-feedback loop, so
+        // use Material's frosted container plus a subtle highlight instead of
+        // degrading to an almost-transparent pill.
+        val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
         Surface(
             modifier = modifier.clip(pillShape),
             shape = pillShape,
-            color = baseColor.copy(alpha = 0.55f),
+            color = baseColor.copy(alpha = 0.88f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceBright.copy(alpha = 0.72f)),
         ) {
             Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                 content()
