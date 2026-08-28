@@ -1009,11 +1009,7 @@ fun PalettePickerScreen(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.color_palette))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -1023,7 +1019,7 @@ fun PalettePickerScreen(navController: NavController) {
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.color_palette),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -1214,11 +1210,7 @@ fun ThemeCreatorScreen(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(text = stringResource(R.string.theme_creator_title))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -1228,7 +1220,7 @@ fun ThemeCreatorScreen(navController: NavController) {
                             Icon(painter = painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.theme_creator_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

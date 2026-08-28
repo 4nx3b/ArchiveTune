@@ -104,18 +104,14 @@ fun DiscordExperimental(
     Scaffold { inner ->
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.experiment_settings))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(onClick = navController::navigateUp) {
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.experiment_settings),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

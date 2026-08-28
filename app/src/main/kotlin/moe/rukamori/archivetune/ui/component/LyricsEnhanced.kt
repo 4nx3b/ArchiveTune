@@ -1141,16 +1141,40 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
-        // Enhanced lyrics are rendered by a dedicated karaoke view instead of
-        // a LazyColumn. Keep the source label tied to that view's scroll state
-        // so it leaves with the lyrics (including during auto-scroll), rather
-        // than acting as a permanent top watermark.
+        // "Lyrics from [provider]" header — mirrors the legacy Lyrics.kt
+        // pattern (L808-841). Per user request (2026-08-28): "just like
+        // written by is on the bottom of lyrics page there's should be
+        // Lyrics from 'The lyrics provider name' on the top of the lyrics
+        // too". Per user request (2026-08-28 follow-up): "the Lyrics from
+        // at the top and the written by text at the bottom of the lyrics
+        // should show as if it's just lyrics and not some constant text".
+        // The header overlay now uses the same color, font size, weight,
+        // and line height as a regular (non-active) lyric line —
+        // Color.White at alpha 0.52, font size `lyricsTextSize`, SemiBold
+        // weight — so it reads as the first lyric line of the song rather
+        // than as a constant red caption. The overlay placement is kept
+        // because the synced-lyrics path uses the third-party
+        // KaraokeLyricsView library, whose internal LazyColumn cannot be
+        // extended with external items; the plain-lyrics path injects it
+        // as the first LazyColumn item (see PlainLyricsView).
         val lyricsProviderName = currentLyrics?.providerName.orEmpty()
-        val sourceHeaderVisible by remember(listState, lyricsProviderName) {
-            derivedStateOf {
-                lyricsProviderName.isNotBlank() &&
-                    listState.firstVisibleItemIndex == 0 &&
-                    listState.firstVisibleItemScrollOffset == 0
+        if (lyricsProviderName.isNotBlank()) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
+                    fontSize = lyricsTextSize.sp,
+                    color = textColor.copy(alpha = 0.52f),
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = (lyricsTextSize * 1.3f).sp,
+                )
             }
         }
         AnimatedVisibility(
@@ -1361,6 +1385,44 @@ fun LyricsEnhanced(
             }
         }
 
+        // "Written by [artists]" footer overlay. Per user request
+        // (2026-08-28 follow-up): "the Lyrics from at the top and the
+        // written by text at the bottom of the lyrics should show as if
+        // it's just lyrics and not some constant text". The footer now
+        // uses the same color, font size, weight, and line height as a
+        // regular (non-active) lyric line — Color.White at alpha 0.52,
+        // font size `lyricsTextSize`, SemiBold weight — so it reads as
+        // the last lyric line of the song rather than as a constant red
+        // caption. The overlay placement is kept because the
+        // synced-lyrics path uses the third-party KaraokeLyricsView
+        // library, whose internal LazyColumn cannot be extended with
+        // external items; the plain-lyrics path injects it as the last
+        // LazyColumn item (see PlainLyricsView). The scroll-driven fade
+        // alpha is removed so the footer always reads as a constant
+        // lyric-styled line — matching the user's "show as if it's just
+        // lyrics" instruction.
+        mediaMetadata?.let { metadata ->
+            val writersLine = metadata.artists.joinToString { it.name }.trim()
+            if (writersLine.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.written_by, writersLine),
+                        fontSize = lyricsTextSize.sp,
+                        color = textColor.copy(alpha = 0.52f),
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = (lyricsTextSize * 1.3f).sp,
+                    )
+                }
+            }
+        }
     }
 
     if (isSelectionModeActive && selectionLines.isNotEmpty()) {
