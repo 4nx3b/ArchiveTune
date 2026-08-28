@@ -219,35 +219,22 @@ val LocalIsInPipMode = compositionLocalOf { false }
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
 /**
- * Shared state holder for whether the current screen wants the [MiniPlayer]
- * to shrink into a compact "docked" form factor and the navigation bar to
- * collapse to a singular Home pill while a Search pill is shown on the right.
+ * Tracks whether the current screen wants the [MiniPlayer] to shrink into
+ * a compact "docked" form factor and position itself at the bottom-start
+ * corner, immediately to the right of the floating Home dock button.
  *
  * Set to `true` by the playlist-style screens (Liked / Cached / Local
  * storage / Local / Online / Spotify playlist) when the user has scrolled
- * past the hero header. The MainActivity's bottomBar slot — which is a
- * SIBLING subtree of the NavHost content slot — reads this state to swap
- * the full FloatingNavigationToolbar for a docked Row containing
- * [Home pill LEFT] + [MiniPlayer CENTER] + [Search pill RIGHT], matching
- * the SimpMusic-style layout the user attached in the reference screenshot.
+ * past the hero header. The MiniPlayer reads this and applies a
+ * `graphicsLayer` scale + translationX transformation so it visually
+ * shrinks and slides to the bottom-start corner — matching the
+ * SimpMusic behavior the user referenced (mini player "shrinks
+ * automatically and sits between Home button on the left and search
+ * button on the right").
  *
- * This state is hoisted at the MainActivity level (above the Scaffold) so
- * that both the content slot (where playlist screens WRITE to it) and the
- * bottomBar slot (which READS from it) share the same instance. The
- * previous CompositionLocal-of-Boolean pattern didn't actually propagate
- * across slot boundaries, so the MiniPlayer never received the docked flag.
- *
- * Default: not docked (isDocked = false).
+ * Default: false (most screens don't shrink the mini player).
  */
-@Stable
-class MiniPlayerDockedState {
-    var isDocked: Boolean by mutableStateOf(false)
-}
-
-val LocalMiniPlayerDockedState =
-    compositionLocalOf<MiniPlayerDockedState> {
-        error("MiniPlayerDockedState not provided")
-    }
+val LocalMiniPlayerDocked = compositionLocalOf { false }
 
 /**
  * Provides a [VideoFullscreenStateHolder] to the content subtree.

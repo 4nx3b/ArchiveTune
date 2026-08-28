@@ -54,7 +54,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -153,7 +153,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -600,18 +600,13 @@ fun LocalPlaylistScreen(
     // instead of showing a hard black band behind the pill.
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Propagate the scroll state to the hoisted MiniPlayerDockedState so
-    // the MainActivity bottomBar slot (a SIBLING subtree of this screen)
-    // can swap the full FloatingNavigationToolbar for a docked
-    // [Home pill LEFT] + [MiniPlayer CENTER] + [Search pill RIGHT] layout
-    // when the user scrolls past the hero header.
-    val dockedState = LocalMiniPlayerDockedState.current
-    LaunchedEffect(isListScrolling) {
-        dockedState.isDocked = isListScrolling
-    }
-    DisposableEffect(Unit) {
-        onDispose { dockedState.isDocked = false }
-    }
+    // Wrap the entire screen subtree in a CompositionLocalProvider so the
+    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
+    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
+    // scrolls past the hero header.
+    CompositionLocalProvider(
+        LocalMiniPlayerDocked provides isListScrolling,
+    ) {
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
@@ -1465,13 +1460,24 @@ fun LocalPlaylistScreen(
             )
         }
 
-        // Floating Home dock pill is now provided by the docked Row in
-        // MainActivity's bottomBar (Home pill LEFT + MiniPlayer CENTER +
-        // Search pill RIGHT) when this screen reports isListScrolling=true.
-        // The old per-screen LibraryHomeDockButton is removed to avoid
-        // double-rendering two Home pills at the bottom-start corner.
+        // Floating Home dock button — circular frosted-glass pill at the
+        // bottom-start corner, matching the iOS Music reference screenshot.
+        // Visible only while the user has scrolled past the hero header so
+        // it doesn't compete with the hero's action row. Tapping it jumps
+        // straight to the Home tab. Skipped during search/selection so it
+        // doesn't overlap the selection toolbar.
         if (!isSearching && !selection && isListScrolling) {
-            // intentionally empty — see comment above
+            LibraryHomeDockButton(
+                onClick = { navController.backToMain() },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = 16.dp,
+                            bottom = bottomInset + 12.dp,
+                        ),
+                backdrop = artworkBackdrop.takeIf { layerBackdropActive },
+            )
         }
 
         SnackbarHost(
@@ -1482,6 +1488,7 @@ fun LocalPlaylistScreen(
                     .align(Alignment.BottomCenter),
         )
     } // end ExpressivePullToRefreshBox
+    } // end CompositionLocalProvider
 }
 
 private const val MediaDetailMetadataSeparator = "  •  "
