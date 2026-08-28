@@ -507,21 +507,7 @@ fun UpdateScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.updates),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
-                subtitle = {
-                    Text(
-                        text = topBarSubtitle,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -534,7 +520,7 @@ fun UpdateScreen(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.updates),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

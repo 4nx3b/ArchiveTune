@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -156,6 +157,39 @@ fun LibraryScreen(navController: NavController) {
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage != lastSelectedPage) {
             lastSelectedPage = pagerState.currentPage
+        }
+    }
+
+    // ── Back gesture handling for Library sub-tabs ─────────────────────────
+    // Per user report (2026-08-28): "when I'm in the library or Spotify page
+    // and I use the back navigation gesture i return to home page instead i
+    // should be on the library main page where it displays recently added
+    // and artist and other things".
+    //
+    // The Library tab hosts sub-screens via HorizontalPager: LIBRARY
+    // (LibraryMixScreen — Recently Added + Artists + Albums rows),
+    // PLAYLISTS, SPOTIFY, SONGS, ARTISTS, ALBUMS. The user can swipe
+    // between them or click category rows in LibraryMixScreen. When the
+    // user is on a non-LIBRARY sub-tab and presses the back gesture, the
+    // system back fires the NavController's default pop behavior — which
+    // exits the Library tab entirely and lands on Home (the start
+    // destination).
+    //
+    // Fix: install a BackHandler that intercepts the back gesture when
+    // the user is NOT on the LIBRARY sub-tab. On back, scroll the pager
+    // to the LIBRARY page instead of letting the back gesture pop the
+    // NavController. The user stays inside the Library tab and lands on
+    // the main "Recently Added / Artists / Albums" view, which is the
+    // page they explicitly want to be on.
+    //
+    // When the user is already on the LIBRARY sub-tab, the BackHandler is
+    // NOT installed (the predicate returns false) so the system back
+    // proceeds normally — letting the user exit the app or land on Home
+    // via the standard NavController behavior.
+    val coroutineScope = rememberCoroutineScope()
+    BackHandler(enabled = pagerState.currentPage != 0) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(0)
         }
     }
 
