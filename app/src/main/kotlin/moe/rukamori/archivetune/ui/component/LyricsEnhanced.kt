@@ -17,6 +17,9 @@ import android.app.Activity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -434,6 +437,11 @@ fun LyricsEnhanced(
             }
     }
     val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
+    val lyricsProviderLabel =
+        currentLyrics
+            ?.providerName
+            ?.takeIf { it.isNotBlank() }
+            ?.let { providerName -> stringResource(R.string.lyrics_from_source, providerName) }
 
     // Keyed on the raw lyrics text, not on lyricsEntries: the entries now arrive a beat after the
     // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
@@ -476,7 +484,7 @@ fun LyricsEnhanced(
         )
     }
 
-    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines) {
+    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, mediaMetadata?.id) {
         // Everything below (scanning + romanizing every line, often one job per word for TTML)
         // used to inherit the main dispatcher and could stutter the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
@@ -512,7 +520,14 @@ fun LyricsEnhanced(
                     romanization.renderedRomanization() != previous.romanization.renderedRomanization()
             karaokeBuild =
                 KaraokeBuild(
-                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization, composerFooter),
+                    lyrics =
+                        buildSyncedLyrics(
+                            entries = lyricsEntries,
+                            isTtml = isTtmlFormat,
+                            romanizationMap = romanization,
+                            providerHeader = lyricsProviderLabel,
+                            composerFooter = composerFooter,
+                        ),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
                 )
@@ -1056,7 +1071,7 @@ fun LyricsEnhanced(
             )
         }
     val plainLyrics =
-        remember(lyricsEntries, isSynced, mediaMetadata?.artists) {
+        remember(lyricsEntries, isSynced, mediaMetadata?.artists, lyricsProviderLabel) {
             // Composer footer ("Written by: <artists>") — appended as a
             // synthetic PlainLyricLine at the end of the non-synced
             // lyrics list. Per user request (2026-08-28): "Add composer
@@ -1079,6 +1094,7 @@ fun LyricsEnhanced(
                             itemId = "composer_footer",
                             selectionId = "plain:composer_footer:${text.hashCode()}",
                             text = text,
+                            isMetadata = true,
                         )
                     }
 
@@ -1100,12 +1116,22 @@ fun LyricsEnhanced(
                         }
                     }
                 }
+            val providerHeaderLine =
+                lyricsProviderLabel
+                    ?.let { text ->
+                        PlainLyricLine(
+                            itemId = "provider_header",
+                            selectionId = "plain:provider_header:${text.hashCode()}",
+                            text = text,
+                            isMetadata = true,
+                        )
+                    }
             PlainLyrics(
                 items =
-                    if (composerFooterLine != null && lyricItems.isNotEmpty()) {
-                        lyricItems + composerFooterLine
-                    } else {
-                        lyricItems
+                    buildList {
+                        if (providerHeaderLine != null && lyricItems.isNotEmpty()) add(providerHeaderLine)
+                        addAll(lyricItems)
+                        if (composerFooterLine != null && lyricItems.isNotEmpty()) add(composerFooterLine)
                     },
             )
         }
@@ -1121,7 +1147,7 @@ fun LyricsEnhanced(
                         // it is metadata, not a lyric the user would want
                         // to copy/share. Identified by its very high start
                         // time (24h, see `buildSyncedLyrics`).
-                        if (line.start >= 86_400_000) {
+                        if (line.start < 0 || line.start >= 86_400_000) {
                             null
                         } else {
                             val selectionId = line.selectionKey(text)
@@ -1135,8 +1161,8 @@ fun LyricsEnhanced(
                 }
             } else {
                 plainLyrics.items.mapNotNull { line ->
-                    // Skip the composer footer in the selection sheet.
-                    if (line.itemId == "composer_footer") {
+                    // Skip metadata rows in the selection sheet.
+                    if (line.isMetadata) {
                         null
                     } else {
                         LyricSelectionLine(
@@ -1203,37 +1229,6 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
-        // "Lyrics from [provider]" header — mirrors the legacy Lyrics.kt
-        // pattern (L808-841). Per user request (2026-08-28): "just like
-        // written by is on the bottom of lyrics page there's should be
-        // Lyrics from 'The lyrics provider name' on the top of the lyrics
-        // too". The header is rendered as an overlay aligned to the top
-        // of the lyrics Box; the karaoke list has enough top padding for
-        // active-line centering that the header sits in the empty space
-        // above the first visible lyric line. `providerName` comes from
-        // the LyricsEntity row persisted by LyricsHelper (e.g. "LrcLib",
-        // "Musixmatch", "BiniLyrics", etc.).
-        val lyricsProviderName = currentLyrics?.providerName.orEmpty()
-        if (lyricsProviderName.isNotBlank()) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1425,52 +1420,6 @@ fun LyricsEnhanced(
             }
         }
 
-        // "Written by [artists]" footer overlay. Mirrors the design of the
-        // "Lyrics from" header overlay above: small secondary color, medium
-        // weight, centered. Rendered as an overlay at the bottom of the
-        // lyrics Box so it visually closes the lyrics block. The alpha
-        // fades in as the user scrolls toward the end of the lyrics (so it
-        // doesn't compete with the active line at the top). The artist list
-        // is used as a proxy for composer credits (MediaMetadata does not
-        // track formal composer credits).
-        mediaMetadata?.let { metadata ->
-            val writersLine = metadata.artists.joinToString { it.name }.trim()
-            if (writersLine.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
-                val footerAlpha by remember {
-                    derivedStateOf {
-                        val layoutInfo = listState.layoutInfo
-                        val totalItems = layoutInfo.totalItemsCount
-                        val lastVisibleIdx = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        if (totalItems == 0) 0f
-                        else ((lastVisibleIdx + 1).toFloat() / totalItems.toFloat()).coerceIn(0f, 1f)
-                    }
-                }
-                val animatedFooterAlpha by animateFloatAsState(
-                    targetValue = footerAlpha,
-                    animationSpec = tween(durationMillis = 220),
-                    label = "lyricsFooterAlphaEnhanced",
-                )
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp)
-                            .graphicsLayer { alpha = animatedFooterAlpha },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.written_by, writersLine),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
     }
 
     if (isSelectionModeActive && selectionLines.isNotEmpty()) {
@@ -1595,6 +1544,7 @@ private data class PlainLyricLine(
     val itemId: String,
     val selectionId: String,
     val text: String,
+    val isMetadata: Boolean = false,
 )
 
 @Immutable
@@ -1666,7 +1616,16 @@ private fun PlainLyricLineItem(
 
     Text(
         text = line.text,
-        style = textStyle,
+        style =
+            if (line.isMetadata) {
+                textStyle.copy(
+                    fontSize = (textStyle.fontSize.value * 0.38f).sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                textStyle
+            },
         color = contentColor,
         modifier =
             Modifier
@@ -1919,7 +1878,9 @@ private fun SyncedLyrics.findLastStartedLineIndex(time: Int): Int {
 
     while (low <= high) {
         val mid = low + (high - low) / 2
-        if (lines[mid].start <= time) {
+        if (lines[mid].start < 0) {
+            low = mid + 1
+        } else if (lines[mid].start <= time) {
             result = mid
             low = mid + 1
         } else {
@@ -2038,10 +1999,22 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
+    providerHeader: String? = null,
     composerFooter: String? = null,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
+
+    if (!providerHeader.isNullOrBlank()) {
+        lines.add(
+            SyncedLine(
+                content = providerHeader,
+                translation = null,
+                start = -2,
+                end = -1,
+            ),
+        )
+    }
 
     entries.forEachIndexed { index, entry ->
         if (entry.time < 0L) return@forEachIndexed

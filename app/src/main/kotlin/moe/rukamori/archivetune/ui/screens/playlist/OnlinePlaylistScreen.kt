@@ -268,19 +268,6 @@ fun OnlinePlaylistScreen(
         }
     } else if (selection) {
         BackHandler { selection = false }
-    } else {
-        // Explicit BackHandler so the predictive back gesture lands on the
-        // Library tab when the previous back-stack entry is not a main
-        // screen. Matches the LocalPlaylistScreen / SpotifyPlaylistScreen
-        // pattern.
-        BackHandler {
-            if (!navController.navigateUp()) {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        }
     }
 
     val wrappedSongs =

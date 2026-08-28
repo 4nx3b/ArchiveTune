@@ -318,24 +318,6 @@ fun SpotifyPlaylistScreen(
             isSearching = false
             query = TextFieldValue()
         }
-    } else {
-        // Explicit BackHandler so the predictive back gesture lands on the
-        // Library tab when the previous back-stack entry is not a main
-        // screen. Previously, when the user entered this screen directly
-        // (e.g. via a deep link from Home) the back gesture popped straight
-        // to Home, skipping the Library tab the user expected to return to.
-        // Calling [navigateUp] first preserves the natural back stack; if
-        // that returns false (no previous entry to pop), we explicitly
-        // navigate to the Library tab so the user always lands somewhere
-        // meaningful instead of being dropped on Home.
-        BackHandler {
-            if (!navController.navigateUp()) {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        }
     }
 
     fun playPlaylist(
