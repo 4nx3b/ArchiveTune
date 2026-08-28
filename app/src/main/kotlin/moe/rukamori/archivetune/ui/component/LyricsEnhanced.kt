@@ -17,9 +17,6 @@ import android.app.Activity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -1172,30 +1169,13 @@ fun LyricsEnhanced(
             ) {
                 Text(
                     text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                    fontSize = lyricsTextSize.sp,
+                    fontSize = (lyricsTextSize * 0.8f).sp,
                     color = textColor.copy(alpha = 0.52f),
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.SemiBold,
-                    lineHeight = (lyricsTextSize * 1.3f).sp,
+                    lineHeight = (lyricsTextSize * 1.05f).sp,
                 )
             }
-        }
-        AnimatedVisibility(
-            visible = sourceHeaderVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter),
-        ) {
-            Text(
-                text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 12.dp),
-            )
         }
         when {
             lyrics == LYRICS_NOT_FOUND -> {
