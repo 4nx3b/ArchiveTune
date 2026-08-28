@@ -49,6 +49,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -782,27 +783,39 @@ fun LyricsV2(
             // "Lyrics from [provider]" header item. Rendered as the FIRST
             // LazyColumn item so it scrolls naturally with the lyrics — the
             // user requested this behave "as if it's a lyrics line itself"
-            // rather than a constant watermark. Mirrors the design of the
-            // "Written by" footer item at the end of the list.
+            // rather than a constant watermark. Per user request
+            // (2026-08-28 follow-up): "the Lyrics from at the top and the
+            // written by text at the bottom of the lyrics should show as if
+            // it's just lyrics and not some constant text". The header now
+            // uses the same color, font size, weight, line height, and
+            // horizontal padding as a regular (non-active) lyric line —
+            // Color.White at alpha 0.52 (matching the inactive-line alpha
+            // used by V2's main lyric renderer at L1099/L1118), font size
+            // `lyricsTextSize`, SemiBold weight, 24.dp horizontal padding.
+            // This makes it read as the first lyric line of the song
+            // rather than as a constant red caption glued to the top.
             val providerNameV2 = currentLyrics?.providerName.orEmpty()
             if (providerNameV2.isNotBlank()) {
                 item(key = "lyrics_source_header_v2", contentType = "lyrics_attribution") {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp, bottom = 16.dp),
-                        contentAlignment = Alignment.Center,
+                    CompositionLocalProvider(
+                        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = lyricsFontFamily),
                     ) {
-                        Text(
-                            text = stringResource(R.string.lyrics_from_source, providerNameV2),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.lyrics_from_source, providerNameV2),
+                                fontSize = lyricsTextSize.sp,
+                                color = textColor.copy(alpha = 0.52f),
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.SemiBold,
+                                lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+                            )
+                        }
                     }
                 }
             }
@@ -1160,30 +1173,40 @@ fun LyricsV2(
 
             // "Written by [artists]" footer item. Rendered as the LAST
             // LazyColumn item so it scrolls naturally with the lyrics and
-            // visually closes the lyrics block. Mirrors the design of the
-            // "Lyrics from" header item at the top. Uses the artist list as
-            // a proxy for composer credits (MediaMetadata does not track
-            // formal composer credits).
+            // visually closes the lyrics block. Per user request
+            // (2026-08-28 follow-up): "the Lyrics from at the top and the
+            // written by text at the bottom of the lyrics should show as if
+            // it's just lyrics and not some constant text". The footer now
+            // uses the same color, font size, weight, line height, and
+            // horizontal padding as a regular (non-active) lyric line —
+            // Color.White at alpha 0.52 (matching the inactive-line alpha
+            // used by V2's main lyric renderer at L1099/L1118), font size
+            // `lyricsTextSize`, SemiBold weight, 24.dp horizontal padding.
+            // This makes it read as the last lyric line of the song
+            // rather than as a constant red caption glued to the bottom.
             mediaMetadata?.let { metadata ->
                 val writersLineV2 = metadata.artists.joinToString { it.name }.trim()
                 if (writersLineV2.isNotBlank()) {
                     item(key = "lyrics_writers_footer_v2", contentType = "lyrics_attribution") {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 16.dp),
-                            contentAlignment = Alignment.Center,
+                        CompositionLocalProvider(
+                            LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = lyricsFontFamily),
                         ) {
-                            Text(
-                                text = stringResource(R.string.written_by, writersLineV2),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.secondary,
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.written_by, writersLineV2),
+                                    fontSize = lyricsTextSize.sp,
+                                    color = textColor.copy(alpha = 0.52f),
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.SemiBold,
+                                    lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
+                                )
+                            }
                         }
                     }
                 }

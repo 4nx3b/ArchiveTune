@@ -159,14 +159,7 @@ private fun AboutScreenContent(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.about),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -179,7 +172,7 @@ private fun AboutScreenContent(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.about),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
