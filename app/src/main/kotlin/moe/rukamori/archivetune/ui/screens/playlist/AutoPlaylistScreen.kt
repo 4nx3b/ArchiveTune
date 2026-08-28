@@ -45,7 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -106,7 +106,7 @@ import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState
 import moe.rukamori.archivetune.ui.screens.downloads.DownloadLibraryScreen
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
@@ -356,14 +356,20 @@ fun AutoPlaylistScreen(
     // System bars padding
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Wrap the entire screen subtree in a CompositionLocalProvider so the
-    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
-    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
-    // scrolls past the hero header. The provider is hoisted to the screen
-    // root so it covers every Composable in this subtree.
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
+    // Propagate the scroll state to the hoisted MiniPlayerDockedState so
+    // the MainActivity bottomBar slot (a SIBLING subtree of this screen)
+    // can swap the full FloatingNavigationToolbar for a docked
+    // [Home pill LEFT] + [MiniPlayer CENTER] + [Search pill RIGHT] layout
+    // when the user scrolls past the hero header. The previous
+    // CompositionLocal-of-Boolean pattern did NOT propagate across the
+    // content/bottomBar slot boundary.
+    val dockedState = LocalMiniPlayerDockedState.current
+    LaunchedEffect(isListScrolling) {
+        dockedState.isDocked = isListScrolling
+    }
+    DisposableEffect(Unit) {
+        onDispose { dockedState.isDocked = false }
+    }
     Box(
         modifier =
             Modifier
@@ -964,20 +970,11 @@ fun AutoPlaylistScreen(
         // doesn't compete with the hero's action row. Tapping it jumps
         // straight to the Home tab.
         if (isListScrolling) {
-            LibraryHomeDockButton(
-                onClick = { navController.backToMain() },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(
-                            start = 16.dp,
-                            bottom = bottomInset + 12.dp,
-                        ),
-                backdrop = backdrop.takeIf { layerBackdropActive },
-            )
+            // LibraryHomeDockButton intentionally removed: the docked Row in
+            // MainActivity's bottomBar (Home pill LEFT + MiniPlayer CENTER +
+            // Search pill RIGHT) now provides the bottom-start Home affordance.
         }
     } // end Box
-    } // end CompositionLocalProvider
 }
 
 private const val CONTENT_TYPE_EMPTY = "empty"
