@@ -1798,11 +1798,39 @@ private fun List<WordTimestamp>.toKaraokeSyllables(phonetics: List<String?>): Li
                 ?.let { minOf(rawEnd, it) }
                 ?: rawEnd
 
+        // ── Trailing-space padding on word-synced romanisation ─────────────────
+        //
+        // The mocharealm KaraokeLineText renderer lays each syllable out as a
+        // column (phonetic Text on top, content Text below) and arranges the
+        // columns in a Row. The Row's inter-column gap is whatever intrinsic
+        // width each column has — there's no extra `Arrangement.spacedBy`
+        // between phonetic words. So when the lyric is in a script whose glyphs
+        // are narrow (Hindi Devanagari, in particular), each syllable column is
+        // narrow, and the per-syllable phonetic Texts sit visually glued to
+        // each other: "kya khwaab khayaal" reads as "kyakhwaabkhayaal".
+        //
+        // Appending a trailing regular space to each non-null phonetic forces
+        // the phonetic Text's intrinsic width to include that space, which the
+        // Row's layout then has to honour — pushing the next syllable's column
+        // further to the right and giving the romanisation the breathing room
+        // the user explicitly asked for. Line-synced lyrics are unaffected
+        // because they go through [buildLineSyncedLrcLine] (the phonetic
+        // string is folded into the translation slot as a single line of
+        // text, where trailing spaces would be invisible anyway because the
+        // slot wraps as one paragraph).
+        val rawPhonetic = phonetics.getOrNull(index)
+        val paddedPhonetic =
+            if (rawPhonetic.isNullOrEmpty()) {
+                rawPhonetic
+            } else {
+                "$rawPhonetic "
+            }
+
         KaraokeSyllable(
             content = word.text,
             start = start,
             end = end.coerceAtLeast(start + MIN_KARAOKE_SYLLABLE_DURATION_MS),
-            phonetic = phonetics.getOrNull(index),
+            phonetic = paddedPhonetic,
         )
     }
 

@@ -121,6 +121,7 @@
     <string name="featured_album_badge">FEATURED ALBUM</string>
     <string name="other_versions">Other versions</string>
     <string name="liked_songs">Liked songs</string>
+    <string name="favorites">Favorites</string>
     <string name="downloaded_songs">Downloaded songs</string>
     <string name="playlist_is_empty">The playlist is empty</string>
     <string name="remove_download_playlist_confirm">Do you really want to remove all \"%s\" playlist songs from the Downloaded Songs storage?</string>
