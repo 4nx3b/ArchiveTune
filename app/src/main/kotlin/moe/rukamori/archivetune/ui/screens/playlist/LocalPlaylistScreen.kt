@@ -1439,57 +1439,11 @@ fun LocalPlaylistScreen(
         )
         } // end if (!liquidGlassHeaderActive || selection || isSearching)
 
-        // Bottom fade overlay — vertical gradient that fades the bottom of
-        // the scrolling playlist list into the page background, matching
-        // the iOS Music reference screenshot. Only rendered while the user
-        // has scrolled past the hero header so the first frame doesn't
-        // show a stray fade band over the hero's Play/Shuffle/Download
-        // pills. Skipped during search/selection so the overlay doesn't
-        // interfere with the search/selection toolbar at the bottom.
-        //
-        // Fade anchoring (per user feedback on the mini-player straight-cut
-        // issue): when the floating MiniPlayer bar is on screen, the fade
-        // band extends down THROUGH the mini player's area (the mini player
-        // is rendered outside this screen so it overlays the fade), instead
-        // of ending in a sharp horizontal cut at the TOP of the mini player.
-        // When no mini player is visible (nothing playing / dismissed), the
-        // fade anchors at the home-icon dock pill as before.
-        val bottomInset = LocalPlayerAwareWindowInsets.current
-            .asPaddingValues()
-            .calculateBottomPadding()
-        val miniPlayerVisible = LocalMiniPlayerVisible.current
-        val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
-        if (!isSearching && !selection && isListScrolling) {
-            BottomFadeOverlay(
-                visible = true,
-                fadeColor = MaterialTheme.colorScheme.surface,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(bottom = fadeBottomPadding),
-            )
-        }
-
-        // Floating Home dock button — circular frosted-glass pill at the
-        // bottom-start corner, matching the iOS Music reference screenshot.
-        // Visible only while the user has scrolled past the hero header so
-        // it doesn't compete with the hero's action row. Tapping it jumps
-        // straight to the Home tab. Skipped during search/selection so it
-        // doesn't overlap the selection toolbar.
-        if (!isSearching && !selection && isListScrolling) {
-            LibraryHomeDockButton(
-                onClick = { navController.backToMain() },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(
-                            start = 16.dp,
-                            bottom = bottomInset + 12.dp,
-                        ),
-                backdrop = artworkBackdrop.takeIf { layerBackdropActive },
-            )
-        }
+        // Bottom fade overlay + Floating Home dock button were removed per
+        // user request (2026-08-28). The scrollable list now ends cleanly at
+        // the bottom of the page surface; the floating liquid-glass "Home"
+        // dock button at bottom-start is also gone — both were reported as
+        // visual clutter on the playlist detail screens.
 
         SnackbarHost(
             hostState = snackbarHostState,

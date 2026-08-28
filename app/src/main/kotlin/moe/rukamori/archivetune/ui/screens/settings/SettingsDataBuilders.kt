@@ -455,7 +455,8 @@ fun buildSettingsGroups(
                 SettingsChild("Kugou Lyrics", "kugou", listOf("kugou", "kugou lyrics", "kugou provider", "kugou music")),
                 SettingsChild("Unison Lyrics", "unison_lyrics", listOf("unison", "unison lyrics", "unison provider")),
                 SettingsChild("Simpmusic Lyrics", "simpmusic_lyrics", listOf("simpmusic", "simpmusic lyrics", "simpmusic provider")),
-                SettingsChild("Megalobiz Lyrics", "megalobiz_lyrics", listOf("megalobiz", "megalobiz lyrics", "megalobiz provider")),
+                // Megalobiz Lyrics removed per user request (2026-08-28):
+                // "Remove megalobiz lyrics provider".
                 SettingsChild("Paxsenix Lyrics", "paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics", "paxsenix provider")),
                 SettingsChild("Paxsenix Stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix statistics", "paxsenix analytics")),
                 SettingsChild("First lyrics provider", "first_lyrics_provider", listOf("first lyrics", "lyrics priority", "primary lyrics provider", "lyrics order")),
@@ -492,7 +493,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
                 SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
                 SettingsChild("Enable SimpMusic lyrics", "enable_simpmusic_lyrics", listOf("simpmusic", "simp music", "simpmusic lyrics")),
-                SettingsChild("Enable Megalobiz lyrics", "enable_megalobiz_lyrics", listOf("megalobiz", "megalobiz lyrics")),
+                // Megalobiz lyrics removed per user request (2026-08-28).
                 SettingsChild("Enable Paxsenix lyrics", "enable_paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics")),
                 SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
                 SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),

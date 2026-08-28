@@ -662,42 +662,11 @@ fun LocalSongScreen(
         }
         } // end Scaffold content lambda
 
-        // Bottom fade overlay — vertical gradient that fades the bottom of
-        // the scrolling local-files list into the page background, matching
-        // the iOS Music reference screenshot. Only rendered while the user
-        // has scrolled past the hero header so the first frame doesn't show
-        // a stray fade band over the hero's Play/Shuffle/Settings pills.
-        //
-        // When a mini player is visible, the fade anchors THROUGH the mini
-        // player's area (instead of cutting off at the top of the mini player)
-        // so there's no straight-cut horizontal line at the mini player's top
-        // edge. When no mini player is visible, the fade anchors at the
-        // home-icon dock pill as before.
-        val bottomInset =
-            LocalPlayerAwareWindowInsets.current
-                .asPaddingValues()
-                .calculateBottomPadding()
-        val miniPlayerVisible = LocalMiniPlayerVisible.current
-        val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
-        if (isListScrolling) {
-            BottomFadeOverlay(
-                visible = true,
-                fadeColor = MaterialTheme.colorScheme.surface,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(bottom = fadeBottomPadding),
-            )
-            LibraryHomeDockButton(
-                onClick = { navController.backToMain() },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, bottom = bottomInset + 12.dp),
-                backdrop = pillBackdrop,
-            )
-        }
+        // Bottom fade overlay + Floating Home dock button were removed per
+        // user request (2026-08-28). The scrollable list now ends cleanly at
+        // the bottom of the page surface; the floating liquid-glass "Home"
+        // dock button at bottom-start is also gone — both were reported as
+        // visual clutter on the playlist detail screens.
     } // end Box
     } // end CompositionLocalProvider
 }
