@@ -157,11 +157,16 @@ fun TopPlaylistScreen(
         // screen. Matches the LocalPlaylistScreen / SpotifyPlaylistScreen
         // pattern.
         BackHandler {
-            if (!navController.navigateUp()) {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
+            // Wrapped in try/catch so the gesture never silently fails.
+            try {
+                if (!navController.navigateUp()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
+            } catch (_: Exception) {
+                navController.popBackStack()
             }
         }
     }

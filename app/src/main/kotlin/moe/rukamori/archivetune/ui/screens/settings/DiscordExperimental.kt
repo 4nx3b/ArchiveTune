@@ -106,7 +106,7 @@ fun DiscordExperimental(
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(onClick = navController::navigateUp) {
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }

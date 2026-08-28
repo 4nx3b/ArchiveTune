@@ -180,7 +180,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

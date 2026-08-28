@@ -286,10 +286,21 @@ fun OnlinePlaylistScreen(
         // default tab is Library, the back stack starts at "library" and
         // `popUpTo("home")` would throw IllegalArgumentException.
         BackHandler {
-            navController.navigate("library") {
-                launchSingleTop = true
-                restoreState = true
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
+            // Wrapped in try/catch so ANY unexpected
+            // IllegalArgumentException / IllegalStateException from the
+            // underlying NavController (e.g. start destination ID not yet
+            // attached to the graph during fast back-to-back navigation)
+            // still lets the user escape the page via the catch-branch
+            // `popBackStack()` fallback rather than leaving the gesture
+            // silently swallowed.
+            try {
+                navController.navigate("library") {
+                    launchSingleTop = true
+                    restoreState = true
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                }
+            } catch (_: Exception) {
+                navController.popBackStack()
             }
         }
     }

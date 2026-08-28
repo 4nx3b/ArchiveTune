@@ -208,7 +208,7 @@ private fun IconScreenContent(
                     Text(text = stringResource(R.string.app_icon_subtitle))
                 },
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = onNavigateUp,
                             onLongClick = onNavigateHome,
