@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.screens.playlist
 import android.annotation.SuppressLint
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -92,6 +93,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -303,15 +305,10 @@ fun LocalPlaylistScreen(
             selection = false
         }
     } else {
-        // Explicit BackHandler so the predictive back gesture lands on the
-        // Library tab when the previous back-stack entry is not a main
-        // screen (e.g. when the user entered this screen directly via a
-        // deep link from Home). Calling [navigateUp] first preserves the
-        // natural back stack; if that returns false (no previous entry to
-        // pop), we explicitly navigate to the Library tab so the user
-        // always lands somewhere meaningful instead of being dropped on
-        // Home. Matches the SpotifyPlaylistScreen pattern.
-        BackHandler {
+        // Register against the predictive-back dispatcher so Android's edge
+        // gesture follows the same path as the header's back button.
+        PredictiveBackHandler {
+            it.collect()
             if (!navController.navigateUp()) {
                 navController.navigate("library") {
                     launchSingleTop = true
