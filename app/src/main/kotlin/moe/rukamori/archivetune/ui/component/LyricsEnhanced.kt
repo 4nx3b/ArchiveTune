@@ -163,9 +163,7 @@ import kotlin.math.roundToLong
 // "lyrics scroll before they're even finished". This matches the same fix already applied to
 // LyricsV2.kt in commit df8249408 ("fix(lyrics,ui): romanisation below lyric, V2 sync, iOS-style
 // hero redesign") but it was never ported to Enhanced. Both constants are now 0 so the line
-// switch happens exactly at the next line's start. The library's own interlude threshold
-// (LINE_SYNCED_INTERLUDE_MIN_GAP_MS) still kicks in for genuine instrumental breaks, so this
-// doesn't affect silence handling.
+// switch happens exactly at the next line's start.
 private const val LRC_LEAD_MS = 0L
 private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
@@ -213,15 +211,10 @@ private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 // ── Line-synced (LRC) focus windows ──
 // KaraokeLyricsView resolves the focused line as "the line whose [start, end) contains the
 // position", and falls back to the *next* line whenever the position lands between two windows.
-// These constants exist to make sure that fallback only ever fires on a genuine instrumental
-// break; see the long comment in buildSyncedLyrics.
+// We butt each line's end against the next line's start (see buildSyncedLyrics) so that
+// fallback never fires on a normal track — the library's first predicate always matches and
+// always agrees with our own findLastStartedLineIndex, which is what drives the auto-scroll.
 //
-// How long a line may keep focus after its own timestamp before it is allowed to hand over to a
-// breathing-dots interlude. Below this the line simply holds until the next one starts.
-private const val LINE_SYNCED_MAX_FOCUS_HOLD_MS = 5_000L
-// Mirrors the library's own interlude threshold: it draws the breathing dots only when the silence
-// between two lines is strictly longer than this.
-private const val LINE_SYNCED_INTERLUDE_MIN_GAP_MS = 5_000L
 // The last line has no successor to butt against, so give it a fixed window.
 private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // Minimum backward position jump (in ms) that we treat as a "reset" trigger —
@@ -362,8 +355,19 @@ fun LyricsEnhanced(
                 ?.lyrics
         }
     val showTranslations =
-        remember(currentLyrics?.source) {
-            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+        remember(currentLyrics?.source, romanizationPreferences.showsRomanization) {
+            // Romanisation for line-synced LRC is folded into the translation slot (see
+            // buildLineSyncedLrcLine) because the library's SyncedLineText renderer has no
+            // separate phonetic slot below the lyric. The library only renders the translation
+            // slot when `showTranslation = true` is passed at the KaraokeLyricsView call site,
+            // so without forcing this on whenever romanisation is enabled, the romanisation
+            // silently disappears on any non-AI-translated line-synced track — most visibly
+            // Hindi line-synced LRC, where the AI/built-in romanisation is the only thing in
+            // the slot and the lyrics source is not AI_TRANSLATION. Word-synced lyrics are
+            // unaffected because their romanisation rides the per-syllable `phonetic` slot
+            // (showPhonetic = true), independent of showTranslation.
+            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value ||
+                romanizationPreferences.showsRomanization
         }
 
     // Restart tick: bumps when the SAME song restarts (auto-repeat, manual replay, seek-to-zero)
@@ -1953,30 +1957,26 @@ private fun buildSyncedLyrics(
             //         ?: lines.indexOfFirst { it.start > pos }   // ← the *upcoming* line
             //         ?: lines.lastIndex
             // so any instant that falls in a gap between one line's end and the next line's start
-            // resolves to the line that has NOT started yet. This branch used to clamp `end` to
-            // start + 4s whenever the gap to the next line exceeded 3s, which manufactured exactly
-            // such a gap on every slow line and every verse boundary: 4s into a line with a 9s gap
-            // the focus, the scale-up and the spring placement all moved to the next line while the
-            // current one was still being sung. That is the "line-synced lyrics in Enhanced style
-            // scroll way too soon" report, and it is Enhanced-only because LyricsV2 resolves the
-            // active line itself (last line whose start has passed) instead of asking the library.
+            // resolves to the line that has NOT started yet. The previous version of this code
+            // capped `end` at `entry.time + 5_000L` (5s) whenever the gap
+            // to the next line exceeded 10s, manufacturing exactly such a gap on every verse
+            // boundary and long instrumental break. The library then resolved to the *upcoming*
+            // line during that gap — visibly scrolling to the next line while the current one was
+            // still being sung. The 5s cap was meant to give the library's breathing-dots interlude
+            // a gap to fire in, but the interlude is decorative and the early scroll it caused was
+            // the user-visible regression: "line-synced lyrics scroll way too soon", most obvious
+            // on J-pop tracks whose verse gaps routinely exceed 10s. Enhanced was also the only
+            // renderer affected by this — LyricsV2 resolves the active line itself (last line
+            // whose start has passed), so it never asks the library and never sees the fallback.
             //
             // Butting each line's end against the next line's start removes the gaps entirely, so
             // the library's first predicate always matches and always agrees with
-            // findLastStartedLineIndex — which is what drives our own auto-scroll. The two can no
-            // longer disagree, and a line stays focused for as long as it is the most recent one,
-            // exactly like Apple Music holds the last sung line through an instrumental break.
+            // findLastStartedLineIndex — which is what drives our own auto-scroll. A line stays
+            // focused for as long as it is the most recent one, exactly like Apple Music holds
+            // the last sung line through an instrumental break.
             val lineEnd =
                 if (nextEntry != null && nextEntry.time > entry.time) {
-                    val handOver = entry.time + LINE_SYNCED_MAX_FOCUS_HOLD_MS
-                    if (nextEntry.time - handOver > LINE_SYNCED_INTERLUDE_MIN_GAP_MS) {
-                        // A real instrumental break. Hand focus over so the library's breathing-dots
-                        // interlude — which only triggers when `next.start - previous.end` exceeds
-                        // its own 5s threshold — still gets to run through the silence.
-                        handOver.toInt()
-                    } else {
-                        nextEntry.time.toInt()
-                    }
+                    nextEntry.time.toInt()
                 } else {
                     (entry.time + LINE_SYNCED_TRAILING_LINE_DURATION_MS).toInt()
                 }
