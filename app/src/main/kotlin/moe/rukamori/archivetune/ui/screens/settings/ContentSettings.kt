@@ -315,11 +315,7 @@ fun ContentSettings(
     }
 
     TopAppBar(
-        title = {
-            FrostedHeaderPill {
-                Text(stringResource(R.string.content))
-            }
-        },
+        title = {},
         navigationIcon = {
             FrostedHeaderPill {
                 IconButton(
@@ -332,7 +328,7 @@ fun ContentSettings(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.settings),
+                    text = stringResource(R.string.content),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
