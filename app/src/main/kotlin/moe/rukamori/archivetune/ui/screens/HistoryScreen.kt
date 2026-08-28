@@ -127,6 +127,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
+import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
@@ -444,7 +445,17 @@ fun HistoryScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp, start = 4.dp),
+                            // Per user request (2026-08-28 follow-up):
+                            // "Shift it to the left and align it with the
+                            // red play pill". The AppleMusicPlaylistHero
+                            // above uses `padding(start = 20.dp, ...)` for
+                            // its inner content (so the play pill's left
+                            // edge sits at 20dp from the page edge). Using
+                            // the same 20dp start padding here places the
+                            // HistorySourcePill's left edge at the same
+                            // 20dp inset — visually aligned with the play
+                            // pill above it.
+                            .padding(top = 12.dp, start = 20.dp, end = 20.dp),
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1474,8 +1485,19 @@ private fun HistorySourcePill(
     // If only one source is available (e.g. user is not logged in to
     // InnerTube so Remote is hidden), the pill still renders but the
     // dropdown has only one entry — tapping it is a no-op.
+    //
+    // Per user request (2026-08-28 follow-up): "The local switch pill in
+    // history page is still in the middle. Shift it to the left and align
+    // it with the red play pill and also change the accent like the
+    // play/shuffle button too." The accent is switched from
+    // `colorScheme.primary` to `AppleMusicStyleAccentColor` (the same
+    // red/pink used by Play and Shuffle in `AppleMusicPlaylistHero`),
+    // and the outer Box no longer forces `.fillMaxWidth()` + center
+    // alignment — the caller's Row (`Arrangement.Start` + start padding)
+    // now naturally anchors the pill at the same left inset as the play
+    // pill.
     var expanded by remember { mutableStateOf(false) }
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = AppleMusicStyleAccentColor
     val onBackgroundColor = MaterialTheme.colorScheme.onBackground
     val containerColor = onBackgroundColor.copy(alpha = 0.06f)
     val currentLabel =
@@ -1490,14 +1512,15 @@ private fun HistorySourcePill(
     Box(
         modifier =
             Modifier
-                .fillMaxWidth()
-                // Align the source pill with the Play/Shuffle pill row
-                // above (AppleMusicPlaylistHero has
-                // `padding(start = 20.dp, end = 20.dp, ...)`). Without
-                // this horizontal padding the pill extends to the screen
-                // edge while Play/Shuffle are inset by 20dp on each side.
-                .padding(horizontal = 20.dp),
-        contentAlignment = Alignment.Center,
+                // Left-anchor the source pill at the same horizontal inset
+                // as the Play/Shuffle pill row inside
+                // AppleMusicPlaylistHero (`padding(start = 20.dp, ...)`).
+                // The parent Row's own `start = 20.dp` padding (set by
+                // the caller) places the pill's left edge at exactly
+                // 20dp from the screen's left edge — matching the play
+                // pill's left edge.
+                .wrapContentWidth(align = Alignment.Start),
+        contentAlignment = Alignment.TopStart,
     ) {
         Box {
             Surface(
@@ -1551,7 +1574,7 @@ private fun HistorySourcePill(
                 availableSources.forEach { source ->
                     val label =
                         stringResource(
-                            if (currentSource == HistorySource.LOCAL) {
+                            if (source == HistorySource.LOCAL) {
                                 R.string.local_history
                             } else {
                                 R.string.remote_history

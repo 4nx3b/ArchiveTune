@@ -156,11 +156,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.navigation_bar_settings_title))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -173,7 +169,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.navigation_bar_settings_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

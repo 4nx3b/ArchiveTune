@@ -274,21 +274,7 @@ fun AodCustomizedScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.aod_customize_title),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
-                subtitle = {
-                    Text(
-                        text = stringResource(R.string.aod_customize_subtitle),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -301,7 +287,7 @@ fun AodCustomizedScreen(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.aod_customize_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

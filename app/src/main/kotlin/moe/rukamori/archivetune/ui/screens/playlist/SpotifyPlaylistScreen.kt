@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.screens.playlist
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -75,6 +76,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.google.common.collect.ImmutableList
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -317,6 +319,30 @@ fun SpotifyPlaylistScreen(
         BackHandler {
             isSearching = false
             query = TextFieldValue()
+        }
+    } else {
+        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
+        // the Library tab when the user is on a Spotify playlist sub-page —
+        // not on the Home tab. Per user report (2026-08-28): "when I'm in
+        // the library or Spotify page and I use the back navigation gesture
+        // i return to home page instead i should be on the library main
+        // page where it displays recently added and artist and other things".
+        //
+        // Previously: `if (!navController.navigateUp()) { navController.navigate("library") }`
+        // — when the user came from Home (deep-link), the back stack was
+        // [home, spotify_playlist], so navigateUp() returned true and the
+        // user landed on Home, which they did not want.
+        //
+        // Now: ALWAYS redirect to the Library tab on back. We use
+        // popUpTo("home") { saveState = true } to pop everything above Home
+        // (preserving Home's tab state), then navigate to "library" with
+        // launchSingleTop + restoreState.
+        BackHandler {
+            navController.navigate("library") {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo("home") { saveState = true }
+            }
         }
     }
 
