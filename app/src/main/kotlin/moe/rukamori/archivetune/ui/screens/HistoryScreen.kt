@@ -50,9 +50,12 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -99,6 +102,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -382,30 +386,39 @@ fun HistoryScreen(
                         .padding(top = 8.dp),
             )
             if (availableSources.size > 1) {
-                HistorySourceSelector(
-                    currentSource = historySource,
-                    availableSources = availableSources,
-                    onSourceChange = { newSource ->
-                        if (newSource == historySource) return@HistorySourceSelector
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp, start = 4.dp),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HistorySourcePill(
+                        currentSource = historySource,
+                        availableSources = availableSources,
+                        onSourceChange = { newSource ->
+                            if (newSource == historySource) return@HistorySourcePill
 
-                        viewModel.historySource.value = newSource
-                        if (newSource == HistorySource.REMOTE) {
-                            when (remoteHistoryState) {
-                                is RemoteHistoryUiState.Error -> {
-                                    viewModel.fetchRemoteHistory()
-                                }
+                            viewModel.historySource.value = newSource
+                            if (newSource == HistorySource.REMOTE) {
+                                when (remoteHistoryState) {
+                                    is RemoteHistoryUiState.Error -> {
+                                        viewModel.fetchRemoteHistory()
+                                    }
 
-                                is RemoteHistoryUiState.Empty -> {
-                                    viewModel.enqueueSilentFetch()
-                                }
+                                    is RemoteHistoryUiState.Empty -> {
+                                        viewModel.enqueueSilentFetch()
+                                    }
 
-                                else -> {
-                                    Unit
+                                    else -> {
+                                        Unit
+                                    }
                                 }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
         }
     }
@@ -1165,7 +1178,7 @@ private fun HistorySourceDock(
                     }
                 }
                 if (availableSources.size > 1) {
-                    HistorySourceSelector(
+                    HistorySourcePill(
                         currentSource = currentSource,
                         availableSources = availableSources,
                         onSourceChange = onSourceChange,
@@ -1275,53 +1288,123 @@ private fun HistorySectionHeader(
 }
 
 @Composable
-private fun HistorySourceSelector(
+private fun HistorySourcePill(
     currentSource: HistorySource,
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        availableSources.forEachIndexed { index, source ->
-            val checked = source == currentSource
-            ToggleButton(
-                checked = checked,
-                onCheckedChange = {
-                    if (!checked) {
-                        onSourceChange(source)
-                    }
-                },
+    // A single, self-sized (non-fillMaxWidth) pill that mirrors the design
+    // language of [SortHeader] in the playlist page: translucent capsule
+    // shape with a pink accent icon + bold pink label, and a trailing
+    // dropdown chevron. Tapping the pill opens a [DropdownMenu] listing the
+    // available sources (Local / Remote) with a radio-button indicator on
+    // the currently-selected one.
+    //
+    // Previously this control was a full-width two-button ToggleButton row
+    // (see git history), which the user reported as "in the middle" and not
+    // aligned with the hero's Play/Shuffle pills. Replacing it with a single
+    // start-aligned pill that opens a dropdown matches both the visual
+    // rhythm of the redesigned hero (Play/Shuffle/Clear on the left) and
+    // the sort header pill on the playlist page.
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val accent = moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground
+    val containerColor = onBackgroundColor.copy(alpha = 0.06f)
+    val pillShape = RoundedCornerShape(percent = 50)
+
+    Box(modifier = Modifier.padding(vertical = 4.dp)) {
+        Surface(
+            shape = pillShape,
+            color = containerColor,
+            modifier =
+                Modifier
+                    .clip(pillShape)
+                    .height(44.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier =
                     Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                shapes =
-                    when (index) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        availableSources.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    },
-                colors =
-                    ToggleButtonDefaults.toggleButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
+                        .clip(pillShape)
+                        .combinedClickable(
+                            onClick = { menuExpanded = true },
+                            onLongClick = {},
+                        )
+                        .padding(horizontal = 16.dp),
             ) {
+                Icon(
+                    painter = painterResource(R.drawable.history),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(20.dp),
+                )
                 Text(
                     text =
                         stringResource(
-                            if (source == HistorySource.LOCAL) {
+                            if (currentSource == HistorySource.LOCAL) {
                                 R.string.local_history
                             } else {
                                 R.string.remote_history
                             },
                         ),
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .widthIn(max = 160.dp)
+                            .padding(start = 8.dp, end = 4.dp),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.arrow_downward),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            modifier = Modifier.widthIn(min = 172.dp),
+        ) {
+            availableSources.forEach { source ->
+                val isSelected = source == currentSource
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text =
+                                stringResource(
+                                    if (source == HistorySource.LOCAL) {
+                                        R.string.local_history
+                                    } else {
+                                        R.string.remote_history
+                                    },
+                                ),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    trailingIcon = {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (isSelected) {
+                                        R.drawable.radio_button_checked
+                                    } else {
+                                        R.drawable.radio_button_unchecked
+                                    },
+                                ),
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = {
+                        onSourceChange(source)
+                        menuExpanded = false
+                    },
                 )
             }
         }

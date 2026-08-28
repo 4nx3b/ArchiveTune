@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
 
@@ -146,23 +147,34 @@ fun CustomizeBackground(navController: NavController) {
         topBar = {
             MediumFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.customize_background_title),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.customize_background_title),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 subtitle = {
                     Text(text = stringResource(R.string.custom_background_subtitle))
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        modifier = Modifier.padding(start = 5.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.back_button_desc),
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            modifier = Modifier.padding(start = 5.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

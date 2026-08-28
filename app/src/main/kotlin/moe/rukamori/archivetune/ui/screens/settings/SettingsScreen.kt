@@ -60,6 +60,7 @@ import kotlinx.coroutines.FlowPreview
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
@@ -329,19 +330,40 @@ fun SettingsScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.settings),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    // Liquid-glass title pill — matches the redesigned
+                    // HistoryScreen layout where the page title sits inside
+                    // a FrostedHeaderPill so the header reads as a
+                    // translucent capsule rather than a flat text label.
+                    // When no layer backdrop is available the pill falls
+                    // back to a translucent surfaceContainer surface.
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.settings),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.back_button_desc),
+                    // Liquid-glass back pill — back chevron + "Settings"
+                    // label, mirroring the HistoryScreen back+Library pill
+                    // layout. Tapping pops back to the previous destination;
+                    // long-pressing jumps straight to the Home tab.
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

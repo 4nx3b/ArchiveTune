@@ -64,6 +64,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -92,6 +93,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1125,6 +1127,50 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
+        // "Lyrics from [provider]" header overlay. Mirrors the design of the
+        // "Written by" footer overlay below: small secondary color, medium
+        // weight, centered. Rendered as an overlay above the karaoke list
+        // with an alpha fade based on the listState's first-visible-item
+        // scroll offset so the header visually scrolls away with the lyrics
+        // (rather than remaining as a constant watermark). The karaoke
+        // library owns its own LazyColumn so we can't inject items into it;
+        // the alpha-fade overlay is the closest visual match.
+        val providerName = currentLyrics?.providerName.orEmpty()
+        if (providerName.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
+            val sourceAlpha by remember {
+                derivedStateOf {
+                    val firstIdx = listState.firstVisibleItemIndex
+                    val firstOffset = listState.firstVisibleItemScrollOffset
+                    val firstItemSize =
+                        listState.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1
+                    if (firstIdx > 0) 0f
+                    else (1f - (firstOffset.toFloat() / firstItemSize)).coerceIn(0f, 1f)
+                }
+            }
+            val animatedSourceAlpha by animateFloatAsState(
+                targetValue = sourceAlpha,
+                animationSpec = tween(durationMillis = 220),
+                label = "lyricsSourceAlphaEnhanced",
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .graphicsLayer { alpha = animatedSourceAlpha },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lyrics_from_source, providerName),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1312,6 +1358,53 @@ fun LyricsEnhanced(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // "Written by [artists]" footer overlay. Mirrors the design of the
+        // "Lyrics from" header overlay above: small secondary color, medium
+        // weight, centered. Rendered as an overlay at the bottom of the
+        // lyrics Box so it visually closes the lyrics block. The alpha
+        // fades in as the user scrolls toward the end of the lyrics (so it
+        // doesn't compete with the active line at the top). The artist list
+        // is used as a proxy for composer credits (MediaMetadata does not
+        // track formal composer credits).
+        mediaMetadata?.let { metadata ->
+            val writersLine = metadata.artists.joinToString { it.name }.trim()
+            if (writersLine.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
+                val footerAlpha by remember {
+                    derivedStateOf {
+                        val layoutInfo = listState.layoutInfo
+                        val totalItems = layoutInfo.totalItemsCount
+                        val lastVisibleIdx = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        if (totalItems == 0) 0f
+                        else ((lastVisibleIdx + 1).toFloat() / totalItems.toFloat()).coerceIn(0f, 1f)
+                    }
+                }
+                val animatedFooterAlpha by animateFloatAsState(
+                    targetValue = footerAlpha,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "lyricsFooterAlphaEnhanced",
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 16.dp)
+                            .graphicsLayer { alpha = animatedFooterAlpha },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.written_by, writersLine),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

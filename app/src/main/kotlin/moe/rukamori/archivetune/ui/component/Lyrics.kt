@@ -806,39 +806,22 @@ fun Lyrics(
                 )
             }
         } else {
-            if (lyricsProviderName.isNotBlank()) {
-                val sourceAlpha by remember {
-                    derivedStateOf {
-                        val firstIdx = lazyListState.firstVisibleItemIndex
-                        val firstOffset = lazyListState.firstVisibleItemScrollOffset
-                        val firstItemSize = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1
-                        if (firstIdx > 0) 0f
-                        else (1f - (firstOffset.toFloat() / firstItemSize)).coerceIn(0f, 1f)
-                    }
-                }
-                val animatedSourceAlpha by animateFloatAsState(
-                    targetValue = sourceAlpha,
-                    animationSpec = tween(durationMillis = 220),
-                    label = "lyricsSourceAlpha",
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .alpha(animatedSourceAlpha),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            // "Lyrics from [provider]" header is rendered as the FIRST item of
+            // the LazyColumn below (not as a floating overlay) so it scrolls
+            // naturally with the lyrics — the user requested this behave "as
+            // if it's a lyrics line itself" rather than a constant watermark
+            // that fades on scroll. The visual design matches the "Written by"
+            // footer item at the end of the list (same color, weight, size,
+            // alignment) so the two attribution labels read as a matched
+            // pair bracketing the lyrics.
+            //
+            // "Written by [artists]" is rendered as the LAST item of the
+            // LazyColumn for the same reason — it scrolls naturally with the
+            // lyrics and visually closes the lyrics block. We use the song's
+            // artist list (composer credits are not tracked in MediaMetadata)
+            // as a proxy for the "written by" attribution, matching the
+            // user's previous request to surface this credit at the bottom
+            // of the lyrics page.
             LazyColumn(
                 state = lazyListState,
                 contentPadding =
@@ -886,6 +869,34 @@ fun Lyrics(
             ) {
                 val displayedCurrentLineIndex =
                     if (isSeeking || isSelectionModeActive) deferredCurrentLineIndex else currentLineIndex
+
+                // "Lyrics from [provider]" header item. Rendered as a regular
+                // LazyColumn item so it scrolls naturally with the lyrics. The
+                // visual style mirrors the "Written by" footer item below:
+                // small secondary color, medium weight, centered. Skipping if
+                // the provider name is blank (e.g. embedded lyrics have no
+                // provider attribution).
+                if (lyricsProviderName.isNotBlank() && lyrics != null) {
+                    item(key = "lyrics_source_header", contentType = "lyrics_attribution") {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.secondary,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
 
                 if (lyrics == null) {
                     item {
@@ -2438,6 +2449,41 @@ fun Lyrics(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // "Written by [artists]" footer item. Rendered as the LAST
+                // item of the LazyColumn so it scrolls naturally with the
+                // lyrics and visually closes the lyrics block. The visual
+                // style mirrors the "Lyrics from [provider]" header item
+                // at the top of the list (small secondary color, medium
+                // weight, centered) so the two attribution labels read as
+                // a matched pair bracketing the lyrics. We use the song's
+                // artist list as the credit source — MediaMetadata does not
+                // track formal composer credits, so the artist list is the
+                // best available proxy for "who wrote this song".
+                mediaMetadata?.let { metadata ->
+                    val writersLine = metadata.artists.joinToString { it.name }.trim()
+                    if (writersLine.isNotBlank()) {
+                        item(key = "lyrics_writers_footer", contentType = "lyrics_attribution") {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 24.dp, bottom = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.written_by, writersLine),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
