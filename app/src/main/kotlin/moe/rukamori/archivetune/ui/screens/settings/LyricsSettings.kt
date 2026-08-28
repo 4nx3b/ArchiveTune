@@ -551,14 +551,8 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO -> "BetterLyrics Portato"
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
         PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
-        PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"
-        PreferredLyricsProvider.PAXSENIX_NETEASE -> "Paxsenix: NetEase"
-        PreferredLyricsProvider.PAXSENIX_SPOTIFY -> "Paxsenix: Spotify"
-        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"
-        PreferredLyricsProvider.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
+        PreferredLyricsProvider.BINI_LYRICS -> "BiniLyrics"
         PreferredLyricsProvider.UNISON -> "Unison"
-        PreferredLyricsProvider.TIDAL -> "Tidal"
-        PreferredLyricsProvider.DEEZER -> "Deezer"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
 

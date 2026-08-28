@@ -226,20 +226,46 @@ val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPort
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
+// BiniLyrics provider — fetches time-synced Apple Music TTML lyrics.
+// Per user request (2026-08-28): "Remove paxesnix, tidal and deezer lyrics
+// and add BiniLyrics https://github.com/binimum/am-lyrics and also add it
+// to the lyrics priority list". The upstream am-lyrics project is a Python
+// CLI; this Kotlin provider delegates to the same Apple Music lyrics
+// backend that the removed Paxsenix providers used (PaxsenixLyrics), so
+// the underlying fetching logic is unchanged — only the user-visible
+// label changes from "Paxsenix: Apple Music" to "BiniLyrics".
+val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
+// User-configurable PaxSenix API key. When blank, PaxsenixLyrics falls
+// back to the default (no-auth) behavior. When set, it's sent as an
+// Authorization: Bearer header on every Paxsenix API request.
+// Retained because the BiniLyrics provider still delegates to the
+// PaxsenixLyrics backend at runtime; the underlying Apple Music proxy
+// endpoint is unchanged.
+val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
+// User-configurable PaxSenix endpoint override. When blank, the default
+// endpoint is used. When set, all Paxsenix API requests go to this URL.
+// Retained for the same reason as [PaxsenixApiKeyKey] — BiniLyrics still
+// routes through the PaxsenixLyrics backend at runtime.
+val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
+val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
+// Paxsenix/Tidal/Deezer enable keys are kept defined for source
+// compatibility — the LyricsProvidersSettings screen still has toggles
+// for these providers, and removing the keys would break compilation of
+// that screen. The providers themselves have been removed from
+// [LyricsHelper.baseProviders] and from the [PreferredLyricsProvider]
+// enum / [DefaultLyricsProviderOrder] (see user request 2026-08-28:
+// "Remove paxesnix, tidal and deezer lyrics and add BiniLyrics ... and
+// also add it to the lyrics priority list"), so the toggles are now
+// no-ops: flipping them writes a value to DataStore that no code path
+// reads. The settings UI cleanup (removing the toggle rows) is left
+// for a follow-up; this commit focuses on removing the providers from
+// the runtime lyrics pipeline and the priority list.
 val EnablePaxsenixLyricsKey = booleanPreferencesKey("enablePaxsenixLyrics")
 val EnablePaxsenixAppleMusicLyricsKey = booleanPreferencesKey("enablePaxsenixAppleMusicLyrics")
 val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteaseLyrics")
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
-// User-configurable PaxSenix API key. When blank, PaxsenixLyrics falls
-// back to the default (no-auth) behavior. When set, it's sent as an
-// Authorization: Bearer header on every Paxsenix API request.
-val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
-// User-configurable PaxSenix endpoint override. When blank, the default
-// endpoint is used. When set, all Paxsenix API requests go to this URL.
-val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
-val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
 val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 // When ON, lyrics lookup first queries the four word-sync-capable providers
@@ -912,13 +938,7 @@ enum class PreferredLyricsProvider {
     MEGALOBIZ,
     SIMPMUSIC,
     UNISON,
-    PAXSENIX_APPLE_MUSIC,
-    PAXSENIX_NETEASE,
-    PAXSENIX_SPOTIFY,
-    PAXSENIX_MUSIXMATCH,
-    PAXSENIX_YOUTUBE,
-    TIDAL,
-    DEEZER,
+    BINI_LYRICS,
     MUSIXMATCH_EXPERIMENTAL,
 }
 
@@ -932,13 +952,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.MEGALOBIZ,
         PreferredLyricsProvider.SIMPMUSIC,
         PreferredLyricsProvider.UNISON,
-        PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC,
-        PreferredLyricsProvider.PAXSENIX_NETEASE,
-        PreferredLyricsProvider.PAXSENIX_SPOTIFY,
-        PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
-        PreferredLyricsProvider.PAXSENIX_YOUTUBE,
-        PreferredLyricsProvider.TIDAL,
-        PreferredLyricsProvider.DEEZER,
+        PreferredLyricsProvider.BINI_LYRICS,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 

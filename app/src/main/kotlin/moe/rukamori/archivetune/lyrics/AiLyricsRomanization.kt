@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -141,17 +142,43 @@ object AiLyricsRomanization {
         val (enabled) = rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
         val (auto) = rememberPreference(AutoAiRomanizeLyricsKey, defaultValue = false)
         val (excluded) = rememberPreference(AiRomanizeExcludedLanguagesKey, defaultValue = emptySet())
+        // Per user request (2026-08-28): "Even when I've excluded some
+        // languages like hindi from auto ai translation it still translates
+        // automatically." For LINE-SYNCED lyrics, AI romanisation is folded
+        // into the translation slot (see `buildLineSyncedLrcLine` in
+        // LyricsEnhanced.kt — `SyncedLineText` has no separate phonetic
+        // slot below the lyric, so the romanisation paragraph lands in the
+        // translation slot). The user sees this romanisation appear where
+        // they expect a translation and reports it as "Hindi is still being
+        // translated".
+        //
+        // To honour the user's mental model ("if I exclude Hindi from auto
+        // translation, Hindi shouldn't translate"), we ALSO exclude from
+        // romanisation any language the user has ticked in the
+        // "Don't auto translate these languages" multi-select — not just
+        // the "Don't romanise these languages" multi-select. Both settings
+        // use the same code space (TranslatorLang.code in
+        // assets/translator_languages.json), so the union is well-defined.
+        //
+        // For word-synced lyrics this is a no-op in practice — they use
+        // the per-syllable `phonetic` slot, so excluding a language here
+        // would only suppress the romanisation row above the lyric, not
+        // affect translation rendering at all.
+        val (autoTranslateExcluded) = rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+        val mergedExcluded = remember(excluded, autoTranslateExcluded) {
+            excluded + autoTranslateExcluded
+        }
         val provider by rememberEnumPreference(AiProviderKey, AiProvider.NONE)
         val (apiKey) = rememberPreference(AiApiKeyKey, defaultValue = "")
         val (customEndpoint) = rememberPreference(AiCustomEndpointKey, defaultValue = "")
         val (selectedModel) = rememberPreference(AiSelectedModelKey, defaultValue = "")
         val (customModel) = rememberPreference(AiCustomModelKey, defaultValue = "")
 
-        return remember(enabled, auto, excluded, provider, apiKey, customEndpoint, selectedModel, customModel) {
+        return remember(enabled, auto, mergedExcluded, provider, apiKey, customEndpoint, selectedModel, customModel) {
             Settings(
                 enabled = enabled,
                 auto = auto,
-                excludedLanguages = excluded,
+                excludedLanguages = mergedExcluded,
                 config =
                     AiServiceConfig(
                         provider = provider,
