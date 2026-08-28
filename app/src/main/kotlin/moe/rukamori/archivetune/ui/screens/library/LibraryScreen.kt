@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -58,8 +57,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -128,10 +125,6 @@ fun LibraryScreen(navController: NavController) {
             initialPage = libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0,
         ) { libraryFilters.size }
 
-    val currentFilter = libraryFilters.getOrElse(pagerState.currentPage) { LibraryFilter.LIBRARY }
-
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
 
@@ -179,7 +172,6 @@ fun LibraryScreen(navController: NavController) {
                         ),
                     ),
         ) {
-            val tabListState = rememberLazyListState()
             val coroutineScope = rememberCoroutineScope()
 
             LaunchedEffect(defaultFilter, libraryFilters) {
@@ -190,28 +182,17 @@ fun LibraryScreen(navController: NavController) {
                 }
             }
 
-            // Sync Pager -> Preference & lazy list centering
-            LaunchedEffect(pagerState.currentPage, libraryFilters) {
-                val targetPage = pagerState.currentPage.coerceIn(0, libraryFilters.lastIndex)
-                val targetFilter = libraryFilters.getOrElse(targetPage) { LibraryFilter.LIBRARY }
-
-                // Centering the tab chip scroll alignment
-                val tabWidth =
-                    when (targetFilter) {
-                        LibraryFilter.LIBRARY -> 116.dp
-                        LibraryFilter.PLAYLISTS -> 132.dp
-                        LibraryFilter.SPOTIFY -> 168.dp
-                        LibraryFilter.SONGS -> 102.dp
-                        LibraryFilter.ARTISTS -> 116.dp
-                        LibraryFilter.ALBUMS -> 110.dp
-                        else -> 116.dp
-                    }
-                val screenWidth = configuration.screenWidthDp.dp
-                val targetOffsetDp = (screenWidth - tabWidth) / 2
-                val targetOffsetPx = with(density) { targetOffsetDp.roundToPx() }
-
-                tabListState.animateScrollToItem(targetPage, scrollOffset = -targetOffsetPx)
-            }
+            // ── Category pills removed ──────────────────────────────────────────
+            // The Library/Playlists/Spotify/Songs/Artists/Albums segmented-control
+            // row that lived here was removed per user request (2026-08-28). The
+            // underlying HorizontalPager is preserved so sub-screens remain
+            // reachable via the LibraryMixScreen category rows (Playlists,
+            // Artists, Favorites, Downloads, History, Spotify) and their
+            // `onTabSelected` callbacks.
+            //
+            // The Spotify tab is now reachable from the new "Spotify" row
+            // in the redesigned LibraryMixScreen (visible only when
+            // `showSpotifyPlaylists` is on).
 
             Box(
                 modifier =
@@ -241,6 +222,7 @@ fun LibraryScreen(navController: NavController) {
                                     null
                                 },
                             selectedTagIds = activeSelectedTagIds,
+                            showSpotify = showSpotifyPlaylists,
                             onTabSelected = { targetFilter ->
                                 coroutineScope.launch {
                                     val targetPage = libraryFilters.indexOf(targetFilter)
@@ -307,53 +289,6 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
                 }
-                }
-
-                LazyRow(
-                    state = tabListState,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    items(
-                        items = libraryFilters,
-                        key = { filter -> filter.name },
-                        contentType = { "library_filter_chip" },
-                    ) { filter ->
-                        val page = libraryFilters.indexOf(filter)
-                        val label =
-                            when (filter) {
-                                LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
-                                LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
-                                LibraryFilter.SPOTIFY -> stringResource(R.string.spotify_playlists)
-                                LibraryFilter.SONGS -> stringResource(R.string.songs)
-                                LibraryFilter.ARTISTS -> stringResource(R.string.artists)
-                                LibraryFilter.ALBUMS -> stringResource(R.string.albums)
-                            }
-                        val iconRes =
-                            when (filter) {
-                                LibraryFilter.LIBRARY -> R.drawable.graphic_eq
-                                LibraryFilter.PLAYLISTS -> R.drawable.queue_music
-                                LibraryFilter.SPOTIFY -> R.drawable.spotify_icon
-                                LibraryFilter.SONGS -> R.drawable.music_note
-                                LibraryFilter.ARTISTS -> R.drawable.person
-                                LibraryFilter.ALBUMS -> R.drawable.album
-                            }
-                        ExpressiveTabChip(
-                            label = label,
-                            iconRes = iconRes,
-                            selected = currentFilter == filter,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(page)
-                                }
-                            },
-                        )
-                    }
                 }
             }
         }
