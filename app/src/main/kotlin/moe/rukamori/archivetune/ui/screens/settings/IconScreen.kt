@@ -203,11 +203,7 @@ private fun IconScreenContent(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             MediumFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(text = stringResource(R.string.app_icon))
-                    }
-                },
+                title = {},
                 subtitle = {
                     Text(text = stringResource(R.string.app_icon_subtitle))
                 },
@@ -225,7 +221,7 @@ private fun IconScreenContent(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.app_icon),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

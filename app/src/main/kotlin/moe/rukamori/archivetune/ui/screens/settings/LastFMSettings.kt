@@ -94,11 +94,7 @@ fun LastFMSettings(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.lastfm_integration))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -111,7 +107,7 @@ fun LastFMSettings(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.lastfm_integration),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

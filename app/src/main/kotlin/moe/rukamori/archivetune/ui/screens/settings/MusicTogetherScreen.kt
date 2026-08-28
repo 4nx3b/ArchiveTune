@@ -168,11 +168,7 @@ fun MusicTogetherScreen(
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.music_together))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         AtIconButton(
@@ -193,7 +189,7 @@ fun MusicTogetherScreen(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.music_together),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
