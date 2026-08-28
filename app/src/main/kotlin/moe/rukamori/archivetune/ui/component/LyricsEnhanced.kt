@@ -17,6 +17,9 @@ import android.app.Activity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -1203,37 +1206,6 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
-        // "Lyrics from [provider]" header — mirrors the legacy Lyrics.kt
-        // pattern (L808-841). Per user request (2026-08-28): "just like
-        // written by is on the bottom of lyrics page there's should be
-        // Lyrics from 'The lyrics provider name' on the top of the lyrics
-        // too". The header is rendered as an overlay aligned to the top
-        // of the lyrics Box; the karaoke list has enough top padding for
-        // active-line centering that the header sits in the empty space
-        // above the first visible lyric line. `providerName` comes from
-        // the LyricsEntity row persisted by LyricsHelper (e.g. "LrcLib",
-        // "Musixmatch", "BiniLyrics", etc.).
-        val lyricsProviderName = currentLyrics?.providerName.orEmpty()
-        if (lyricsProviderName.isNotBlank()) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1422,6 +1394,36 @@ fun LyricsEnhanced(
                         }
                     }
                 }
+            }
+        }
+
+        // "Lyrics from [provider]" header — mirrors the legacy Lyrics.kt
+        // pattern (L808-841). Per user request (2026-08-28): "just like
+        // written by is on the bottom of lyrics page there's should be
+        // Lyrics from 'The lyrics provider name' on the top of the lyrics
+        // too". Draw this after the lyrics list so it stays on top of the
+        // scrolling content instead of being covered by the LazyColumn.
+        // `providerName` comes from the LyricsEntity row persisted by
+        // LyricsHelper (e.g. "LrcLib", "Musixmatch", "BiniLyrics", etc.).
+        val lyricsProviderName = currentLyrics?.providerName.orEmpty()
+        if (lyricsProviderName.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 
