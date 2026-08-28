@@ -72,7 +72,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,7 +128,7 @@ import moe.rukamori.archivetune.ui.component.SortHeader
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -362,13 +363,18 @@ fun LocalSongScreen(
         )
     }
 
-    // Wrap the entire screen subtree in a CompositionLocalProvider so the
-    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
-    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
-    // scrolls past the hero header.
-    CompositionLocalProvider(
-        LocalMiniPlayerDocked provides isListScrolling,
-    ) {
+    // Propagate the scroll state to the hoisted MiniPlayerDockedState so
+    // the MainActivity bottomBar slot (a SIBLING subtree of this screen)
+    // can swap the full FloatingNavigationToolbar for a docked
+    // [Home pill LEFT] + [MiniPlayer CENTER] + [Search pill RIGHT] layout
+    // when the user scrolls past the hero header.
+    val dockedState = LocalMiniPlayerDockedState.current
+    LaunchedEffect(isListScrolling) {
+        dockedState.isDocked = isListScrolling
+    }
+    DisposableEffect(Unit) {
+        onDispose { dockedState.isDocked = false }
+    }
     Box(
         modifier =
             Modifier
@@ -680,17 +686,11 @@ fun LocalSongScreen(
                         .fillMaxWidth()
                         .padding(bottom = bottomInset),
             )
-            LibraryHomeDockButton(
-                onClick = { navController.backToMain() },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp, bottom = bottomInset + 12.dp),
-                backdrop = pillBackdrop,
-            )
+            // LibraryHomeDockButton intentionally removed: the docked Row in
+            // MainActivity's bottomBar (Home pill LEFT + MiniPlayer CENTER +
+            // Search pill RIGHT) now provides the bottom-start Home affordance.
         }
     } // end Box
-    } // end CompositionLocalProvider
 }
 
 @Composable
