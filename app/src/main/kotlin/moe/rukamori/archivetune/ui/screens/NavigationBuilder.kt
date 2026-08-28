@@ -329,6 +329,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "online_playlist/{playlistId}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("playlistId") {
@@ -340,6 +344,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "local_playlist/{playlistId}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("playlistId") {
@@ -351,6 +359,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "spotify_playlist/{playlistId}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("playlistId") {
@@ -362,6 +374,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "auto_playlist/{playlist}?tab={tab}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("playlist") {
@@ -377,6 +393,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "cache_playlist/{playlist}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("playlist") {
@@ -388,6 +408,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "top_playlist/{top}",
+        enterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) + slideInHorizontally { it / 4 } },
+        exitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) },
+        popEnterTransition = { if (disableAnimations) fadeIn(tween(0)) else fadeIn(tween(350)) },
+        popExitTransition = { if (disableAnimations) fadeOut(tween(0)) else fadeOut(tween(300)) + slideOutHorizontally { it / 4 } },
         arguments =
             listOf(
                 navArgument("top") {
