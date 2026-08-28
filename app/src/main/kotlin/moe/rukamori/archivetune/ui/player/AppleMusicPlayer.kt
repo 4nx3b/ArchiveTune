@@ -153,10 +153,6 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
-import moe.rukamori.archivetune.ui.component.LyricsV2
-import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
@@ -1544,7 +1540,11 @@ fun AppleMusicPlayerContent(
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
-                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    // LyricsMode picker removed from settings — Enhanced is the sole
+                    // renderer now. The V2 branch below is intentionally dropped; the
+                    // LyricsMode enum + LyricsModeKey preference remain in
+                    // PreferenceKeys.kt for backward compatibility with existing DataStore
+                    // values (an existing V2 selection is silently upgraded to Enhanced).
                     // Lyrics area — poke controls on touch, lyrics scroll.
                     // The Column is sized to fill the area BELOW the mini header
                     // (maxHeight - miniHeaderHeight) and offset down by
@@ -1625,22 +1625,14 @@ fun AppleMusicPlayerContent(
                         // clipped by the physical screen edge if truly necessary.
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         if (lyricsContentReady) {
-                            when (lyricsMode) {
-                                LyricsMode.V2 -> LyricsV2(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = lyricsHorizontalPadding),
-                                )
-                                LyricsMode.ENHANCED -> LyricsEnhanced(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = lyricsHorizontalPadding),
-                                )
-                            }
+                            // LyricsMode picker removed — Enhanced is the sole renderer.
+                            LyricsEnhanced(
+                                sliderPositionProvider = lyricsPosProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = lyricsHorizontalPadding),
+                            )
                         }
                     }
                 }
