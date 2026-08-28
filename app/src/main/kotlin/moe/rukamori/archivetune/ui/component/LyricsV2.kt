@@ -809,7 +809,7 @@ fun LyricsV2(
                         ) {
                             Text(
                                 text = stringResource(R.string.lyrics_from_source, providerNameV2),
-                                fontSize = lyricsTextSize.sp,
+                                fontSize = (lyricsTextSize * 0.8f).sp,
                                 color = textColor.copy(alpha = 0.52f),
                                 textAlign = TextAlign.Center,
                                 fontWeight = FontWeight.SemiBold,
