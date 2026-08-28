@@ -7,15 +7,19 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,7 +66,12 @@ fun LibrarySpotifyPlaylistsScreen(
                     end = 24.dp,
                     bottom = playerAwareBottomPadding,
                 ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            // Per user request (2026-08-28): "add divider lines like
+            // it's on main library page". The Library main page renders
+            // a 0.6dp hairline divider between rows with no vertical
+            // spacing. Mirroring that here: zero spacing, divider drawn
+            // between rows.
+            verticalArrangement = Arrangement.spacedBy(0.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
@@ -80,15 +89,29 @@ fun LibrarySpotifyPlaylistsScreen(
                 }
             }
 
-            items(
+            itemsIndexed(
                 items = playlists,
-                key = { playlist -> playlist.id },
-                contentType = { "spotify_playlist" },
-            ) { playlist ->
+                key = { _, playlist -> playlist.id },
+                contentType = { _, _ -> "spotify_playlist" },
+            ) { index, playlist ->
                 SpotifyLibraryPlaylistListItem(
                     playlist = playlist,
                     navController = navController,
                 )
+                // Hairline divider between rows, NOT after the last —
+                // matches the Library main page style.
+                if (index < playlists.lastIndex) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = 72.dp)
+                                .height(0.6.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                                ),
+                    )
+                }
             }
         }
     }

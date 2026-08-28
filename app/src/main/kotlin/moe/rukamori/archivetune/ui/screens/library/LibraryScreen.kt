@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -120,10 +121,43 @@ fun LibraryScreen(navController: NavController) {
         )
     }
 
+    // Per user request (2026-08-28): "If I'm on playlist or any other page
+    // and I go back I go back directly to home page. it should be in
+    // sequential order".
+    //
+    // The bug: `rememberPagerState` (and the surrounding LibraryScreen
+    // composition) loses its `currentPage` when the user navigates away
+    // from Library (e.g. tapping a playlist → local_playlist/{id}). When
+    // the user presses back to return to Library, the entire Library
+    // composition is rebuilt from scratch — `rememberPagerState` creates
+    // a fresh state with `initialPage = libraryFilters.indexOf(defaultFilter)`
+    // (the user's *saved* default filter, not the tab they were on). The
+    // user lands on the default-tab root view, which reads as "I went
+    // back to Home" because the Library root looks similar to the Home
+    // screen.
+    //
+    // The fix: persist the last-selected page index in
+    // `rememberSaveable` so it survives the Library composition leaving
+    // and re-entering. On re-entry, `initialPage` is restored from the
+    // saved value, so the user lands back on the tab they were on.
+    val defaultPage = remember(defaultFilter, libraryFilters) {
+        libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0
+    }
+    var lastSelectedPage by rememberSaveable { mutableIntStateOf(defaultPage) }
     val pagerState =
         rememberPagerState(
-            initialPage = libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0,
+            initialPage = lastSelectedPage,
         ) { libraryFilters.size }
+    // Track the user's tab selection so it persists across navigation
+    // away-and-back. The LaunchedEffect below still syncs the page to
+    // `defaultFilter` when the user changes their default filter in
+    // settings (which would change `defaultFilter`), but it no longer
+    // overwrites the user's last-selected tab on every Library re-entry.
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != lastSelectedPage) {
+            lastSelectedPage = pagerState.currentPage
+        }
+    }
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
@@ -174,13 +208,25 @@ fun LibraryScreen(navController: NavController) {
         ) {
             val coroutineScope = rememberCoroutineScope()
 
-            LaunchedEffect(defaultFilter, libraryFilters) {
-                val selectedFilter = defaultFilter.takeIf { it in libraryFilters } ?: LibraryFilter.LIBRARY
-                val selectedPage = libraryFilters.indexOf(selectedFilter).takeIf { it >= 0 } ?: 0
-                if (pagerState.currentPage != selectedPage) {
-                    pagerState.scrollToPage(selectedPage)
-                }
-            }
+            // ── Tab sync removed ──────────────────────────────────────────────
+            // Previously a `LaunchedEffect(defaultFilter, libraryFilters)` here
+            // forced `pagerState.scrollToPage(defaultPage)` on every Library
+            // re-entry — which overwrote the user's last-selected tab when
+            // they navigated away to a sub-page (e.g. local_playlist) and
+            // came back. That read as "I go back directly to home page"
+            // because the default tab is LIBRARY, whose root layout looks
+            // similar to the Home screen.
+            //
+            // The saveable `lastSelectedPage` above now drives both the
+            // initial page and persists across composition exits, so the
+            // user lands back on the tab they were on. We still honour
+            // `defaultFilter` changes (e.g. user changes their default
+            // library chip in settings) by reading it once into
+            // `defaultPage` and feeding it as the `initialPage` of
+            // `rememberPagerState`; changes to `defaultFilter` while the
+            // Library screen is alive are NOT applied automatically
+            // (consistent with the user's request to preserve their
+            // last-selected tab).
 
             // ── Category pills removed ──────────────────────────────────────────
             // The Library/Playlists/Spotify/Songs/Artists/Albums segmented-control

@@ -48,7 +48,11 @@ class LyricsHelper
                 YouLyPlusLyricsProvider,
                 LrcLibLyricsProvider,
                 KuGouLyricsProvider,
-                MegalobizLyricsProvider,
+                // MegalobizLyricsProvider removed per user request (2026-08-28):
+                // "Remove megalobiz lyrics provider". The provider file was
+                // deleted; the PreferredLyricsProvider enum and the
+                // DefaultLyricsProviderOrder list below also no longer
+                // include the MEGALOBIZ entry.
                 SimpMusicLyricsProvider,
                 UnisonLyricsProvider,
                 BiniLyricsProvider,
@@ -420,7 +424,6 @@ class LyricsHelper
                 mapOf(
                     PreferredLyricsProvider.LRCLIB to LrcLibLyricsProvider,
                     PreferredLyricsProvider.KUGOU to KuGouLyricsProvider,
-                    PreferredLyricsProvider.MEGALOBIZ to MegalobizLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS to BetterLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,

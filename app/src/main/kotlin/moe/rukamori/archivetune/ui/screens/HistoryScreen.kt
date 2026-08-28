@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,9 +51,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -66,8 +69,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
@@ -99,6 +100,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.os.Build
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -1449,58 +1451,122 @@ private fun HistorySourceSelector(
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+    // Per user request (2026-08-28): "below the play and shuffle icon in
+    // history page remove the remote and history pill and instead there
+    // should be a single pill which one click opens a drop-down menu for
+    // switching between local and remote history".
+    //
+    // Previously this rendered a Material3 Expressive `ToggleButton`
+    // segmented control (two connected buttons side-by-side, each 52dp
+    // tall, taking the full row width). The new design matches the Play
+    // and Shuffle pills above it: a single 46dp pill button (mirroring
+    // `PillActionButton` from `AppleMusicPlaylistHero`) that, when
+    // clicked, opens a DropdownMenu with one item per available source.
+    // If only one source is available (e.g. user is not logged in to
+    // InnerTube so Remote is hidden), the pill still renders but the
+    // dropdown has only one entry — tapping it is a no-op.
+    var expanded by remember { mutableStateOf(false) }
+    val accent = MaterialTheme.colorScheme.primary
+    val onBackgroundColor = MaterialTheme.colorScheme.onBackground
+    val containerColor = onBackgroundColor.copy(alpha = 0.06f)
+    val currentLabel =
+        stringResource(
+            if (currentSource == HistorySource.LOCAL) {
+                R.string.local_history
+            } else {
+                R.string.remote_history
+            },
+        )
+
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                // Align the Local/Remote toggle with the Play/Shuffle pill
-                // row above (AppleMusicPlaylistHero has
+                // Align the source pill with the Play/Shuffle pill row
+                // above (AppleMusicPlaylistHero has
                 // `padding(start = 20.dp, end = 20.dp, ...)`). Without
-                // this horizontal padding the toggle extends to the screen
-                // edge while Play/Shuffle are inset by 20dp on each side,
-                // which the user flagged as misaligned (2026-08-28).
+                // this horizontal padding the pill extends to the screen
+                // edge while Play/Shuffle are inset by 20dp on each side.
                 .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        availableSources.forEachIndexed { index, source ->
-            val checked = source == currentSource
-            ToggleButton(
-                checked = checked,
-                onCheckedChange = {
-                    if (!checked) {
-                        onSourceChange(source)
-                    }
-                },
+        Box {
+            Surface(
+                onClick = { if (availableSources.size > 1) expanded = true },
                 modifier =
                     Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                shapes =
-                    when (index) {
-                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                        availableSources.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                    },
-                colors =
-                    ToggleButtonDefaults.toggleButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
+                        .clip(RoundedCornerShape(percent = 50))
+                        .height(46.dp),
+                shape = RoundedCornerShape(percent = 50),
+                color = containerColor,
             ) {
-                Text(
-                    text =
+                // fillMaxHeight() so the icon+label cluster is vertically
+                // centered within the 46dp pill (matching the
+                // PillActionButton fix in AppleMusicPlaylistHero).
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.history),
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = currentLabel,
+                        color = accent,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (availableSources.size > 1) {
+                        Icon(
+                            painter = painterResource(R.drawable.expand_more),
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                availableSources.forEach { source ->
+                    val label =
                         stringResource(
                             if (source == HistorySource.LOCAL) {
                                 R.string.local_history
                             } else {
                                 R.string.remote_history
                             },
-                        ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                        )
+                    val isSelected = source == currentSource
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        trailingIcon = {
+                            if (isSelected) {
+                                Icon(
+                                    painter = painterResource(R.drawable.check),
+                                    contentDescription = null,
+                                    tint = accent,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            if (!isSelected) onSourceChange(source)
+                        },
+                    )
+                }
             }
         }
     }

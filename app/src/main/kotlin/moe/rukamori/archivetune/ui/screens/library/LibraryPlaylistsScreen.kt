@@ -476,14 +476,20 @@ fun LibraryPlaylistsScreen(
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    // Per user request (2026-08-28): "add divider lines
+                    // like it's on main library page". The Library main
+                    // page renders a 0.6dp hairline divider between rows
+                    // with no vertical spacing between row composables.
+                    // Mirroring that here: zero spacing, divider drawn
+                    // between rows.
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(
                         items = listPlaylists,
                         key = { _, playlist -> playlist.id },
                         contentType = { _, _ -> "playlist_list" },
-                    ) { _, playlist ->
+                    ) { index, playlist ->
                         ReorderableItem(
                             state = reorderableState,
                             key = playlist.id,
@@ -518,6 +524,20 @@ fun LibraryPlaylistsScreen(
                                     Modifier
                                         .draggableHandle()
                                         .graphicsLayer { alpha = 0.99f },
+                            )
+                        }
+                        // Hairline divider between rows, NOT after the
+                        // last — matches the Library main page style.
+                        if (index < listPlaylists.lastIndex) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 72.dp)
+                                        .height(0.6.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
+                                        ),
                             )
                         }
                     }
@@ -733,7 +753,13 @@ fun PlaylistListCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                // Bumped from 56.dp to 72.dp so the bumped 56.dp thumbnail
+                // (was 40.dp) sits with comfortable top/bottom breathing room
+                // — matches the shared ListItemHeight constant used by the
+                // generic Items.kt rows. Per user request (2026-08-28):
+                // "Increase the size of the thumbnails in playlist and
+                // Spotify playlists page".
+                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -758,7 +784,13 @@ fun PlaylistListCard(
                 shape = RoundedCornerShape(8.dp),
                 contentScale = ContentScale.Crop,
                 showPlaceholder = true,
-                modifier = Modifier.size(40.dp),
+                // Bumped from 40.dp to 56.dp — matches the shared
+                // ListThumbnailSize constant used by SongListItem /
+                // AlbumListItem / ArtistListItem / PlaylistListItem in
+                // Items.kt. Per user request (2026-08-28): "Increase the
+                // size of the thumbnails in playlist and Spotify playlists
+                // page".
+                modifier = Modifier.size(56.dp),
             )
             Text(
                 text = playlist.playlist.name,
