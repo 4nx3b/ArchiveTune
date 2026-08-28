@@ -2320,24 +2320,45 @@ class MainActivity : ComponentActivity() {
                                                     ),
                                                 title = {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        // app icon
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.about_appbar),
-                                                            contentDescription = null,
-                                                            modifier =
-                                                                Modifier
-                                                                    .size(35.dp)
-                                                                    .padding(end = 3.dp),
-                                                        )
-                                                        AutoResizeText(
-                                                            text = stringResource(R.string.app_name),
-                                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                            fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Visible,
-                                                            softWrap = true,
-                                                            modifier = Modifier.weight(1f, fill = false),
-                                                        )
+                                                        if (isLibraryRoute) {
+                                                            // On the Library tab, replace the ArchiveTune
+                                                            // branding (icon + "ArchiveTune" text) with just
+                                                            // the "Library" text — the redesigned LibraryMixScreen
+                                                            // below already has its own big bold "Library"
+                                                            // header, but the top app bar still needs a label
+                                                            // next to the profile avatar so the bar isn't empty.
+                                                            // Per user request (2026-08-28): "Remove the
+                                                            // Archivetune logo in library page and Replace it
+                                                            // with Library text instead."
+                                                            AutoResizeText(
+                                                                text = stringResource(R.string.library),
+                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Visible,
+                                                                softWrap = true,
+                                                                modifier = Modifier.weight(1f, fill = false),
+                                                            )
+                                                        } else {
+                                                            // app icon
+                                                            Icon(
+                                                                painter = painterResource(R.drawable.about_appbar),
+                                                                contentDescription = null,
+                                                                modifier =
+                                                                    Modifier
+                                                                        .size(35.dp)
+                                                                        .padding(end = 3.dp),
+                                                            )
+                                                            AutoResizeText(
+                                                                text = stringResource(R.string.app_name),
+                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Visible,
+                                                                softWrap = true,
+                                                                modifier = Modifier.weight(1f, fill = false),
+                                                            )
+                                                        }
                                                     }
                                                 },
                                                 actions = {

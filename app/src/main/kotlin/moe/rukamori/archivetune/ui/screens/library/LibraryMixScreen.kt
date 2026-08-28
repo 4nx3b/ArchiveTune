@@ -148,6 +148,7 @@ fun LibraryMixScreen(
     navController: NavController,
     filterContent: (@Composable () -> Unit)?,
     selectedTagIds: Set<String>,
+    showSpotify: Boolean,
     onTabSelected: (LibraryFilter) -> Unit,
     viewModel: LibraryMixViewModel = hiltViewModel(),
     spotifyLibraryViewModel: SpotifyLibraryViewModel = hiltViewModel(),
@@ -168,6 +169,12 @@ fun LibraryMixScreen(
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    // Spotify playlist count is surfaced on the new Spotify category row
+    // (visible only when `showSpotify` is on). `SpotifyLibraryViewModel` is
+    // already injected above so the Spotify sync service keeps running; we
+    // additionally collect its `playlists` flow here to power the row's
+    // count badge.
+    val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     // `spotifyLibraryViewModel` is still injected as a parameter so the
     // Spotify playlist sync service keeps running (its init block watches
     // the showSpotifyPlaylists preference and pushes playlists into the
@@ -224,15 +231,18 @@ fun LibraryMixScreen(
                     )
                 }
 
-                // ── Category rows (Playlists / Artists / Favorites / Downloads / History)
+                // ── Category rows (Playlists / Spotify / Artists / Favorites / Downloads / History)
                 item(key = "library_category_list", contentType = "category_list") {
                     LibraryCategoryList(
                         playlistsCount = visiblePlaylists.size,
+                        spotifyCount = spotifyPlaylists.size,
                         artistsCount = artists.size,
                         favoritesCount = likedSongsCount,
                         downloadsCount = downloadedSongsCount,
                         historyCount = historyEventsCount,
+                        showSpotify = showSpotify,
                         onPlaylistsClick = { onTabSelected(LibraryFilter.PLAYLISTS) },
+                        onSpotifyClick = { onTabSelected(LibraryFilter.SPOTIFY) },
                         onArtistsClick = { onTabSelected(LibraryFilter.ARTISTS) },
                         onFavoritesClick = { navController.navigate("auto_playlist/liked") },
                         onDownloadsClick = { navController.navigate("auto_playlist/downloaded") },
@@ -338,49 +348,81 @@ private fun LibraryAddCircleButton(onClick: () -> Unit) {
 @Composable
 private fun LibraryCategoryList(
     playlistsCount: Int,
+    spotifyCount: Int,
     artistsCount: Int,
     favoritesCount: Int,
     downloadsCount: Int,
     historyCount: Int,
+    showSpotify: Boolean,
     onPlaylistsClick: () -> Unit,
+    onSpotifyClick: () -> Unit,
     onArtistsClick: () -> Unit,
     onFavoritesClick: () -> Unit,
     onDownloadsClick: () -> Unit,
     onHistoryClick: () -> Unit,
 ) {
+    // The Spotify row is injected between Playlists and Artists when the
+    // user has enabled "Show Spotify playlists" in settings. It mirrors
+    // the existing category rows (pink line icon + title + chevron) and
+    // routes to the Spotify pager tab via [onSpotifyClick].
     val categories =
-        listOf(
-            LibraryCategory(
-                title = stringResource(R.string.playlists),
-                count = playlistsCount,
-                iconRes = R.drawable.queue_music,
-                onClick = onPlaylistsClick,
-            ),
-            LibraryCategory(
-                title = stringResource(R.string.artists),
-                count = artistsCount,
-                iconRes = R.drawable.person,
-                onClick = onArtistsClick,
-            ),
-            LibraryCategory(
-                title = stringResource(R.string.favorites),
-                count = favoritesCount,
-                iconRes = R.drawable.favorite,
-                onClick = onFavoritesClick,
-            ),
-            LibraryCategory(
-                title = stringResource(R.string.downloads),
-                count = downloadsCount,
-                iconRes = R.drawable.download,
-                onClick = onDownloadsClick,
-            ),
-            LibraryCategory(
-                title = stringResource(R.string.history),
-                count = historyCount,
-                iconRes = R.drawable.history,
-                onClick = onHistoryClick,
-            ),
-        )
+        buildList {
+            add(
+                LibraryCategory(
+                    title = stringResource(R.string.playlists),
+                    count = playlistsCount,
+                    iconRes = R.drawable.queue_music,
+                    onClick = onPlaylistsClick,
+                ),
+            )
+            if (showSpotify) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.spotify),
+                        count = spotifyCount,
+                        iconRes = R.drawable.spotify_icon,
+                        // Spotify brand green (#1DB954) so the logo reads in
+                        // its own colour, matching how the existing
+                        // ExpressiveTabChip pill on the Library tab rendered
+                        // the Spotify logo in brand colour (not pink-tinted).
+                        iconTint = Color(0xFF1DB954),
+                        onClick = onSpotifyClick,
+                    ),
+                )
+            }
+            add(
+                LibraryCategory(
+                    title = stringResource(R.string.artists),
+                    count = artistsCount,
+                    iconRes = R.drawable.person,
+                    onClick = onArtistsClick,
+                ),
+            )
+            add(
+                LibraryCategory(
+                    title = stringResource(R.string.favorites),
+                    count = favoritesCount,
+                    iconRes = R.drawable.favorite,
+                    onClick = onFavoritesClick,
+                ),
+            )
+            add(
+                LibraryCategory(
+                    title = stringResource(R.string.downloads),
+                    count = downloadsCount,
+                    iconRes = R.drawable.download,
+                    onClick = onDownloadsClick,
+                ),
+            )
+            add(
+                LibraryCategory(
+                    title = stringResource(R.string.history),
+                    count = historyCount,
+                    iconRes = R.drawable.history,
+                    onClick = onHistoryClick,
+                ),
+            )
+        }
 
     Column(
         modifier =
@@ -414,6 +456,12 @@ private data class LibraryCategory(
     val count: Int,
     val iconRes: Int,
     val onClick: () -> Unit,
+    // Optional override for the icon's tint. Defaults to null, which keeps
+    // the pink [LibraryAccentColor]. The Spotify row passes the brand green
+    // so the Spotify logo reads in its own colour rather than pink-tinted —
+    // matching how the existing pill (ExpressiveTabChip) showed the Spotify
+    // logo in its brand colour on the Library tab.
+    val iconTint: Color? = null,
 )
 
 @Composable
@@ -449,7 +497,7 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
             Icon(
                 painter = painterResource(id = category.iconRes),
                 contentDescription = null,
-                tint = LibraryAccentColor,
+                tint = category.iconTint ?: LibraryAccentColor,
                 modifier = Modifier.size(LibraryCategoryIconSize),
             )
             Text(

@@ -1509,34 +1509,12 @@ private fun JumpBackInHeroCard(
                         ),
                     ),
         )
-        // "JUMP BACK IN" badge — only on the hero card.
-        if (isHero) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier =
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.history),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(
-                    text = stringResource(R.string.home_jump_back_in_badge).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 0.8.sp,
-                )
-            }
-        }
+        // ── "JUMP BACK IN" badge removed ───────────────────────────────────
+        // Per user request (2026-08-28): "Remove the home liquid glass buttons
+        // and fade effect". The translucent black "JUMP BACK IN" pill badge
+        // that lived here was the closest match to a "liquid glass button" on
+        // the Home tab — the hero card already conveys the same context via its
+        // title/artist overlay, and the user wanted the clutter removed.
         // Title + artist overlay at the bottom.
         Column(
             modifier =
