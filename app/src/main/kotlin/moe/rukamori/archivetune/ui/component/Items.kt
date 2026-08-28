@@ -903,6 +903,17 @@ fun LibraryPinnedCollectionTile(
     subtitle: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
+    // Per user request (2026-08-28): "the liked songs in Spotify playlists
+    // looks a bit faded. Fix it and make it compact." The previous tile
+    // had a 76% opacity surface behind the icon (which muted the accent
+    // colour), generous 14dp outer + 16dp inner padding, and 16dp
+    // inter-element spacing — visually airy but read as washed-out next
+    // to the dense Spotify playlist list items below it. Tightened:
+    //   - Icon backdrop: opaque surface (1.0 alpha) so the accent colour
+    //     reads at full saturation.
+    //   - Outer padding: 14dp -> 10dp.
+    //   - Inter-element spacing: 16dp -> 8dp.
+    //   - Icon inner padding: 12dp -> 8dp.
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -916,7 +927,7 @@ fun LibraryPinnedCollectionTile(
                         Brush.linearGradient(
                             colors =
                                 listOf(
-                                    accentColor.copy(alpha = 0.28f),
+                                    accentColor.copy(alpha = 0.45f),
                                     MaterialTheme.colorScheme.surfaceContainerHigh,
                                     MaterialTheme.colorScheme.surfaceContainerLow,
                                 ),
@@ -924,24 +935,24 @@ fun LibraryPinnedCollectionTile(
                     ),
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(10.dp),
             ) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                    color = MaterialTheme.colorScheme.surface,
                     shape = CircleShape,
                 ) {
                     Icon(
                         painter = painterResource(iconRes),
                         contentDescription = null,
                         tint = accentColor,
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(8.dp),
                     )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,

@@ -2321,24 +2321,19 @@ class MainActivity : ComponentActivity() {
                                                 title = {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         if (isLibraryRoute) {
-                                                            // On the Library tab, replace the ArchiveTune
-                                                            // branding (icon + "ArchiveTune" text) with just
-                                                            // the "Library" text — the redesigned LibraryMixScreen
-                                                            // below already has its own big bold "Library"
-                                                            // header, but the top app bar still needs a label
-                                                            // next to the profile avatar so the bar isn't empty.
-                                                            // Per user request (2026-08-28): "Remove the
-                                                            // Archivetune logo in library page and Replace it
-                                                            // with Library text instead."
-                                                            AutoResizeText(
-                                                                text = stringResource(R.string.library),
-                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Visible,
-                                                                softWrap = true,
-                                                                modifier = Modifier.weight(1f, fill = false),
-                                                            )
+                                                            // On the Library tab, the top app bar's title
+                                                            // slot is intentionally empty. The redesigned
+                                                            // LibraryMixScreen below already has its own
+                                                            // big bold "Library" header at the top of the
+                                                            // scrollable content — having a second small
+                                                            // "Library" text in the top app bar was
+                                                            // redundant. Per user request (2026-08-28):
+                                                            // "Remove the small library text on the top and
+                                                            // replace it with the large library text which
+                                                            // is right now below the small library header."
+                                                            // The profile avatar at top-right continues to
+                                                            // render via the `actions` slot below, so the
+                                                            // top bar is not visually empty.
                                                         } else {
                                                             // app icon
                                                             Icon(

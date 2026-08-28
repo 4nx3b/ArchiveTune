@@ -851,41 +851,12 @@ fun HistoryScreen(
                         activeState.firstVisibleItemScrollOffset > 0
                 }
             }
-            val bottomInset = LocalPlayerAwareWindowInsets.current
-                .asPaddingValues()
-                .calculateBottomPadding()
-            val miniPlayerVisible = LocalMiniPlayerVisible.current
-            val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
-            if (!showSearchBar && isListScrolling) {
-                BottomFadeOverlay(
-                    visible = true,
-                    fadeColor = MaterialTheme.colorScheme.surface,
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(bottom = fadeBottomPadding),
-                )
-            }
-
-            // Floating Home dock button — circular frosted-glass pill at the
-            // bottom-start corner, matching the iOS Music reference
-            // screenshot. Visible only when the user has scrolled past the
-            // hero header so it doesn't compete with the hero's action row
-            // when the user is at the top of the page. Tapping it jumps
-            // straight to the Home tab.
-            if (!showSearchBar && isListScrolling) {
-                LibraryHomeDockButton(
-                    onClick = { navController.backToMain() },
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(
-                                start = 16.dp,
-                                bottom = bottomInset + 12.dp,
-                            ),
-                )
-            }
+            // Bottom fade overlay + Floating Home dock button were removed
+            // per user request (2026-08-28). The scrollable list now ends
+            // cleanly at the bottom of the page surface; the floating
+            // liquid-glass "Home" dock button at bottom-start is also gone
+            // — both were reported as visual clutter on the playlist detail
+            // screens.
 
             AnimatedVisibility(
                 visible = showSearchBar,
@@ -1069,7 +1040,7 @@ private fun LocalHistoryFeed(
             }
         } else {
             filteredEvents.forEach { (dateAgo, songsForDate) ->
-                stickyHeader(key = "header_$dateAgo") {
+                item(key = "header_$dateAgo", contentType = "history_section_header") {
                     HistorySectionHeader(
                         title = dateAgoToString(dateAgo),
                         songCount = songsForDate.size,
@@ -1233,7 +1204,7 @@ private fun RemoteHistoryFeed(
                     }
                 } else {
                     filteredSections.forEach { section ->
-                        stickyHeader(key = "header_${section.title}") {
+                        item(key = "header_${section.title}", contentType = "history_section_header") {
                             HistorySectionHeader(
                                 title = section.title,
                                 songCount = section.songs.size,

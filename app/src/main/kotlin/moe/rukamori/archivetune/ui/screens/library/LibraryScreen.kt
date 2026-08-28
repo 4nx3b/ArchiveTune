@@ -78,7 +78,7 @@ import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
-internal val LibraryHeaderContentPadding = 64.dp
+internal val LibraryHeaderContentPadding = 8.dp
 internal val LibraryPullToRefreshIndicatorOffset = 0.dp
 
 @Composable

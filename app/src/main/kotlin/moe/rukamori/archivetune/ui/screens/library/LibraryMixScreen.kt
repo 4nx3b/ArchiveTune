@@ -73,6 +73,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -167,6 +168,7 @@ fun LibraryMixScreen(
     spotifyLibraryViewModel: SpotifyLibraryViewModel = hiltViewModel(),
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
+    val downloadUtil = LocalDownloadUtil.current
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -176,7 +178,21 @@ fun LibraryMixScreen(
     // behaviour (playlists tap-through, artists tap-through, favourites count,
     // downloads count, history count, recently-added grid) is preserved.
     val likedSongsCount by database.likedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
-    val downloadedSongsCount by database.downloadedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
+    // Real downloaded-songs count: counts only songs whose Media3 Download
+    // state is `STATE_COMPLETED`. The previous implementation called
+    // `database.downloadedSongsCount()` which queries
+    // `SELECT COUNT(1) FROM song WHERE dateDownload IS NOT NULL` — but
+    // `SongEntity.dateDownload` defaults to `LocalDateTime.now()` on every
+    // newly-inserted song (see SongEntity.kt:49), so that query returns the
+    // total number of songs in the DB (e.g. 13406 for the user's full
+    // synced library) instead of the actual downloaded count. Reading
+    // from `downloadUtil.downloads` mirrors what
+    // `MediaLibrarySessionCallback.downloadedSongs()` does and returns
+    // the true "songs actually on disk" count.
+    val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
+    val downloadedSongsCount = remember(downloadsMap) {
+        downloadsMap.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }
+    }
     val historyEventsCount by database.historyEventsCount().collectAsStateWithLifecycle(initialValue = 0)
     val localSongsCount by database
         .localSongs()
@@ -269,11 +285,10 @@ fun LibraryMixScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                // ── Header: "Library" + circular "+" action ─────────────────────────
+                // ── Header: "Library" ─────────────────────────
+                // "+" affordance removed per user request (2026-08-28).
                 item(key = "library_header", contentType = "header") {
-                    LibraryHeaderRow(
-                        onAddClick = { onTabSelected(LibraryFilter.PLAYLISTS) },
-                    )
+                    LibraryHeaderRow()
                 }
 
                 // ── Category rows (Playlists / Spotify / Artists / Favorites / Offline / Cached / Local Files / My Top 50 / History)
@@ -327,7 +342,14 @@ fun LibraryMixScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LibraryHeaderRow(onAddClick: () -> Unit) {
+private fun LibraryHeaderRow() {
+    // The header previously had a circular "+" action button at the
+    // top-right. Removed per user request (2026-08-28): the "+"
+    // affordance was redundant (tapping it just switched to the
+    // Playlists sub-page, not creating a new playlist) and competed
+    // visually with the bold "Library" title. The header is now just
+    // the title; the profile avatar continues to be rendered by the
+    // outer Scaffold's top app bar.
     Row(
         modifier =
             Modifier
@@ -349,53 +371,16 @@ private fun LibraryHeaderRow(onAddClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        LibraryAddCircleButton(onClick = onAddClick)
     }
 }
 
-@Composable
-private fun LibraryAddCircleButton(onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "LibraryAddCircleScale",
-    )
-    // Translucent outlined circle with a centered plus icon — matches the
-    // iOS Music reference's "+" affordance: thin border, subtle surface tint,
-    // no bright Material ripple. The accent colour here is a muted white so
-    // it reads against the dark surface but doesn't shout louder than the
-    // "Library" title.
-    val onBackground = MaterialTheme.colorScheme.onBackground
-    Box(
-        modifier =
-            Modifier
-                .size(38.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }.clip(CircleShape)
-                .background(onBackground.copy(alpha = 0.06f))
-                .border(
-                    width = 1.5.dp,
-                    color = onBackground.copy(alpha = 0.22f),
-                    shape = CircleShape,
-                ).clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(id = R.drawable.add),
-            contentDescription = stringResource(R.string.add),
-            tint = onBackground,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
+// `LibraryAddCircleButton` was removed per user request (2026-08-28):
+// the "+" affordance in the Library header was redundant and visually
+// competed with the bold "Library" title. The composable is deleted
+// rather than left as dead code so the unused imports below it (Box,
+// border, CircleShape, R.drawable.add, R.string.add, clickable,
+// MutableInteractionSource, collectIsPressedAsState, animateFloatAsState,
+// spring, Spring) get cleaned up by IDE inspection on next refactor.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Category list: Playlists / Spotify / Artists / Favorites / Offline / Cached /

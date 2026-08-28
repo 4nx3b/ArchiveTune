@@ -959,11 +959,26 @@ fun AppleMusicPlayerContent(
                     // rotation is ramped for exactly the same reason.
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
-                    // Rotation is what actually carries a colour from the top of
-                    // the screen to the bottom — translation alone moves every
-                    // colour by the same vector, so the arrangement stays rigid
-                    // and the top stays the top. See BlurWanderDrift.
-                    rotationZ = blurWander.rotationDeg.floatValue * progress
+                    // Rotation is suppressed while the morph from the main
+                    // player to the lyrics page is in flight (progress < 1).
+                    // Per user request (2026-08-28): "When I open lyrics in
+                    // apple music style the whole backdrop rotates in a
+                    // circle while the morph animation from main player to
+                    // lyrics page plays. it shouldn't." Previously
+                    // `rotationZ = blurWander.rotationDeg.floatValue *
+                    // progress` was applied through the entire morph,
+                    // which caused the entire backdrop to visibly rotate
+                    // while the lyrics pane was sliding in — a jarring
+                    // spin that the user found visually disruptive. The
+                    // rotation now only kicks in once the morph is
+                    // complete (`progress >= 1f`), so the lyrics-open
+                    // drift effect is preserved but the morph itself is
+                    // rotation-free. Translation alone ramps in normally
+                    // through the morph because it is much subtler than
+                    // a screen-sized rotation.
+                    if (progress >= 1f) {
+                        rotationZ = blurWander.rotationDeg.floatValue
+                    }
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is

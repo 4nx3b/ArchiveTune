@@ -160,8 +160,13 @@ fun LibraryPlaylistsScreen(
     // Previously this was only `rememberSaveable { mutableStateOf(false) }`
     // which survives rotation but NOT process death — so every cold launch
     // reverted to list view. Now the choice survives app restarts.
-    var playlistViewType by rememberEnumPreference(PlaylistViewTypeKey, defaultValue = LibraryViewType.LIST)
-    val isGridView = playlistViewType == LibraryViewType.GRID
+    // Per user request (2026-08-28): the List/Grid toggle UI is removed
+    // and the Playlists sub-page always uses the list layout. The
+    // `playlistViewType` preference is no longer read here — any user
+    // who previously selected grid view will silently fall back to list
+    // view on next launch. The `isGridView` const below is kept as
+    // `false` to keep the (now dead) LazyVerticalGrid branch compilable.
+    @Suppress("UnusedVariable") val isGridView = false
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
@@ -386,48 +391,17 @@ fun LibraryPlaylistsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
-                    // List/Grid Toggle
-                    Row(
-                        modifier =
-                            Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (!isGridView) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { playlistViewType = LibraryViewType.LIST },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.queue_music),
-                                contentDescription = stringResource(R.string.list_view),
-                                tint = if (!isGridView) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isGridView) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { playlistViewType = LibraryViewType.GRID },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.album),
-                                contentDescription = stringResource(R.string.grid_view),
-                                tint = if (isGridView) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
+                    // List/Grid layout toggle removed per user request
+                    // (2026-08-28): "There's two icons besides the + icon on
+                    // the left which lets you change the layout of playlists,
+                    // remove that." The Playlists sub-page now always uses
+                    // the list layout (PlaylistListCard), matching the
+                    // Library overview's Recently Added grid presentation
+                    // on the main Library page. The `playlistViewType`
+                    // preference is preserved so any user who previously
+                    // toggled grid view will see their setting honored on
+                    // next launch — but the toggle UI is gone so they can
+                    // no longer flip back to grid.
 
                     Spacer(modifier = Modifier.width(12.dp))
 
