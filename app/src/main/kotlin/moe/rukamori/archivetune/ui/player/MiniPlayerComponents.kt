@@ -536,8 +536,8 @@ private fun MiniPlayerTransportControls(
 
 @Composable
 fun NewMiniPlayerContent(
-    position: Long,
-    duration: Long,
+    positionProvider: () -> Long,
+    durationProvider: () -> Long,
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
 ) {
@@ -549,9 +549,26 @@ fun NewMiniPlayerContent(
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val isLoading = playbackState == Player.STATE_BUFFERING
+    // Stable progress provider: the lambda is created ONCE and reads position/duration
+    // through the incoming providers each time the progress bar draws. This keeps the
+    // MiniPlayer subtree from recomposing on every 100ms position poll-tick (10×/sec
+    // during playback) — only the draw-phase progress bar updates. The previous
+    // `remember(position, duration) { ... }` recreated the lambda on every tick,
+    // invalidating the entire Row below and re-running its children's `remember`
+    // blocks. On weak devices that recomposition budget was the difference between a
+    // smooth and a stuttery Library↔Playlist nav transition when the mini player was
+    // visible, because the position-poll LaunchedEffect and the nav-animated Library
+    // screen were competing for the same frames.
     val progressProvider =
-        remember(position, duration) {
-            { if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f }
+        remember(positionProvider, durationProvider) {
+            {
+                val duration = durationProvider()
+                if (duration > 0) {
+                    (positionProvider().toFloat() / duration).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+            }
         }
 
     Row(

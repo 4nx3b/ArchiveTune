@@ -15,6 +15,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -46,16 +48,14 @@ class LyricsHelper
                 YouLyPlusLyricsProvider,
                 LrcLibLyricsProvider,
                 KuGouLyricsProvider,
-                MegalobizLyricsProvider,
+                // MegalobizLyricsProvider removed per user request (2026-08-28):
+                // "Remove megalobiz lyrics provider". The provider file was
+                // deleted; the PreferredLyricsProvider enum and the
+                // DefaultLyricsProviderOrder list below also no longer
+                // include the MEGALOBIZ entry.
                 SimpMusicLyricsProvider,
                 UnisonLyricsProvider,
-                PaxsenixAppleMusicLyricsProvider,
-                PaxsenixNeteaseLyricsProvider,
-                PaxsenixSpotifyLyricsProvider,
-                PaxsenixMusixmatchLyricsProvider,
-                PaxsenixYouTubeLyricsProvider,
-                TidalLyricsProvider,
-                DeezerLyricsProvider,
+                BiniLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
@@ -424,18 +424,11 @@ class LyricsHelper
                 mapOf(
                     PreferredLyricsProvider.LRCLIB to LrcLibLyricsProvider,
                     PreferredLyricsProvider.KUGOU to KuGouLyricsProvider,
-                    PreferredLyricsProvider.MEGALOBIZ to MegalobizLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS to BetterLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,
                     PreferredLyricsProvider.SIMPMUSIC to SimpMusicLyricsProvider,
-                    PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC to PaxsenixAppleMusicLyricsProvider,
-                    PreferredLyricsProvider.PAXSENIX_NETEASE to PaxsenixNeteaseLyricsProvider,
-                    PreferredLyricsProvider.PAXSENIX_SPOTIFY to PaxsenixSpotifyLyricsProvider,
-                    PreferredLyricsProvider.PAXSENIX_MUSIXMATCH to PaxsenixMusixmatchLyricsProvider,
-                    PreferredLyricsProvider.PAXSENIX_YOUTUBE to PaxsenixYouTubeLyricsProvider,
-                    PreferredLyricsProvider.TIDAL to TidalLyricsProvider,
-                    PreferredLyricsProvider.DEEZER to DeezerLyricsProvider,
+                    PreferredLyricsProvider.BINI_LYRICS to BiniLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
                     PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )
@@ -460,6 +453,68 @@ class LyricsHelper
         fun clearCache() {
             cache.evictAll()
             singleLyricsCache.evictAll()
+        }
+
+        /**
+         * Probes every provider registered in [baseProviders] for a fixed, well-known
+         * test case (Ed Sheeran — "Shape of You", 233s) and reports each provider's
+         * outcome. Used by the "Lyrics test" entry in the Lyrics Providers settings
+         * page so the user can verify at a glance which providers are reachable and
+         * returning meaningful lyrics, without having to navigate to a track and
+         * inspect the lyrics source.
+         *
+         * The test is best-effort: a provider that returns `LYRICS_NOT_FOUND` for
+         * the test case is marked as `NoMatch` (provider works, just no lyrics for
+         * this specific test track) rather than `Failed`, so the user can
+         * distinguish "provider is down" from "provider doesn't have this song".
+         * Network/exception failures are `Failed`.
+         *
+         * Returns a snapshot list — callers should treat it as the final result
+         * of a single sweep, not as an observable stream.
+         */
+        suspend fun testAllProviders(): List<LyricsProviderTestResult> {
+            // Fixed test case: a wildly popular song with broad catalog coverage.
+            // Picked because every major lyrics catalog indexes it under both
+            // English and Latin-normalised titles, which keeps false negatives
+            // to a minimum.
+            val testTitle = "Shape of You"
+            val testArtist = "Ed Sheeran"
+            val testDuration = 233
+            val testId = "test-ed-sheeran-shape-of-you"
+
+            val enabled = baseProviders.filter { it.isEnabled(context) }
+            return coroutineScope {
+                enabled.map { provider ->
+                    async(Dispatchers.IO) {
+                        val outcome =
+                            try {
+                                val result =
+                                    withTimeoutOrNull(PROVIDER_TEST_TIMEOUT_MS) {
+                                        provider.getLyrics(testId, testTitle, testArtist, null, testDuration)
+                                    }
+                                when {
+                                    result == null ->
+                                        LyricsProviderTestOutcome.TIMEOUT
+                                    result.isFailure ->
+                                        LyricsProviderTestOutcome.FAILED
+                                    result.getOrNull().isNullOrBlank() ||
+                                        result.getOrNull() == LYRICS_NOT_FOUND ->
+                                        LyricsProviderTestOutcome.NO_MATCH
+                                    else ->
+                                        LyricsProviderTestOutcome.OK
+                                }
+                            } catch (_: CancellationException) {
+                                throw CancellationException()
+                            } catch (_: Throwable) {
+                                LyricsProviderTestOutcome.FAILED
+                            }
+                        LyricsProviderTestResult(
+                            providerName = provider.name,
+                            outcome = outcome,
+                        )
+                    }
+                }.awaitAll()
+            }
         }
 
         private fun invalidateCache(cacheKey: String) {
@@ -498,10 +553,38 @@ class LyricsHelper
             // ON (and the user has explicitly opted in for higher-quality lyrics),
             // the extra latency is acceptable.
             private const val WORD_SYNC_PROVIDER_TIMEOUT_MS = 15_000L
+
+            /** Per-provider budget for the "Lyrics test" sweep in [testAllProviders]. */
+            private const val PROVIDER_TEST_TIMEOUT_MS = 12_000L
         }
     }
 
 data class LyricsResult(
     val providerName: String,
     val lyrics: String,
+)
+
+/**
+ * Outcome of probing a single provider through [LyricsHelper.testAllProviders].
+ *
+ * `OK` means the provider returned meaningful lyrics for the test case.
+ * `NO_MATCH` means the provider responded cleanly but had no lyrics for the
+ * test track — i.e. the provider is reachable, just empty for this query.
+ * `TIMEOUT` and `FAILED` indicate the provider could not be reached or
+ * errored out within the per-provider budget.
+ */
+enum class LyricsProviderTestOutcome {
+    OK,
+    NO_MATCH,
+    TIMEOUT,
+    FAILED,
+}
+
+/**
+ * One row in the "Lyrics test" dialog — the provider's display name and the
+ * outcome of probing it. See [LyricsHelper.testAllProviders] for the source.
+ */
+data class LyricsProviderTestResult(
+    val providerName: String,
+    val outcome: LyricsProviderTestOutcome,
 )

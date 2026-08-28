@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,8 +58,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -81,7 +79,7 @@ import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
-internal val LibraryHeaderContentPadding = 64.dp
+internal val LibraryHeaderContentPadding = 8.dp
 internal val LibraryPullToRefreshIndicatorOffset = 0.dp
 
 @Composable
@@ -123,15 +121,44 @@ fun LibraryScreen(navController: NavController) {
         )
     }
 
+    // Per user request (2026-08-28): "If I'm on playlist or any other page
+    // and I go back I go back directly to home page. it should be in
+    // sequential order".
+    //
+    // The bug: `rememberPagerState` (and the surrounding LibraryScreen
+    // composition) loses its `currentPage` when the user navigates away
+    // from Library (e.g. tapping a playlist → local_playlist/{id}). When
+    // the user presses back to return to Library, the entire Library
+    // composition is rebuilt from scratch — `rememberPagerState` creates
+    // a fresh state with `initialPage = libraryFilters.indexOf(defaultFilter)`
+    // (the user's *saved* default filter, not the tab they were on). The
+    // user lands on the default-tab root view, which reads as "I went
+    // back to Home" because the Library root looks similar to the Home
+    // screen.
+    //
+    // The fix: persist the last-selected page index in
+    // `rememberSaveable` so it survives the Library composition leaving
+    // and re-entering. On re-entry, `initialPage` is restored from the
+    // saved value, so the user lands back on the tab they were on.
+    val defaultPage = remember(defaultFilter, libraryFilters) {
+        libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0
+    }
+    var lastSelectedPage by rememberSaveable { mutableIntStateOf(defaultPage) }
     val pagerState =
         rememberPagerState(
-            initialPage = libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0,
+            initialPage = lastSelectedPage,
         ) { libraryFilters.size }
+    // Track the user's tab selection so it persists across navigation
+    // away-and-back. The LaunchedEffect below still syncs the page to
+    // `defaultFilter` when the user changes their default filter in
+    // settings (which would change `defaultFilter`), but it no longer
+    // overwrites the user's last-selected tab on every Library re-entry.
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != lastSelectedPage) {
+            lastSelectedPage = pagerState.currentPage
+        }
+    }
 
-    val currentFilter = libraryFilters.getOrElse(pagerState.currentPage) { LibraryFilter.LIBRARY }
-
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
 
@@ -179,39 +206,39 @@ fun LibraryScreen(navController: NavController) {
                         ),
                     ),
         ) {
-            val tabListState = rememberLazyListState()
             val coroutineScope = rememberCoroutineScope()
 
-            LaunchedEffect(defaultFilter, libraryFilters) {
-                val selectedFilter = defaultFilter.takeIf { it in libraryFilters } ?: LibraryFilter.LIBRARY
-                val selectedPage = libraryFilters.indexOf(selectedFilter).takeIf { it >= 0 } ?: 0
-                if (pagerState.currentPage != selectedPage) {
-                    pagerState.scrollToPage(selectedPage)
-                }
-            }
+            // ── Tab sync removed ──────────────────────────────────────────────
+            // Previously a `LaunchedEffect(defaultFilter, libraryFilters)` here
+            // forced `pagerState.scrollToPage(defaultPage)` on every Library
+            // re-entry — which overwrote the user's last-selected tab when
+            // they navigated away to a sub-page (e.g. local_playlist) and
+            // came back. That read as "I go back directly to home page"
+            // because the default tab is LIBRARY, whose root layout looks
+            // similar to the Home screen.
+            //
+            // The saveable `lastSelectedPage` above now drives both the
+            // initial page and persists across composition exits, so the
+            // user lands back on the tab they were on. We still honour
+            // `defaultFilter` changes (e.g. user changes their default
+            // library chip in settings) by reading it once into
+            // `defaultPage` and feeding it as the `initialPage` of
+            // `rememberPagerState`; changes to `defaultFilter` while the
+            // Library screen is alive are NOT applied automatically
+            // (consistent with the user's request to preserve their
+            // last-selected tab).
 
-            // Sync Pager -> Preference & lazy list centering
-            LaunchedEffect(pagerState.currentPage, libraryFilters) {
-                val targetPage = pagerState.currentPage.coerceIn(0, libraryFilters.lastIndex)
-                val targetFilter = libraryFilters.getOrElse(targetPage) { LibraryFilter.LIBRARY }
-
-                // Centering the tab chip scroll alignment
-                val tabWidth =
-                    when (targetFilter) {
-                        LibraryFilter.LIBRARY -> 116.dp
-                        LibraryFilter.PLAYLISTS -> 132.dp
-                        LibraryFilter.SPOTIFY -> 168.dp
-                        LibraryFilter.SONGS -> 102.dp
-                        LibraryFilter.ARTISTS -> 116.dp
-                        LibraryFilter.ALBUMS -> 110.dp
-                        else -> 116.dp
-                    }
-                val screenWidth = configuration.screenWidthDp.dp
-                val targetOffsetDp = (screenWidth - tabWidth) / 2
-                val targetOffsetPx = with(density) { targetOffsetDp.roundToPx() }
-
-                tabListState.animateScrollToItem(targetPage, scrollOffset = -targetOffsetPx)
-            }
+            // ── Category pills removed ──────────────────────────────────────────
+            // The Library/Playlists/Spotify/Songs/Artists/Albums segmented-control
+            // row that lived here was removed per user request (2026-08-28). The
+            // underlying HorizontalPager is preserved so sub-screens remain
+            // reachable via the LibraryMixScreen category rows (Playlists,
+            // Artists, Favorites, Downloads, History, Spotify) and their
+            // `onTabSelected` callbacks.
+            //
+            // The Spotify tab is now reachable from the new "Spotify" row
+            // in the redesigned LibraryMixScreen (visible only when
+            // `showSpotifyPlaylists` is on).
 
             Box(
                 modifier =
@@ -241,6 +268,7 @@ fun LibraryScreen(navController: NavController) {
                                     null
                                 },
                             selectedTagIds = activeSelectedTagIds,
+                            showSpotify = showSpotifyPlaylists,
                             onTabSelected = { targetFilter ->
                                 coroutineScope.launch {
                                     val targetPage = libraryFilters.indexOf(targetFilter)
@@ -307,53 +335,6 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
                 }
-                }
-
-                LazyRow(
-                    state = tabListState,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    items(
-                        items = libraryFilters,
-                        key = { filter -> filter.name },
-                        contentType = { "library_filter_chip" },
-                    ) { filter ->
-                        val page = libraryFilters.indexOf(filter)
-                        val label =
-                            when (filter) {
-                                LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
-                                LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
-                                LibraryFilter.SPOTIFY -> stringResource(R.string.spotify_playlists)
-                                LibraryFilter.SONGS -> stringResource(R.string.songs)
-                                LibraryFilter.ARTISTS -> stringResource(R.string.artists)
-                                LibraryFilter.ALBUMS -> stringResource(R.string.albums)
-                            }
-                        val iconRes =
-                            when (filter) {
-                                LibraryFilter.LIBRARY -> R.drawable.graphic_eq
-                                LibraryFilter.PLAYLISTS -> R.drawable.queue_music
-                                LibraryFilter.SPOTIFY -> R.drawable.spotify_icon
-                                LibraryFilter.SONGS -> R.drawable.music_note
-                                LibraryFilter.ARTISTS -> R.drawable.person
-                                LibraryFilter.ALBUMS -> R.drawable.album
-                            }
-                        ExpressiveTabChip(
-                            label = label,
-                            iconRes = iconRes,
-                            selected = currentFilter == filter,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(page)
-                                }
-                            },
-                        )
-                    }
                 }
             }
         }

@@ -188,7 +188,15 @@ class HistoryViewModel
             }
     }
 
-private const val HISTORY_PAGE_SIZE = 100
+// Page size set to a very large value so the entire local history loads in
+// a single page. Per user request (2026-08-28): the Library page's History
+// row badge shows the true total event count (e.g. 13406), but the History
+// page itself was paginating at HISTORY_PAGE_SIZE=100 and the load-more
+// threshold only triggered when the user scrolled within 12 items of the
+// end — so the user saw at most ~200 songs before scrolling further to
+// trigger the next page. Bumping this to 100000 effectively loads every
+// event in one pass; any real-world song library fits comfortably.
+private const val HISTORY_PAGE_SIZE = 100_000
 
 sealed interface RemoteHistoryUiState {
     data object Loading : RemoteHistoryUiState
