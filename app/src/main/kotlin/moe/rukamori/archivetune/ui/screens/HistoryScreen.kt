@@ -71,6 +71,7 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -126,7 +127,7 @@ import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
-import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
@@ -692,17 +693,19 @@ fun HistoryScreen(
             // hero header so it doesn't compete with the hero's action row
             // when the user is at the top of the page. Tapping it jumps
             // straight to the Home tab.
-            if (!showSearchBar && isListScrolling) {
-                LibraryHomeDockButton(
-                    onClick = { navController.backToMain() },
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(
-                                start = 16.dp,
-                                bottom = bottomInset + 12.dp,
-                            ),
-                )
+            // Floating Home dock + mini-player dock is now provided by the
+            // docked Row in MainActivity's bottomBar (Home pill LEFT +
+            // MiniPlayer CENTER + Search pill RIGHT) when this screen reports
+            // isListScrolling=true. The old per-screen LibraryHomeDockButton
+            // is removed to avoid double-rendering two Home pills.
+            val dockedState = LocalMiniPlayerDockedState.current
+            LaunchedEffect(isListScrolling, showSearchBar) {
+                // Don't dock the mini player while the search bar is open —
+                // the search input would overlap the docked pills.
+                dockedState.isDocked = isListScrolling && !showSearchBar
+            }
+            DisposableEffect(Unit) {
+                onDispose { dockedState.isDocked = false }
             }
 
             AnimatedVisibility(
