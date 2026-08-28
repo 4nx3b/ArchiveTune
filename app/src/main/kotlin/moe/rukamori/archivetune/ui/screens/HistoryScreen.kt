@@ -578,16 +578,22 @@ fun HistoryScreen(
             if (!showSearchBar) {
                 LargeFlexibleTopAppBar(
                     title = {
-                        FrostedHeaderPill {
-                            Text(
-                                text =
-                                    if (selectionCount > 0) {
-                                        pluralStringResource(R.plurals.n_song, selectionCount, selectionCount)
-                                    } else {
-                                        stringResource(R.string.history)
-                                    },
-                                fontWeight = FontWeight.Bold,
-                            )
+                        // Only show a title pill here when the user is in
+                        // multi-selection mode (the count makes sense as a
+                        // header pill in that context). Otherwise the title
+                        // pill is omitted entirely so the hero below
+                        // (AppleMusicPlaylistHero) is the ONLY place "History"
+                        // appears as a large title — matching the iOS Music
+                        // reference and avoiding the duplicate "History"
+                        // header the previous implementation rendered (one in
+                        // the top app bar pill, one in the hero).
+                        if (selectionCount > 0) {
+                            FrostedHeaderPill {
+                                Text(
+                                    text = pluralStringResource(R.plurals.n_song, selectionCount, selectionCount),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     },
                     navigationIcon = {
