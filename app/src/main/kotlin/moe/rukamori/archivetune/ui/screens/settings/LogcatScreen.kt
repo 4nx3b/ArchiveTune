@@ -89,6 +89,7 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiEntries
 import moe.rukamori.archivetune.viewmodels.LogcatUiEntry
 import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
 import androidx.compose.foundation.layout.asPaddingValues
 
@@ -343,27 +344,40 @@ private fun LogcatTopBar(
 ) {
     MediumFlexibleTopAppBar(
         title = {
-            Text(
-                text = stringResource(R.string.debug_logs),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            FrostedHeaderPill {
+                Text(
+                    text = stringResource(R.string.debug_logs),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
         subtitle = {
-            Text(
-                text = stringResource(R.string.filter_all_logs),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            FrostedHeaderPill {
+                Text(
+                    text = stringResource(R.string.filter_all_logs),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
         navigationIcon = {
-            ArchiveTuneIconButton(
-                onClick = onNavigateBack,
-                onLongClick = onNavigateBackLongClick,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
+            FrostedHeaderPill {
+                ArchiveTuneIconButton(
+                    onClick = onNavigateBack,
+                    onLongClick = onNavigateBackLongClick,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 4.dp),
                 )
             }
         },

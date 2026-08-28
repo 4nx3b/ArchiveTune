@@ -265,6 +265,24 @@ fun CachePlaylistScreen(
         BackHandler {
             selection = false
         }
+    } else {
+        // Explicit BackHandler so the predictive back gesture lands on the
+        // Library tab when the previous back-stack entry is not a main
+        // screen (e.g. when the user entered this screen directly via a
+        // deep link from Home). Calling [navigateUp] first preserves the
+        // natural back stack; if that returns false (no previous entry to
+        // pop), we explicitly navigate to the Library tab so the user
+        // always lands somewhere meaningful instead of being dropped on
+        // Home. Matches the LocalPlaylistScreen / SpotifyPlaylistScreen
+        // pattern.
+        BackHandler {
+            if (!navController.navigateUp()) {
+                navController.navigate("library") {
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
     }
 
     val filteredSongs =

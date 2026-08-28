@@ -106,6 +106,7 @@ import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -274,10 +275,12 @@ fun AodCustomizedScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.aod_customize_title),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.aod_customize_title),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 subtitle = {
                     Text(
@@ -287,13 +290,22 @@ fun AodCustomizedScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -85,6 +86,17 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  * [layerBackdrop]); nesting it inside the source creates a render-feedback
  * loop that crashes the RuntimeShader.
  *
+ * **Performance note:** The modifier chain is wrapped in `remember` keyed on
+ * [backdrop], [shape], [interactive], [baseColor] and the current dark-theme
+ * state. This is the single biggest lever for the "lag when switching pages"
+ * symptom: without memoization, every recomposition of the host screen
+ * (which can happen many times per second during scroll) rebuilt the entire
+ * `drawBackdrop` modifier chain — re-allocating the kyant effect stack and
+ * re-installing the RuntimeShader on the GraphicsLayer. Memoizing it means
+ * the chain is built ONCE per (backdrop, shape, dark-theme) tuple and
+ * reused across recompositions, so scroll-driven recompositions no longer
+ * trigger per-frame GPU setup cost.
+ *
  * @param baseColor Optional OPAQUE color drawn UNDER the backdrop sample
  *   (via the kyant `onDrawBehind` callback). When the backdrop has content
  *   (e.g. album art behind the nav bar), the backdrop sample covers the
@@ -104,40 +116,51 @@ fun Modifier.liquidGlass(
     baseColor: Color = Color.Unspecified,
 ): Modifier {
     val isDark = isSystemInDarkTheme()
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        effects = {
-            val l = 0f
-            vibrancy()
-            blur(
-                if (l > 0f) {
-                    lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
-                } else {
-                    lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
-                },
-            )
-            lens(24f.dp.toPx(), size.minDimension / 4f, false)
-        },
-        onDrawBackdrop = { drawBackdrop ->
-            drawBackdrop()
-        },
-        shape = { shape },
-        onDrawBehind =
-            if (baseColor != Color.Unspecified) {
-                { drawRect(baseColor) }
-            } else {
-                null
+    // Memoize the entire drawBackdrop modifier chain so it isn't rebuilt on
+    // every recomposition. The chain depends only on (backdrop, shape,
+    // interactive, baseColor, isDark) — all of which are stable across
+    // scroll-driven recompositions of the host screen. Without this memo,
+    // every recomposition rebuilt the kyant effect stack and re-installed
+    // the RuntimeShader on the GraphicsLayer, which was the dominant cause
+    // of the "lag when switching pages" symptom (the new page's first few
+    // frames all paid that setup cost while the user was already trying to
+    // scroll).
+    return remember(backdrop, shape, interactive, baseColor, isDark) {
+        this.drawBackdrop(
+            backdrop = backdrop,
+            effects = {
+                val l = 0f
+                vibrancy()
+                blur(
+                    if (l > 0f) {
+                        lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                    } else {
+                        lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
+                    },
+                )
+                lens(24f.dp.toPx(), size.minDimension / 4f, false)
             },
-        onDrawSurface = {
-            val luminanceAnimation = 0.5f
-            val darken = lerp(
-                0.12f,
-                0.5f,
-                ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
-            )
-            drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
-        },
-    )
+            onDrawBackdrop = { drawBackdrop ->
+                drawBackdrop()
+            },
+            shape = { shape },
+            onDrawBehind =
+                if (baseColor != Color.Unspecified) {
+                    { drawRect(baseColor) }
+                } else {
+                    null
+                },
+            onDrawSurface = {
+                val luminanceAnimation = 0.5f
+                val darken = lerp(
+                    0.12f,
+                    0.5f,
+                    ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
+                )
+                drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
+            },
+        )
+    }
 }
 
 /**

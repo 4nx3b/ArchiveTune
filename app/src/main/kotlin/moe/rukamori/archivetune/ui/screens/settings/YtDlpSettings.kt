@@ -63,6 +63,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStatus
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -135,20 +136,31 @@ private fun YtDlpSettingsContent(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.ytdlp_settings_title),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.ytdlp_settings_title),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 subtitle = { Text(stringResource(R.string.ytdlp_settings_description)) },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateUp,
-                        onLongClick = onNavigateToMain,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.back_button_desc),
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = onNavigateUp,
+                            onLongClick = onNavigateToMain,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

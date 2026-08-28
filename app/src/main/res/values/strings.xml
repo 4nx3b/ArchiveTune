@@ -369,6 +369,7 @@
     <string name="undo">Undo</string>
     <string name="lyrics_not_found">Lyrics not found</string>
     <string name="lyrics_from_source">Lyrics from %1$s</string>
+    <string name="written_by">Written by %1$s</string>
     <string name="lyrics_word_sync">Word Sync</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>

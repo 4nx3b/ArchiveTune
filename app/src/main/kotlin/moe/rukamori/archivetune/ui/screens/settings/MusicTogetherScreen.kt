@@ -96,6 +96,7 @@ import androidx.window.core.layout.WindowSizeClass
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -167,23 +168,36 @@ fun MusicTogetherScreen(
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.music_together)) },
+                title = {
+                    FrostedHeaderPill {
+                        Text(stringResource(R.string.music_together))
+                    }
+                },
                 navigationIcon = {
-                    AtIconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                        modifier =
-                            Modifier
-                                .padding(horizontal = 4.dp)
-                                .size(40.dp),
-                        colors =
-                            IconButtonDefaults.iconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            ),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
+                    FrostedHeaderPill {
+                        AtIconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                            modifier =
+                                Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .size(40.dp),
+                            colors =
+                                IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                ),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },
