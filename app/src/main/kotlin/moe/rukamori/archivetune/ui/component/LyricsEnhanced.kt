@@ -485,6 +485,24 @@ fun LyricsEnhanced(
         // whatever it measured the first time that line was composed — so a build that changes the
         // romanisation of lines already on screen has to carry a new generation with it. See
         // KaraokeBuild.
+        //
+        // Composer footer ("Written by: <artists>") — built from the
+        // currently-playing MediaMetadata. Hoisted here so it lives in
+        // the same LaunchedEffect scope as the karaoke build, which
+        // means a track change (mediaMetadata.id changes) re-launches
+        // this effect and the footer is recomputed for the new track.
+        // The footer is only meaningful when there's at least one
+        // credited artist; if the track has no artists in its metadata
+        // (rare — only happens for some local files with no ID3 artist
+        // tag), the footer is suppressed rather than showing an empty
+        // "Written by: " string.
+        val composerFooter =
+            mediaMetadata
+                ?.artists
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString { it.name }
+                ?.let { "Written by: $it" }
+
         fun publish(romanization: Map<Int, List<String?>>) {
             val previous = karaokeBuild
             val changesVisibleLines =
@@ -492,7 +510,7 @@ fun LyricsEnhanced(
                     romanization.renderedRomanization() != previous.romanization.renderedRomanization()
             karaokeBuild =
                 KaraokeBuild(
-                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization),
+                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization, composerFooter),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
                 )
@@ -1036,25 +1054,56 @@ fun LyricsEnhanced(
             )
         }
     val plainLyrics =
-        remember(lyricsEntries, isSynced) {
+        remember(lyricsEntries, isSynced, mediaMetadata?.artists) {
+            // Composer footer ("Written by: <artists>") — appended as a
+            // synthetic PlainLyricLine at the end of the non-synced
+            // lyrics list. Per user request (2026-08-28): "Add composer
+            // of the song at the end of the lyrics in apple music player
+            // style lyrics and non apple music style lyrics too." The
+            // footer is built from `MediaMetadata.artists` — there is no
+            // dedicated composer/songwriter field in the codebase, so
+            // the artist credit stands in. The footer is only added when
+            // the track has at least one credited artist; tracks with
+            // no artist metadata (rare) get no footer rather than an
+            // empty "Written by: " string.
+            val composerFooterLine =
+                mediaMetadata
+                    ?.artists
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.joinToString { it.name }
+                    ?.let { "Written by: $it" }
+                    ?.let { text ->
+                        PlainLyricLine(
+                            itemId = "composer_footer",
+                            selectionId = "plain:composer_footer:${text.hashCode()}",
+                            text = text,
+                        )
+                    }
+
+            val lyricItems =
+                if (isSynced) {
+                    emptyList()
+                } else {
+                    lyricsEntries.mapIndexedNotNull { index, entry ->
+                        val text = entry.text.trim()
+                        if (text.isBlank()) {
+                            null
+                        } else {
+                            val selectionId = "plain:$index:${text.hashCode()}"
+                            PlainLyricLine(
+                                itemId = "$selectionId#$index",
+                                selectionId = selectionId,
+                                text = text,
+                            )
+                        }
+                    }
+                }
             PlainLyrics(
                 items =
-                    if (isSynced) {
-                        emptyList()
+                    if (composerFooterLine != null && lyricItems.isNotEmpty()) {
+                        lyricItems + composerFooterLine
                     } else {
-                        lyricsEntries.mapIndexedNotNull { index, entry ->
-                            val text = entry.text.trim()
-                            if (text.isBlank()) {
-                                null
-                            } else {
-                                val selectionId = "plain:$index:${text.hashCode()}"
-                                PlainLyricLine(
-                                    itemId = "$selectionId#$index",
-                                    selectionId = selectionId,
-                                    text = text,
-                                )
-                            }
-                        }
+                        lyricItems
                     },
             )
         }
@@ -1066,21 +1115,34 @@ fun LyricsEnhanced(
                     if (text.isBlank()) {
                         null
                     } else {
-                        val selectionId = line.selectionKey(text)
-                        LyricSelectionLine(
-                            itemId = "$selectionId#$index",
-                            selectionId = selectionId,
-                            text = text,
-                        )
+                        // Skip the composer footer in the selection sheet —
+                        // it is metadata, not a lyric the user would want
+                        // to copy/share. Identified by its very high start
+                        // time (24h, see `buildSyncedLyrics`).
+                        if (line.start >= 86_400_000) {
+                            null
+                        } else {
+                            val selectionId = line.selectionKey(text)
+                            LyricSelectionLine(
+                                itemId = "$selectionId#$index",
+                                selectionId = selectionId,
+                                text = text,
+                            )
+                        }
                     }
                 }
             } else {
-                plainLyrics.items.map { line ->
-                    LyricSelectionLine(
-                        itemId = line.itemId,
-                        selectionId = line.selectionId,
-                        text = line.text,
-                    )
+                plainLyrics.items.mapNotNull { line ->
+                    // Skip the composer footer in the selection sheet.
+                    if (line.itemId == "composer_footer") {
+                        null
+                    } else {
+                        LyricSelectionLine(
+                            itemId = line.itemId,
+                            selectionId = line.selectionId,
+                            text = line.text,
+                        )
+                    }
                 }
             }
         }
@@ -1896,6 +1958,7 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
+    composerFooter: String? = null,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
@@ -2017,6 +2080,34 @@ private fun buildSyncedLyrics(
                 ),
             )
         }
+    }
+
+    // "Written by: <artists>" footer — appended as a synthetic
+    // ISyncedLine at the very end of the lyrics. Per user request
+    // (2026-08-28): "Add composer of the song at the end of the lyrics
+    // in apple music player style lyrics and non apple music style
+    // lyrics too. I've attached how it should exactly look". The
+    // reference image shows a small dim "Written by: <names>" credit
+    // appearing after the last lyric line.
+    //
+    // The synthetic line's start time is set well beyond any real
+    // playback position (1 day in milliseconds) so the karaoke renderer
+    // never highlights it as the active line during normal playback.
+    // It is only visible when the user scrolls to the bottom of the
+    // lyrics list. The `SyncedLine` renderer draws `content` at the
+    // ambient text style, which we've pinned to `phoneticTextStyle`
+    // (small dim text) at the KaraokeLyricsView call site — that gives
+    // the credit a visually subdued look matching the reference image.
+    if (!composerFooter.isNullOrBlank()) {
+        val footerStart = 86_400_000 // 24h in ms — well beyond any song length
+        lines.add(
+            SyncedLine(
+                content = composerFooter,
+                translation = null,
+                start = footerStart,
+                end = footerStart + 60_000,
+            ),
+        )
     }
 
     return SyncedLyrics(lines = lines)

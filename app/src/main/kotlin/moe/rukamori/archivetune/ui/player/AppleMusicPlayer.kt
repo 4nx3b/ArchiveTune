@@ -959,26 +959,21 @@ fun AppleMusicPlayerContent(
                     // rotation is ramped for exactly the same reason.
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
-                    // Rotation is suppressed while the morph from the main
-                    // player to the lyrics page is in flight (progress < 1).
-                    // Per user request (2026-08-28): "When I open lyrics in
-                    // apple music style the whole backdrop rotates in a
-                    // circle while the morph animation from main player to
-                    // lyrics page plays. it shouldn't." Previously
-                    // `rotationZ = blurWander.rotationDeg.floatValue *
-                    // progress` was applied through the entire morph,
-                    // which caused the entire backdrop to visibly rotate
-                    // while the lyrics pane was sliding in — a jarring
-                    // spin that the user found visually disruptive. The
-                    // rotation now only kicks in once the morph is
-                    // complete (`progress >= 1f`), so the lyrics-open
-                    // drift effect is preserved but the morph itself is
-                    // rotation-free. Translation alone ramps in normally
-                    // through the morph because it is much subtler than
-                    // a screen-sized rotation.
-                    if (progress >= 1f) {
-                        rotationZ = blurWander.rotationDeg.floatValue
-                    }
+                    // Rotation is suppressed through most of the morph from
+                    // the main player to the lyrics page (progress < 0.85),
+                    // then smoothly ramped in over the final 15% of the
+                    // morph so it lands at full amplitude the instant the
+                    // morph completes. Per user request (2026-08-28): the
+                    // previous gating `if (progress >= 1f) fullRotation`
+                    // produced a discontinuity — the rotation snapped from
+                    // zero to full over a single frame at the morph
+                    // boundary, which the user described as "after a few
+                    // milliseconds it changes abruptly making it not
+                    // seamless". The continuous ramp below removes the
+                    // discontinuity while still keeping rotation effectively
+                    // zero through the visible morph window.
+                    val rotationRamp = ((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)
+                    rotationZ = blurWander.rotationDeg.floatValue * rotationRamp
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is

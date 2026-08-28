@@ -71,6 +71,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.ColorUtils
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -694,16 +695,34 @@ fun PlaylistListCard(
     showDragHandle: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
-    val cardBgColor =
-        rememberArtworkCardColor(
-            thumbnailUrl = playlist.thumbnails.getOrNull(0),
-            fallbackColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        )
-
+    // Per user request (2026-08-28): "The playlists are in list style
+    // but not the one i want. I want the list style of library page,
+    // how the playlists, artists and others are displayed exactly
+    // like that." The card was previously a rounded 32dp-corner card
+    // with 72dp thumbnail + name + song count + a separate play
+    // button + a separate 3-dot menu — visually heavier than the
+    // flat icon + title + count + chevron rows the Library overview
+    // uses for Playlists / Spotify / Artists / etc.
+    //
+    // Now it mirrors `LibraryCategoryRow` from LibraryMixScreen.kt:
+    //   - 40dp rounded-square thumbnail (rounded 8dp) on the left,
+    //     sized close to `LibraryCategoryIconSize` (28dp) but slightly
+    //     larger so the per-playlist artwork remains identifiable.
+    //   - 22sp medium-weight playlist name in the middle, onBackground.
+    //   - Song count + chevron on the right (matching the category row's
+    //     count + chevron treatment, including alpha).
+    //   - No separate play button and no separate 3-dot menu — clicking
+    //     the row opens the playlist (same as `onClick`), and long-
+    //     press opens the playlist menu (handled by the call site's
+    //     `combinedClickable`).
+    //
+    // `onPlay` and `onMenuClick` are kept in the signature for source
+    // compatibility with the call site, but they are no longer rendered
+    // as visible buttons — the row-level click/long-click cover both.
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1.0f,
+        targetValue = if (isPressed) 0.985f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "PlaylistListCardScale",
     )
@@ -714,111 +733,86 @@ fun PlaylistListCard(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .height(56.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                     alpha = hiddenAlpha
-                }.clip(RoundedCornerShape(32.dp))
-                .background(cardBgColor)
-                .clickable(
+                }.clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = onClick,
-                ).padding(12.dp),
+                ).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Thumbnail
-        ItemThumbnail(
-            thumbnailUrl = playlist.thumbnails.getOrNull(0),
-            isActive = false,
-            isPlaying = false,
-            shape = RoundedCornerShape(24.dp),
-            contentScale = ContentScale.Crop,
-            showPlaceholder = true,
-            modifier =
-                Modifier
-                    .size(72.dp),
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        // Text & details
-        Column(modifier = Modifier.weight(1f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            ItemThumbnail(
+                thumbnailUrl = playlist.thumbnails.getOrNull(0),
+                isActive = false,
+                isPlaying = false,
+                shape = RoundedCornerShape(8.dp),
+                contentScale = ContentScale.Crop,
+                showPlaceholder = true,
+                modifier = Modifier.size(40.dp),
+            )
             Text(
                 text = playlist.playlist.name,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Medium,
+                fontSize = 22.sp,
+                letterSpacing = (-0.2).sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "${playlist.songCount} ${stringResource(R.string.tracks_label)}",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            if (playlist.playlist.isHidden) {
+                Icon(
+                    painter = painterResource(id = R.drawable.visibility_off),
+                    contentDescription = stringResource(R.string.hide_playlist),
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
                 )
-
-                if (playlist.playlist.isHidden) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        painter = painterResource(id = R.drawable.visibility_off),
-                        contentDescription = stringResource(R.string.hide_playlist),
-                        modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                    )
-                }
             }
         }
-
-        // Play Button
-        IconButton(
-            onClick = onPlay,
-            colors =
-                IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ),
-            modifier = Modifier.size(36.dp),
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.play),
-                contentDescription = stringResource(R.string.play),
-                modifier = Modifier.size(16.dp),
-            )
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
-
-        // Options Button
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier.size(36.dp),
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.more_vert),
-                contentDescription = stringResource(R.string.options_label),
-            )
-        }
-
-        if (showDragHandle) {
-            Spacer(modifier = Modifier.width(4.dp))
-            IconButton(
-                onClick = {},
-                modifier = dragHandleModifier.size(36.dp),
-            ) {
+            // Drag handle renders inline with the count + chevron row
+            // when the user has unlocked custom-order reordering. Kept
+            // compact (28dp) so it doesn't visually outweigh the count
+            // and chevron, matching the category row's tight trailing
+            // cluster.
+            if (showDragHandle) {
                 Icon(
                     painter = painterResource(id = R.drawable.drag_handle),
                     contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
+                    modifier =
+                        Modifier
+                            .size(28.dp)
+                            .then(dragHandleModifier),
                 )
             }
+            if (playlist.songCount > 0) {
+                Text(
+                    text = playlist.songCount.toString(),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 19.sp,
+                    maxLines = 1,
+                )
+            }
+            Icon(
+                painter = painterResource(id = R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }

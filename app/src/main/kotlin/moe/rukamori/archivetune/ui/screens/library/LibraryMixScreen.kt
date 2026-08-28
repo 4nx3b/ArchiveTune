@@ -287,6 +287,16 @@ fun LibraryMixScreen(
             ) {
                 // ── Header: "Library" ─────────────────────────
                 // "+" affordance removed per user request (2026-08-28).
+                // The big bold "Library" title now lives in the
+                // MainActivity shared TopAppBar's title slot for the
+                // Library route (per user request 2026-08-28: "The Big
+                // library text should be the header of the page. The
+                // size should prevail and not become any smaller. And
+                // since it'll be the header, there should be no empty
+                // space either"). The empty `LibraryHeaderRow` below
+                // still reserves its 8.dp vertical padding slot for
+                // breathing room between the TopAppBar and the first
+                // category row, but no longer renders any text.
                 item(key = "library_header", contentType = "header") {
                     LibraryHeaderRow()
                 }
@@ -343,34 +353,33 @@ fun LibraryMixScreen(
 
 @Composable
 private fun LibraryHeaderRow() {
-    // The header previously had a circular "+" action button at the
-    // top-right. Removed per user request (2026-08-28): the "+"
-    // affordance was redundant (tapping it just switched to the
-    // Playlists sub-page, not creating a new playlist) and competed
-    // visually with the bold "Library" title. The header is now just
-    // the title; the profile avatar continues to be rendered by the
-    // outer Scaffold's top app bar.
+    // The big bold "Library" title has moved to the MainActivity shared
+    // TopAppBar's title slot for the Library route (per user request
+    // 2026-08-28: "The Big library text should be the header of the page.
+    // The size should prevail and not become any smaller. And since it'll
+    // be the header, there should be no empty space either"). The
+    // TopAppBar is pinned for the Library route (scrollBehavior is `null`,
+    // see MainActivity.kt) so the 38sp title stays at full size through
+    // scroll — it does not collapse or shrink.
+    //
+    // This composable is now an empty spacer: it reserves a small vertical
+    // padding slot for breathing room between the (now-empty) TopAppBar
+    // title's bottom inset and the first category row, but renders no text
+    // itself. Keeping the call site (rather than deleting the item
+    // entirely) preserves the LazyColumn item keys used for
+    // scroll-position restoration across recompositions.
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(
                     horizontal = LibraryHeaderHorizontalPadding,
-                    vertical = 8.dp,
+                    vertical = 0.dp,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = stringResource(R.string.library),
-            color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Bold,
-            fontSize = 38.sp,
-            lineHeight = 44.sp,
-            letterSpacing = (-0.5).sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // Intentionally empty — the title is in the TopAppBar now.
     }
 }
 
