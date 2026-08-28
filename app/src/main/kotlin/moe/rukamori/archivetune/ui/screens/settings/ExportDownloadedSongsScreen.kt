@@ -428,7 +428,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = {
                                 if (isSearchActive) {

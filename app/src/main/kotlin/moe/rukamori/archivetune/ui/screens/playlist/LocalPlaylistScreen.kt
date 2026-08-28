@@ -324,10 +324,23 @@ fun LocalPlaylistScreen(
         // tab regardless of how they entered the playlist page — they
         // explicitly want to be on Library, not Home.
         BackHandler {
-            navController.navigate("library") {
-                launchSingleTop = true
-                restoreState = true
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
+            // Wrapped in try/catch so ANY unexpected
+            // IllegalArgumentException / IllegalStateException from the
+            // underlying NavController (e.g. start destination ID not yet
+            // attached to the graph during fast back-to-back navigation)
+            // still lets the user escape the page via the catch-branch
+            // `popBackStack()` fallback rather than leaving the gesture
+            // silently swallowed (which is what the user reported:
+            // "I can't use gesture inside Spotify playlists and normal
+            // playlists").
+            try {
+                navController.navigate("library") {
+                    launchSingleTop = true
+                    restoreState = true
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                }
+            } catch (_: Exception) {
+                navController.popBackStack()
             }
         }
     }

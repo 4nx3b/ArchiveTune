@@ -170,7 +170,7 @@ fun MusicTogetherScreen(
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         AtIconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

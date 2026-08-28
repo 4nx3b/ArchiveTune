@@ -46,22 +46,45 @@ import androidx.compose.ui.unit.dp
  * render-feedback loop that crashes the RuntimeShader. When [backdrop] is `null` (the
  * default), the pill degrades to the translucent `surfaceContainer` surface described above.
  *
+ * **Plain mode (Settings + submenus):** Pass [plain] = `true` to skip the Surface / clip /
+ * border entirely and just render the content in a `Row` with the same padding as the
+ * pill path. The user explicitly requested "remove all the liquid glass from settings
+ * and its submenus Page" — so Settings pages render a plain Material3 TopAppBar look
+ * (just the back button + title inline) without any frosted pill chrome. The `plain`
+ * flag is opt-in so that other callers (History, Library chrome, Apple Music-style
+ * playlist pills) keep their frosted surface.
+ *
  * Usage: wrap the title / actions of a `TopAppBar` (or any header) in this pill. The
  * outer `TopAppBar` should have `containerColor = Color.Transparent`.
  *
  * @param modifier Modifier for the pill's outer layout.
  * @param backdrop Optional kyant `LayerBackdrop` to sample for real liquid glass.
  *                 Pass `null` (default) to use the translucent surface fallback.
+ * @param plain When `true`, skip the Surface/clip/border entirely and render the
+ *              content in a plain `Row` with the same internal padding. Use this on
+ *              Settings screens where the user wants zero glass chrome.
  * @param content The header content (text, icons) to display inside the pill.
  */
 @Composable
 fun FrostedHeaderPill(
     modifier: Modifier = Modifier,
     backdrop: PlatformBackdrop? = null,
+    plain: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val pillShape = RoundedCornerShape(percent = 50)
-    if (backdrop != null) {
+    if (plain) {
+        // Plain path: no Surface, no clip, no border. Just a Row with the
+        // same padding as the pill path so the layout doesn't shift when
+        // toggling between plain and frosted. This is the "remove all the
+        // liquid glass from settings" path the user explicitly requested.
+        Row(
+            modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            content()
+        }
+    } else if (backdrop != null) {
         // Real liquid glass path: kyant `drawBackdrop` effect stack (vibrancy +
         // blur + lens). The pill samples whatever was recorded into the backdrop
         // by `Modifier.layerBackdrop(backdrop)` applied to a sibling composable
@@ -83,10 +106,10 @@ fun FrostedHeaderPill(
             content()
         }
     } else {
-        // Fallback path for NavHost-owned screens such as Settings. Sampling
-        // the app-wide backdrop here would create a render-feedback loop, so
-        // use Material's frosted container plus a subtle highlight instead of
-        // degrading to an almost-transparent pill.
+        // Fallback path for NavHost-owned screens such as History/Library
+        // chrome. Sampling the app-wide backdrop here would create a render-
+        // feedback loop, so use Material's frosted container plus a subtle
+        // highlight instead of degrading to an almost-transparent pill.
         val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
         Surface(
             modifier = modifier.clip(pillShape),

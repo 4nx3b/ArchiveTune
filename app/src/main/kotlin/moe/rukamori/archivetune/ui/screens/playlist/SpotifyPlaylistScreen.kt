@@ -345,10 +345,23 @@ fun SpotifyPlaylistScreen(
             // silently failing the back gesture (the user reports being
             // "stuck" on the page). Using `graph.startDestinationId`
             // resolves to whatever the start tab is.
-            navController.navigate("library") {
-                launchSingleTop = true
-                restoreState = true
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
+            //
+            // The whole navigate block is wrapped in a try/catch so that
+            // ANY unexpected IllegalArgumentException / IllegalStateException
+            // from the underlying NavController (e.g. start destination ID
+            // not yet attached to the graph during fast back-to-back
+            // navigation, or a transient inconsistent back-stack state)
+            // still lets the user escape the page via the catch-branch
+            // `popBackStack()` fallback rather than leaving the gesture
+            // silently swallowed.
+            try {
+                navController.navigate("library") {
+                    launchSingleTop = true
+                    restoreState = true
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                }
+            } catch (_: Exception) {
+                navController.popBackStack()
             }
         }
     }

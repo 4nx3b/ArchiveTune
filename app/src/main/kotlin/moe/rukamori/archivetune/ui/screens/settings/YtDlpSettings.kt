@@ -137,7 +137,7 @@ private fun YtDlpSettingsContent(
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = onNavigateUp,
                             onLongClick = onNavigateToMain,

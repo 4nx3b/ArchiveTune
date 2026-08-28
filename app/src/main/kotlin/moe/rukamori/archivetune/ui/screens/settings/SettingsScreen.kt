@@ -357,7 +357,7 @@ fun SettingsScreen(
                     // label, mirroring the HistoryScreen back+Library pill
                     // layout. Tapping pops back to the previous destination;
                     // long-pressing jumps straight to the Home tab.
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
@@ -396,7 +396,7 @@ fun SettingsScreen(
                         enter = fadeIn(animationSpec = tween(180)),
                         exit = fadeOut(animationSpec = tween(140)),
                     ) {
-                        FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp)) {
+                        FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp), plain = true) {
                             IconButton(
                                 onClick = {
                                     coroutineScope.launch {

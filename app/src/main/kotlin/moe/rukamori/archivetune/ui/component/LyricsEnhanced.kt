@@ -434,11 +434,20 @@ fun LyricsEnhanced(
             }
     }
     val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
+    // Resolve the "Lyrics from [provider]" label UNCONDITIONALLY via
+    // `stringResource(...)` so the @Composable call stays at a stable
+    // position in the composition tree (Compose's call-site invariants
+    // forbid calling @Composable functions inside `?.let` chains — the
+    // chain is conditionally-executed, so the composable call would be
+    // skipped when the provider name is blank, which contributed to the
+    // "lyrics from text disappears after auto translation/romanisation"
+    // regression the user reported). The label is then trimmed to null
+    // when the provider name is blank so the in-lyrics header row is
+    // hidden rather than rendering as an empty "Lyrics from " line.
+    val lyricsProviderNameRaw = currentLyrics?.providerName.orEmpty()
+    val lyricsSourceLabel = stringResource(R.string.lyrics_from_source, lyricsProviderNameRaw)
     val lyricsProviderLabel =
-        currentLyrics
-            ?.providerName
-            ?.takeIf { it.isNotBlank() }
-            ?.let { providerName -> stringResource(R.string.lyrics_from_source, providerName) }
+        lyricsSourceLabel.takeIf { lyricsProviderNameRaw.isNotBlank() }
     // Composer footer ("Written by [artists]") — used by BOTH the synced
     // and plain-lyrics paths below. For synced lyrics it is injected as the
     // LAST SyncedLine of the karaoke stream (start = 86_400_000 = 24h, so
@@ -448,14 +457,21 @@ fun LyricsEnhanced(
     // footer scrolls with the lyrics — matching the user's request that
     // "the written by text at the bottom of the lyrics should show as if
     // it's just lyrics and not some constant text".
-    val composerFooterLabel: String? =
+    // Resolve the "Written by [artists]" label UNCONDITIONALLY via
+    // `stringResource(...)` so the @Composable call stays at a stable
+    // composition position. Same rationale as the lyricsProviderLabel fix
+    // above — the previous `?.let { stringResource(...) }` chain was
+    // conditionally-executed and violated Compose's call-site invariants.
+    val composerWritersRaw =
         mediaMetadata
             ?.artists
             ?.takeIf { it.isNotEmpty() }
             ?.joinToString { it.name }
             ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { writers -> stringResource(R.string.written_by, writers) }
+            .orEmpty()
+    val composerFooterLabel =
+        stringResource(R.string.written_by, composerWritersRaw)
+            .takeIf { composerWritersRaw.isNotBlank() }
 
     // Keyed on the raw lyrics text, not on lyricsEntries: the entries now arrive a beat after the
     // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
