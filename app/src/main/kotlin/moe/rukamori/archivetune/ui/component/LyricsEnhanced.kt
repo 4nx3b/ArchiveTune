@@ -17,6 +17,9 @@ import android.app.Activity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -434,6 +437,11 @@ fun LyricsEnhanced(
             }
     }
     val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
+    val lyricsProviderLabel =
+        currentLyrics
+            ?.providerName
+            ?.takeIf { it.isNotBlank() }
+            ?.let { providerName -> stringResource(R.string.lyrics_from_source, providerName) }
 
     // Keyed on the raw lyrics text, not on lyricsEntries: the entries now arrive a beat after the
     // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
@@ -476,7 +484,7 @@ fun LyricsEnhanced(
         )
     }
 
-    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines) {
+    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, mediaMetadata?.id) {
         // Everything below (scanning + romanizing every line, often one job per word for TTML)
         // used to inherit the main dispatcher and could stutter the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
@@ -495,7 +503,7 @@ fun LyricsEnhanced(
                     romanization.renderedRomanization() != previous.romanization.renderedRomanization()
             karaokeBuild =
                 KaraokeBuild(
-                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization),
+                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization, lyricsProviderLabel),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
                 )
@@ -1530,6 +1538,7 @@ private data class PlainLyricLine(
     val itemId: String,
     val selectionId: String,
     val text: String,
+    val isMetadata: Boolean = false,
 )
 
 @Immutable
@@ -1601,7 +1610,16 @@ private fun PlainLyricLineItem(
 
     Text(
         text = line.text,
-        style = textStyle,
+        style =
+            if (line.isMetadata) {
+                textStyle.copy(
+                    fontSize = (textStyle.fontSize.value * 0.38f).sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                textStyle
+            },
         color = contentColor,
         modifier =
             Modifier
@@ -1854,7 +1872,9 @@ private fun SyncedLyrics.findLastStartedLineIndex(time: Int): Int {
 
     while (low <= high) {
         val mid = low + (high - low) / 2
-        if (lines[mid].start <= time) {
+        if (lines[mid].start < 0) {
+            low = mid + 1
+        } else if (lines[mid].start <= time) {
             result = mid
             low = mid + 1
         } else {
@@ -1973,9 +1993,21 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
+    providerHeader: String?,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
+
+    if (!providerHeader.isNullOrBlank()) {
+        lines.add(
+            SyncedLine(
+                content = providerHeader,
+                translation = null,
+                start = -2,
+                end = -1,
+            ),
+        )
+    }
 
     entries.forEachIndexed { index, entry ->
         if (entry.time < 0L) return@forEachIndexed
