@@ -86,8 +86,6 @@ import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
 import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
-import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
@@ -105,14 +103,12 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
@@ -146,7 +142,10 @@ fun LyricsSettings(
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
-    val (lyricsMode, onLyricsModeChange) = rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
+    // LyricsMode picker removed by user request — Enhanced is the only renderer now, so the
+    // "V2 Legacy / Enhanced" choice is no longer surfaced. The LyricsMode enum and LyricsModeKey
+    // preference are kept in PreferenceKeys.kt for backward compatibility with existing DataStore
+    // values (the player code reads the enum but only the ENHANCED branch is reachable now).
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
@@ -427,34 +426,13 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_font_size"),
             title = stringResource(R.string.display),
         ) {
-            item {
-                EnumListPreference(
-                    modifier = positions.modifierFor("lyrics_mode", "use_lyrics_v2"),
-                    title = { Text(stringResource(R.string.lyrics_mode)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    selectedValue = lyricsMode,
-                    onValueSelected = onLyricsModeChange,
-                    valueText = {
-                        when (it) {
-                            LyricsMode.V2 -> stringResource(R.string.lyrics_mode_v2)
-                            LyricsMode.ENHANCED -> stringResource(R.string.lyrics_mode_enhanced)
-                        }
-                    },
-                )
-            }
-
-            item {
-                val animationSettingsEnabled = lyricsMode == LyricsMode.V2
-
-                PreferenceEntry(
-                    modifier = positions.modifierFor("lyrics_animation_style"),
-                    title = { Text(stringResource(R.string.lyrics_animation_style)) },
-                    description = if (animationSettingsEnabled) null else stringResource(R.string.lyrics_animation_style_v2_only),
-                    icon = { Icon(painterResource(R.drawable.animation), null) },
-                    onClick = { navController.navigate("settings/appearance/lyrics_animations") },
-                    isEnabled = animationSettingsEnabled,
-                )
-            }
+            // ── Lyrics mode picker ("V2 Legacy" / "Enhanced") and "Lyrics animation style"
+            // entry removed by user request. Enhanced is the sole lyrics renderer now, so the
+            // mode selector was redundant, and the animation style page only adjusted V2-specific
+            // sliders (Bounce Amplitude / Glow Intensity / Fill Transition / Line Bounce Effect)
+            // that no longer have a renderer to affect. The navigation route
+            // "settings/appearance/lyrics_animations" and the LyricsAnimationSettings screen
+            // are also removed (see NavigationBuilder.kt and the deleted file). ──
 
             item {
                 SwitchPreference(

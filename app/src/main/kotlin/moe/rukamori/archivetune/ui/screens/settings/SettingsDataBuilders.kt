@@ -87,7 +87,6 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.TranslateLyricsKey
-import moe.rukamori.archivetune.constants.UseLyricsV2Key
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -273,24 +272,12 @@ fun buildSettingsGroups(
                 SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
             ),
         )
-    // Appearance → Lyrics animations.
-    val lyricsAnimations =
-        SettingsItem(
-            key = "lyrics_animations",
-            icon = painterResource(R.drawable.lyrics),
-            title = "Lyrics animations",
-            subtitle = "Lyrics motion and transitions",
-            accentColor = MaterialTheme.colorScheme.secondary,
-            keywords = listOf("lyrics animation", "lyrics animations", "lyrics motion", "lyrics transition", "karaoke animation"),
-            onClick = { navController.navigate("settings/appearance/lyrics_animations") },
-            hidden = true,
-            children = listOf(
-                SettingsChild("Lyrics animation style", "lyrics_animation_style", listOf("lyrics animation style", "lyrics motion", "lyrics transition")),
-                SettingsChild("Lyrics scale animation", "lyrics_scale_animation", listOf("lyrics scale", "lyrics zoom", "lyrics grow")),
-                SettingsChild("Lyrics glow animation", "lyrics_glow_animation", listOf("lyrics glow", "lyrics shine", "lyrics highlight")),
-                SettingsChild("Lyrics fade animation", "lyrics_fade_animation", listOf("lyrics fade", "lyrics opacity animation")),
-            ),
-        )
+    // Appearance → Lyrics animations removed by user request. The LyricsMode picker
+    // (V2 Legacy vs Enhanced) and Lyrics Animation Style page are gone — Enhanced is
+    // the sole renderer now, and the animation style page only adjusted V2-specific
+    // sliders (Bounce Amplitude / Glow Intensity / Fill Transition / Line Bounce
+    // Effect) that no longer have a renderer to affect. The LyricsAnimationSettings.kt
+    // screen file has also been deleted, and the navigation route is removed.
     val playback =
         SettingsItem(
             key = "playback",
@@ -442,15 +429,13 @@ fun buildSettingsGroups(
             hidden = true,
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "paxsenix", "betterlyrics", "portato", "youlyplus", "unison", "simpmusic", "megalobiz")),
-                SettingsChild("Lyrics mode", "lyrics_mode", listOf("lyrics mode", "lyrics style", "lyrics display mode", "karaoke mode")),
+                // "Lyrics mode" + "Use lyrics V2" search entries removed — the picker and
+                // toggle are gone; Enhanced is the sole renderer now.
                 SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle", "lyrics show")) { SearchResultSwitch(ShowLyricsKey, false) },
-                SettingsChild("Use lyrics V2", "use_lyrics_v2", listOf("lyrics v2", "new lyrics", "lyrics engine")) { SearchResultSwitch(UseLyricsV2Key, true) },
                 SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(TranslateLyricsKey, false) },
                 SettingsChild("Enable translator", "enable_translator", listOf("translator", "translation engine", "lyrics translator")) { SearchResultSwitch(EnableTranslatorKey, false) },
                 SettingsChild("Lyrics font size", "lyrics_font_size", listOf("font size", "lyrics size", "text size", "lyrics text size")),
                 SettingsChild("Lyrics line spacing", "lyrics_line_spacing", listOf("line spacing", "lyrics spacing", "lyrics line gap", "lyrics padding")),
-                SettingsChild("Lyrics animations", "lyrics_animations", listOf("animation", "animated lyrics", "lyrics effect")),
-                SettingsChild("Lyrics animation style", "lyrics_animation_style", listOf("animation style", "lyrics animation", "lyrics motion", "lyrics transition")),
                 SettingsChild("Lyrics line blur", "lyrics_line_blur", listOf("lyrics blur", "line blur", "focus blur")),
                 SettingsChild("Lyrics romanize Japanese", "lyrics_romanize_japanese", listOf("romanize", "japanese", "romaji", "furigana")),
                 SettingsChild("Lyrics romanize Korean", "lyrics_romanize_korean", listOf("romanize", "korean", "romanization")),
@@ -1044,7 +1029,6 @@ fun buildSettingsGroups(
                     appearanceExtras,
                     aodCustomization,
                     navigationBar,
-                    lyricsAnimations,
                     playback,
                     ytDlp,
                     sources,
