@@ -503,7 +503,7 @@ fun LyricsEnhanced(
                     romanization.renderedRomanization() != previous.romanization.renderedRomanization()
             karaokeBuild =
                 KaraokeBuild(
-                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization),
+                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization, lyricsProviderLabel),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
                 )
@@ -1993,6 +1993,7 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
+    providerHeader: String?,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
