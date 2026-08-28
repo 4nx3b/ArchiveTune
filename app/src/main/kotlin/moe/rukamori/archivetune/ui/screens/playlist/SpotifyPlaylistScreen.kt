@@ -338,10 +338,17 @@ fun SpotifyPlaylistScreen(
         // (preserving Home's tab state), then navigate to "library" with
         // launchSingleTop + restoreState.
         BackHandler {
+            // Use the graph's start destination rather than hard-coding
+            // "home" — if the user's default tab is Library, the back
+            // stack starts at "library" (not "home"), and
+            // `popUpTo("home")` would throw IllegalArgumentException,
+            // silently failing the back gesture (the user reports being
+            // "stuck" on the page). Using `graph.startDestinationId`
+            // resolves to whatever the start tab is.
             navController.navigate("library") {
                 launchSingleTop = true
                 restoreState = true
-                popUpTo("home") { saveState = true }
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
             }
         }
     }

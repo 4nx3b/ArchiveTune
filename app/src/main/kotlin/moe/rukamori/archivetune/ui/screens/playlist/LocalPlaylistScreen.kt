@@ -327,7 +327,7 @@ fun LocalPlaylistScreen(
             navController.navigate("library") {
                 launchSingleTop = true
                 restoreState = true
-                popUpTo("home") { saveState = true }
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
             }
         }
     }
