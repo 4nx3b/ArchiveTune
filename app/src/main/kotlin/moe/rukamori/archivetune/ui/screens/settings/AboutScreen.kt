@@ -172,7 +172,7 @@ private fun AboutScreenContent(
                             )
                         }
                         Text(
-                            text = text = stringResource(R.string.about),
+                            text = stringResource(R.string.about),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,

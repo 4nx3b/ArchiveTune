@@ -160,7 +160,7 @@ fun DebugSettings(navController: NavController) {
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = text = stringResource(R.string.experiment_settings),
+                            text = stringResource(R.string.experiment_settings),
                                 style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,

@@ -1220,7 +1220,7 @@ fun ThemeCreatorScreen(navController: NavController) {
                             Icon(painter = painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = text = stringResource(R.string.theme_creator_title),
+                            text = stringResource(R.string.theme_creator_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
