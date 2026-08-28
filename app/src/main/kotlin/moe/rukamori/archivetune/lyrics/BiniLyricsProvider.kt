@@ -30,8 +30,8 @@ import moe.rukamori.archivetune.utils.get
  *
  * The provider surfaces in the user-visible priority list as "BiniLyrics"
  * (matching the upstream project name), replacing the now-removed
- * "Paxsenix: Apple Music" entry. All Paxsenix*/Tidal/Deezer providers have
- * been removed from `baseProviders` in [LyricsHelper] and from the
+ * "Paxsenix: Apple Music" entry. All Paxsenix-slash-Tidal-Deezer providers
+ * have been removed from `baseProviders` in [LyricsHelper] and from the
  * [moe.rukamori.archivetune.constants.PreferredLyricsProvider] enum.
  *
  * The underlying backend (`PaxsenixLyrics`) is intentionally retained as
