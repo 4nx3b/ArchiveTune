@@ -403,6 +403,7 @@ fun SettingsScreen(
                                         listState.animateScrollToItem(0)
                                     }
                                 },
+                                onLongClick = {},
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.search),

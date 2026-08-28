@@ -403,7 +403,6 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                         }
                         Text(
                             text = stringResource(R.string.discord_integration),
-                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

@@ -1519,7 +1519,7 @@ private fun HistorySourcePill(
                 // the caller) places the pill's left edge at exactly
                 // 20dp from the screen's left edge — matching the play
                 // pill's left edge.
-                .wrapContentWidth(align = Alignment.Start, unboundedBounds = true),
+                .wrapContentWidth(align = Alignment.Start),
         contentAlignment = Alignment.TopStart,
     ) {
         Box {

@@ -285,9 +285,6 @@ fun AccountSettings(
                         }
                         Text(
                             text = accountLabel,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

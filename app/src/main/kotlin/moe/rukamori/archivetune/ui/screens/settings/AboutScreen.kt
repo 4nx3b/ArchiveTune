@@ -173,7 +173,6 @@ private fun AboutScreenContent(
                         }
                         Text(
                             text = stringResource(R.string.about),
-                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
