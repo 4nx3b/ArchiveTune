@@ -2033,6 +2033,7 @@ class MainActivity : ComponentActivity() {
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
+                        LocalMiniPlayerVisible provides !playerBottomSheetState.isDismissed,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
@@ -3500,6 +3501,17 @@ val LocalPlayerConnection =
     staticCompositionLocalOf<PlayerConnection?> { error("No PlayerConnection provided") }
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
+/**
+ * Whether the floating MiniPlayer bar is currently visible on screen (i.e. the player
+ * bottom-sheet is in COLLAPSED or EXPANDED-but-not-fullscreen state, NOT dismissed).
+ *
+ * Screens with a bottom fade overlay use this to decide whether to anchor the fade
+ * "behind the mini player" (overlapping the mini player area) or "from the home icon
+ * pill" (the floating home dock button) when no mini player is visible.
+ *
+ * Set from MainActivity based on `!playerBottomSheetState.isDismissed`.
+ */
+val LocalMiniPlayerVisible = compositionLocalOf { false }
 /**
  * Status-bar top inset that does NOT collapse to 0 when the status bar is transiently hidden
  * (overflow menu, V7/APPLE_MUSIC expanded player, bottom-sheet page, etc.). Screens should use

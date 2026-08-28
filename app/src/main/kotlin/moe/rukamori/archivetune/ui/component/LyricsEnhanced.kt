@@ -156,9 +156,19 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-private const val LRC_LEAD_MS = 300L
+// LRC_LEAD_MS and LYRIC_VISUAL_TUNING_OFFSET_MS were both non-zero (300 + 150 = 450ms total),
+// which advanced the active line index 450ms BEFORE the next line's actual audio start. For
+// line-synced (LRC) Enhanced lyrics this caused the highlight + auto-scroll to switch to the
+// next line while the current line's audio was still 450ms from finishing — perceived as
+// "lyrics scroll before they're even finished". This matches the same fix already applied to
+// LyricsV2.kt in commit df8249408 ("fix(lyrics,ui): romanisation below lyric, V2 sync, iOS-style
+// hero redesign") but it was never ported to Enhanced. Both constants are now 0 so the line
+// switch happens exactly at the next line's start. The library's own interlude threshold
+// (LINE_SYNCED_INTERLUDE_MIN_GAP_MS) still kicks in for genuine instrumental breaks, so this
+// doesn't affect silence handling.
+private const val LRC_LEAD_MS = 0L
 private const val TTML_LEAD_MS = 0L
-private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
+private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
 private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f

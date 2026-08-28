@@ -105,6 +105,7 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalMiniPlayerVisible
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -664,6 +665,12 @@ fun HistoryScreen(
             // has scrolled past the hero header, so the first frame (hero
             // visible, list not yet scrolling) doesn't show a stray fade band
             // overlapping the hero's Play/Shuffle/Clear pills.
+            //
+            // When a mini player is visible, the fade anchors THROUGH the mini
+            // player's area (instead of cutting off at the top of the mini
+            // player) so there's no straight-cut horizontal line at the mini
+            // player's top edge. When no mini player is visible, the fade
+            // anchors at the home-icon dock pill as before.
             val isListScrolling by remember {
                 derivedStateOf {
                     val activeState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
@@ -674,6 +681,8 @@ fun HistoryScreen(
             val bottomInset = LocalPlayerAwareWindowInsets.current
                 .asPaddingValues()
                 .calculateBottomPadding()
+            val miniPlayerVisible = LocalMiniPlayerVisible.current
+            val fadeBottomPadding = if (miniPlayerVisible) 0.dp else bottomInset
             if (!showSearchBar && isListScrolling) {
                 BottomFadeOverlay(
                     visible = true,
@@ -682,7 +691,7 @@ fun HistoryScreen(
                         Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .padding(bottom = bottomInset),
+                            .padding(bottom = fadeBottomPadding),
                 )
             }
 

@@ -131,7 +131,9 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_romanize_japanese", "lyrics_romanize_korean", "lyrics_romanize_chinese",
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
-        own("lyrics_animations", "lyrics", "lyrics_animations")
+        // lyrics_animations entry removed — Enhanced is the sole renderer now and the
+        // animation style settings page only adjusted V2-specific sliders that no longer
+        // have a renderer to affect.
         own("appearance", "lyrics", "lyrics_background_style")
         // The lyrics translator shipped alongside the Discord experiments and still lives there.
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
@@ -169,7 +171,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "appearance_extras" -> "settings/appearance/extras"
             "aod" -> "settings/appearance/aod_customized"
             "navigation_bar" -> "settings/appearance/navigation_bar"
-            "lyrics_animations" -> "settings/appearance/lyrics_animations"
+            // "lyrics_animations" route removed — Enhanced is the sole renderer now.
             "playback" -> "settings/player"
             "ytdlp" -> "settings/player/ytdlp"
             "sources" -> "settings/sources"

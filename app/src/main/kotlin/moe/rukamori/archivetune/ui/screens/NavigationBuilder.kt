@@ -90,7 +90,6 @@ import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFmDashboardScreen
 import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
-import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsProvidersSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
@@ -452,12 +451,6 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
-    }
-    composable(
-        route = "settings/appearance/lyrics_animations?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        LyricsAnimationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/appearance/theme_creator") {
         ThemeCreatorScreen(navController)
