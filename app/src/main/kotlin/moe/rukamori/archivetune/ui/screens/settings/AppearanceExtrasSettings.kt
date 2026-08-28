@@ -71,11 +71,7 @@ fun AppearanceExtrasSettings(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.extras))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -88,7 +84,7 @@ fun AppearanceExtrasSettings(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.extras),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

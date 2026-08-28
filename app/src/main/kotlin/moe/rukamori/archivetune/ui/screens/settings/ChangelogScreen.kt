@@ -165,11 +165,7 @@ fun ChangelogScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.changelog))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -179,7 +175,7 @@ fun ChangelogScreen(
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.changelog),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

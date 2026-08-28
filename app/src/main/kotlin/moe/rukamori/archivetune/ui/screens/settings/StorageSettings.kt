@@ -307,11 +307,7 @@ fun StorageSettings(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(stringResource(R.string.storage))
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -324,7 +320,7 @@ fun StorageSettings(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.storage),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

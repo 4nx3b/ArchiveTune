@@ -129,11 +129,7 @@ fun LanguagePackSettings(navController: NavController) {
     }
 
     TopAppBar(
-        title = {
-            FrostedHeaderPill {
-                Text(stringResource(R.string.language_packs))
-            }
-        },
+        title = {},
         navigationIcon = {
             FrostedHeaderPill {
                 IconButton(
@@ -143,7 +139,7 @@ fun LanguagePackSettings(navController: NavController) {
                     Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                 }
                 Text(
-                    text = stringResource(R.string.settings),
+                    text = stringResource(R.string.language_packs),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
