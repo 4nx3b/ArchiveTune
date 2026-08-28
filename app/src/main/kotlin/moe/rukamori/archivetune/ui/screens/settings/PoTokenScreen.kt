@@ -274,7 +274,7 @@ fun PoTokenScreen(
                             )
                         }
                         Text(
-                            text = text = stringResource(R.string.po_token_generation),
+                            text = stringResource(R.string.po_token_generation),
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

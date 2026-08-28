@@ -284,7 +284,7 @@ fun AccountSettings(
                             )
                         }
                         Text(
-                            text = text = accountLabel,
+                            text = accountLabel,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
