@@ -76,6 +76,7 @@ import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.TelegramCodeType
 import moe.rukamori.archivetune.telegram.composeE164
 import moe.rukamori.archivetune.telegram.defaultCallingCode
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.compose.foundation.layout.asPaddingValues
@@ -155,13 +156,26 @@ fun TelegramLoginScreen(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.telegram_login_title)) },
+                title = {
+                    FrostedHeaderPill {
+                        Text(stringResource(R.string.telegram_login_title))
+                    }
+                },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
                     }
                 },
             )

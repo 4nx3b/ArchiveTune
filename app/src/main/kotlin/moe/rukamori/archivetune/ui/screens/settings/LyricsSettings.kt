@@ -102,6 +102,8 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.EnumListPreference
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -527,15 +529,28 @@ fun LyricsSettings(
     }
 
     TopAppBar(
-        title = { Text(stringResource(R.string.lyrics)) },
+        title = {
+            FrostedHeaderPill {
+                Text(stringResource(R.string.lyrics))
+            }
+        },
         navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
+            FrostedHeaderPill {
+                IconButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = navController::backToMain,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 4.dp),
                 )
             }
         },

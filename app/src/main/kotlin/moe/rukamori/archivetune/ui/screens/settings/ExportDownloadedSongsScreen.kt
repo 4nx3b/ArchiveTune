@@ -77,6 +77,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.extensionToMimeType
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.compose.foundation.layout.asPaddingValues
@@ -426,46 +427,57 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = {
-                    if (isSearchActive) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text(stringResource(R.string.search)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(28.dp),
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.close),
-                                            contentDescription = stringResource(R.string.clear_search),
-                                        )
+                    FrostedHeaderPill {
+                        if (isSearchActive) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                placeholder = { Text(stringResource(R.string.search)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(28.dp),
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.close),
+                                                contentDescription = stringResource(R.string.clear_search),
+                                            )
+                                        }
                                     }
-                                }
-                            },
-                        )
-                    } else {
-                        Text(stringResource(R.string.export_downloaded_songs))
+                                },
+                            )
+                        } else {
+                            Text(stringResource(R.string.export_downloaded_songs))
+                        }
                     }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (isSearchActive) {
-                                isSearchActive = false
-                                searchQuery = ""
-                            } else {
-                                navController.navigateUp()
-                            }
-                        },
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                if (isSearchActive) R.drawable.arrow_back else R.drawable.arrow_back,
-                            ),
-                            contentDescription = null,
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = {
+                                if (isSearchActive) {
+                                    isSearchActive = false
+                                    searchQuery = ""
+                                } else {
+                                    navController.navigateUp()
+                                }
+                            },
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    if (isSearchActive) R.drawable.arrow_back else R.drawable.arrow_back,
+                                ),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

@@ -79,6 +79,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
@@ -92,6 +93,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.AppIconSortOrder
@@ -202,21 +204,32 @@ private fun IconScreenContent(
         topBar = {
             MediumFlexibleTopAppBar(
                 title = {
-                    Text(text = stringResource(R.string.app_icon))
+                    FrostedHeaderPill {
+                        Text(text = stringResource(R.string.app_icon))
+                    }
                 },
                 subtitle = {
                     Text(text = stringResource(R.string.app_icon_subtitle))
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateUp,
-                        onLongClick = onNavigateHome,
-                        modifier = Modifier.padding(start = 5.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.back_button_desc),
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = onNavigateUp,
+                            onLongClick = onNavigateHome,
+                            modifier = Modifier.padding(start = 5.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

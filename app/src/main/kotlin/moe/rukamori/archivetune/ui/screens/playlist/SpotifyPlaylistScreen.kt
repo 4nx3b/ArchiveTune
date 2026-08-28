@@ -69,6 +69,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -317,6 +318,24 @@ fun SpotifyPlaylistScreen(
             isSearching = false
             query = TextFieldValue()
         }
+    } else {
+        // Explicit BackHandler so the predictive back gesture lands on the
+        // Library tab when the previous back-stack entry is not a main
+        // screen. Previously, when the user entered this screen directly
+        // (e.g. via a deep link from Home) the back gesture popped straight
+        // to Home, skipping the Library tab the user expected to return to.
+        // Calling [navigateUp] first preserves the natural back stack; if
+        // that returns false (no previous entry to pop), we explicitly
+        // navigate to the Library tab so the user always lands somewhere
+        // meaningful instead of being dropped on Home.
+        BackHandler {
+            if (!navController.navigateUp()) {
+                navController.navigate("library") {
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        }
     }
 
     fun playPlaylist(
@@ -371,7 +390,11 @@ fun SpotifyPlaylistScreen(
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    // Use the theme surface color (not Color.Black) so the initial frame, before
+    // any scrolling content is recorded into the backdrop, blends with the page
+    // background instead of flashing solid black. Matches the LocalPlaylistScreen
+    // / AutoPlaylistScreen / CachePlaylistScreen fix from stage-6.
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     ExpressivePullToRefreshBox(
         isRefreshing = state.isLoading,
@@ -631,17 +654,55 @@ fun SpotifyPlaylistScreen(
         //  - Not searching
         //  - Playlist is loaded
         if (layerBackdropActive && !isSearching && playlist != null) {
-            LiquidGlassIconButton(
+            // iOS-inspired back pill: persistent translucent liquid-glass
+            // capsule containing a left-pointing chevron followed by the
+            // text "Library", matching the user's reference screenshot and
+            // the LocalPlaylistScreen / AutoPlaylistScreen / HistoryScreen
+            // layout. Previously this was a single LiquidGlassIconButton
+            // (just the arrow_back icon with no "Library" label), which
+            // the user reported as not matching the history-page layout.
+            // Tapping it pops back to the previous destination (or pops
+            // back to the Library tab if no previous destination exists);
+            // long-pressing it jumps straight to the Home tab.
+            LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = null,
+                interactive = true,
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
-                        .size(48.dp),
-                onClick = { navController.navigateUp() },
-            )
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        if (!navController.navigateUp()) {
+                            // No previous back-stack entry — fall back to the
+                            // Library tab so the back gesture always lands on
+                            // Library (not Home) when the user entered this
+                            // screen directly (e.g. via a deep link).
+                            navController.navigate("library") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onLongClick = { navController.backToMain() },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.library),
+                        tint = Color.White,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.library),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =

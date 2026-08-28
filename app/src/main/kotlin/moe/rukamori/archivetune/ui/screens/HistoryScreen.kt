@@ -440,30 +440,39 @@ fun HistoryScreen(
                         ),
             )
             if (availableSources.size > 1) {
-                HistorySourceSelector(
-                    currentSource = historySource,
-                    availableSources = availableSources,
-                    onSourceChange = { newSource ->
-                        if (newSource == historySource) return@HistorySourceSelector
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp, start = 4.dp),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HistorySourcePill(
+                        currentSource = historySource,
+                        availableSources = availableSources,
+                        onSourceChange = { newSource ->
+                            if (newSource == historySource) return@HistorySourcePill
 
-                        viewModel.historySource.value = newSource
-                        if (newSource == HistorySource.REMOTE) {
-                            when (remoteHistoryState) {
-                                is RemoteHistoryUiState.Error -> {
-                                    viewModel.fetchRemoteHistory()
-                                }
+                            viewModel.historySource.value = newSource
+                            if (newSource == HistorySource.REMOTE) {
+                                when (remoteHistoryState) {
+                                    is RemoteHistoryUiState.Error -> {
+                                        viewModel.fetchRemoteHistory()
+                                    }
 
-                                is RemoteHistoryUiState.Empty -> {
-                                    viewModel.enqueueSilentFetch()
-                                }
+                                    is RemoteHistoryUiState.Empty -> {
+                                        viewModel.enqueueSilentFetch()
+                                    }
 
-                                else -> {
-                                    Unit
+                                    else -> {
+                                        Unit
+                                    }
                                 }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
         }
     }
@@ -1336,7 +1345,7 @@ private fun HistorySourceDock(
                     }
                 }
                 if (availableSources.size > 1) {
-                    HistorySourceSelector(
+                    HistorySourcePill(
                         currentSource = currentSource,
                         availableSources = availableSources,
                         onSourceChange = onSourceChange,
@@ -1446,7 +1455,7 @@ private fun HistorySectionHeader(
 }
 
 @Composable
-private fun HistorySourceSelector(
+private fun HistorySourcePill(
     currentSource: HistorySource,
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
@@ -1542,7 +1551,7 @@ private fun HistorySourceSelector(
                 availableSources.forEach { source ->
                     val label =
                         stringResource(
-                            if (source == HistorySource.LOCAL) {
+                            if (currentSource == HistorySource.LOCAL) {
                                 R.string.local_history
                             } else {
                                 R.string.remote_history

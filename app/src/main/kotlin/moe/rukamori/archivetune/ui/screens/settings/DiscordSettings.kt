@@ -56,6 +56,7 @@ import moe.rukamori.archivetune.discord.DiscordAuthCoordinator
 import moe.rukamori.archivetune.discord.DiscordOAuthRepository
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.EnumListPreference
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -389,19 +390,30 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.discord_integration),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.discord_integration),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },
