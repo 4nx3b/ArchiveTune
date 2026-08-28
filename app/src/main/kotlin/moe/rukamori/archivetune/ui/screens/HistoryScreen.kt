@@ -1574,7 +1574,7 @@ private fun HistorySourcePill(
                 availableSources.forEach { source ->
                     val label =
                         stringResource(
-                            if (currentSource == HistorySource.LOCAL) {
+                            if (source == HistorySource.LOCAL) {
                                 R.string.local_history
                             } else {
                                 R.string.remote_history

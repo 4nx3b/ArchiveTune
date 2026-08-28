@@ -894,7 +894,7 @@ fun Lyrics(
                             ) {
                                 Text(
                                     text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                                    fontSize = lyricsTextSize.sp,
+                                    fontSize = (lyricsTextSize * 0.8f).sp,
                                     color = lyricsBaseColor.copy(alpha = 0.52f),
                                     textAlign = attributionAlignment,
                                     fontWeight = FontWeight.SemiBold,
