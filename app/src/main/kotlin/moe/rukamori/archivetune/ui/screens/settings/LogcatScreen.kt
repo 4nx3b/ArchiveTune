@@ -343,24 +343,7 @@ private fun LogcatTopBar(
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
 ) {
     MediumFlexibleTopAppBar(
-        title = {
-            FrostedHeaderPill {
-                Text(
-                    text = stringResource(R.string.debug_logs),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
-        subtitle = {
-            FrostedHeaderPill {
-                Text(
-                    text = stringResource(R.string.filter_all_logs),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        },
+        title = {},
         navigationIcon = {
             FrostedHeaderPill {
                 ArchiveTuneIconButton(
@@ -373,7 +356,7 @@ private fun LogcatTopBar(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.settings),
+                    text = stringResource(R.string.debug_logs),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

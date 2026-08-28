@@ -771,11 +771,7 @@ fun AiIntegrationSettings(
     }
 
     TopAppBar(
-        title = {
-            FrostedHeaderPill {
-                Text(stringResource(R.string.ai_integration))
-            }
-        },
+        title = {},
         navigationIcon = {
             FrostedHeaderPill {
                 IconButton(
@@ -788,7 +784,7 @@ fun AiIntegrationSettings(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.settings),
+                    text = stringResource(R.string.ai_integration),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

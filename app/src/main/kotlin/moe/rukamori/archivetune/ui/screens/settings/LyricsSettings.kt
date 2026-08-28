@@ -529,11 +529,7 @@ fun LyricsSettings(
     }
 
     TopAppBar(
-        title = {
-            FrostedHeaderPill {
-                Text(stringResource(R.string.lyrics))
-            }
-        },
+        title = {},
         navigationIcon = {
             FrostedHeaderPill {
                 IconButton(
@@ -546,7 +542,7 @@ fun LyricsSettings(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.settings),
+                    text = stringResource(R.string.lyrics),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

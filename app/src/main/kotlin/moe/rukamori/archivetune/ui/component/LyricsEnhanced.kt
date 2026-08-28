@@ -1207,12 +1207,18 @@ fun LyricsEnhanced(
         // pattern (L808-841). Per user request (2026-08-28): "just like
         // written by is on the bottom of lyrics page there's should be
         // Lyrics from 'The lyrics provider name' on the top of the lyrics
-        // too". The header is rendered as an overlay aligned to the top
-        // of the lyrics Box; the karaoke list has enough top padding for
-        // active-line centering that the header sits in the empty space
-        // above the first visible lyric line. `providerName` comes from
-        // the LyricsEntity row persisted by LyricsHelper (e.g. "LrcLib",
-        // "Musixmatch", "BiniLyrics", etc.).
+        // too". Per user request (2026-08-28 follow-up): "the Lyrics from
+        // at the top and the written by text at the bottom of the lyrics
+        // should show as if it's just lyrics and not some constant text".
+        // The header overlay now uses the same color, font size, weight,
+        // and line height as a regular (non-active) lyric line —
+        // Color.White at alpha 0.52, font size `lyricsTextSize`, SemiBold
+        // weight — so it reads as the first lyric line of the song rather
+        // than as a constant red caption. The overlay placement is kept
+        // because the synced-lyrics path uses the third-party
+        // KaraokeLyricsView library, whose internal LazyColumn cannot be
+        // extended with external items; the plain-lyrics path injects it
+        // as the first LazyColumn item (see PlainLyricsView).
         val lyricsProviderName = currentLyrics?.providerName.orEmpty()
         if (lyricsProviderName.isNotBlank()) {
             Box(
@@ -1225,12 +1231,11 @@ fun LyricsEnhanced(
             ) {
                 Text(
                     text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = lyricsTextSize.sp,
+                    color = textColor.copy(alpha = 0.52f),
                     textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = (lyricsTextSize * 1.3f).sp,
                 )
             }
         }
@@ -1425,48 +1430,40 @@ fun LyricsEnhanced(
             }
         }
 
-        // "Written by [artists]" footer overlay. Mirrors the design of the
-        // "Lyrics from" header overlay above: small secondary color, medium
-        // weight, centered. Rendered as an overlay at the bottom of the
-        // lyrics Box so it visually closes the lyrics block. The alpha
-        // fades in as the user scrolls toward the end of the lyrics (so it
-        // doesn't compete with the active line at the top). The artist list
-        // is used as a proxy for composer credits (MediaMetadata does not
-        // track formal composer credits).
+        // "Written by [artists]" footer overlay. Per user request
+        // (2026-08-28 follow-up): "the Lyrics from at the top and the
+        // written by text at the bottom of the lyrics should show as if
+        // it's just lyrics and not some constant text". The footer now
+        // uses the same color, font size, weight, and line height as a
+        // regular (non-active) lyric line — Color.White at alpha 0.52,
+        // font size `lyricsTextSize`, SemiBold weight — so it reads as
+        // the last lyric line of the song rather than as a constant red
+        // caption. The overlay placement is kept because the
+        // synced-lyrics path uses the third-party KaraokeLyricsView
+        // library, whose internal LazyColumn cannot be extended with
+        // external items; the plain-lyrics path injects it as the last
+        // LazyColumn item (see PlainLyricsView). The scroll-driven fade
+        // alpha is removed so the footer always reads as a constant
+        // lyric-styled line — matching the user's "show as if it's just
+        // lyrics" instruction.
         mediaMetadata?.let { metadata ->
             val writersLine = metadata.artists.joinToString { it.name }.trim()
             if (writersLine.isNotBlank() && lyrics != null && lyrics != LYRICS_NOT_FOUND) {
-                val footerAlpha by remember {
-                    derivedStateOf {
-                        val layoutInfo = listState.layoutInfo
-                        val totalItems = layoutInfo.totalItemsCount
-                        val lastVisibleIdx = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        if (totalItems == 0) 0f
-                        else ((lastVisibleIdx + 1).toFloat() / totalItems.toFloat()).coerceIn(0f, 1f)
-                    }
-                }
-                val animatedFooterAlpha by animateFloatAsState(
-                    targetValue = footerAlpha,
-                    animationSpec = tween(durationMillis = 220),
-                    label = "lyricsFooterAlphaEnhanced",
-                )
                 Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 16.dp)
-                            .graphicsLayer { alpha = animatedFooterAlpha },
+                            .padding(bottom = 16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = stringResource(R.string.written_by, writersLine),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = lyricsTextSize.sp,
+                        color = textColor.copy(alpha = 0.52f),
                         textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = (lyricsTextSize * 1.3f).sp,
                     )
                 }
             }
