@@ -30,7 +30,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,19 +70,29 @@ import coil3.request.crossfade
 import coil3.size.Size
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.HideCachedCardKey
+import moe.rukamori.archivetune.constants.HideLikedSongsCardKey
+import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
+import moe.rukamori.archivetune.constants.HideOfflineCardKey
+import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.SongSortType
+import moe.rukamori.archivetune.constants.TopSize
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.Playlist
+import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LibraryMixViewModel
 
 /**
@@ -165,6 +178,35 @@ fun LibraryMixScreen(
     val likedSongsCount by database.likedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
     val downloadedSongsCount by database.downloadedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
     val historyEventsCount by database.historyEventsCount().collectAsStateWithLifecycle(initialValue = 0)
+    val localSongsCount by database
+        .localSongs()
+        .map { it.size }
+        .collectAsStateWithLifecycle(initialValue = 0)
+    // Recently liked songs in sequential order (most recent first). Used by the
+    // newly-added "Recently Liked" subsection of the Recently Added block so
+    // the user sees songs they have liked alongside their recently added
+    // playlists. Pulled from `likedSongs(SongSortType.CREATE_DATE, descending=true)`
+    // which delegates to `likedSongsByCreateDateAsc().asReversed()`.
+    val recentlyLikedSongs by database
+        .likedSongs(SongSortType.CREATE_DATE, descending = true)
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    // ── Per-card visibility toggles (Extras section) ──────────────────────────
+    // The user can hide each quick-access card from Appearance → Extras. These
+    // toggles previously only affected the OLD ShortcutCard grid; the
+    // redesigned category rows now honour them so hiding Offline, Cached,
+    // Local Files, My top 50, or Liked Songs in Extras removes the
+    // corresponding row from this screen too. The default value for each
+    // toggle is false (visible).
+    val (hideLikedSongsCard) = rememberPreference(HideLikedSongsCardKey, false)
+    val (hideOfflineCard) = rememberPreference(HideOfflineCardKey, false)
+    val (hideCachedCard) = rememberPreference(HideCachedCardKey, false)
+    val (hideLocalFilesCard) = rememberPreference(HideLocalFilesCardKey, false)
+    val (hideTop50Card) = rememberPreference(HideTop50CardKey, false)
+    // Top playlist size (Content settings). "My top 50" routes to
+    // `top_playlist/{topSize}` — the route argument is read by
+    // TopPlaylistViewModel from SavedStateHandle.
+    val (topSize) = rememberPreference(TopSize, "50")
 
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
@@ -183,7 +225,9 @@ fun LibraryMixScreen(
     // but the view-model remains alive and the Spotify tab in the bottom
     // chip row remains the access point for Spotify playlists.
 
-    // Filter playlists by selected tag (existing behaviour, retained verbatim)
+    // Filter playlists by selected tag (existing behaviour, retained verbatim).
+    // Additionally exclude hidden playlists so they don't appear in the
+    // Recently Added grid even when the user has tagged or bookmarked them.
     val filteredPlaylistIds by database
         .playlistIdsByTags(
             if (selectedTagIds.isEmpty()) emptyList() else selectedTagIds.toList(),
@@ -195,7 +239,8 @@ fun LibraryMixScreen(
                 val name = playlist.playlist.name
                 val matchesName = !name.contains("episode", ignoreCase = true)
                 val matchesTags = selectedTagIds.isEmpty() || playlist.id in filteredPlaylistIds
-                matchesName && matchesTags
+                val matchesVisibility = !playlist.playlist.isHidden
+                matchesName && matchesTags && matchesVisibility
             }
         }
 
@@ -231,29 +276,40 @@ fun LibraryMixScreen(
                     )
                 }
 
-                // ── Category rows (Playlists / Spotify / Artists / Favorites / Downloads / History)
+                // ── Category rows (Playlists / Spotify / Artists / Favorites / Offline / Cached / Local Files / My Top 50 / History)
                 item(key = "library_category_list", contentType = "category_list") {
                     LibraryCategoryList(
                         playlistsCount = visiblePlaylists.size,
                         spotifyCount = spotifyPlaylists.size,
                         artistsCount = artists.size,
                         favoritesCount = likedSongsCount,
-                        downloadsCount = downloadedSongsCount,
+                        offlineCount = downloadedSongsCount,
+                        localFilesCount = localSongsCount,
+                        topSize = topSize,
                         historyCount = historyEventsCount,
                         showSpotify = showSpotify,
+                        hideLikedSongs = hideLikedSongsCard,
+                        hideOffline = hideOfflineCard,
+                        hideCached = hideCachedCard,
+                        hideLocalFiles = hideLocalFilesCard,
+                        hideTop50 = hideTop50Card,
                         onPlaylistsClick = { onTabSelected(LibraryFilter.PLAYLISTS) },
                         onSpotifyClick = { onTabSelected(LibraryFilter.SPOTIFY) },
                         onArtistsClick = { onTabSelected(LibraryFilter.ARTISTS) },
                         onFavoritesClick = { navController.navigate("auto_playlist/liked") },
-                        onDownloadsClick = { navController.navigate("auto_playlist/downloaded") },
+                        onOfflineClick = { navController.navigate("auto_playlist/downloaded") },
+                        onCachedClick = { navController.navigate("cache_playlist/cached") },
+                        onLocalFilesClick = { navController.navigate("local_songs") },
+                        onTop50Click = { navController.navigate("top_playlist/$topSize") },
                         onHistoryClick = { navController.navigate("history") },
                     )
                 }
 
-                // ── "Recently Added" section header + 2-column grid ────────────────
+                // ── "Recently Added" section header + 2-column grid + "Recently Liked" row ────────────────
                 item(key = "recently_added_section", contentType = "recently_added") {
                     RecentlyAddedSection(
                         playlists = visiblePlaylists,
+                        recentlyLikedSongs = recentlyLikedSongs,
                         navController = navController,
                         onSeeAll = { onTabSelected(LibraryFilter.PLAYLISTS) },
                         playerConnection = playerConnection,
@@ -342,7 +398,13 @@ private fun LibraryAddCircleButton(onClick: () -> Unit) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Category list: Playlists / Artists / Favorites / Downloads / History
+// Category list: Playlists / Spotify / Artists / Favorites / Offline / Cached /
+// Local Files / My Top 50 / History. Each row's visibility is gated by the
+// corresponding `Hide*CardKey` preference from Appearance → Extras so the
+// user can curate which quick-access categories appear on their Library
+// overview. Hidden rows are filtered out of `categories` BEFORE the
+// divider logic so we never emit a dangling divider after the last visible
+// row.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -351,20 +413,34 @@ private fun LibraryCategoryList(
     spotifyCount: Int,
     artistsCount: Int,
     favoritesCount: Int,
-    downloadsCount: Int,
+    offlineCount: Int,
+    localFilesCount: Int,
+    topSize: String,
     historyCount: Int,
     showSpotify: Boolean,
+    hideLikedSongs: Boolean,
+    hideOffline: Boolean,
+    hideCached: Boolean,
+    hideLocalFiles: Boolean,
+    hideTop50: Boolean,
     onPlaylistsClick: () -> Unit,
     onSpotifyClick: () -> Unit,
     onArtistsClick: () -> Unit,
     onFavoritesClick: () -> Unit,
-    onDownloadsClick: () -> Unit,
+    onOfflineClick: () -> Unit,
+    onCachedClick: () -> Unit,
+    onLocalFilesClick: () -> Unit,
+    onTop50Click: () -> Unit,
     onHistoryClick: () -> Unit,
 ) {
     // The Spotify row is injected between Playlists and Artists when the
     // user has enabled "Show Spotify playlists" in settings. It mirrors
     // the existing category rows (pink line icon + title + chevron) and
     // routes to the Spotify pager tab via [onSpotifyClick].
+    //
+    // Order matches the original Apple Music reference plus the user's
+    // request to surface Offline / Cached / Local Files / My Top 50 as
+    // first-class list rows (not just cards in the old grid).
     val categories =
         buildList {
             add(
@@ -398,22 +474,77 @@ private fun LibraryCategoryList(
                     onClick = onArtistsClick,
                 ),
             )
-            add(
-                LibraryCategory(
-                    title = stringResource(R.string.favorites),
-                    count = favoritesCount,
-                    iconRes = R.drawable.favorite,
-                    onClick = onFavoritesClick,
-                ),
-            )
-            add(
-                LibraryCategory(
-                    title = stringResource(R.string.downloads),
-                    count = downloadsCount,
-                    iconRes = R.drawable.download,
-                    onClick = onDownloadsClick,
-                ),
-            )
+            // Favorites ↔ "Liked Songs" card from the old design.
+            if (!hideLikedSongs) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.favorites),
+                        count = favoritesCount,
+                        iconRes = R.drawable.favorite,
+                        onClick = onFavoritesClick,
+                    ),
+                )
+            }
+            // Offline ↔ "Offline / Downloaded" card from the old design.
+            // Routes to the same `auto_playlist/downloaded` page as the old
+            // card. The label uses `R.string.offline_shortcut` ("Offline")
+            // to match the card's title in the prior design.
+            if (!hideOffline) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.offline_shortcut),
+                        count = offlineCount,
+                        iconRes = R.drawable.offline,
+                        onClick = onOfflineClick,
+                    ),
+                )
+            }
+            // Cached ↔ "Cached (Instant playback)" card from the old design.
+            // Routes to the cache playlist screen which shows songs that
+            // have been streamed enough to be cached for instant playback.
+            // No count badge is shown — the count is not directly available
+            // from the database (it's computed by the CachePlaylistViewModel
+            // from the player cache + download cache) and the original card
+            // just showed "Instant playback" as the subtitle. We omit the
+            // badge here for the same reason — an empty Cached library
+            // stays blank, matching History's empty-state.
+            if (!hideCached) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.cached),
+                        count = 0,
+                        iconRes = R.drawable.cached,
+                        onClick = onCachedClick,
+                    ),
+                )
+            }
+            // Local Files ↔ "Local Files (On device)" card from the old
+            // design. Routes to the local song browser which lists songs
+            // the user has imported from device storage.
+            if (!hideLocalFiles) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.local_files),
+                        count = localFilesCount,
+                        iconRes = R.drawable.snippet_folder,
+                        onClick = onLocalFilesClick,
+                    ),
+                )
+            }
+            // My Top 50 ↔ "My top 50 (All time)" card from the old design.
+            // Routes to the TopPlaylistScreen which shows the user's most
+            // played songs for the configured period (default All time).
+            // Count badge shows the configured top size (e.g. "50").
+            if (!hideTop50) {
+                add(
+                    LibraryCategory(
+                        title = stringResource(R.string.my_top_50),
+                        count = topSize.toIntOrNull() ?: 50,
+                        iconRes = R.drawable.trending_up,
+                        onClick = onTop50Click,
+                    ),
+                )
+            }
             add(
                 LibraryCategory(
                     title = stringResource(R.string.history),
@@ -536,12 +667,25 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Recently Added section: header with chevron + 2-column artwork grid
+// Recently Added section: header with chevron + 2-column playlist artwork
+// grid + Recently Liked horizontal song row.
+//
+// Per user request (2026-08-28): the section now shows BOTH recently added
+// playlists AND recently liked songs in sequential order (most recent first).
+// The liked songs render as a horizontal scroller of compact song tiles
+// below the playlist grid — same horizontal padding rhythm so it visually
+// belongs to the same "Recently Added" block. Tapping a liked song tile
+// plays it from the user's liked-songs queue starting at that index.
+//
+// Hidden playlists are filtered upstream in `LibraryMixScreen.visiblePlaylists`
+// so they never reach this composable — the previous bug where hidden
+// playlists still showed in Recently Added is fixed at the data layer.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun RecentlyAddedSection(
     playlists: List<Playlist>,
+    recentlyLikedSongs: List<Song>,
     navController: NavController,
     onSeeAll: () -> Unit,
     playerConnection: PlayerConnection,
@@ -562,6 +706,17 @@ private fun RecentlyAddedSection(
             coroutineScope = coroutineScope,
             database = database,
         )
+        // Only render the Recently Liked row when the user actually has
+        // liked songs. An empty list means the section would just show a
+        // header with no content — better to omit it entirely so the
+        // Recently Added block ends cleanly at the playlist grid.
+        if (recentlyLikedSongs.isNotEmpty()) {
+            RecentlyLikedList(
+                songs = recentlyLikedSongs,
+                playerConnection = playerConnection,
+                modifier = Modifier.padding(top = 28.dp),
+            )
+        }
     }
 }
 
@@ -771,6 +926,194 @@ private fun RecentlyAddedGridItem(
                     playlist.songCount,
                     playlist.songCount,
                 ),
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
+            fontWeight = FontWeight.Normal,
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recently Liked horizontal scroller — compact song tiles.
+//
+// Rendered below the playlist grid in the "Recently Added" block. Each tile
+// shows the song's thumbnail, title, and a one-line artist list. Tapping
+// a tile plays the entire liked-songs queue starting at that song so the
+// user can pick up exactly where they want in their recently-liked
+// sequence. The play affordance matches the playlist grid tiles (pink
+// circular play button pinned to the bottom-end of the artwork) so the
+// visual rhythm of the Recently Added block stays consistent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun RecentlyLikedList(
+    songs: List<Song>,
+    playerConnection: PlayerConnection,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Sub-header, visually quieter than the main "Recently Added"
+        // header so the parent block remains the dominant section title
+        // while the liked-songs scroller reads as a sub-section.
+        Text(
+            text = stringResource(R.string.recently_liked),
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            letterSpacing = (-0.3).sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier =
+                Modifier.padding(
+                    horizontal = LibraryHeaderHorizontalPadding,
+                    vertical = 4.dp,
+                ),
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = LibraryGridHorizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(LibraryGridSpacing),
+            verticalAlignment = Alignment.Top,
+        ) {
+            items(
+                items = songs,
+                key = { it.id },
+                contentType = { "recently_liked_song" },
+            ) { song ->
+                RecentlyLikedItem(
+                    song = song,
+                    playerConnection = playerConnection,
+                    songs = songs,
+                    modifier = Modifier.width(RecentlyLikedTileWidth),
+                )
+            }
+        }
+    }
+}
+
+// Each liked-song tile is a fixed-width column. Width is sized to mirror
+// the playlist grid's half-width (screen_half - grid_padding) so the
+// horizontal rhythm matches the grid above; 160dp is a comfortable min
+// for two-line titles on most densities and matches the sized image
+// request we already pass for playlist thumbnails.
+private val RecentlyLikedTileWidth = 160.dp
+private val RecentlyLikedArtworkSize = 160.dp
+
+@Composable
+private fun RecentlyLikedItem(
+    song: Song,
+    songs: List<Song>,
+    playerConnection: PlayerConnection,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "RecentlyLikedItemScale",
+    )
+
+    Column(
+        modifier =
+            modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }.clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        val startIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = "Liked Songs",
+                                items = songs.map { it.toMediaItem() },
+                                startIndex = startIndex,
+                            ),
+                        )
+                    },
+                ),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(RecentlyLikedArtworkSize)
+                    .aspectRatio(1f),
+        ) {
+            val thumbnailUrl = song.song.thumbnailUrl
+            if (thumbnailUrl.isNullOrBlank()) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(LibraryArtworkCornerRadius))
+                            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.music_note),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
+                        modifier = Modifier.size(44.dp),
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = rememberSizedImageRequest(thumbnailUrl, RecentlyLikedArtworkSize, RecentlyLikedArtworkSize),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(LibraryArtworkCornerRadius)),
+                )
+            }
+            // Inline play affordance pinned to bottom-end, matching the
+            // playlist grid tile aesthetic so the two sub-sections read as
+            // one coherent "Recently Added" block.
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(LibraryAccentColor)
+                        .clickable {
+                            val startIndex = songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = "Liked Songs",
+                                    items = songs.map { it.toMediaItem() },
+                                    startIndex = startIndex,
+                                ),
+                            )
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.play),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = song.song.title,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = song.artists.joinToString(", ") { it.name },
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
             fontWeight = FontWeight.Normal,
             fontSize = 14.sp,
