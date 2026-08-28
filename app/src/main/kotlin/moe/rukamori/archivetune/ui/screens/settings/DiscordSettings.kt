@@ -389,14 +389,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.discord_integration),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -409,7 +402,8 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = text = stringResource(R.string.discord_integration),
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

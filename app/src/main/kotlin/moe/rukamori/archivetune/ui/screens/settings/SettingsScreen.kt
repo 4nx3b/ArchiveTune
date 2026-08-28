@@ -14,6 +14,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,9 +45,11 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -57,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -228,6 +235,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     val storagePermission =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -332,18 +340,17 @@ fun SettingsScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
-                    // Liquid-glass title pill — matches the redesigned
-                    // HistoryScreen layout where the page title sits inside
-                    // a FrostedHeaderPill so the header reads as a
-                    // translucent capsule rather than a flat text label.
-                    // When no layer backdrop is available the pill falls
-                    // back to a translucent surfaceContainer surface.
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.settings),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                    // Empty title pill — the "Settings" label is already
+                    // rendered inside the navigationIcon pill below (back
+                    // arrow + "Settings"). Per user request (2026-08-28):
+                    // "On the settings main page there's second settings
+                    // pill in the middle. Remove that." Previously this
+                    // rendered a SECOND FrostedHeaderPill containing just
+                    // the "Settings" text, which sat in the top-center
+                    // of the page as a duplicate of the back+Settings pill
+                    // at the start. Removing it leaves the navigationIcon
+                    // pill as the sole header pill, matching the layout
+                    // of the History page and the settings submenus.
                 },
                 navigationIcon = {
                     // Liquid-glass back pill — back chevron + "Settings"
@@ -367,6 +374,42 @@ fun SettingsScreen(
                             maxLines = 1,
                             modifier = Modifier.padding(end = 4.dp),
                         )
+                    }
+                },
+                actions = {
+                    // Per user request (2026-08-28): "Also when I scroll a
+                    // search icon pill should also appear on the right in
+                    // liquid glass." When the user scrolls the settings list
+                    // down, the inline search TextField at the top of the
+                    // LazyColumn scrolls out of view. To keep search
+                    // reachable, we surface a small search-icon pill in the
+                    // top-app-bar's actions slot while scrolling. Tapping it
+                    // scrolls back to the search bar and requests focus.
+                    val isScrolling by remember {
+                        derivedStateOf {
+                            listState.firstVisibleItemIndex > 0 ||
+                                listState.firstVisibleItemScrollOffset > 200
+                        }
+                    }
+                    AnimatedVisibility(
+                        visible = isScrolling,
+                        enter = fadeIn(animationSpec = tween(180)),
+                        exit = fadeOut(animationSpec = tween(140)),
+                    ) {
+                        FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp)) {
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(0)
+                                    }
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.search),
+                                    contentDescription = stringResource(R.string.search),
+                                )
+                            }
+                        }
                     }
                 },
                 colors =

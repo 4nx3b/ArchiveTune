@@ -150,16 +150,7 @@ fun DebugSettings(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.experiment_settings),
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                        }
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -169,7 +160,8 @@ fun DebugSettings(navController: NavController) {
                             Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = text = stringResource(R.string.experiment_settings),
+                                style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

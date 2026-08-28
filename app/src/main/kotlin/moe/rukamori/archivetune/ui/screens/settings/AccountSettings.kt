@@ -271,18 +271,7 @@ fun AccountSettings(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Column {
-                            Text(
-                                text = accountLabel,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -295,7 +284,10 @@ fun AccountSettings(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = text = accountLabel,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

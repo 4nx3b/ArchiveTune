@@ -426,32 +426,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        if (isSearchActive) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text(stringResource(R.string.search)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(28.dp),
-                                trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { searchQuery = "" }) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.close),
-                                                contentDescription = stringResource(R.string.clear_search),
-                                            )
-                                        }
-                                    }
-                                },
-                            )
-                        } else {
-                            Text(stringResource(R.string.export_downloaded_songs))
-                        }
-                    }
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -473,7 +448,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.search),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

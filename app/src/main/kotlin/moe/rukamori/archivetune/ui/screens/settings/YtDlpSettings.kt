@@ -135,15 +135,7 @@ private fun YtDlpSettingsContent(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.ytdlp_settings_title),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
-                subtitle = { Text(stringResource(R.string.ytdlp_settings_description)) },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -156,7 +148,7 @@ private fun YtDlpSettingsContent(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.ytdlp_settings_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
