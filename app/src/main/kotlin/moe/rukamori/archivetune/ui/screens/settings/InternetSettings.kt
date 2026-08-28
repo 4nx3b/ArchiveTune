@@ -192,15 +192,28 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.internet)) },
+                title = {
+                    FrostedHeaderPill {
+                        Text(stringResource(R.string.internet))
+                    }
+                },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

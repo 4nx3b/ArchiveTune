@@ -109,6 +109,7 @@ import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -507,10 +508,12 @@ fun UpdateScreen(
         topBar = {
             MediumFlexibleTopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.updates),
-                        fontWeight = FontWeight.Bold,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.updates),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 },
                 subtitle = {
                     Text(
@@ -520,13 +523,22 @@ fun UpdateScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.back_button_desc),
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
                         )
                     }
                 },

@@ -16,6 +16,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -54,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -98,6 +100,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -776,6 +779,34 @@ fun LyricsV2(
                     },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // "Lyrics from [provider]" header item. Rendered as the FIRST
+            // LazyColumn item so it scrolls naturally with the lyrics — the
+            // user requested this behave "as if it's a lyrics line itself"
+            // rather than a constant watermark. Mirrors the design of the
+            // "Written by" footer item at the end of the list.
+            val providerNameV2 = currentLyrics?.providerName.orEmpty()
+            if (providerNameV2.isNotBlank()) {
+                item(key = "lyrics_source_header_v2", contentType = "lyrics_attribution") {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp, bottom = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.lyrics_from_source, providerNameV2),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
             itemsIndexed(
                 items = entriesWithWords,
                 // Include repeat resets so a repeated word receives a new
@@ -1125,6 +1156,37 @@ fun LyricsV2(
             // Bottom spacer for overscroll
             item {
                 Spacer(modifier = Modifier.height(300.dp))
+            }
+
+            // "Written by [artists]" footer item. Rendered as the LAST
+            // LazyColumn item so it scrolls naturally with the lyrics and
+            // visually closes the lyrics block. Mirrors the design of the
+            // "Lyrics from" header item at the top. Uses the artist list as
+            // a proxy for composer credits (MediaMetadata does not track
+            // formal composer credits).
+            mediaMetadata?.let { metadata ->
+                val writersLineV2 = metadata.artists.joinToString { it.name }.trim()
+                if (writersLineV2.isNotBlank()) {
+                    item(key = "lyrics_writers_footer_v2", contentType = "lyrics_attribution") {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.written_by, writersLineV2),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.secondary,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
 
