@@ -32,6 +32,7 @@ import moe.rukamori.archivetune.aicontentfilter.RefreshAiContentFilterUseCase
 import moe.rukamori.archivetune.aicontentfilter.UpdateAiContentFilterSettingsUseCase
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.lyrics.LyricsHelper
+import moe.rukamori.archivetune.lyrics.LyricsProviderTestResult
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import javax.inject.Inject
@@ -60,6 +61,26 @@ sealed interface PaxsenixEndpointCheckState {
     data class Success(
         val results: List<PaxsenixLyrics.PathCheck>,
     ) : PaxsenixEndpointCheckState
+}
+
+/**
+ * State for the "Lyrics test" sweep in the Lyrics Providers settings page.
+ *
+ * - [Loading]: the sweep is running, the dialog shows a spinner per provider.
+ * - [Done]: the sweep finished (every provider has either returned or
+ *   timed out); the dialog shows the per-provider outcome list.
+ *
+ * Re-tapping the entry while the sweep is running restarts it rather than
+ * queueing a second sweep.
+ */
+sealed interface LyricsTestState {
+    data object Idle : LyricsTestState
+
+    data object Loading : LyricsTestState
+
+    data class Done(
+        val results: List<LyricsProviderTestResult>,
+    ) : LyricsTestState
 }
 
 sealed interface AiContentFilterSettingsState {
@@ -112,6 +133,9 @@ class ContentSettingsViewModel
             MutableStateFlow<PaxsenixEndpointCheckState>(PaxsenixEndpointCheckState.Idle)
         val paxsenixEndpointCheckState = _paxsenixEndpointCheckState.asStateFlow()
         private var paxsenixEndpointCheckJob: Job? = null
+        private val _lyricsTestState = MutableStateFlow<LyricsTestState>(LyricsTestState.Idle)
+        val lyricsTestState = _lyricsTestState.asStateFlow()
+        private var lyricsTestJob: Job? = null
         private val refreshingAiContentFilter = MutableStateFlow(false)
         private val _aiContentFilterEffects = MutableSharedFlow<AiContentFilterSettingsEffect>(extraBufferCapacity = 1)
         val aiContentFilterEffects = _aiContentFilterEffects.asSharedFlow()
@@ -168,6 +192,22 @@ class ContentSettingsViewModel
                 viewModelScope.launch(Dispatchers.IO) {
                     val results = PaxsenixLyrics.checkProviderPaths()
                     _paxsenixEndpointCheckState.value = PaxsenixEndpointCheckState.Success(results)
+                }
+        }
+
+        /**
+         * Runs the "Lyrics test" sweep — calls every enabled provider with a fixed
+         * well-known test case and reports per-provider outcomes. Re-tapping while a
+         * sweep is running restarts it rather than queueing a second sweep. Used by the
+         * "Lyrics test" entry in the Lyrics Providers settings page.
+         */
+        fun runLyricsTest() {
+            lyricsTestJob?.cancel()
+            _lyricsTestState.value = LyricsTestState.Loading
+            lyricsTestJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    val results = lyricsHelper.testAllProviders()
+                    _lyricsTestState.value = LyricsTestState.Done(results)
                 }
         }
 

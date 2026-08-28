@@ -2321,19 +2321,38 @@ class MainActivity : ComponentActivity() {
                                                 title = {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         if (isLibraryRoute) {
-                                                            // On the Library tab, the top app bar's title
-                                                            // slot is intentionally empty. The redesigned
-                                                            // LibraryMixScreen below already has its own
-                                                            // big bold "Library" header at the top of the
-                                                            // scrollable content — having a second small
-                                                            // "Library" text in the top app bar was
-                                                            // redundant. Per user request (2026-08-28):
-                                                            // "Remove the small library text on the top and
-                                                            // replace it with the large library text which
-                                                            // is right now below the small library header."
-                                                            // The profile avatar at top-right continues to
-                                                            // render via the `actions` slot below, so the
-                                                            // top bar is not visually empty.
+                                                            // On the Library tab, the top app bar's
+                                                            // title slot carries the big bold
+                                                            // "Library" header (38sp, matching the
+                                                            // LibraryMixScreen's `LibraryHeaderRow`
+                                                            // that used to live at the top of the
+                                                            // scrollable content). Per user request
+                                                            // (2026-08-28): "The Big library text
+                                                            // should be the header of the page. The
+                                                            // size should prevail and not become any
+                                                            // smaller. And since it'll be the header,
+                                                            // there should be no empty space either."
+                                                            //
+                                                            // Scroll behavior for the Library route
+                                                            // is `null` (see the `scrollBehavior =`
+                                                            // branch below), so the TopAppBar is
+                                                            // pinned and the title does NOT collapse
+                                                            // on scroll — the 38sp size prevails
+                                                            // throughout. The `LibraryHeaderRow` in
+                                                            // LibraryMixScreen is now empty (it just
+                                                            // reserves its 8.dp vertical padding slot
+                                                            // for breathing room between the
+                                                            // TopAppBar and the first category row).
+                                                            Text(
+                                                                text = stringResource(R.string.library),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 38.sp,
+                                                                lineHeight = 44.sp,
+                                                                letterSpacing = (-0.5).sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
                                                         } else {
                                                             // app icon
                                                             Icon(
