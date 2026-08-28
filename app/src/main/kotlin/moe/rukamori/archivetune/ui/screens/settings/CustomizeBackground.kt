@@ -146,17 +146,7 @@ fun CustomizeBackground(navController: NavController) {
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumFlexibleTopAppBar(
-                title = {
-                    FrostedHeaderPill {
-                        Text(
-                            text = stringResource(R.string.customize_background_title),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                },
-                subtitle = {
-                    Text(text = stringResource(R.string.custom_background_subtitle))
-                },
+                title = {},
                 navigationIcon = {
                     FrostedHeaderPill {
                         IconButton(
@@ -170,7 +160,7 @@ fun CustomizeBackground(navController: NavController) {
                             )
                         }
                         Text(
-                            text = stringResource(R.string.settings),
+                            text = stringResource(R.string.customize_background_title),
                             color = MaterialTheme.colorScheme.onBackground,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,

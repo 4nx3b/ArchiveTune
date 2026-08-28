@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.screens.playlist
 import android.annotation.SuppressLint
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -92,6 +93,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.offline.Download
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -303,20 +305,29 @@ fun LocalPlaylistScreen(
             selection = false
         }
     } else {
-        // Explicit BackHandler so the predictive back gesture lands on the
-        // Library tab when the previous back-stack entry is not a main
-        // screen (e.g. when the user entered this screen directly via a
-        // deep link from Home). Calling [navigateUp] first preserves the
-        // natural back stack; if that returns false (no previous entry to
-        // pop), we explicitly navigate to the Library tab so the user
-        // always lands somewhere meaningful instead of being dropped on
-        // Home. Matches the SpotifyPlaylistScreen pattern.
+        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
+        // the Library tab when the user is on a playlist sub-page — not on
+        // the Home tab. Per user report (2026-08-28): "when I'm in the
+        // library or Spotify page and I use the back navigation gesture i
+        // return to home page instead i should be on the library main page
+        // where it displays recently added and artist and other things".
+        //
+        // Previously: `if (!navController.navigateUp()) { navController.navigate("library") }`
+        // — when the user came from Home (deep-link), the back stack was
+        // [home, local_playlist], so navigateUp() returned true and the user
+        // landed on Home, which they did not want.
+        //
+        // Now: ALWAYS redirect to the Library tab on back. We use
+        // popUpTo("home") { saveState = true } to pop everything above Home
+        // (preserving Home's tab state), then navigate to "library" with
+        // launchSingleTop + restoreState. This lands the user on the Library
+        // tab regardless of how they entered the playlist page — they
+        // explicitly want to be on Library, not Home.
         BackHandler {
-            if (!navController.navigateUp()) {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
-                }
+            navController.navigate("library") {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo("home") { saveState = true }
             }
         }
     }
