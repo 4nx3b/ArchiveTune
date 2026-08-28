@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -257,9 +258,22 @@ private fun PillActionButton(
         shape = RoundedCornerShape(percent = 50),
         color = containerColor,
     ) {
+        // Per user request (2026-08-28): "the play and shuffle icon and
+        // text are not centred in their pills. Fix it. not just in history
+        // page but everywhere. Fix it."
+        //
+        // Surface defaults its content slot to TopStart alignment, so
+        // without `fillMaxHeight()` the Row below sits at the top of the
+        // 46dp pill (taking only ~22dp of intrinsic height) and leaves a
+        // visible gap at the bottom — the icon and text read as
+        // top-aligned rather than vertically centered within the pill.
+        // Forcing the Row to fill the Surface's height lets the existing
+        // `verticalAlignment = Alignment.CenterVertically` actually
+        // center the icon + text within the full pill height.
         Row(
             modifier =
                 Modifier
+                    .fillMaxHeight()
                     // Reduced from 22.dp to 16.dp so the pill label has more
                     // horizontal breathing room. The previous 22.dp padding
                     // on each side (= 44.dp total) plus the icon (20.dp) plus
@@ -308,8 +322,13 @@ private fun TrailingIconButton(
         shape = CircleShape,
         color = containerColor,
     ) {
+        // fillMaxHeight() so the IconButton is vertically centered within
+        // the 46dp pill, matching the centered look of the PillActionButton
+        // next to it (per user request 2026-08-28: "the play and shuffle
+        // icon and text are not centred in their pills. Fix it. not just
+        // in history page but everywhere. Fix it.").
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
             contentAlignment = Alignment.Center,
         ) {
             androidx.compose.material3.IconButton(onClick = onClick) {

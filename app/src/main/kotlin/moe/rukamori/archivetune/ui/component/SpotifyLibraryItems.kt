@@ -93,7 +93,13 @@ fun SpotifyLibraryPlaylistListItem(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                // Bumped from 56.dp to 72.dp so the bumped 56.dp thumbnail
+                // (was 40.dp) sits with comfortable top/bottom breathing
+                // room — matches the shared ListItemHeight constant used
+                // by the generic Items.kt rows. Per user request
+                // (2026-08-28): "Increase the size of the thumbnails in
+                // playlist and Spotify playlists page".
+                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -118,7 +124,13 @@ fun SpotifyLibraryPlaylistListItem(
                 shape = RoundedCornerShape(8.dp),
                 contentScale = ContentScale.Crop,
                 showPlaceholder = true,
-                modifier = Modifier.size(40.dp),
+                // Bumped from 40.dp to 56.dp — matches the shared
+                // ListThumbnailSize constant used by SongListItem /
+                // AlbumListItem / ArtistListItem / PlaylistListItem in
+                // Items.kt. Per user request (2026-08-28): "Increase the
+                // size of the thumbnails in playlist and Spotify playlists
+                // page".
+                modifier = Modifier.size(56.dp),
             )
             Text(
                 text = libraryPlaylist.playlist.name,
@@ -179,7 +191,11 @@ fun SpotifyLikedSongsListItem(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                // Bumped from 56.dp to 72.dp to match the bumped 56dp
+                // icon tile (was 40dp) on the left. Per user request
+                // (2026-08-28): "Increase the size of the thumbnails in
+                // playlist and Spotify playlists page".
+                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -199,7 +215,9 @@ fun SpotifyLikedSongsListItem(
             Surface(
                 color = accentColor.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.size(40.dp),
+                // Bumped from 40.dp to 56.dp to match the bumped playlist
+                // row thumbnails above.
+                modifier = Modifier.size(56.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.favorite),

@@ -955,25 +955,34 @@ fun AppleMusicPlayerContent(
                     // wander from snapping in: the phase advances the whole
                     // time lyrics is open, so without the multiplier the very
                     // first drifted frame would teleport the artwork by
-                    // however far along the path the phase already was. The
-                    // rotation is ramped for exactly the same reason.
+                    // however far along the path the phase already was.
                     translationX = blurWander.xDp.floatValue * driftDpToPx * progress
                     translationY = blurWander.yDp.floatValue * driftDpToPx * progress
-                    // Rotation is suppressed through most of the morph from
-                    // the main player to the lyrics page (progress < 0.85),
-                    // then smoothly ramped in over the final 15% of the
-                    // morph so it lands at full amplitude the instant the
-                    // morph completes. Per user request (2026-08-28): the
-                    // previous gating `if (progress >= 1f) fullRotation`
-                    // produced a discontinuity — the rotation snapped from
-                    // zero to full over a single frame at the morph
-                    // boundary, which the user described as "after a few
-                    // milliseconds it changes abruptly making it not
-                    // seamless". The continuous ramp below removes the
-                    // discontinuity while still keeping rotation effectively
-                    // zero through the visible morph window.
-                    val rotationRamp = ((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)
-                    rotationZ = blurWander.rotationDeg.floatValue * rotationRamp
+                    // Rotation is DISABLED entirely (per user request
+                    // 2026-08-28): "During the morphe animation in apple
+                    // music player style, the backdrop again rotates. it
+                    // shouldn't rotate at all and also there should be no
+                    // abrupt change after a few milliseconds either."
+                    //
+                    // Earlier attempts to gate rotation:
+                    //   1. `if (progress >= 1f) fullRotation` — produced a
+                    //      hard discontinuity at the morph boundary (zero
+                    //      → full in a single frame) which the user saw as
+                    //      "changes abruptly after a few milliseconds".
+                    //   2. `((progress - 0.85f) / 0.15f).coerceIn(0f, 1f)` —
+                    //      ramped rotation in over the final 15% of the
+                    //      morph, which still produced VISIBLE rotation
+                    //      during the morph's last ~100ms AND a small
+                    //      velocity discontinuity at progress = 0.85 where
+                    //      the ramp slope jumps from 0 to 1/0.15.
+                    //
+                    // Neither gating strategy produced a fully seamless
+                    // morph — the only way to make the morph both
+                    // rotation-free AND free of any abrupt change is to
+                    // never apply rotation at all. The drift translationX/Y
+                    // still wanders the backdrop for the artistic "floating"
+                    // effect, just without any spin. `rotationZ` stays at
+                    // its GraphicsLayerScope default of 0f.
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is
