@@ -779,11 +779,8 @@ fun LyricsV2(
                     },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // "Lyrics from [provider]" header item. Rendered as the FIRST
-            // LazyColumn item so it scrolls naturally with the lyrics — the
-            // user requested this behave "as if it's a lyrics line itself"
-            // rather than a constant watermark. Mirrors the design of the
-            // "Written by" footer item at the end of the list.
+            // Render the source attribution in the scrolling content rather
+            // than keeping it fixed above the lyrics.
             val providerNameV2 = currentLyrics?.providerName.orEmpty()
             if (providerNameV2.isNotBlank()) {
                 item(key = "lyrics_source_header_v2", contentType = "lyrics_attribution") {
@@ -1158,36 +1155,6 @@ fun LyricsV2(
                 Spacer(modifier = Modifier.height(300.dp))
             }
 
-            // "Written by [artists]" footer item. Rendered as the LAST
-            // LazyColumn item so it scrolls naturally with the lyrics and
-            // visually closes the lyrics block. Mirrors the design of the
-            // "Lyrics from" header item at the top. Uses the artist list as
-            // a proxy for composer credits (MediaMetadata does not track
-            // formal composer credits).
-            mediaMetadata?.let { metadata ->
-                val writersLineV2 = metadata.artists.joinToString { it.name }.trim()
-                if (writersLineV2.isNotBlank()) {
-                    item(key = "lyrics_writers_footer_v2", contentType = "lyrics_attribution") {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 16.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.written_by, writersLineV2),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.secondary,
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
         }
 
         // ── Resume auto-scroll button ──
