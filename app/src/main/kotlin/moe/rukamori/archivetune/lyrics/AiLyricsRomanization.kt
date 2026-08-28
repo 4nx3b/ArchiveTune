@@ -141,6 +141,23 @@ object AiLyricsRomanization {
         val (enabled) = rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
         val (auto) = rememberPreference(AutoAiRomanizeLyricsKey, defaultValue = false)
         val (excluded) = rememberPreference(AiRomanizeExcludedLanguagesKey, defaultValue = emptySet())
+        // Note: romanisation exclusion is now read ONLY from the
+        // romanisation exclusion list — NOT merged with the auto-translation
+        // exclusion list. The previous merge (commit 717db4f19) was an
+        // attempt to honour the user's mental model of "if I exclude Hindi
+        // from auto-translation, Hindi shouldn't translate", but the side
+        // effect was that AI romanisation stopped working for every
+        // language the user had excluded from auto-translation — which
+        // for many users is exactly the set of languages they want
+        // romanised (Hindi, Korean, Japanese, etc.). Per user request
+        // (2026-08-28): "Auto Ai romanisation doesn't work now after the
+        // last commit. Fix it." The romanisation and translation paths
+        // are now decoupled again; if a user excludes Hindi from
+        // auto-translation but leaves it enabled for romanisation, the
+        // AI romanisation will run and (for line-synced lyrics) land in
+        // the translation slot. The translation-slot-sharing is the
+        // mocharealm library's only path for line-synced phonetics and
+        // cannot be fixed without a renderer fork.
         val provider by rememberEnumPreference(AiProviderKey, AiProvider.NONE)
         val (apiKey) = rememberPreference(AiApiKeyKey, defaultValue = "")
         val (customEndpoint) = rememberPreference(AiCustomEndpointKey, defaultValue = "")

@@ -41,9 +41,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -277,28 +274,14 @@ private fun HomeContent(
         uiState
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     Box(modifier = modifier.fillMaxSize()) {
-        if (uiState.showTonalBackdrop) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(430.dp)
-                        .align(Alignment.TopCenter)
-                        .drawWithCache {
-                            val brush =
-                                Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.18f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.08f),
-                                    1f to Color.Transparent,
-                                )
-                            onDrawBehind { drawRect(brush) }
-                        },
-            )
-        }
-
+        // ── Tonal backdrop gradient (fade effect) removed ───────────────────
+        // Per user request (2026-08-28): "Remove the home liquid glass buttons
+        // and fade effect". The 430dp verticalGradient that lived here (fed by
+        // `uiState.showTonalBackdrop`) is the "fade effect" being removed —
+        // the home page now sits on a flat surface colour so the hero cards
+        // and section headers are the only visual rhythm at the top of the
+        // screen, matching the rest of the redesigned pages.
         ExpressivePullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
             onRefresh = { onAction(HomeAction.Refresh) },

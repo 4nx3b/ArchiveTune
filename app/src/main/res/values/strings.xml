@@ -121,6 +121,8 @@
     <string name="featured_album_badge">FEATURED ALBUM</string>
     <string name="other_versions">Other versions</string>
     <string name="liked_songs">Liked songs</string>
+    <string name="favorites">Favorites</string>
+    <string name="spotify">Spotify</string>
     <string name="downloaded_songs">Downloaded songs</string>
     <string name="playlist_is_empty">The playlist is empty</string>
     <string name="remove_download_playlist_confirm">Do you really want to remove all \"%s\" playlist songs from the Downloaded Songs storage?</string>
@@ -627,6 +629,16 @@
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
+    <string name="enable_bini_lyrics">Enable BiniLyrics</string>
+    <string name="lyrics_test">Lyrics test</string>
+    <string name="lyrics_test_description">Probe every enabled lyrics provider with a known test track and report which ones are reachable and returning lyrics.</string>
+    <string name="lyrics_test_running">Testing providers…</string>
+    <string name="lyrics_test_ok">Working</string>
+    <string name="lyrics_test_no_match">No lyrics for test track</string>
+    <string name="lyrics_test_timeout">Timed out</string>
+    <string name="lyrics_test_failed">Failed</string>
+    <string name="lyrics_test_summary_ok">%1$d of %2$d providers working</string>
+    <string name="lyrics_test_summary_none">No providers are working — check your network or provider settings</string>
     <string name="enable_musixmatch_experimental">Musixmatch (experimental)</string>
     <string name="enable_musixmatch_experimental_desc">Native Musixmatch provider using token.get + richsync. Fetches word-synced TTML when available, falls back to line-synced LRC and plain lyrics. No hardcoded token; runtime-fetched only.</string>
     <string name="musixmatch_experimental_section">Experimental</string>

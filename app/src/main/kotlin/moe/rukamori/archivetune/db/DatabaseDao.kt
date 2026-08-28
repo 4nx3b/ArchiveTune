@@ -302,6 +302,23 @@ interface DatabaseDao {
     @Query("SELECT COUNT(1) FROM song WHERE liked")
     fun likedSongsCount(): Flow<Int>
 
+    /**
+     * Count of songs that have been downloaded to the device. Used by the redesigned
+     * Library overview's "Downloads" row so we don't have to materialise the entire
+     * downloaded list just to show a badge count.
+     */
+    @Query("SELECT COUNT(1) FROM song WHERE dateDownload IS NOT NULL")
+    fun downloadedSongsCount(): Flow<Int>
+
+    /**
+     * Count of total listen-history events (rows in the `event` table). Used by the
+     * redesigned Library overview's "History" row as a badge count. Mirrors the data
+     * the HistoryScreen itself loads through [events] / [recentSongs], so the count
+     * tracks the same source the user sees when they tap into History.
+     */
+    @Query("SELECT COUNT(1) FROM event")
+    fun historyEventsCount(): Flow<Int>
+
     @Transaction
     @Query("SELECT song.* FROM song JOIN song_album_map ON song.id = song_album_map.songId WHERE song_album_map.albumId = :albumId")
     fun albumSongs(albumId: String): Flow<List<Song>>

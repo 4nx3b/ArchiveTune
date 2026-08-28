@@ -340,11 +340,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             if (darkMode == DarkMode.AUTO) isSystemInDarkTheme else darkMode == DarkMode.ON
         }
 
-    val (defaultChip, onDefaultChipChange) =
-        rememberEnumPreference(
-            key = ChipSortTypeKey,
-            defaultValue = LibraryFilter.LIBRARY,
-        )
     val supportedHighestFps = rememberSupportedHighestFps()
     val isHighRefreshRateSupported = supportedHighestFps > HIGH_REFRESH_RATE_THRESHOLD_FPS
 
@@ -1086,33 +1081,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                item {
-                    ListPreference(
-                        modifier = positions.modifierFor("default_lib_chips"),
-                        title = { Text(stringResource(R.string.default_lib_chips)) },
-                        icon = { Icon(painterResource(R.drawable.tab), null) },
-                        selectedValue = defaultChip,
-                        values =
-                            listOf(
-                                LibraryFilter.LIBRARY,
-                                LibraryFilter.PLAYLISTS,
-                                LibraryFilter.SONGS,
-                                LibraryFilter.ALBUMS,
-                                LibraryFilter.ARTISTS,
-                            ),
-                        valueText = {
-                            when (it) {
-                                LibraryFilter.SONGS -> stringResource(R.string.songs)
-                                LibraryFilter.ARTISTS -> stringResource(R.string.artists)
-                                LibraryFilter.ALBUMS -> stringResource(R.string.albums)
-                                LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
-                                LibraryFilter.SPOTIFY -> stringResource(R.string.spotify_playlists)
-                                LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
-                            }
-                        },
-                        onValueSelected = onDefaultChipChange,
-                    )
-                }
+                // "Change default library chip" preference removed per user
+                // request (2026-08-28): "remove change default library chip".
+                // The ChipSortTypeKey and LibraryFilter enum stay defined
+                // (LibraryFilter is used elsewhere for the actual chip
+                // rendering), but the user-facing settings entry is gone.
             }
 
             PreferenceGroup(
