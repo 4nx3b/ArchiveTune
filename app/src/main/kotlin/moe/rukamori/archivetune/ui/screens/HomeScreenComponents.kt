@@ -37,8 +37,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -634,6 +636,7 @@ fun KeepListeningSection(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val rows = if (keepListening.size > 6) 2 else 1
     val gridHeight =
         (
@@ -645,6 +648,31 @@ fun KeepListeningSection(
                             .toDp() * 2
                 }
         ) * rows
+
+    // Per user request (2026-08-28): "Whenever I play a song from forgotten
+    // favourites, keep listening or any other section I've to play each of
+    // them manually because the queue for each song is different. it should
+    // be same. For example if I play a song in recently listened all the
+    // other next songs in queue should be from recently listened one by one
+    // in order".
+    //
+    // Filter keepListening to songs only (the section is a mix of Song /
+    // Album / Artist / Playlist) so we can build a ListQueue from just the
+    // playable items. When a song is tapped, we look up its index in this
+    // filtered list and pass it to LocalGridItem as the startIndex.
+    val songsInSection = remember(keepListening) { keepListening.filterIsInstance<Song>() }
+
+    fun playFromSection(songId: String) {
+        val index = songsInSection.indexOfFirst { it.id == songId }
+        if (index < 0 || songsInSection.isEmpty()) return
+        playerConnection.playQueue(
+            ListQueue(
+                title = context.getString(R.string.keep_listening),
+                items = songsInSection.map { it.toMediaItem() },
+                startIndex = index,
+            ),
+        )
+    }
 
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
@@ -676,6 +704,7 @@ fun KeepListeningSection(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
+                onPlaySongFromSection = ::playFromSection,
             )
         }
     }
@@ -699,8 +728,34 @@ fun ForgottenFavoritesSection(
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val rows = min(4, forgottenFavorites.size)
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
+
+    // Per user request (2026-08-28): "Whenever I play a song from
+    // forgotten favourites, keep listening or any other section I've to
+    // play each of them manually because the queue for each song is
+    // different. it should be same. For example if I play a song in
+    // recently listened all the other next songs in queue should be
+    // from recently listened one by one in order".
+    //
+    // Build the queue from the entire section list (with the tapped song
+    // as the startIndex) so Next/Previous walks the section list in
+    // order. This replaces the previous single-song ListQueue /
+    // YouTubeQueue.radio() that played only one song and then either
+    // stopped (local) or played a YouTube-generated radio queue
+    // unrelated to the section (remote).
+    fun playSectionQueue(startIndex: Int) {
+        if (distinctForgottenFavorites.isEmpty()) return
+        val safeStart = startIndex.coerceIn(0, distinctForgottenFavorites.lastIndex)
+        playerConnection.playQueue(
+            ListQueue(
+                title = context.getString(R.string.forgotten_favorites),
+                items = distinctForgottenFavorites.map { it.toMediaItem() },
+                startIndex = safeStart,
+            ),
+        )
+    }
 
     LazyHorizontalGrid(
         state = lazyGridState,
@@ -712,11 +767,11 @@ fun ForgottenFavoritesSection(
                 .fillMaxWidth()
                 .height(ListItemHeight * rows),
     ) {
-        items(
+        itemsIndexed(
             items = distinctForgottenFavorites,
-            key = { it.id },
-            contentType = { "forgotten_favorite_song" },
-        ) { song ->
+            key = { _, song -> song.id },
+            contentType = { _, _ -> "forgotten_favorite_song" },
+        ) { index, song ->
             SongListItem(
                 song = song,
                 showInLibraryIcon = true,
@@ -751,13 +806,7 @@ fun ForgottenFavoritesSection(
                                 if (song.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
                                 } else {
-                                    playerConnection.playQueue(
-                                        if (song.song.isLocal) {
-                                            ListQueue(items = listOf(song.toMediaItem()))
-                                        } else {
-                                            YouTubeQueue.radio(song.toMediaMetadata())
-                                        },
-                                    )
+                                    playSectionQueue(index)
                                 }
                             },
                             onLongClick = {
@@ -872,6 +921,33 @@ fun HomePageSectionContent(
     scope: CoroutineScope,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+
+    // Per user request (2026-08-28): "Whenever I play a song from
+    // forgotten favourites, keep listening or any other section I've to
+    // play each of them manually because the queue for each song is
+    // different. it should be same."
+    //
+    // For remote YouTube home sections (Quick Picks / Live Performances
+    // / Other Remote shelves), build the queue from the section's
+    // SongItem entries only (AlbumItem/ArtistItem/PlaylistItem navigate
+    // to detail pages, not playback) with the tapped song as the
+    // startIndex.
+    val songsInSection = remember(section) { section.items.filterIsInstance<SongItem>() }
+    val sectionTitle = remember(section) { section.title.takeIf { it.isNotBlank() } }
+
+    fun playFromSection(songId: String) {
+        val index = songsInSection.indexOfFirst { it.id == songId }
+        if (index < 0 || songsInSection.isEmpty()) return
+        playerConnection.playQueue(
+            ListQueue(
+                title = sectionTitle ?: context.getString(R.string.quick_picks),
+                items = songsInSection.map { it.toMediaItem() },
+                startIndex = index,
+            ),
+        )
+    }
+
     LazyRow(
         contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = modifier,
@@ -890,6 +966,7 @@ fun HomePageSectionContent(
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
+                onPlaySongFromSection = ::playFromSection,
             )
         }
     }
@@ -911,6 +988,9 @@ private fun YouTubeGridItemWrapper(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
+    // Per user request (2026-08-28): unified section queue — see
+    // HomePageSectionContent.playFromSection above.
+    onPlaySongFromSection: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     YouTubeGridItem(
@@ -925,12 +1005,7 @@ private fun YouTubeGridItemWrapper(
                     onClick = {
                         when (item) {
                             is SongItem -> {
-                                playerConnection.playQueue(
-                                    YouTubeQueue(
-                                        item.endpoint ?: WatchEndpoint(videoId = item.id),
-                                        item.toMediaMetadata(),
-                                    ),
-                                )
+                                onPlaySongFromSection(item.id)
                             }
 
                             is AlbumItem -> {
@@ -1001,6 +1076,18 @@ private fun LocalGridItem(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
+    // Per user request (2026-08-28): "Whenever I play a song from
+    // forgotten favourites, keep listening or any other section I've to
+    // play each of them manually because the queue for each song is
+    // different. it should be same."
+    //
+    // When the item is a Song, the parent (KeepListeningSection) provides
+    // this callback with the song's id; the callback builds a ListQueue
+    // from the section's filtered songs list with the tapped song as
+    // startIndex. Previously this played a single-song radio queue
+    // (YouTubeQueue.radio) which yielded a YouTube-generated queue
+    // unrelated to the section.
+    onPlaySongFromSection: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     when (item) {
@@ -1016,7 +1103,7 @@ private fun LocalGridItem(
                                 if (item.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
                                 } else {
-                                    playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
+                                    onPlaySongFromSection(item.id)
                                 }
                             },
                             onLongClick = {
@@ -1348,9 +1435,32 @@ fun JumpBackInHeroSection(
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     if (recentlyPlayed.isEmpty()) return
     val hero = recentlyPlayed.first()
     val sideCards = recentlyPlayed.drop(1).take(2)
+
+    // Per user request (2026-08-28): "Whenever I play a song from
+    // forgotten favourites, keep listening or any other section I've to
+    // play each of them manually because the queue for each song is
+    // different. it should be same."
+    //
+    // Build the queue from the entire "Jump back in" hero+side cards list
+    // with the tapped song as the startIndex. The hero is index 0; the
+    // first side card is index 1; the second side card is index 2. The
+    // ListQueue then walks the section in order via Next/Previous.
+    fun playFromSection(startIndex: Int) {
+        if (recentlyPlayed.isEmpty()) return
+        val safeStart = startIndex.coerceIn(0, recentlyPlayed.lastIndex)
+        playerConnection.playQueue(
+            ListQueue(
+                title = context.getString(R.string.home_jump_back_in_badge),
+                items = recentlyPlayed.map { it.toMediaItem() },
+                startIndex = safeStart,
+            ),
+        )
+    }
+
     if (sideCards.isEmpty()) {
         // No side cards — render a single full-width hero card.
         BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
@@ -1367,6 +1477,7 @@ fun JumpBackInHeroSection(
                 menuState = menuState,
                 haptic = haptic,
                 navController = navController,
+                onPlayFromSection = { playFromSection(0) },
             )
         }
         return
@@ -1406,12 +1517,13 @@ fun JumpBackInHeroSection(
                 menuState = menuState,
                 haptic = haptic,
                 navController = navController,
+                onPlayFromSection = { playFromSection(0) },
             )
             Column(
                 verticalArrangement = Arrangement.spacedBy(spacing),
                 modifier = Modifier.width(sideColumnWidth),
             ) {
-                sideCards.forEach { song ->
+                sideCards.forEachIndexed { sideIndex, song ->
                     JumpBackInHeroCard(
                         song = song,
                         isHero = false,
@@ -1423,6 +1535,7 @@ fun JumpBackInHeroSection(
                         menuState = menuState,
                         haptic = haptic,
                         navController = navController,
+                        onPlayFromSection = { playFromSection(sideIndex + 1) },
                     )
                 }
             }
@@ -1443,6 +1556,9 @@ private fun JumpBackInHeroCard(
     menuState: MenuState,
     haptic: HapticFeedback,
     navController: NavController,
+    // Per user request (2026-08-28): unified section queue — see
+    // JumpBackInHeroSection.playFromSection above.
+    onPlayFromSection: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -1469,13 +1585,7 @@ private fun JumpBackInHeroCard(
                         if (isActive) {
                             playerConnection.player.togglePlayPause()
                         } else {
-                            playerConnection.playQueue(
-                                if (song.song.isLocal) {
-                                    ListQueue(items = listOf(song.toMediaItem()))
-                                } else {
-                                    YouTubeQueue.radio(song.toMediaMetadata())
-                                },
-                            )
+                            onPlayFromSection()
                         }
                     },
                     onLongClick = {
@@ -1509,34 +1619,12 @@ private fun JumpBackInHeroCard(
                         ),
                     ),
         )
-        // "JUMP BACK IN" badge — only on the hero card.
-        if (isHero) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier =
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.history),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(
-                    text = stringResource(R.string.home_jump_back_in_badge).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = 0.8.sp,
-                )
-            }
-        }
+        // ── "JUMP BACK IN" badge removed ───────────────────────────────────
+        // Per user request (2026-08-28): "Remove the home liquid glass buttons
+        // and fade effect". The translucent black "JUMP BACK IN" pill badge
+        // that lived here was the closest match to a "liquid glass button" on
+        // the Home tab — the hero card already conveys the same context via its
+        // title/artist overlay, and the user wanted the clutter removed.
         // Title + artist overlay at the bottom.
         Column(
             modifier =
@@ -1594,19 +1682,41 @@ fun RecentlyPlayedSection(
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val distinctSongs = remember(recentlyPlayed) { recentlyPlayed.distinctBy { it.id } }
     if (distinctSongs.isEmpty()) return
+
+    // Per user request (2026-08-28): "Whenever I play a song from forgotten
+    // favourites, keep listening or any other section I've to play each of
+    // them manually because the queue for each song is different. it should
+    // be same. For example if I play a song in recently listened all the
+    // other next songs in queue should be from recently listened one by one
+    // in order".
+    //
+    // Build the queue from the entire Recently Played list with the tapped
+    // song as the startIndex so Next/Previous walks the section in order.
+    fun playFromSection(startIndex: Int) {
+        if (distinctSongs.isEmpty()) return
+        val safeStart = startIndex.coerceIn(0, distinctSongs.lastIndex)
+        playerConnection.playQueue(
+            ListQueue(
+                title = context.getString(R.string.recently_played),
+                items = distinctSongs.map { it.toMediaItem() },
+                startIndex = safeStart,
+            ),
+        )
+    }
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
-        items(
+        itemsIndexed(
             items = distinctSongs,
-            key = { "recent_${it.id}" },
-            contentType = { "recent_song" },
-        ) { song ->
+            key = { _, song -> "recent_${song.id}" },
+            contentType = { _, _ -> "recent_song" },
+        ) { index, song ->
             RecentlyPlayedCard(
                 song = song,
                 mediaMetadata = mediaMetadata,
@@ -1615,6 +1725,7 @@ fun RecentlyPlayedSection(
                 menuState = menuState,
                 haptic = haptic,
                 navController = navController,
+                onPlayFromSection = { playFromSection(index) },
             )
         }
     }
@@ -1630,6 +1741,9 @@ private fun RecentlyPlayedCard(
     menuState: MenuState,
     haptic: HapticFeedback,
     navController: NavController,
+    // Per user request (2026-08-28): unified section queue — see
+    // RecentlyPlayedSection.playFromSection above.
+    onPlayFromSection: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val cardWidth = 165.dp
@@ -1655,13 +1769,7 @@ private fun RecentlyPlayedCard(
                         if (isActive) {
                             playerConnection.player.togglePlayPause()
                         } else {
-                            playerConnection.playQueue(
-                                if (song.song.isLocal) {
-                                    ListQueue(items = listOf(song.toMediaItem()))
-                                } else {
-                                    YouTubeQueue.radio(song.toMediaMetadata())
-                                },
-                            )
+                            onPlayFromSection()
                         }
                     },
                     onLongClick = {

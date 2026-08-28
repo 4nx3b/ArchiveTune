@@ -536,6 +536,14 @@ fun BottomSheetPlayer(
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
+    // Mirror position's pattern so MiniPlayer never sees a stale duration and never
+    // recomposes just because duration changed during the same track. Without this
+    // the MiniPlayer would receive `duration: Long` as a parameter and re-launch its
+    // entire `Row` (artwork, info, transport controls) on every duration update —
+    // most often as a single tick from `C.TIME_UNSET` to the real value once ExoPlayer
+    // resolves the stream, but also on per-track reloads.
+    val durationUpdatedState = rememberUpdatedState(duration)
+    val durationProvider = remember { { durationUpdatedState.value } }
     var lyricsSyncOffset by rememberSaveable(mediaMetadata?.id) {
         mutableIntStateOf(0)
     }
@@ -1274,8 +1282,8 @@ fun BottomSheetPlayer(
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
-                position = position,
-                duration = duration,
+                positionProvider = positionProvider,
+                durationProvider = durationProvider,
                 pureBlack = pureBlack,
                 isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
             )

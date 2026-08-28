@@ -92,6 +92,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -163,9 +164,7 @@ import kotlin.math.roundToLong
 // "lyrics scroll before they're even finished". This matches the same fix already applied to
 // LyricsV2.kt in commit df8249408 ("fix(lyrics,ui): romanisation below lyric, V2 sync, iOS-style
 // hero redesign") but it was never ported to Enhanced. Both constants are now 0 so the line
-// switch happens exactly at the next line's start. The library's own interlude threshold
-// (LINE_SYNCED_INTERLUDE_MIN_GAP_MS) still kicks in for genuine instrumental breaks, so this
-// doesn't affect silence handling.
+// switch happens exactly at the next line's start.
 private const val LRC_LEAD_MS = 0L
 private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
@@ -213,15 +212,10 @@ private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 // ── Line-synced (LRC) focus windows ──
 // KaraokeLyricsView resolves the focused line as "the line whose [start, end) contains the
 // position", and falls back to the *next* line whenever the position lands between two windows.
-// These constants exist to make sure that fallback only ever fires on a genuine instrumental
-// break; see the long comment in buildSyncedLyrics.
+// We butt each line's end against the next line's start (see buildSyncedLyrics) so that
+// fallback never fires on a normal track — the library's first predicate always matches and
+// always agrees with our own findLastStartedLineIndex, which is what drives the auto-scroll.
 //
-// How long a line may keep focus after its own timestamp before it is allowed to hand over to a
-// breathing-dots interlude. Below this the line simply holds until the next one starts.
-private const val LINE_SYNCED_MAX_FOCUS_HOLD_MS = 5_000L
-// Mirrors the library's own interlude threshold: it draws the breathing dots only when the silence
-// between two lines is strictly longer than this.
-private const val LINE_SYNCED_INTERLUDE_MIN_GAP_MS = 5_000L
 // The last line has no successor to butt against, so give it a fixed window.
 private const val LINE_SYNCED_TRAILING_LINE_DURATION_MS = 4_000L
 // Minimum backward position jump (in ms) that we treat as a "reset" trigger —
@@ -362,8 +356,19 @@ fun LyricsEnhanced(
                 ?.lyrics
         }
     val showTranslations =
-        remember(currentLyrics?.source) {
-            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+        remember(currentLyrics?.source, romanizationPreferences.showsRomanization) {
+            // Romanisation for line-synced LRC is folded into the translation slot (see
+            // buildLineSyncedLrcLine) because the library's SyncedLineText renderer has no
+            // separate phonetic slot below the lyric. The library only renders the translation
+            // slot when `showTranslation = true` is passed at the KaraokeLyricsView call site,
+            // so without forcing this on whenever romanisation is enabled, the romanisation
+            // silently disappears on any non-AI-translated line-synced track — most visibly
+            // Hindi line-synced LRC, where the AI/built-in romanisation is the only thing in
+            // the slot and the lyrics source is not AI_TRANSLATION. Word-synced lyrics are
+            // unaffected because their romanisation rides the per-syllable `phonetic` slot
+            // (showPhonetic = true), independent of showTranslation.
+            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value ||
+                romanizationPreferences.showsRomanization
         }
 
     // Restart tick: bumps when the SAME song restarts (auto-repeat, manual replay, seek-to-zero)
@@ -481,6 +486,24 @@ fun LyricsEnhanced(
         // whatever it measured the first time that line was composed — so a build that changes the
         // romanisation of lines already on screen has to carry a new generation with it. See
         // KaraokeBuild.
+        //
+        // Composer footer ("Written by: <artists>") — built from the
+        // currently-playing MediaMetadata. Hoisted here so it lives in
+        // the same LaunchedEffect scope as the karaoke build, which
+        // means a track change (mediaMetadata.id changes) re-launches
+        // this effect and the footer is recomputed for the new track.
+        // The footer is only meaningful when there's at least one
+        // credited artist; if the track has no artists in its metadata
+        // (rare — only happens for some local files with no ID3 artist
+        // tag), the footer is suppressed rather than showing an empty
+        // "Written by: " string.
+        val composerFooter =
+            mediaMetadata
+                ?.artists
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString { it.name }
+                ?.let { "Written by: $it" }
+
         fun publish(romanization: Map<Int, List<String?>>) {
             val previous = karaokeBuild
             val changesVisibleLines =
@@ -488,7 +511,7 @@ fun LyricsEnhanced(
                     romanization.renderedRomanization() != previous.romanization.renderedRomanization()
             karaokeBuild =
                 KaraokeBuild(
-                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization),
+                    lyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, romanization, composerFooter),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
                 )
@@ -1032,25 +1055,56 @@ fun LyricsEnhanced(
             )
         }
     val plainLyrics =
-        remember(lyricsEntries, isSynced) {
+        remember(lyricsEntries, isSynced, mediaMetadata?.artists) {
+            // Composer footer ("Written by: <artists>") — appended as a
+            // synthetic PlainLyricLine at the end of the non-synced
+            // lyrics list. Per user request (2026-08-28): "Add composer
+            // of the song at the end of the lyrics in apple music player
+            // style lyrics and non apple music style lyrics too." The
+            // footer is built from `MediaMetadata.artists` — there is no
+            // dedicated composer/songwriter field in the codebase, so
+            // the artist credit stands in. The footer is only added when
+            // the track has at least one credited artist; tracks with
+            // no artist metadata (rare) get no footer rather than an
+            // empty "Written by: " string.
+            val composerFooterLine =
+                mediaMetadata
+                    ?.artists
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.joinToString { it.name }
+                    ?.let { "Written by: $it" }
+                    ?.let { text ->
+                        PlainLyricLine(
+                            itemId = "composer_footer",
+                            selectionId = "plain:composer_footer:${text.hashCode()}",
+                            text = text,
+                        )
+                    }
+
+            val lyricItems =
+                if (isSynced) {
+                    emptyList()
+                } else {
+                    lyricsEntries.mapIndexedNotNull { index, entry ->
+                        val text = entry.text.trim()
+                        if (text.isBlank()) {
+                            null
+                        } else {
+                            val selectionId = "plain:$index:${text.hashCode()}"
+                            PlainLyricLine(
+                                itemId = "$selectionId#$index",
+                                selectionId = selectionId,
+                                text = text,
+                            )
+                        }
+                    }
+                }
             PlainLyrics(
                 items =
-                    if (isSynced) {
-                        emptyList()
+                    if (composerFooterLine != null && lyricItems.isNotEmpty()) {
+                        lyricItems + composerFooterLine
                     } else {
-                        lyricsEntries.mapIndexedNotNull { index, entry ->
-                            val text = entry.text.trim()
-                            if (text.isBlank()) {
-                                null
-                            } else {
-                                val selectionId = "plain:$index:${text.hashCode()}"
-                                PlainLyricLine(
-                                    itemId = "$selectionId#$index",
-                                    selectionId = selectionId,
-                                    text = text,
-                                )
-                            }
-                        }
+                        lyricItems
                     },
             )
         }
@@ -1062,21 +1116,34 @@ fun LyricsEnhanced(
                     if (text.isBlank()) {
                         null
                     } else {
-                        val selectionId = line.selectionKey(text)
-                        LyricSelectionLine(
-                            itemId = "$selectionId#$index",
-                            selectionId = selectionId,
-                            text = text,
-                        )
+                        // Skip the composer footer in the selection sheet —
+                        // it is metadata, not a lyric the user would want
+                        // to copy/share. Identified by its very high start
+                        // time (24h, see `buildSyncedLyrics`).
+                        if (line.start >= 86_400_000) {
+                            null
+                        } else {
+                            val selectionId = line.selectionKey(text)
+                            LyricSelectionLine(
+                                itemId = "$selectionId#$index",
+                                selectionId = selectionId,
+                                text = text,
+                            )
+                        }
                     }
                 }
             } else {
-                plainLyrics.items.map { line ->
-                    LyricSelectionLine(
-                        itemId = line.itemId,
-                        selectionId = line.selectionId,
-                        text = line.text,
-                    )
+                plainLyrics.items.mapNotNull { line ->
+                    // Skip the composer footer in the selection sheet.
+                    if (line.itemId == "composer_footer") {
+                        null
+                    } else {
+                        LyricSelectionLine(
+                            itemId = line.itemId,
+                            selectionId = line.selectionId,
+                            text = line.text,
+                        )
+                    }
                 }
             }
         }
@@ -1135,6 +1202,37 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
+        // "Lyrics from [provider]" header — mirrors the legacy Lyrics.kt
+        // pattern (L808-841). Per user request (2026-08-28): "just like
+        // written by is on the bottom of lyrics page there's should be
+        // Lyrics from 'The lyrics provider name' on the top of the lyrics
+        // too". The header is rendered as an overlay aligned to the top
+        // of the lyrics Box; the karaoke list has enough top padding for
+        // active-line centering that the header sits in the empty space
+        // above the first visible lyric line. `providerName` comes from
+        // the LyricsEntity row persisted by LyricsHelper (e.g. "LrcLib",
+        // "Musixmatch", "BiniLyrics", etc.).
+        val lyricsProviderName = currentLyrics?.providerName.orEmpty()
+        if (lyricsProviderName.isNotBlank()) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1794,11 +1892,39 @@ private fun List<WordTimestamp>.toKaraokeSyllables(phonetics: List<String?>): Li
                 ?.let { minOf(rawEnd, it) }
                 ?: rawEnd
 
+        // ── Trailing-space padding on word-synced romanisation ─────────────────
+        //
+        // The mocharealm KaraokeLineText renderer lays each syllable out as a
+        // column (phonetic Text on top, content Text below) and arranges the
+        // columns in a Row. The Row's inter-column gap is whatever intrinsic
+        // width each column has — there's no extra `Arrangement.spacedBy`
+        // between phonetic words. So when the lyric is in a script whose glyphs
+        // are narrow (Hindi Devanagari, in particular), each syllable column is
+        // narrow, and the per-syllable phonetic Texts sit visually glued to
+        // each other: "kya khwaab khayaal" reads as "kyakhwaabkhayaal".
+        //
+        // Appending a trailing regular space to each non-null phonetic forces
+        // the phonetic Text's intrinsic width to include that space, which the
+        // Row's layout then has to honour — pushing the next syllable's column
+        // further to the right and giving the romanisation the breathing room
+        // the user explicitly asked for. Line-synced lyrics are unaffected
+        // because they go through [buildLineSyncedLrcLine] (the phonetic
+        // string is folded into the translation slot as a single line of
+        // text, where trailing spaces would be invisible anyway because the
+        // slot wraps as one paragraph).
+        val rawPhonetic = phonetics.getOrNull(index)
+        val paddedPhonetic =
+            if (rawPhonetic.isNullOrEmpty()) {
+                rawPhonetic
+            } else {
+                "$rawPhonetic "
+            }
+
         KaraokeSyllable(
             content = word.text,
             start = start,
             end = end.coerceAtLeast(start + MIN_KARAOKE_SYLLABLE_DURATION_MS),
-            phonetic = phonetics.getOrNull(index),
+            phonetic = paddedPhonetic,
         )
     }
 
@@ -1864,6 +1990,7 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
+    composerFooter: String? = null,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
@@ -1953,30 +2080,26 @@ private fun buildSyncedLyrics(
             //         ?: lines.indexOfFirst { it.start > pos }   // ← the *upcoming* line
             //         ?: lines.lastIndex
             // so any instant that falls in a gap between one line's end and the next line's start
-            // resolves to the line that has NOT started yet. This branch used to clamp `end` to
-            // start + 4s whenever the gap to the next line exceeded 3s, which manufactured exactly
-            // such a gap on every slow line and every verse boundary: 4s into a line with a 9s gap
-            // the focus, the scale-up and the spring placement all moved to the next line while the
-            // current one was still being sung. That is the "line-synced lyrics in Enhanced style
-            // scroll way too soon" report, and it is Enhanced-only because LyricsV2 resolves the
-            // active line itself (last line whose start has passed) instead of asking the library.
+            // resolves to the line that has NOT started yet. The previous version of this code
+            // capped `end` at `entry.time + 5_000L` (5s) whenever the gap
+            // to the next line exceeded 10s, manufacturing exactly such a gap on every verse
+            // boundary and long instrumental break. The library then resolved to the *upcoming*
+            // line during that gap — visibly scrolling to the next line while the current one was
+            // still being sung. The 5s cap was meant to give the library's breathing-dots interlude
+            // a gap to fire in, but the interlude is decorative and the early scroll it caused was
+            // the user-visible regression: "line-synced lyrics scroll way too soon", most obvious
+            // on J-pop tracks whose verse gaps routinely exceed 10s. Enhanced was also the only
+            // renderer affected by this — LyricsV2 resolves the active line itself (last line
+            // whose start has passed), so it never asks the library and never sees the fallback.
             //
             // Butting each line's end against the next line's start removes the gaps entirely, so
             // the library's first predicate always matches and always agrees with
-            // findLastStartedLineIndex — which is what drives our own auto-scroll. The two can no
-            // longer disagree, and a line stays focused for as long as it is the most recent one,
-            // exactly like Apple Music holds the last sung line through an instrumental break.
+            // findLastStartedLineIndex — which is what drives our own auto-scroll. A line stays
+            // focused for as long as it is the most recent one, exactly like Apple Music holds
+            // the last sung line through an instrumental break.
             val lineEnd =
                 if (nextEntry != null && nextEntry.time > entry.time) {
-                    val handOver = entry.time + LINE_SYNCED_MAX_FOCUS_HOLD_MS
-                    if (nextEntry.time - handOver > LINE_SYNCED_INTERLUDE_MIN_GAP_MS) {
-                        // A real instrumental break. Hand focus over so the library's breathing-dots
-                        // interlude — which only triggers when `next.start - previous.end` exceeds
-                        // its own 5s threshold — still gets to run through the silence.
-                        handOver.toInt()
-                    } else {
-                        nextEntry.time.toInt()
-                    }
+                    nextEntry.time.toInt()
                 } else {
                     (entry.time + LINE_SYNCED_TRAILING_LINE_DURATION_MS).toInt()
                 }
@@ -1989,6 +2112,34 @@ private fun buildSyncedLyrics(
                 ),
             )
         }
+    }
+
+    // "Written by: <artists>" footer — appended as a synthetic
+    // ISyncedLine at the very end of the lyrics. Per user request
+    // (2026-08-28): "Add composer of the song at the end of the lyrics
+    // in apple music player style lyrics and non apple music style
+    // lyrics too. I've attached how it should exactly look". The
+    // reference image shows a small dim "Written by: <names>" credit
+    // appearing after the last lyric line.
+    //
+    // The synthetic line's start time is set well beyond any real
+    // playback position (1 day in milliseconds) so the karaoke renderer
+    // never highlights it as the active line during normal playback.
+    // It is only visible when the user scrolls to the bottom of the
+    // lyrics list. The `SyncedLine` renderer draws `content` at the
+    // ambient text style, which we've pinned to `phoneticTextStyle`
+    // (small dim text) at the KaraokeLyricsView call site — that gives
+    // the credit a visually subdued look matching the reference image.
+    if (!composerFooter.isNullOrBlank()) {
+        val footerStart = 86_400_000 // 24h in ms — well beyond any song length
+        lines.add(
+            SyncedLine(
+                content = composerFooter,
+                translation = null,
+                start = footerStart,
+                end = footerStart + 60_000,
+            ),
+        )
     }
 
     return SyncedLyrics(lines = lines)

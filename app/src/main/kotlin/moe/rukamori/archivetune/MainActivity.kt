@@ -2320,24 +2320,59 @@ class MainActivity : ComponentActivity() {
                                                     ),
                                                 title = {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        // app icon
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.about_appbar),
-                                                            contentDescription = null,
-                                                            modifier =
-                                                                Modifier
-                                                                    .size(35.dp)
-                                                                    .padding(end = 3.dp),
-                                                        )
-                                                        AutoResizeText(
-                                                            text = stringResource(R.string.app_name),
-                                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                            fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Visible,
-                                                            softWrap = true,
-                                                            modifier = Modifier.weight(1f, fill = false),
-                                                        )
+                                                        if (isLibraryRoute) {
+                                                            // On the Library tab, the top app bar's
+                                                            // title slot carries the big bold
+                                                            // "Library" header (38sp, matching the
+                                                            // LibraryMixScreen's `LibraryHeaderRow`
+                                                            // that used to live at the top of the
+                                                            // scrollable content). Per user request
+                                                            // (2026-08-28): "The Big library text
+                                                            // should be the header of the page. The
+                                                            // size should prevail and not become any
+                                                            // smaller. And since it'll be the header,
+                                                            // there should be no empty space either."
+                                                            //
+                                                            // Scroll behavior for the Library route
+                                                            // is `null` (see the `scrollBehavior =`
+                                                            // branch below), so the TopAppBar is
+                                                            // pinned and the title does NOT collapse
+                                                            // on scroll — the 38sp size prevails
+                                                            // throughout. The `LibraryHeaderRow` in
+                                                            // LibraryMixScreen is now empty (it just
+                                                            // reserves its 8.dp vertical padding slot
+                                                            // for breathing room between the
+                                                            // TopAppBar and the first category row).
+                                                            Text(
+                                                                text = stringResource(R.string.library),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 38.sp,
+                                                                lineHeight = 44.sp,
+                                                                letterSpacing = (-0.5).sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        } else {
+                                                            // app icon
+                                                            Icon(
+                                                                painter = painterResource(R.drawable.about_appbar),
+                                                                contentDescription = null,
+                                                                modifier =
+                                                                    Modifier
+                                                                        .size(35.dp)
+                                                                        .padding(end = 3.dp),
+                                                            )
+                                                            AutoResizeText(
+                                                                text = stringResource(R.string.app_name),
+                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Visible,
+                                                                softWrap = true,
+                                                                modifier = Modifier.weight(1f, fill = false),
+                                                            )
+                                                        }
                                                     }
                                                 },
                                                 actions = {

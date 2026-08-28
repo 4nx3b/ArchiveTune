@@ -810,18 +810,19 @@ fun LyricsMenu(
                                 onClick = { viewModel.undoTranslation(mediaMetadataProvider().id) },
                                 enabled = canUndoTranslation,
                             ),
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.speed),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.lyrics_sync_offset),
-                                onClick = { showLyricsSyncOffsetDialog = true },
-                            ),
+                            // "Lyrics sync offset" action removed per user request
+                            // (2026-08-28): "Remove lyrics sync offset from
+                            // lyrics overflow menu from apple music and non
+                            // apple music styles". The internal
+                            // `lyricsSyncOffset` plumbing is preserved so
+                            // any user who previously set an offset still
+                            // has it applied (LyricsEnhanced.kt reads the
+                            // value during line-timing computation), but
+                            // the menu entry that let them change it is
+                            // gone. The `showLyricsSyncOffsetDialog` state
+                            // and the dialog block below are kept as dead
+                            // code so we don't have to thread-break the
+                            // function signature.
                             NewAction(
                                 icon = {
                                     Icon(

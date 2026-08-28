@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,39 +51,28 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
 import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
+import moe.rukamori.archivetune.constants.EnableBiniLyricsKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
-import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixNeteaseLyricsKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixSpotifyLyricsKey
-import moe.rukamori.archivetune.constants.EnablePaxsenixYouTubeLyricsKey
-import moe.rukamori.archivetune.constants.PaxsenixApiKeyKey
-import moe.rukamori.archivetune.constants.PaxsenixEndpointKey
 import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
-import moe.rukamori.archivetune.constants.EnableTidalLyricsKey
-import moe.rukamori.archivetune.constants.EnableDeezerLyricsKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
-import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
+import moe.rukamori.archivetune.lyrics.LyricsProviderTestOutcome
+import moe.rukamori.archivetune.lyrics.LyricsProviderTestResult
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
-import moe.rukamori.archivetune.viewmodels.PaxsenixEndpointCheckState
-import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
+import moe.rukamori.archivetune.viewmodels.LyricsTestState
 import androidx.compose.foundation.layout.asPaddingValues
 
 /**
@@ -91,10 +81,16 @@ import androidx.compose.foundation.layout.asPaddingValues
  *
  * Behaviour preserved verbatim from the original inline groups:
  *   • All provider switches default to on (except Musixmatch experimental).
- *   • Paxsenix sub-toggles (Apple Music / NetEase / Spotify / Musixmatch / YouTube) only
- *     render when the parent Paxsenix toggle is on, and include the Paxsenix stats entry.
  *   • "Set first lyrics provider" opens the reorderable dialog. The dialog itself lives
  *     in LyricsSettings.kt and is `internal` so this screen can reuse it.
+ *   • "Lyrics test" runs a sweep across every enabled provider with a known test
+ *     track and shows per-provider outcomes — see [LyricsTestDialog] below.
+ *
+ * Paxsenix/Tidal/Deezer toggles and their sub-toggles (Apple Music / NetEase / Spotify /
+ * Musixmatch / YouTube), the Paxsenix stats dialog, API key entry, endpoint entry, and
+ * endpoint check dialog have been removed (user request 2026-08-28: "I still see enable
+ * paxesnix lyrics switch in lyrics provider. Remove it"). BiniLyrics replaces the Paxsenix
+ * Apple Music path as the user-visible label on the same backend.
  */
 @Composable
 fun LyricsProvidersSettings(
@@ -112,30 +108,10 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
     val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) =
         rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
-    val (enableMegalobizLyrics, onEnableMegalobizLyricsChange) =
-        rememberPreference(key = EnableMegalobizLyricsKey, defaultValue = true)
-    val (enablePaxsenixLyrics, onEnablePaxsenixLyricsChange) =
-        rememberPreference(key = EnablePaxsenixLyricsKey, defaultValue = true)
-    val (enablePaxsenixAppleMusicLyrics, onEnablePaxsenixAppleMusicLyricsChange) =
-        rememberPreference(key = EnablePaxsenixAppleMusicLyricsKey, defaultValue = true)
-    val (enablePaxsenixNeteaseLyrics, onEnablePaxsenixNeteaseLyricsChange) =
-        rememberPreference(key = EnablePaxsenixNeteaseLyricsKey, defaultValue = false)
-    val (enablePaxsenixSpotifyLyrics, onEnablePaxsenixSpotifyLyricsChange) =
-        rememberPreference(key = EnablePaxsenixSpotifyLyricsKey, defaultValue = false)
-    val (enablePaxsenixMusixmatchLyrics, onEnablePaxsenixMusixmatchLyricsChange) =
-        rememberPreference(key = EnablePaxsenixMusixmatchLyricsKey, defaultValue = false)
-    val (enablePaxsenixYouTubeLyrics, onEnablePaxsenixYouTubeLyricsChange) =
-        rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = false)
-    val (paxsenixApiKey, onPaxsenixApiKeyChange) =
-        rememberPreference(key = PaxsenixApiKeyKey, defaultValue = "")
-    val (paxsenixEndpoint, onPaxsenixEndpointChange) =
-        rememberPreference(key = PaxsenixEndpointKey, defaultValue = "")
+    val (enableBiniLyrics, onEnableBiniLyricsChange) =
+        rememberPreference(key = EnableBiniLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
-    val (enableTidalLyrics, onEnableTidalLyricsChange) =
-        rememberPreference(key = EnableTidalLyricsKey, defaultValue = true)
-    val (enableDeezerLyrics, onEnableDeezerLyricsChange) =
-        rememberPreference(key = EnableDeezerLyricsKey, defaultValue = true)
     val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
         rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
@@ -147,31 +123,20 @@ fun LyricsProvidersSettings(
             deserializeLyricsProviderOrder(providerOrderStr)
         }
 
-    var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
     var showProviderOrderDialog by remember { mutableStateOf(false) }
-    var showPaxsenixEndpointCheckDialog by remember { mutableStateOf(false) }
+    var showLyricsTestDialog by remember { mutableStateOf(false) }
 
-    if (showPaxsenixStatsDialog) {
-        val statsState by viewModel.paxsenixStatsState.collectAsStateWithLifecycle()
+    if (showLyricsTestDialog) {
+        val testState by viewModel.lyricsTestState.collectAsStateWithLifecycle()
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            viewModel.fetchPaxsenixStats()
+            if (testState is LyricsTestState.Idle) {
+                viewModel.runLyricsTest()
+            }
         }
-        PaxsenixStatsDialog(
-            state = statsState,
-            onDismiss = { showPaxsenixStatsDialog = false },
-            onRetry = { viewModel.fetchPaxsenixStats() },
-        )
-    }
-
-    if (showPaxsenixEndpointCheckDialog) {
-        val checkState by viewModel.paxsenixEndpointCheckState.collectAsStateWithLifecycle()
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            viewModel.checkPaxsenixEndpoints()
-        }
-        PaxsenixEndpointCheckDialog(
-            state = checkState,
-            onDismiss = { showPaxsenixEndpointCheckDialog = false },
-            onRetry = { viewModel.checkPaxsenixEndpoints() },
+        LyricsTestDialog(
+            state = testState,
+            onDismiss = { showLyricsTestDialog = false },
+            onRetry = { viewModel.runLyricsTest() },
         )
     }
 
@@ -329,187 +294,45 @@ fun LyricsProvidersSettings(
                     )
                 }
 
+                // Megalobiz lyrics provider removed per user request
+                // (2026-08-28): "Remove megalobiz lyrics provider". The
+                // MegalobizLyricsProvider file was deleted; the
+                // PreferredLyricsProvider.MEGALOBIZ enum value and the
+                // DefaultLyricsProviderOrder entry are also gone.
+
+                // BiniLyrics replaces the Paxsenix: Apple Music provider in the
+                // user-visible priority list (commit 717db4f19). The toggle
+                // here is the user's on/off for that single provider — the
+                // per-Paxsenix sub-toggles (NetEase / Spotify / Musixmatch /
+                // YouTube) and the retired Paxsenix stats / endpoint / API
+                // key entries are removed per user request (2026-08-28):
+                // "I still see enable paxesnix lyrics switch in lyrics
+                // provider. Remove it".
                 item {
                     SwitchPreference(
-                        modifier = positions.modifierFor("enable_megalobiz_lyrics", "megalobiz_lyrics"),
-                        title = { Text(stringResource(R.string.enable_megalobiz_lyrics)) },
+                        modifier = positions.modifierFor("enable_bini_lyrics", "bini_lyrics"),
+                        title = { Text(stringResource(R.string.enable_bini_lyrics)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableMegalobizLyrics,
-                        onCheckedChange = onEnableMegalobizLyricsChange,
+                        checked = enableBiniLyrics,
+                        onCheckedChange = onEnableBiniLyricsChange,
                         isEnabled = providerTogglesEnabled,
                     )
                 }
 
+                // "Lyrics test" — sweeps every enabled provider with a known
+                // test track (Ed Sheeran — Shape of You) and reports per-
+                // provider outcomes (Working / No lyrics for test track /
+                // Timed out / Failed) in a dialog. Per user request
+                // (2026-08-28): "Add an option in lyrics provider named
+                // Lyrics test. when I click on it, it should show that
+                // whether all the lyrics providers are working or not".
                 item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("enable_paxsenix_lyrics", "paxsenix_lyrics"),
-                        title = { Text(stringResource(R.string.enable_paxsenix_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixLyrics,
-                        onCheckedChange = onEnablePaxsenixLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
                     PreferenceEntry(
-                        modifier = positions.modifierFor("paxsenix_stats"),
-                        title = { Text(stringResource(R.string.paxsenix_stats)) },
-                        icon = { Icon(painterResource(R.drawable.stats), null) },
-                        onClick = { showPaxsenixStatsDialog = true },
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                // PaxSenix API key — user-configurable. When set, sent as
-                // "Authorization: Bearer <key>" on every Paxsenix API request.
-                // When blank, the built-in default key is used.
-                item(visible = enablePaxsenixLyrics) {
-                    var showApiKeyDialog by remember { mutableStateOf(false) }
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("paxsenix_api_key"),
-                        title = { Text(stringResource(R.string.paxsenix_api_key)) },
-                        description = if (paxsenixApiKey.isNotBlank()) {
-                            stringResource(R.string.paxsenix_api_key_set)
-                        } else {
-                            stringResource(R.string.paxsenix_api_key_not_set)
-                        },
-                        icon = { Icon(painterResource(R.drawable.token), null) },
-                        onClick = { showApiKeyDialog = true },
-                        isEnabled = providerTogglesEnabled,
-                    )
-                    if (showApiKeyDialog) {
-                        TextFieldDialog(
-                            onDismiss = { showApiKeyDialog = false },
-                            title = { Text(stringResource(R.string.paxsenix_api_key)) },
-                            textFieldValue = paxsenixApiKey,
-                            onTextFieldValueChange = onPaxsenixApiKeyChange,
-                            singleLine = true,
-                            isInputValid = { it.isBlank() || it.length >= 8 },
-                        )
-                    }
-                }
-
-                // PaxSenix endpoint override — user-configurable. When blank,
-                // the default (https://lyrics.paxsenix.org/) is used.
-                item(visible = enablePaxsenixLyrics) {
-                    var showEndpointDialog by remember { mutableStateOf(false) }
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("paxsenix_endpoint"),
-                        title = { Text(stringResource(R.string.paxsenix_endpoint)) },
-                        description = paxsenixEndpoint.ifBlank {
-                            stringResource(R.string.paxsenix_endpoint_default)
-                        },
-                        icon = { Icon(painterResource(R.drawable.solar_server_linear), null) },
-                        onClick = { showEndpointDialog = true },
-                        isEnabled = providerTogglesEnabled,
-                    )
-                    if (showEndpointDialog) {
-                        TextFieldDialog(
-                            onDismiss = { showEndpointDialog = false },
-                            title = { Text(stringResource(R.string.paxsenix_endpoint)) },
-                            placeholder = { Text(stringResource(R.string.paxsenix_endpoint_hint)) },
-                            textFieldValue = paxsenixEndpoint,
-                            onTextFieldValueChange = onPaxsenixEndpointChange,
-                            singleLine = true,
-                            isInputValid = {
-                                it.isBlank() ||
-                                    it.startsWith("http://") ||
-                                    it.startsWith("https://")
-                            },
-                        )
-                    }
-                }
-
-                // Which per-provider Paxsenix paths the configured endpoint actually serves.
-                // Upstream has retired most of them (unconditional 403), which from inside the
-                // app is indistinguishable from a wrong endpoint or a bad key — every affected
-                // provider simply returns nothing. This makes the difference visible, and it
-                // probes whatever endpoint is configured, so a self-hosted instance reports its
-                // own coverage rather than the public service's.
-                item(visible = enablePaxsenixLyrics) {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("paxsenix_check_endpoints"),
-                        title = { Text(stringResource(R.string.paxsenix_check_endpoints)) },
-                        description = stringResource(R.string.paxsenix_check_endpoints_description),
-                        icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
-                        onClick = { showPaxsenixEndpointCheckDialog = true },
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
-                    SwitchPreference(
-                        title = { Text("Paxsenix: Apple Music") },
+                        modifier = positions.modifierFor("lyrics_test"),
+                        title = { Text(stringResource(R.string.lyrics_test)) },
+                        description = stringResource(R.string.lyrics_test_description),
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixAppleMusicLyrics,
-                        onCheckedChange = onEnablePaxsenixAppleMusicLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
-                    SwitchPreference(
-                        title = { Text("Paxsenix: NetEase") },
-                        description = stringResource(R.string.paxsenix_endpoint_retired),
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixNeteaseLyrics,
-                        onCheckedChange = onEnablePaxsenixNeteaseLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
-                    SwitchPreference(
-                        title = { Text("Paxsenix: Spotify") },
-                        description = stringResource(R.string.paxsenix_endpoint_retired),
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixSpotifyLyrics,
-                        onCheckedChange = onEnablePaxsenixSpotifyLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
-                    SwitchPreference(
-                        title = { Text("Paxsenix: Musixmatch") },
-                        description = stringResource(R.string.paxsenix_endpoint_retired),
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixMusixmatchLyrics,
-                        onCheckedChange = onEnablePaxsenixMusixmatchLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item(visible = enablePaxsenixLyrics) {
-                    SwitchPreference(
-                        title = { Text("Paxsenix: YouTube") },
-                        description = stringResource(R.string.paxsenix_endpoint_retired),
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enablePaxsenixYouTubeLyrics,
-                        onCheckedChange = onEnablePaxsenixYouTubeLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("enable_tidal_lyrics"),
-                        title = { Text(stringResource(R.string.enable_tidal_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableTidalLyrics,
-                        onCheckedChange = onEnableTidalLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("enable_deezer_lyrics"),
-                        title = { Text(stringResource(R.string.enable_deezer_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableDeezerLyrics,
-                        onCheckedChange = onEnableDeezerLyricsChange,
+                        onClick = { showLyricsTestDialog = true },
                         isEnabled = providerTogglesEnabled,
                     )
                 }
@@ -558,25 +381,38 @@ fun LyricsProvidersSettings(
 }
 
 /**
- * Shows, per Paxsenix provider, whether the configured endpoint still serves its route.
+ * "Lyrics test" dialog — runs a sweep across every enabled provider with a
+ * known test track (Ed Sheeran — "Shape of You") and shows per-provider
+ * outcomes: Working / No lyrics for test track / Timed out / Failed.
  *
- * The three outcomes are deliberately distinct: a provider can be *available*, *retired
- * upstream* (the service answers 403 for that route no matter what key is sent — turning its
- * toggle on cannot help), or *unreachable* (network/DNS/5xx, which may be temporary). Only the
- * middle case means "stop expecting this provider to ever work on this endpoint".
+ * The four outcomes are deliberately distinct:
+ *   • Working — the provider returned meaningful lyrics for the test track.
+ *     The provider is reachable and serving the test case.
+ *   • No lyrics for test track — the provider responded cleanly but had no
+ *     entry for the test track. The provider is reachable; it just doesn't
+ *     have this specific song. Most providers should land here for the test
+ *     track since "Shape of You" is widely catalogued, but a provider that
+ *     uses a different index format may legitimately not have it.
+ *   • Timed out — the provider didn't respond within the per-provider budget
+ *     (12s). May indicate a slow endpoint or a temporary network issue.
+ *   • Failed — the provider errored out (network/DNS/5xx/exception). The
+ *     provider is currently not usable.
+ *
+ * A "Retry" button re-runs the sweep, replacing stale results with a fresh
+ * probe.
  */
 @Composable
-private fun PaxsenixEndpointCheckDialog(
-    state: PaxsenixEndpointCheckState,
+private fun LyricsTestDialog(
+    state: LyricsTestState,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
 ) {
     DefaultDialog(
         onDismiss = onDismiss,
-        title = { Text(stringResource(R.string.paxsenix_check_endpoints)) },
-        icon = { Icon(painterResource(R.drawable.wifi_proxy), contentDescription = null) },
+        title = { Text(stringResource(R.string.lyrics_test)) },
+        icon = { Icon(painterResource(R.drawable.lyrics), contentDescription = null) },
         buttons = {
-            if (state is PaxsenixEndpointCheckState.Success) {
+            if (state is LyricsTestState.Done) {
                 TextButton(onClick = onRetry) {
                     Text(stringResource(R.string.retry))
                 }
@@ -588,8 +424,8 @@ private fun PaxsenixEndpointCheckDialog(
         },
     ) {
         when (state) {
-            PaxsenixEndpointCheckState.Idle,
-            PaxsenixEndpointCheckState.Running,
+            LyricsTestState.Idle,
+            LyricsTestState.Loading,
             -> {
                 Column(
                     modifier =
@@ -603,14 +439,22 @@ private fun PaxsenixEndpointCheckDialog(
                         LoadingIndicator()
                     }
                     Text(
-                        text = stringResource(R.string.paxsenix_check_running),
+                        text = stringResource(R.string.lyrics_test_running),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
 
-            is PaxsenixEndpointCheckState.Success -> {
+            is LyricsTestState.Done -> {
+                val working = state.results.count { it.outcome == LyricsProviderTestOutcome.OK }
+                val total = state.results.size
+                val summary =
+                    if (working == 0) {
+                        stringResource(R.string.lyrics_test_summary_none)
+                    } else {
+                        stringResource(R.string.lyrics_test_summary_ok, working, total)
+                    }
                 Column(
                     modifier =
                         Modifier
@@ -619,28 +463,32 @@ private fun PaxsenixEndpointCheckDialog(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     state.results.forEach { result ->
-                        val label =
-                            when (result.status) {
-                                PaxsenixLyrics.PathStatus.AVAILABLE ->
-                                    stringResource(R.string.paxsenix_check_result_ok, result.provider)
-
-                                PaxsenixLyrics.PathStatus.RETIRED ->
-                                    stringResource(R.string.paxsenix_check_result_retired, result.provider)
-
-                                PaxsenixLyrics.PathStatus.UNREACHABLE ->
-                                    stringResource(R.string.paxsenix_check_result_failed, result.provider)
-                            }
-                        val tint =
-                            when (result.status) {
-                                PaxsenixLyrics.PathStatus.AVAILABLE -> MaterialTheme.colorScheme.primary
-                                PaxsenixLyrics.PathStatus.RETIRED -> MaterialTheme.colorScheme.error
-                                PaxsenixLyrics.PathStatus.UNREACHABLE -> MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        val iconRes =
-                            when (result.status) {
-                                PaxsenixLyrics.PathStatus.AVAILABLE -> R.drawable.check
-                                PaxsenixLyrics.PathStatus.RETIRED -> R.drawable.error
-                                PaxsenixLyrics.PathStatus.UNREACHABLE -> R.drawable.info
+                        val (label, tint, iconRes) =
+                            when (result.outcome) {
+                                LyricsProviderTestOutcome.OK ->
+                                    Triple(
+                                        stringResource(R.string.lyrics_test_ok),
+                                        MaterialTheme.colorScheme.primary,
+                                        R.drawable.check,
+                                    )
+                                LyricsProviderTestOutcome.NO_MATCH ->
+                                    Triple(
+                                        stringResource(R.string.lyrics_test_no_match),
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                        R.drawable.info,
+                                    )
+                                LyricsProviderTestOutcome.TIMEOUT ->
+                                    Triple(
+                                        stringResource(R.string.lyrics_test_timeout),
+                                        MaterialTheme.colorScheme.error,
+                                        R.drawable.error,
+                                    )
+                                LyricsProviderTestOutcome.FAILED ->
+                                    Triple(
+                                        stringResource(R.string.lyrics_test_failed),
+                                        MaterialTheme.colorScheme.error,
+                                        R.drawable.error,
+                                    )
                             }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -655,18 +503,24 @@ private fun PaxsenixEndpointCheckDialog(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = label,
+                                    text = result.providerName,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = tint,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
-                                    text = result.path,
+                                    text = label,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = tint,
                                 )
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
