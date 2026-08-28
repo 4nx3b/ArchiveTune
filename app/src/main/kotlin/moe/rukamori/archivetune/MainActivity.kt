@@ -292,6 +292,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
+import moe.rukamori.archivetune.ui.component.DockedNavPillButton
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
@@ -321,6 +322,8 @@ import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
+import moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState
+import moe.rukamori.archivetune.ui.player.MiniPlayerDockedState
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
 import moe.rukamori.archivetune.ui.screens.LoginScreen
@@ -2024,6 +2027,16 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                    // Hoisted shared state so the playlist-style screens (inside the
+                    // Scaffold's content slot) can WRITE isListScrolling = true when
+                    // the user scrolls past the hero header, AND the Scaffold's
+                    // bottomBar slot (a SIBLING subtree) can READ the same flag to
+                    // swap the full FloatingNavigationToolbar for a docked
+                    // [Home pill LEFT] + [MiniPlayer CENTER] + [Search pill RIGHT]
+                    // layout. The previous CompositionLocal-of-Boolean pattern did
+                    // NOT propagate across the content/bottomBar slot boundary.
+                    val miniPlayerDockedState = remember { MiniPlayerDockedState() }
+
                     CompositionLocalProvider(
                         LocalHapticFeedback provides customHaptic,
                         LocalAnimationsDisabled provides disableAnimations,
@@ -2043,7 +2056,7 @@ class MainActivity : ComponentActivity() {
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
-                        moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
+                        moe.rukamori.archivetune.ui.player.LocalMiniPlayerDockedState provides miniPlayerDockedState,
                     ) {
                         Row {
                             AnimatedVisibility(
@@ -2741,6 +2754,21 @@ class MainActivity : ComponentActivity() {
                                                 !isFloatingNavBar &&
                                                 playerBottomSheetState.isCollapsed
 
+                                        // The docked state is hoisted above the Scaffold so
+                                        // both the content slot (where playlist screens
+                                        // WRITE to it via LaunchedEffect) and this bottomBar
+                                        // slot (which READS from it) share the same
+                                        // instance. When docked, we hide the full
+                                        // FloatingNavigationToolbar and render a docked
+                                        // Row containing [Home pill LEFT] + [Spacer for
+                                        // MiniPlayer CENTER] + [Search pill RIGHT],
+                                        // matching the SimpMusic reference screenshot.
+                                        val isMiniPlayerDocked =
+                                            miniPlayerDockedState.isDocked &&
+                                                shouldShowNavigationBar &&
+                                                !useRail &&
+                                                playerBottomSheetState.isCollapsed
+
                                         ProvideVideoFullscreenState {
                                             BottomSheetPlayer(
                                                 state = playerBottomSheetState,
@@ -2788,36 +2816,80 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     },
                                         ) {
-                                            FloatingNavigationToolbar(
-                                                items = navigationItems,
-                                                pureBlack = pureBlack,
-                                                isPairedWithMiniPlayer = areBottomBarsPaired,
-                                                style = navigationBarStyle,
-                                                frostedBlur = navigationBarFrostedBlur,
-                                                tintFrostedBlur = navigationBarTintFrostedBlur,
-                                                frostedBackdrop = navBarFrostedBackdrop,
-                                                liquidGlass = liquidGlassEnabled && liquidGlassNavBarEnabled,
-                                                liquidGlassBackdrop = liquidGlassBackdrop,
-                                                modifier =
-                                                    Modifier
-                                                        .align(Alignment.BottomCenter)
-                                                        .padding(
-                                                            start = navBarHorizontalPadding,
-                                                            end = navBarHorizontalPadding,
-                                                            bottom = bottomInset + floatingBarsBottomPadding,
-                                                        ).height(navVisibleHeight),
-                                                isSelected = { screen ->
-                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
-                                                        true
-                                                },
-                                                onItemClick = { screen, isSelected ->
-                                                    handlePrimaryNavigationClick(screen, isSelected)
-                                                },
-                                                onSearchItemDoubleClick = {
-                                                    searchSource = SearchSource.ONLINE
-                                                    openSearch()
-                                                },
-                                            )
+                                            if (isMiniPlayerDocked) {
+                                                // Docked Row: Home pill LEFT + (Spacer for
+                                                // MiniPlayer CENTER) + Search pill RIGHT.
+                                                // The MiniPlayer itself is rendered by
+                                                // BottomSheetPlayer's collapsedContent above
+                                                // and visually narrows its width via its own
+                                                // docked logic (horizontal padding) so it
+                                                // sits between these two pills.
+                                                Row(
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .fillMaxWidth()
+                                                            .padding(
+                                                                start = navBarHorizontalPadding,
+                                                                end = navBarHorizontalPadding,
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ).height(navVisibleHeight),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    DockedNavPillButton(
+                                                        iconRes = Screens.Home.iconIdActive,
+                                                        contentDescription = stringResource(R.string.home),
+                                                        onClick = {
+                                                            handlePrimaryNavigationClick(Screens.Home, false)
+                                                        },
+                                                        liquidGlassBackdrop = liquidGlassBackdrop,
+                                                        liquidGlassEnabled = liquidGlassEnabled && liquidGlassNavBarEnabled,
+                                                        pureBlack = pureBlack,
+                                                    )
+                                                    DockedNavPillButton(
+                                                        iconRes = Screens.Search.iconIdActive,
+                                                        contentDescription = stringResource(R.string.search),
+                                                        onClick = {
+                                                            handlePrimaryNavigationClick(Screens.Search, false)
+                                                        },
+                                                        liquidGlassBackdrop = liquidGlassBackdrop,
+                                                        liquidGlassEnabled = liquidGlassEnabled && liquidGlassNavBarEnabled,
+                                                        pureBlack = pureBlack,
+                                                    )
+                                                }
+                                            } else {
+                                                FloatingNavigationToolbar(
+                                                    items = navigationItems,
+                                                    pureBlack = pureBlack,
+                                                    isPairedWithMiniPlayer = areBottomBarsPaired,
+                                                    style = navigationBarStyle,
+                                                    frostedBlur = navigationBarFrostedBlur,
+                                                    tintFrostedBlur = navigationBarTintFrostedBlur,
+                                                    frostedBackdrop = navBarFrostedBackdrop,
+                                                    liquidGlass = liquidGlassEnabled && liquidGlassNavBarEnabled,
+                                                    liquidGlassBackdrop = liquidGlassBackdrop,
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .padding(
+                                                                start = navBarHorizontalPadding,
+                                                                end = navBarHorizontalPadding,
+                                                                bottom = bottomInset + floatingBarsBottomPadding,
+                                                            ).height(navVisibleHeight),
+                                                    isSelected = { screen ->
+                                                        navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
+                                                            true
+                                                    },
+                                                    onItemClick = { screen, isSelected ->
+                                                        handlePrimaryNavigationClick(screen, isSelected)
+                                                    },
+                                                    onSearchItemDoubleClick = {
+                                                        searchSource = SearchSource.ONLINE
+                                                        openSearch()
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                 },
