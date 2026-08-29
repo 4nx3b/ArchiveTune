@@ -98,7 +98,6 @@ import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
@@ -415,8 +414,7 @@ fun SpotifyPlaylistScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     // Use the theme surface color (not Color.Black) so the initial frame, before
     // any scrolling content is recorded into the backdrop, blends with the page
     // background instead of flashing solid black. Matches the LocalPlaylistScreen
@@ -424,7 +422,7 @@ fun SpotifyPlaylistScreen(
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     ExpressivePullToRefreshBox(
-        isRefreshing = state.isLoading,
+        isRefreshing = state.isLoading && tracks.isNotEmpty(),
         onRefresh = viewModel::reload,
         modifier =
             Modifier
@@ -722,7 +720,7 @@ fun SpotifyPlaylistScreen(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.library),
+                    text = playlist?.name ?: stringResource(R.string.spotify),
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
