@@ -391,7 +391,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

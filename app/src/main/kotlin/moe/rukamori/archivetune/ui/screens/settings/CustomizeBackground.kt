@@ -148,7 +148,7 @@ fun CustomizeBackground(navController: NavController) {
             MediumFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             modifier = Modifier.padding(start = 5.dp),

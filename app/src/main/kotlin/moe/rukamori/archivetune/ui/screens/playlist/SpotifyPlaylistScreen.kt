@@ -321,27 +321,35 @@ fun SpotifyPlaylistScreen(
             query = TextFieldValue()
         }
     } else {
-        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
-        // the Library tab when the user is on a Spotify playlist sub-page —
-        // not on the Home tab. Per user report (2026-08-28): "when I'm in
-        // the library or Spotify page and I use the back navigation gesture
-        // i return to home page instead i should be on the library main
-        // page where it displays recently added and artist and other things".
+        // BackHandler so the predictive back gesture always escapes the
+        // Spotify playlist page. Per user report (2026-08-29): "I'm in the
+        // playlist but I can't get back using the navigation gesture." The
+        // previous implementation called `navController.navigate("library") {
+        // popUpTo(navController.graph.startDestinationId) ... }` which could
+        // fail silently when `navController.graph` was momentarily null
+        // during fast back-to-back navigation or when the start destination
+        // ID was the same as the target.
         //
-        // Previously: `if (!navController.navigateUp()) { navController.navigate("library") }`
-        // — when the user came from Home (deep-link), the back stack was
-        // [home, spotify_playlist], so navigateUp() returned true and the
-        // user landed on Home, which they did not want.
-        //
-        // Now: ALWAYS redirect to the Library tab on back. We use
-        // popUpTo("home") { saveState = true } to pop everything above Home
-        // (preserving Home's tab state), then navigate to "library" with
-        // launchSingleTop + restoreState.
+        // New approach: call `popBackStack()` directly first — this is the
+        // most primitive NavController operation and reliably pops the
+        // current entry to reveal the previous one. If `popBackStack()`
+        // returns false (no previous entry), fall back to navigating to
+        // the Library route. Wrapped in try/catch as defense-in-depth.
         BackHandler {
-            navController.navigate("library") {
-                launchSingleTop = true
-                restoreState = true
-                popUpTo("home") { saveState = true }
+            try {
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                    }
+                }
+            } catch (_: Exception) {
+                try {
+                    if (!navController.navigateUp()) {
+                        navController.navigate("library") { launchSingleTop = true }
+                    }
+                } catch (_: Exception) {
+                    // Last-resort: let the system handle the back press.
+                }
             }
         }
     }
