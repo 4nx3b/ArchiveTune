@@ -127,6 +127,7 @@ import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
@@ -222,7 +223,9 @@ fun OnlinePlaylistScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val screenSettled = rememberLayerBackdropSettled()
+
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
 
     // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
     // so the search bar offset and the playlist header always stay anchored below the TopAppBar.
