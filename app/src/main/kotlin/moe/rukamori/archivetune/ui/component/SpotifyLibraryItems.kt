@@ -113,6 +113,7 @@ fun SpotifyLibraryPlaylistListItem(
     ListItem(
         title = libraryPlaylist.playlist.name,
         subtitle = subtitleText,
+        badges = {},
         thumbnailContent = {
             ItemThumbnail(
                 thumbnailUrl = libraryPlaylist.thumbnails.getOrNull(0),
@@ -174,6 +175,7 @@ fun SpotifyLikedSongsListItem(
     ListItem(
         title = stringResource(R.string.liked_songs),
         subtitle = null,
+        badges = {},
         thumbnailContent = {
             Surface(
                 color = accentColor.copy(alpha = 0.15f),
