@@ -134,7 +134,6 @@
     <string name="not_logged_in_youtube">لم يتم تسجيل الدخول إلى YouTube</string>
     <string name="default_links">فتح الروابط المدعومة افتراضيًا</string>
     <string name="open_app_settings_error">لم يتمكن التطبيق من فتح إعدادات التطبيق</string>
-    <string name="release_notes">ملاحظات الإصدار</string>
     <string name="all_time">جميع الأوقات</string>
     <string name="past_24_hours">آخر 24 ساعة</string>
     <string name="past_week">الأسبوع الماضي</string>

@@ -127,7 +127,6 @@
     <string name="not_logged_in_youtube">YouTube\'a giriş yapmadınız</string>
     <string name="default_links">Desteklenen bağlantıları aç</string>
     <string name="open_app_settings_error">Uygulama ayarları açılamadı</string>
-    <string name="release_notes">Sürüm notları</string>
     <string name="all_time">Tüm zamanlar</string>
     <string name="past_24_hours">Son 24 saat</string>
     <string name="past_week">Geçen hafta</string>
