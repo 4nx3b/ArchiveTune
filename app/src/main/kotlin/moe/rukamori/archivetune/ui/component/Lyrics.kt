@@ -894,7 +894,13 @@ fun Lyrics(
                             ) {
                                 Text(
                                     text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
-                                    fontSize = (lyricsTextSize * 0.8f).sp,
+                                    // Reduced from 0.8f → 0.5f per the user's
+                                    // "Reduce the size of both lyrics from and
+                                    // written by text" request. Matches the
+                                    // smaller attribution style used in the
+                                    // PlainLyricLineItem metadata path in
+                                    // LyricsEnhanced.kt.
+                                    fontSize = (lyricsTextSize * 0.5f).sp,
                                     color = lyricsBaseColor.copy(alpha = 0.52f),
                                     textAlign = attributionAlignment,
                                     fontWeight = FontWeight.SemiBold,
@@ -2467,14 +2473,14 @@ fun Lyrics(
                 // request (2026-08-28 follow-up): "the Lyrics from at the
                 // top and the written by text at the bottom of the lyrics
                 // should show as if it's just lyrics and not some constant
-                // text". The footer now uses the same color, font size,
-                // weight, line height, alignment, and horizontal padding
-                // as a regular (non-active) lyric line — Color.White at
-                // alpha 0.52, font size `lyricsTextSize`, SemiBold weight,
-                // lyrics-positioned text alignment, 24.dp horizontal +
-                // 8.dp vertical padding. This makes it read as the last
-                // lyric line of the song rather than as a constant red
-                // caption glued to the bottom.
+                // text". Per user follow-up (2026-08-29): "Reduce the size
+                // of both lyrics from and written by text". The footer now
+                // uses the smaller attribution style — font size
+                // `lyricsTextSize * 0.5f`, SemiBold weight, lyrics-positioned
+                // text alignment, 24.dp horizontal + 8.dp vertical padding,
+                // Color.White at alpha 0.52. This keeps it scrolling with
+                // the lyrics (read as the last lyric line of the song)
+                // while being noticeably smaller than the active lyric line.
                 mediaMetadata?.let { metadata ->
                     val writersLine = metadata.artists.joinToString { it.name }.trim()
                     if (writersLine.isNotBlank()) {
@@ -2503,7 +2509,14 @@ fun Lyrics(
                                 ) {
                                     Text(
                                         text = stringResource(R.string.written_by, writersLine),
-                                        fontSize = lyricsTextSize.sp,
+                                        // Reduced from `lyricsTextSize.sp` →
+                                        // `(lyricsTextSize * 0.5f).sp` per the
+                                        // user's "Reduce the size of both
+                                        // lyrics from and written by text"
+                                        // request. Matches the smaller
+                                        // attribution style used for the
+                                        // "Lyrics from" header above.
+                                        fontSize = (lyricsTextSize * 0.5f).sp,
                                         color = lyricsBaseColor.copy(alpha = 0.52f),
                                         textAlign = footerAlignment,
                                         fontWeight = FontWeight.SemiBold,

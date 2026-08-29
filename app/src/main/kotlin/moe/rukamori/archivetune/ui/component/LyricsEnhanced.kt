@@ -514,7 +514,7 @@ fun LyricsEnhanced(
         )
     }
 
-    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, lyricsProviderLabel, composerFooterLabel, mediaMetadata?.id) {
+    LaunchedEffect(lyricsEntries, romanizationPreferences, aiRomanizedLines, mediaMetadata?.id) {
         // Everything below (scanning + romanizing every line, often one job per word for TTML)
         // used to inherit the main dispatcher and could stutter the karaoke animation on track
         // change; run the whole batch on Default and only publish the results back.
@@ -538,8 +538,6 @@ fun LyricsEnhanced(
                             entries = lyricsEntries,
                             isTtml = isTtmlFormat,
                             romanizationMap = romanization,
-                            providerHeader = lyricsProviderLabel,
-                            composerFooter = composerFooterLabel,
                         ),
                     romanization = romanization,
                     generation = if (changesVisibleLines) previous.generation + 1 else previous.generation,
@@ -1241,23 +1239,33 @@ fun LyricsEnhanced(
                 // gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
-        // "Lyrics from [provider]" header: NO LONGER a constant overlay.
-        // Previously this was a Box pinned to Alignment.TopCenter that
-        // stayed fixed while the lyrics scrolled beneath it — the user
-        // explicitly reported this as a bug ("lyrics from text at the top
-        // and the written by text at the bottom is constant. it should
-        // move with lyrics as if it's the part of lyrics itself and auto
-        // scroll itself"). Both attributions are now injected INTO the
-        // lyrics stream itself:
-        //   • Synced (karaoke) lyrics: `buildSyncedLyrics(providerHeader
-        //     = lyricsProviderLabel, composerFooter = composerFooterLabel)`
-        //     injects them as the first and last SyncedLines. They scroll
-        //     with the karaoke view like any other lyric.
-        //   • Plain lyrics: `plainLyrics` above injects them as the first
-        //     and last `PlainLyricLine` items with `isMetadata = true`
-        //     (rendered in the smaller metadata style).
-        // Both paths keep the attribution text visible while scrolling,
-        // but it now flows with the lyrics instead of being pinned.
+        // "Lyrics from [provider]" header attribution. The presentation
+        // differs by lyrics kind:
+        //   • Synced (karaoke) lyrics: the mocharealm KaraokeLyricsView
+        //     renders every non-active SyncedLine with the SAME
+        //     normalLineTextStyle — there is no per-line styling API.
+        //     Previously the attribution was injected as the first/
+        //     last SyncedLine so it would scroll with the lyrics, but
+        //     that made it the same size as the lyric lines AND placed
+        //     it above the karaoke view's active-line offset, where it
+        //     sat at the very top edge of the lyrics viewport —
+        //     partially clipped/overlapping the mini header (user
+        //     reported as "lyrics from text is always cutoff"). The
+        //     attribution is now a small PINNED overlay Text at the
+        //     top of the lyrics viewport (see the `else ->` branch
+        //     below) — sized at 0.45 * lyricsTextSize with 6.dp top
+        //     padding so it is always visible AND noticeably smaller
+        //     than the lyric lines (user's 2026-08-29 follow-up:
+        //     "Reduce the size of both lyrics from and written by
+        //     text"). The composer footer is similarly a small pinned
+        //     overlay at the bottom of the lyrics viewport.
+        //   • Plain (unsynced) lyrics: the attribution is injected
+        //     as the first/last `PlainLyricLine` items with
+        //     `isMetadata = true` (rendered in the smaller metadata
+        //     style via PlainLyricLineItem, which uses 0.30 * the
+        //     body text size — reduced from 0.38 * per the same
+        //     user follow-up). On this path the attribution still
+        //     scrolls with the lyrics.
         when {
             lyrics == LYRICS_NOT_FOUND -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1336,125 +1344,213 @@ fun LyricsEnhanced(
             }
 
             else -> {
-                BoxWithConstraints(
+                // Box wrapper so we can pin the small "Lyrics from [provider]"
+                // attribution overlay at the top of the lyrics viewport (and the
+                // "Written by [artists]" footer at the bottom) — see the long
+                // comment in `buildSyncedLyrics` for why these are no longer
+                // injected as SyncedLines: the mocharealm library renders every
+                // non-active synced line with the SAME normalLineTextStyle, so
+                // there is no per-line API to render the attribution smaller
+                // than the lyric lines. Pinning the attribution as a small
+                // overlay Text (~0.45 * lyricsTextSize) keeps it always
+                // visible (the user's #1 ask: "lyrics from text is always
+                // cutoff. Shift it down a bit so that it's always visible")
+                // AND smaller than the lyric lines (the user's #2 ask: "Reduce
+                // the size of both lyrics from and written by text").
+                //
+                // The overlay is `clipToBounds()`-free and has NO clickable /
+                // pointerInput modifier, so it does not intercept the karaoke
+                // view's scroll/selection gestures — touches pass through to
+                // the KaraokeLyricsView below.
+                Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
                 ) {
-                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
-                    // Keyed on the session + a position-reset counter so that when
-                    // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the
-                    // user seeks backward by more than 1 second, the
-                    // KaraokeLyricsView instance is disposed and recreated — the
-                    // library's internal highlight state doesn't reset on
-                    // backward position jumps, so without this re-key the
-                    // karaoke animation freezes at the line that was active
-                    // just before the repeat.
-                    //
-                    // [karaokeGeneration] is in the key for the same reason at a different
-                    // layer: the library caches one measured glyph layout per line index in a
-                    // map remembered here, outside its own Crossfade, and each line pins what it
-                    // draws to whichever entry that map held when the line was first composed.
-                    // A build that adds romanisation to lines already on screen therefore has to
-                    // dispose the cache along with them, or those lines never show it. See
-                    // [KaraokeBuild].
-                    key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
-                        // ── Force the translation slot to use the small phonetic style ──
-                        // The mocharealm KaraokeLineText / SyncedLineText renderers
-                        // render the `translation` slot with `LocalTextStyle.current`
-                        // (no explicit style), while per-syllable `phonetic` slots use
-                        // `phoneticTextStyle`. For word-synced lyrics the translation
-                        // slot carries the actual translation; for line-synced lyrics
-                        // it carries the folded romanisation + translation (see
-                        // buildLineSyncedLrcLine). In both cases the translation slot
-                        // would otherwise render at the ambient bodyLarge size — much
-                        // larger than the per-syllable phonetics above. Pinning
-                        // LocalTextStyle to the same small phoneticTextStyle keeps the
-                        // translation row visually consistent with the per-syllable
-                        // phonetic row, and is local to this lyrics subtree so the
-                        // rest of the app is unaffected. KaraokeLyricsView's explicit
-                        // `normalLineTextStyle` / `accompanimentLineTextStyle` /
-                        // `phoneticTextStyle` parameters all bypass LocalTextStyle, so
-                        // the active karaoke line itself is not affected.
-                        androidx.compose.runtime.CompositionLocalProvider(
-                            androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
-                        ) {
-                            KaraokeLyricsView(
-                                listState = listState,
-                                lyrics = syncedLyrics,
-                                currentPosition = playbackSyncPosition,
-                                onLineClicked = { line ->
-                                    if (isSelectionModeActive) {
-                                        toggleSelectedLine(line.selectionKey())
-                                    } else if (lyricsClick && isSynced && line.start > 0) {
-                                        player.seekTo(line.start.toLong())
-                                    }
-                                },
-                                onLinePressed = { line ->
-                                    val lineKey = line.selectionKey()
-                                    if (!isSelectionModeActive) {
-                                        isSelectionModeActive = true
-                                        if (!selectedLineKeys.contains(lineKey)) {
-                                            selectedLineKeys.add(lineKey)
+                        // Keyed on the session + a position-reset counter so that when
+                        // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the
+                        // user seeks backward by more than 1 second, the
+                        // KaraokeLyricsView instance is disposed and recreated — the
+                        // library's internal highlight state doesn't reset on
+                        // backward position jumps, so without this re-key the
+                        // karaoke animation freezes at the line that was active
+                        // just before the repeat.
+                        //
+                        // [karaokeGeneration] is in the key for the same reason at a different
+                        // layer: the library caches one measured glyph layout per line index in a
+                        // map remembered here, outside its own Crossfade, and each line pins what it
+                        // draws to whichever entry that map held when the line was first composed.
+                        // A build that adds romanisation to lines already on screen therefore has to
+                        // dispose the cache along with them, or those lines never show it. See
+                        // [KaraokeBuild].
+                        key(lyricsSessionKey, positionResetCounter, karaokeGeneration) {
+                            // ── Force the translation slot to use the small phonetic style ──
+                            // The mocharealm KaraokeLineText / SyncedLineText renderers
+                            // render the `translation` slot with `LocalTextStyle.current`
+                            // (no explicit style), while per-syllable `phonetic` slots use
+                            // `phoneticTextStyle`. For word-synced lyrics the translation
+                            // slot carries the actual translation; for line-synced lyrics
+                            // it carries the folded romanisation + translation (see
+                            // buildLineSyncedLrcLine). In both cases the translation slot
+                            // would otherwise render at the ambient bodyLarge size — much
+                            // larger than the per-syllable phonetics above. Pinning
+                            // LocalTextStyle to the same small phoneticTextStyle keeps the
+                            // translation row visually consistent with the per-syllable
+                            // phonetic row, and is local to this lyrics subtree so the
+                            // rest of the app is unaffected. KaraokeLyricsView's explicit
+                            // `normalLineTextStyle` / `accompanimentLineTextStyle` /
+                            // `phoneticTextStyle` parameters all bypass LocalTextStyle, so
+                            // the active karaoke line itself is not affected.
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                androidx.compose.material3.LocalTextStyle provides phoneticTextStyle,
+                            ) {
+                                KaraokeLyricsView(
+                                    listState = listState,
+                                    lyrics = syncedLyrics,
+                                    currentPosition = playbackSyncPosition,
+                                    onLineClicked = { line ->
+                                        if (isSelectionModeActive) {
+                                            toggleSelectedLine(line.selectionKey())
+                                        } else if (lyricsClick && isSynced && line.start > 0) {
+                                            player.seekTo(line.start.toLong())
                                         }
-                                    } else if (!selectedLineKeys.contains(lineKey)) {
-                                        toggleSelectedLine(lineKey)
-                                    }
-                                },
-                                textColor = textColor,
-                                normalLineTextStyle = normalTextStyle,
-                                accompanimentLineTextStyle = accompanimentTextStyle,
-                                phoneticTextStyle = phoneticTextStyle,
-                                blendMode = BlendMode.SrcOver,
-                                // Per-line RenderEffect blur is the single heaviest per-frame cost in
-                                // this view; drop it when animations are disabled (low-RAM default).
-                                useBlurEffect = lyricsLineBlur && !animationsDisabled,
-                                showTranslation = showTranslations,
-                                // Per-syllable phonetics in the KaraokeLineText
-                                // renderer are drawn ABOVE each glyph — this is
-                                // what the user wants for word-synced lyrics
-                                // ("romanisation should also display word by
-                                // word above the active words like before").
-                                //
-                                // For line-synced lyrics the renderer uses
-                                // SyncedLineText (which has no per-syllable
-                                // phonetic slot), so this flag has no effect
-                                // there — romanisation still folds into the
-                                // translation slot below the lyric, between
-                                // the active line and the actual translation
-                                // (see buildLineSyncedLrcLine).
-                                showPhonetic = true,
-                                offset = lyricsViewportOffset,
-                                // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
-                                // many items outside the viewport are kept composed (not
-                                // disposed) — each kept-alive item still participates in
-                                // the per-frame measure pass during auto-scroll. The
-                                // mocharealm KaraokeLyricsView library measures every
-                                // kept-alive karaoke line on every scroll event; each line
-                                // contains N syllables that each need a fill-ratio
-                                // computation. 8dp keeps at most ~1 line alive on each
-                                // side of the viewport, minimizing the measure cost
-                                // during the instant `scrollBy` snap on line changes.
-                                // This is the single biggest lever we have for reducing
-                                // the word-synced lyrics lag in Enhanced style (V2 uses
-                                // its own renderer and doesn't have this cost).
-                                keepAliveZone = 8.dp,
-                                modifier = Modifier.fillMaxSize(),
+                                    },
+                                    onLinePressed = { line ->
+                                        val lineKey = line.selectionKey()
+                                        if (!isSelectionModeActive) {
+                                            isSelectionModeActive = true
+                                            if (!selectedLineKeys.contains(lineKey)) {
+                                                selectedLineKeys.add(lineKey)
+                                            }
+                                        } else if (!selectedLineKeys.contains(lineKey)) {
+                                            toggleSelectedLine(lineKey)
+                                        }
+                                    },
+                                    textColor = textColor,
+                                    normalLineTextStyle = normalTextStyle,
+                                    accompanimentLineTextStyle = accompanimentTextStyle,
+                                    phoneticTextStyle = phoneticTextStyle,
+                                    blendMode = BlendMode.SrcOver,
+                                    // Per-line RenderEffect blur is the single heaviest per-frame cost in
+                                    // this view; drop it when animations are disabled (low-RAM default).
+                                    useBlurEffect = lyricsLineBlur && !animationsDisabled,
+                                    showTranslation = showTranslations,
+                                    // Per-syllable phonetics in the KaraokeLineText
+                                    // renderer are drawn ABOVE each glyph — this is
+                                    // what the user wants for word-synced lyrics
+                                    // ("romanisation should also display word by
+                                    // word above the active words like before").
+                                    //
+                                    // For line-synced lyrics the renderer uses
+                                    // SyncedLineText (which has no per-syllable
+                                    // phonetic slot), so this flag has no effect
+                                    // there — romanisation still folds into the
+                                    // translation slot below the lyric, between
+                                    // the active line and the actual translation
+                                    // (see buildLineSyncedLrcLine).
+                                    showPhonetic = true,
+                                    offset = lyricsViewportOffset,
+                                    // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
+                                    // many items outside the viewport are kept composed (not
+                                    // disposed) — each kept-alive item still participates in
+                                    // the per-frame measure pass during auto-scroll. The
+                                    // mocharealm KaraokeLyricsView library measures every
+                                    // kept-alive karaoke line on every scroll event; each line
+                                    // contains N syllables that each need a fill-ratio
+                                    // computation. 8dp keeps at most ~1 line alive on each
+                                    // side of the viewport, minimizing the measure cost
+                                    // during the instant `scrollBy` snap on line changes.
+                                    // This is the single biggest lever we have for reducing
+                                    // the word-synced lyrics lag in Enhanced style (V2 uses
+                                    // its own renderer and doesn't have this cost).
+                                    keepAliveZone = 8.dp,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+
+                    // ── "Lyrics from [provider]" overlay (top, pinned) ──
+                    // Sits at the top of the lyrics viewport with 6.dp of top
+                    // padding so it never re-collides with the upper edge
+                    // (which was the original "cutoff" complaint — the karaoke
+                    // view's active-line offset of 8% of viewport height placed
+                    // the synced-line attribution at the very top edge, partially
+                    // clipped/overlapping the mini header above). The overlay
+                    // uses 0.45 * lyricsTextSize — significantly smaller than
+                    // the lyric lines (which are at full lyricsTextSize Bold) —
+                    // to satisfy the user's "Reduce the size of both lyrics
+                    // from and written by text" request. The dim 0.5 alpha
+                    // matches the inactive-lyric-line tone so the attribution
+                    // reads as a subtle credit rather than a "constant red
+                    // caption" (preserving the spirit of the earlier
+                    // "show as if it's just lyrics" request — the text is
+                    // small, dim, and uses the same text color as the lyrics
+                    // rather than a distinct caption color).
+                    //
+                    // The overlay has no `clickable`/`pointerInput` modifier
+                    // so it does NOT intercept the karaoke view's scroll/selection
+                    // gestures — touches pass through to the KaraokeLyricsView below.
+                    val attributionColor = textColor.copy(alpha = 0.5f)
+                    val attributionFontSize = (lyricsTextSize * 0.45f).sp
+                    val attributionStyle =
+                        remember(attributionFontSize, lyricsFontFamily) {
+                            androidx.compose.ui.text.TextStyle(
+                                fontSize = attributionFontSize,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                fontFamily = lyricsFontFamily,
                             )
                         }
+                    if (!lyricsProviderLabel.isNullOrBlank()) {
+                        Text(
+                            text = lyricsProviderLabel,
+                            color = attributionColor,
+                            style = attributionStyle,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp, bottom = 4.dp, start = 24.dp, end = 24.dp),
+                        )
+                    }
+                    // ── "Written by [artists]" overlay (bottom, pinned) ──
+                    // Same rationale as the top overlay — pinned at the bottom
+                    // of the lyrics viewport with 6.dp of bottom padding so it
+                    // never collides with the lower edge / player controls.
+                    if (!composerFooterLabel.isNullOrBlank()) {
+                        Text(
+                            text = composerFooterLabel,
+                            color = attributionColor,
+                            style = attributionStyle,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp, bottom = 6.dp, start = 24.dp, end = 24.dp),
+                        )
                     }
                 }
             }
         }
 
-        // "Written by [artists]" footer: NO LONGER a constant overlay.
-        // Same rationale as the "Lyrics from" header above — the user
-        // explicitly wants the footer to scroll with the lyrics instead
-        // of being pinned to Alignment.BottomCenter. Both synced and
-        // plain-lyrics paths now inject the footer as the LAST item of
-        // the lyrics stream (see buildSyncedLyrics + plainLyrics above).
+        // "Written by [artists]" footer: PINNED OVERLAY for synced
+        // (karaoke) lyrics — see the small Text at Alignment.BottomCenter
+        // inside the `else ->` branch above. For PLAIN (unsynced) lyrics,
+        // the footer is still injected as the LAST item of the plain lyrics
+        // stream via PlainLyricLineItem(isMetadata = true) — that path
+        // already renders the metadata in a smaller style (see
+        // PlainLyricLineItem below), so it stays scrolling + small there.
     }
 
     if (isSelectionModeActive && selectionLines.isNotEmpty()) {
@@ -1653,8 +1749,17 @@ private fun PlainLyricLineItem(
         text = line.text,
         style =
             if (line.isMetadata) {
+                // Reduced from 0.38f → 0.30f per the user's "Reduce the
+                // size of both lyrics from and written by text" request.
+                // This is the PLAIN (unsynced) lyrics path — metadata
+                // attribution lines ("Lyrics from [provider]" header and
+                // "Written by [artists]" footer) are 0.30 * the body text
+                // size. The synced (karaoke) path now renders these as
+                // small pinned overlays (see the `else ->` branch above)
+                // because the mocharealm library can't size individual
+                // synced lines differently from the lyric lines.
                 textStyle.copy(
-                    fontSize = (textStyle.fontSize.value * 0.38f).sp,
+                    fontSize = (textStyle.fontSize.value * 0.30f).sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                 )
@@ -2034,22 +2139,33 @@ private fun buildSyncedLyrics(
     entries: List<LyricsEntry>,
     isTtml: Boolean,
     romanizationMap: Map<Int, List<String?>>,
-    providerHeader: String?,
+    providerHeader: String? = null,
     composerFooter: String? = null,
 ): SyncedLyrics {
     if (entries.isEmpty()) return SyncedLyrics(emptyList())
     val lines = mutableListOf<ISyncedLine>()
 
-    if (!providerHeader.isNullOrBlank()) {
-        lines.add(
-            SyncedLine(
-                content = providerHeader,
-                translation = null,
-                start = -2,
-                end = -1,
-            ),
-        )
-    }
+    // NOTE: providerHeader and composerFooter are NO LONGER injected as
+    // SyncedLines in the karaoke stream. The mocharealm KaraokeLyricsView
+    // renders every non-active SyncedLine with the SAME normalLineTextStyle
+    // (lyricsTextSize, Bold) — there is no per-line styling API. That made
+    // the attribution the same size as the lyric lines and, because the
+    // active-line offset is small (~8% of viewport height), the provider
+    // header sat above the active line at the very top edge of the lyrics
+    // viewport — partially clipped/overlapping the mini header (see user
+    // report: "lyrics from text is always cutoff"). The attribution now
+    // renders as a small PINNED overlay Text at the top of the lyrics
+    // viewport (and the composer footer as a small overlay at the bottom),
+    // sized at 0.45 * lyricsTextSize with proper top/bottom padding so it is
+    // always visible and noticeably smaller than the lyric lines. The
+    // params are kept on this function signature for source compatibility
+    // with any future call sites but are intentionally unused.
+    // — Pre-existing in-lyrics attribution (commit b30158adf) was reverted
+    // here because the user explicitly asked for the attribution to be
+    // smaller than the lyric lines, which the mocharealm library cannot do
+    // per-line. If a future library version adds per-line styling, restore
+    // the synced-line injection above and remove the overlays in the
+    // `else ->` (karaoke) branch below.
 
     entries.forEachIndexed { index, entry ->
         if (entry.time < 0L) return@forEachIndexed
@@ -2170,24 +2286,12 @@ private fun buildSyncedLyrics(
         }
     }
 
-    // "Written by [artists]" footer — injected as the LAST SyncedLine of
-    // the karaoke stream so it scrolls with the lyrics instead of being a
-    // constant overlay. Uses start = 86_400_000 ms (24h) so it can NEVER
-    // become the active line during normal playback (no song is 24h long),
-    // and the binary search in `findLastStartedLineIndex` correctly skips
-    // it. The line is only ever scrolled into view by the user — matching
-    // the user's request that "the written by text at the bottom of the
-    // lyrics should show as if it's just lyrics and not some constant text".
-    if (!composerFooter.isNullOrBlank()) {
-        lines.add(
-            SyncedLine(
-                content = composerFooter,
-                translation = null,
-                start = 86_400_000,
-                end = 86_400_001,
-            ),
-        )
-    }
+    // "Written by [artists]" footer — NO LONGER injected as a SyncedLine
+    // in the karaoke stream (see the comment at the top of this function
+    // for the rationale — the mocharealm library cannot size an individual
+    // synced line differently from the lyric lines). The footer is now a
+    // small pinned overlay at the bottom of the lyrics viewport (see the
+    // `else ->` (karaoke) branch below).
 
     return SyncedLyrics(lines = lines)
 }

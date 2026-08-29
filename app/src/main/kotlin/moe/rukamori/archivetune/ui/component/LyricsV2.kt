@@ -780,20 +780,34 @@ fun LyricsV2(
                     },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // ── Top spacer to clear the smoothFadingEdge (80dp) zone ──
+            // Without this spacer, the "Lyrics from [provider]" header
+            // (rendered as the FIRST LazyColumn item below) sits at the
+            // very top edge of the lyrics viewport — inside the 80dp
+            // verticalGradient fade mask, where its top portion is
+            // alpha-faded to ~0 and reads as "cut off" (the user's
+            // complaint: "lyrics from text is always cutoff. Shift it
+            // down a bit so that it's always visible"). Pushing the
+            // first item down by 96dp (= 80dp fade + 16dp buffer) places
+            // the header below the fade zone so it is always fully
+            // visible at the top of the list. The spacer is itself
+            // invisible (empty Box) and sits inside the fade zone.
+            item(key = "lyrics_top_fade_clearance_v2", contentType = "lyrics_fade_clearance") {
+                Box(modifier = Modifier.fillMaxWidth().height(96.dp))
+            }
             // "Lyrics from [provider]" header item. Rendered as the FIRST
-            // LazyColumn item so it scrolls naturally with the lyrics — the
-            // user requested this behave "as if it's a lyrics line itself"
-            // rather than a constant watermark. Per user request
-            // (2026-08-28 follow-up): "the Lyrics from at the top and the
-            // written by text at the bottom of the lyrics should show as if
-            // it's just lyrics and not some constant text". The header now
-            // uses the same color, font size, weight, line height, and
-            // horizontal padding as a regular (non-active) lyric line —
-            // Color.White at alpha 0.52 (matching the inactive-line alpha
-            // used by V2's main lyric renderer at L1099/L1118), font size
-            // `lyricsTextSize`, SemiBold weight, 24.dp horizontal padding.
-            // This makes it read as the first lyric line of the song
-            // rather than as a constant red caption glued to the top.
+            // (non-clearance) LazyColumn item so it scrolls naturally with
+            // the lyrics — the user requested this behave "as if it's a
+            // lyrics line itself" rather than a constant watermark. Per
+            // user request (2026-08-28 follow-up): "the Lyrics from at the
+            // top and the written by text at the bottom of the lyrics
+            // should show as if it's just lyrics and not some constant
+            // text". Per user follow-up (2026-08-29): "Reduce the size of
+            // both lyrics from and written by text". The header now uses
+            // a smaller font size (`lyricsTextSize * 0.5f` — down from
+            // `0.8f`) — Color.White at alpha 0.52 (matching the
+            // inactive-line alpha used by V2's main lyric renderer at
+            // L1099/L1118), SemiBold weight, 24.dp horizontal padding.
             val providerNameV2 = currentLyrics?.providerName.orEmpty()
             if (providerNameV2.isNotBlank()) {
                 item(key = "lyrics_source_header_v2", contentType = "lyrics_attribution") {
@@ -809,7 +823,10 @@ fun LyricsV2(
                         ) {
                             Text(
                                 text = stringResource(R.string.lyrics_from_source, providerNameV2),
-                                fontSize = (lyricsTextSize * 0.8f).sp,
+                                // Reduced from 0.8f → 0.5f per the user's
+                                // "Reduce the size of both lyrics from
+                                // and written by text" request.
+                                fontSize = (lyricsTextSize * 0.5f).sp,
                                 color = textColor.copy(alpha = 0.52f),
                                 textAlign = TextAlign.Center,
                                 fontWeight = FontWeight.SemiBold,
@@ -1176,14 +1193,16 @@ fun LyricsV2(
             // visually closes the lyrics block. Per user request
             // (2026-08-28 follow-up): "the Lyrics from at the top and the
             // written by text at the bottom of the lyrics should show as if
-            // it's just lyrics and not some constant text". The footer now
-            // uses the same color, font size, weight, line height, and
-            // horizontal padding as a regular (non-active) lyric line —
-            // Color.White at alpha 0.52 (matching the inactive-line alpha
-            // used by V2's main lyric renderer at L1099/L1118), font size
-            // `lyricsTextSize`, SemiBold weight, 24.dp horizontal padding.
-            // This makes it read as the last lyric line of the song
-            // rather than as a constant red caption glued to the bottom.
+            // it's just lyrics and not some constant text". Per user
+            // follow-up (2026-08-29): "Reduce the size of both lyrics from
+            // and written by text". The footer now uses a smaller font
+            // size (`lyricsTextSize * 0.5f` — down from `lyricsTextSize`)
+            // — Color.White at alpha 0.52 (matching the inactive-line
+            // alpha used by V2's main lyric renderer at L1099/L1118),
+            // SemiBold weight, 24.dp horizontal padding. This keeps it
+            // scrolling with the lyrics (read as the last lyric line of
+            // the song) while being noticeably smaller than the active
+            // lyric line.
             mediaMetadata?.let { metadata ->
                 val writersLineV2 = metadata.artists.joinToString { it.name }.trim()
                 if (writersLineV2.isNotBlank()) {
@@ -1200,7 +1219,14 @@ fun LyricsV2(
                             ) {
                                 Text(
                                     text = stringResource(R.string.written_by, writersLineV2),
-                                    fontSize = lyricsTextSize.sp,
+                                    // Reduced from `lyricsTextSize.sp` →
+                                    // `(lyricsTextSize * 0.5f).sp` per the
+                                    // user's "Reduce the size of both
+                                    // lyrics from and written by text"
+                                    // request. Matches the smaller
+                                    // attribution style used for the
+                                    // "Lyrics from" header above.
+                                    fontSize = (lyricsTextSize * 0.5f).sp,
                                     color = textColor.copy(alpha = 0.52f),
                                     textAlign = TextAlign.Center,
                                     fontWeight = FontWeight.SemiBold,

@@ -252,9 +252,10 @@ class LyricsMenuViewModel
                 // `updateLyrics(mediaMetadata, lyrics, source = AI_TRANSLATION)`
                 // with no providerName argument), the default empty string
                 // would otherwise WIPE the original provider's attribution —
-                // causing both the constant overlay header AND the in-stream
-                // SyncedLine header injected by `buildSyncedLyrics(providerHeader
-                // = lyricsProviderLabel)` to vanish the moment translation lands.
+                // causing the small "Lyrics from [provider]" overlay Text
+                // in LyricsEnhanced.kt (which derives its content from
+                // `currentLyrics?.providerName`) to vanish the moment
+                // translation lands.
                 //
                 // Resolution order when caller passed an empty providerName
                 // for an AI_TRANSLATION save:
@@ -470,15 +471,14 @@ class LyricsMenuViewModel
 
         private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
             captureLyricsBeforeTranslation(mediaId)
-            // Preserve the ORIGINAL provider's name so the in-lyrics-stream
-            // "Lyrics from [provider]" header does not disappear the moment
-            // AI translation saves a new LyricsEntity. Previously the AI
-            // translation path called `replaceLyrics(id, lyrics, source=AI_TRANSLATION)`
-            // without passing `providerName`, which defaulted to "" —
-            // wiping the provider attribution and causing both the constant
-            // overlay header AND the in-stream SyncedLine header injected by
-            // `buildSyncedLyrics(providerHeader = lyricsProviderLabel)` to
-            // vanish on translation.
+            // Preserve the ORIGINAL provider's name so the small pinned
+            // "Lyrics from [provider]" overlay in LyricsEnhanced.kt does
+            // not disappear the moment AI translation saves a new
+            // LyricsEntity. Previously the AI translation path called
+            // `replaceLyrics(id, lyrics, source=AI_TRANSLATION)` without
+            // passing `providerName`, which defaulted to "" — wiping the
+            // provider attribution and causing the overlay to vanish on
+            // translation.
             //
             // Resolution order for the preserved providerName:
             //   1. The undo snapshot's providerName IF it was captured for
