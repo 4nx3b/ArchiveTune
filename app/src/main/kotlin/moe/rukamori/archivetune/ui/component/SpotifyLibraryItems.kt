@@ -61,7 +61,7 @@ import moe.rukamori.archivetune.utils.makeTimeString
 fun SpotifyLibraryPlaylistListItem(
     playlist: SpotifyPlaylist,
     navController: NavController,
-    onHide: (() -> Unit)? = null,
+    onMenuClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
 ) {
@@ -133,8 +133,8 @@ fun SpotifyLibraryPlaylistListItem(
             )
         },
         trailingContent = {
-            if (onHide != null) {
-                IconButton(onClick = onHide) {
+            if (onMenuClick != null) {
+                IconButton(onClick = onMenuClick) {
                     Icon(
                         painter = painterResource(R.drawable.more_vert),
                         contentDescription = null,
