@@ -99,7 +99,6 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
@@ -185,8 +184,7 @@ fun AlbumScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
 
     // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
     // so the album hero's top padding stays anchored below the TopAppBar.

@@ -133,7 +133,6 @@ import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
@@ -213,8 +212,7 @@ fun ArtistScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
     // Per user report (2026-08-29): "Opening Artist page also feels too
