@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -26,14 +28,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -67,6 +77,19 @@ fun LibrarySpotifyPlaylistsScreen(
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    var sortByName by remember { mutableStateOf(false) }
+    var sortDescending by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showHidden by remember { mutableStateOf(false) }
+    val visiblePlaylists =
+        remember(playlists, sortByName, sortDescending, showHidden) {
+            playlists
+                .filter { playlist -> showHidden || playlist.public != false }
+                .let { source ->
+                    if (sortByName) source.sortedBy { it.name.lowercase() } else source
+                }
+                .let { source -> if (sortDescending) source.reversed() else source }
+        }
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -207,7 +230,7 @@ fun LibrarySpotifyPlaylistsScreen(
                 }
 
                 itemsIndexed(
-                    items = playlists,
+                    items = visiblePlaylists,
                     key = { _, playlist -> playlist.id },
                     contentType = { _, _ -> "spotify_playlist" },
                 ) { _, playlist ->
@@ -311,6 +334,11 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.IconButton(onClick = { navController.navigate("search") }) {
+                        Icon(painter = painterResource(R.drawable.search), contentDescription = stringResource(R.string.search), tint = Color.White)
+                    }
+                }
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -324,6 +352,11 @@ fun LibrarySpotifyPlaylistsScreen(
                             contentDescription = stringResource(R.string.refresh),
                             tint = Color.White,
                         )
+                    }
+                }
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.IconButton(onClick = { showSortMenu = true }) {
+                        Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null, tint = Color.White)
                     }
                 }
             }
