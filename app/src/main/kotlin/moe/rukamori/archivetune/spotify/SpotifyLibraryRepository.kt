@@ -12,12 +12,17 @@ import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -26,6 +31,7 @@ import moe.rukamori.archivetune.constants.SpotifyAccessTokenExpiresAtKey
 import moe.rukamori.archivetune.constants.SpotifyAccessTokenKey
 import moe.rukamori.archivetune.constants.SpotifyAccountAvatarUrlKey
 import moe.rukamori.archivetune.constants.SpotifyAccountNameKey
+import moe.rukamori.archivetune.constants.SpotifyHiddenPlaylistIdsKey
 import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
@@ -56,6 +62,14 @@ class SpotifyLibraryRepository
 
         private val _errorMessage = MutableStateFlow<String?>(null)
         val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+        // Per user report (2026-08-29): "If I hide a Spotify playlist it should be
+        // available in the hidden playlists section of the account page." Backed by
+        // a DataStore string-set so the hide survives process death AND is shared
+        // with the account-page "Hidden playlists" screen (which queries the same
+        // repository via this StateFlow rather than just the local Room DB).
+        private val _hiddenPlaylistIds = MutableStateFlow<Set<String>>(emptySet())
+        val hiddenPlaylistIds: StateFlow<Set<String>> = _hiddenPlaylistIds.asStateFlow()
 
         private val tokenRefreshMutex = Mutex()
         private data class CachedSearch(
@@ -103,6 +117,53 @@ class SpotifyLibraryRepository
                 }
             }
         }
+
+        /**
+         * Restores the persisted set of hidden Spotify playlist IDs from DataStore
+         * into the in-memory [hiddenPlaylistIds] StateFlow. Called once from
+         * [SpotifyLibraryViewModel.init] so the LibrarySpotifyPlaylistsScreen's
+         * `visiblePlaylists` filter and the account-page "Hidden playlists"
+         * section both have the persisted set available immediately on launch.
+         */
+        suspend fun restoreHiddenPlaylistIds() {
+            withContext(Dispatchers.IO) {
+                if (_hiddenPlaylistIds.value.isNotEmpty()) return@withContext
+                val persisted =
+                    context.dataStore.data
+                        .first()[SpotifyHiddenPlaylistIdsKey]
+                        .orEmpty()
+                _hiddenPlaylistIds.value = persisted
+            }
+        }
+
+        /**
+         * Toggles a Spotify playlist's hidden state. Adds the id to the persisted
+         * set when hiding (so the playlist disappears from the Library page and
+         * appears on the account-page Hidden playlists section), removes it when
+         * unhiding. The change is reflected immediately in [hiddenPlaylistIds]
+         * and persisted to DataStore so it survives process death.
+         */
+        suspend fun toggleHiddenPlaylist(playlistId: String) {
+            withContext(Dispatchers.IO) {
+                val updated =
+                    _hiddenPlaylistIds.value.toMutableSet().apply {
+                        if (!add(playlistId)) remove(playlistId)
+                    }
+                _hiddenPlaylistIds.value = updated
+                context.dataStore.edit { prefs ->
+                    prefs[SpotifyHiddenPlaylistIdsKey] = updated
+                }
+            }
+        }
+
+        /**
+         * Returns the subset of currently-loaded Spotify playlists whose id is in
+         * [hiddenPlaylistIds]. Used by the account-page "Hidden playlists" section
+         * to render hidden Spotify playlists with metadata (name, cover, track
+         * count) that the persisted id-set alone doesn't carry.
+         */
+        fun hiddenSpotifyPlaylists(): List<SpotifyPlaylist> =
+            _playlists.value.filter { it.id in _hiddenPlaylistIds.value }
 
         suspend fun restoreSession(): SpotifyAccountSession =
             withContext(Dispatchers.IO) {
@@ -169,6 +230,10 @@ class SpotifyLibraryRepository
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
+                // Do NOT clear _hiddenPlaylistIds here: the user's hidden-set is
+                // tied to their Spotify account identity, and connectWithCookies
+                // is typically called when re-connecting the SAME account after a
+                // token refresh. Clearing it would erase their hidden library.
                 refreshAccessToken(spDc = spDc, spKey = spKey).getOrThrow()
                 val prefs = context.dataStore.data.first()
                 SpotifyAccountSession(
@@ -188,8 +253,10 @@ class SpotifyLibraryRepository
                     prefs.remove(SpotifyAccountNameKey)
                     prefs.remove(SpotifyAccountAvatarUrlKey)
                     prefs.remove(SpotifyLibraryPlaylistsCacheKey)
+                    prefs.remove(SpotifyHiddenPlaylistIdsKey)
                 }
                 _playlists.value = emptyList()
+                _hiddenPlaylistIds.value = emptySet()
                 _errorMessage.value = null
                 Spotify.accessToken = null
                 clearCatalogCaches()
@@ -513,16 +580,48 @@ class SpotifyLibraryRepository
                         Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
                     }
                 if (page.items.isEmpty()) break
-                playlists +=
-                    page.items.map { playlist ->
-                        if (playlist.tracks?.total != null) {
-                            playlist
-                        } else {
-                            playlistTrackCount(playlist.id)
-                                ?.let { playlist.copy(tracks = SpotifyPlaylistTracksRef(total = it)) }
-                                ?: playlist
-                        }
+                // Per user report (2026-08-29): "Opening Spotify Playlists takes
+                // time. The loading indicator spins for 4-5 seconds or even more
+                // and then loads it. Fix this." The Spotify libraryV3 GraphQL
+                // response often omits `tracks.totalCount` for each leaf playlist
+                // in the list — only the per-playlist `fetchPlaylist` query
+                // reliably returns it. The previous implementation fetched the
+                // count sequentially per playlist with a missing count (one
+                // extra HTTP call each), so a user with N such playlists paid
+                // N sequential GraphQL round-trips on top of the page calls —
+                // easily 4-5s for 100 playlists (more if Spotify rate-limits
+                // the burst with 429 Retry-After backoff).
+                //
+                // Parallelize the count lookups with a bounded concurrency
+                // (8 in flight) so the total wall time is roughly
+                // ceil(N / 8) * (single GraphQL round-trip) instead of
+                // N * (single GraphQL round-trip). Also drop playlists that
+                // have a count already present from the parallelization pool —
+                // no extra fetch for those.
+                val pageItems = page.items
+                val enriched =
+                    coroutineScope {
+                        // Semaphore caps in-flight count-fetch HTTP calls. Without
+                        // it Spotify tends to 429 the burst, which then triggers
+                        // Retry-After backoff that compounds the wall time rather
+                        // than reducing it.
+                        val semaphore = kotlinx.coroutines.sync.Semaphore(COUNT_FETCH_CONCURRENCY)
+                        pageItems
+                            .map { playlist ->
+                                async(Dispatchers.IO) {
+                                    if (playlist.tracks?.total != null) {
+                                        playlist
+                                    } else {
+                                        semaphore.withPermit {
+                                            playlistTrackCount(playlist.id)
+                                                ?.let { playlist.copy(tracks = SpotifyPlaylistTracksRef(total = it)) }
+                                                ?: playlist
+                                        }
+                                    }
+                                }
+                            }.awaitAll()
                     }
+                playlists += enriched
                 offset += page.items.size
                 if (offset >= page.total || page.items.size < limit) break
             }
@@ -571,6 +670,12 @@ class SpotifyLibraryRepository
             private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
             private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
             private const val METADATA_MATCH_THRESHOLD = 0.58
+            // Bounded concurrency for parallel playlist-track-count fetches
+            // in `fetchAllPlaylists`. 8 in flight keeps Spotify's burst 429
+            // protection from triggering Retry-After backoff (which would
+            // compound the wall time rather than reduce it) while still
+            // cutting the N sequential round-trips down to ~N/8.
+            private const val COUNT_FETCH_CONCURRENCY = 8
             private val spotifyCacheJson =
                 Json {
                     ignoreUnknownKeys = true
