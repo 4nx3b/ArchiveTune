@@ -103,7 +103,6 @@ import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -133,6 +132,7 @@ fun CachePlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
+    val cachedLabel = stringResource(R.string.cached_playlist)
     val playerConnection = LocalPlayerConnection.current ?: return
     val downloadUtil = LocalDownloadUtil.current
     val haptic = LocalHapticFeedback.current
@@ -340,8 +340,7 @@ fun CachePlaylistScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
     // content recording only happens when `Modifier.layerBackdrop(backdrop)`
     // is applied to the LazyColumn below, gated on `layerBackdropActive`.
@@ -421,7 +420,6 @@ fun CachePlaylistScreen(
                 if (filteredSongs.isNotEmpty() && !isSearching) {
                     // Hero Header Item — iOS-inspired Apple Music style.
                     item(key = "header") {
-                        val cachedLabel = stringResource(R.string.cached_playlist)
                         AppleMusicPlaylistHero(
                             sectionLabel = cachedLabel,
                             title = cachedLabel,
@@ -617,7 +615,7 @@ fun CachePlaylistScreen(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.library),
+                    text = cachedLabel,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

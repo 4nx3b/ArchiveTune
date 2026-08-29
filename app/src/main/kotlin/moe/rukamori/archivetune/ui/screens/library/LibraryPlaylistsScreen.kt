@@ -119,7 +119,6 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.ListItem
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlaylistThumbnail
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
@@ -192,8 +191,7 @@ fun LibraryPlaylistsScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -346,7 +344,27 @@ fun LibraryPlaylistsScreen(
                         // sit underneath the header pill overlay.
                         .padding(top = systemBarsTopPadding + 64.dp),
             ) {
-                // Control row (Sort dropdown, grid/list layout toggle, + add button)
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        text = "LIST",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = stringResource(R.string.playlists),
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = pluralStringResource(R.plurals.n_playlist, visiblePlaylists.size, visiblePlaylists.size),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    )
+                }
+                // Control row (sort and playlist management actions).
             Row(
                 modifier =
                     Modifier
@@ -396,16 +414,16 @@ fun LibraryPlaylistsScreen(
                             modifier =
                                 Modifier
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                                     .clickable { showSortMenu = true }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    .padding(horizontal = 18.dp, vertical = 11.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = currentSortLabel,
                                 modifier = Modifier.weight(1f, fill = false),
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
