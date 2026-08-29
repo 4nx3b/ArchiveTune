@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.ui.screens.artist.ArtistItemsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistSongsScreen
 import moe.rukamori.archivetune.ui.screens.library.LibraryPlaylistsScreen
+import moe.rukamori.archivetune.ui.screens.library.LibraryArtistsScreen
 import moe.rukamori.archivetune.ui.screens.library.LibraryScreen
 import moe.rukamori.archivetune.ui.screens.library.LibrarySpotifyPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.library.LocalSongScreen
@@ -165,6 +166,16 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("library_spotify_playlists") {
         LibrarySpotifyPlaylistsScreen(navController)
+    }
+    composable("library_artists") {
+        LibraryArtistsScreen(
+            navController = navController,
+            onDeselect = {
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") { launchSingleTop = true }
+                }
+            },
+        )
     }
     composable("stats") {
         StatsScreen(navController)
