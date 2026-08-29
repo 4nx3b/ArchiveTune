@@ -51,51 +51,41 @@ import com.kyant.backdrop.effects.vibrancy
 typealias PlatformBackdrop = LayerBackdrop
 
 /**
- * Returns `false` for the first [delayMillis] milliseconds after this composable
- * enters the composition, then `true` afterwards.
+ * Returns `true` immediately on first composition.
  *
- * Used by liquid-glass screens to defer the expensive `Modifier.layerBackdrop`
- * recording until the NavHost page transition (default 250ms slide-in-from-right)
- * has finished. Per user report (2026-08-29): "switching from a page with liquid
- * glass elements to other page which has liquid glass elements make the app lag
- * way too much. Fix it without removing or sacrificing anything."
+ * Historically this deferred the expensive `Modifier.layerBackdrop` recording
+ * until the NavHost page transition (default 250ms slide-in-from-right) had
+ * finished, to avoid the incoming page's backdrop + the outgoing page's
+ * backdrop + the app-wide NavHost backdrop all competing for the GPU/frame
+ * budget during the slide.
  *
- * Root cause: when a new screen enters composition, the kyant `layerBackdrop`
- * modifier starts recording every frame into a GraphicsLayer + RuntimeShader
- * the moment the screen is first composed — which is exactly when the NavHost
- * `slideInHorizontally` transition is also running. The incoming page's
- * backdrop + the outgoing page's backdrop + the app-wide NavHost backdrop
- * all compete for the GPU/frame budget, producing visible jank during the
- * transition.
+ * Per user report (2026-08-29): "There is a slight delay for liquid glass
+ * pills to take effect now. I want them to be immediate." The user perceives
+ * the 250ms settle window as a visible "frosted → liquid glass" swap.
  *
- * The previous implementation used a 500ms delay which the user reported as a
- * visible "frosted → liquid glass" swap ("for 1 second its normal opaque pill
- * and then it becomes liquid glass"). The 250ms delay here matches the
- * NavHost default transition duration exactly — so by the time the page is
- * fully visible, the layerBackdrop activates. The user perceives it as
- * "liquid glass appearing once the page settles" rather than "frosted → LG
- * swap" because the page is still partially sliding in when the LG activates.
+ * The transition-lag symptom that originally motivated the delay has been
+ * addressed at its structural root cause: the bottom-nav slide animation in
+ * `MainActivity` was using `Modifier.offset { IntOffset(0, y) }` (layout phase),
+ * which re-laid-out the entire `FloatingNavigationToolbar` subtree every
+ * spring frame — cascading to every `onGloballyPositioned` callback and
+ * invalidating the app-wide backdrop recording every frame. That's been
+ * switched to `Modifier.graphicsLayer { translationY = y }` (draw phase), so
+ * children's layout coordinates stay stable across spring frames and the
+ * kyant shader chain no longer re-computes its sample coordinates every
+ * frame. With that structural fix in place, the per-screen settle delay is
+ * no longer necessary — the layerBackdrop activates immediately when the
+ * screen composes.
  *
- * Call sites pattern:
+ * Call sites pattern (unchanged):
  * ```
  * val screenSettled = rememberLayerBackdropSettled()
  * val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
  * ```
  *
- * @param delayMillis How long to wait after composition before returning
- *        `true`. Default 250ms — matches the app's default NavHost enter
- *        transition (250ms slide-in + fade) exactly so the layerBackdrop
- *        activates the moment the transition completes.
+ * @param delayMillis Kept for API compatibility; ignored.
  */
 @Composable
-fun rememberLayerBackdropSettled(delayMillis: Long = 250L): Boolean {
-    var settled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(delayMillis)
-        settled = true
-    }
-    return settled
-}
+fun rememberLayerBackdropSettled(@Suppress("UNUSED_PARAMETER") delayMillis: Long = 0L): Boolean = true
 
 /**
  * Records the content of the composable it is called on into a [LayerBackdrop]

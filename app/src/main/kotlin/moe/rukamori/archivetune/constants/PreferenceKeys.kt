@@ -1240,6 +1240,18 @@ val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
 /**
+ * Set of Spotify playlist IDs the user has hidden via the per-row "more"
+ * menu on the Spotify Library page. Persisted across sessions so hidden
+ * Spotify playlists surface in the account-page "Hidden playlists" section
+ * alongside hidden local/YouTube playlists. Mirrors the persistence pattern
+ * of [HiddenHomeItemsKey] for the home-page "Keep Listening" section.
+ *
+ * Per user report (2026-08-29): "If I hide a Spotify playlist it should be
+ * available in the hidden playlists section of the account page."
+ */
+val SpotifyHiddenPlaylistIdsKey = stringSetPreferencesKey("spotify_hidden_playlist_ids")
+
+/**
  * Set of item IDs (song/album/artist) that the user has hidden from the
  * "Keep Listening" section on the home page. When the user long-presses an
  * item in Keep Listening and selects "Hide from home," the item's ID is

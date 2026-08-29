@@ -130,6 +130,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AlbumGridItem
+import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
@@ -389,12 +390,26 @@ fun ArtistScreen(
     // which is gated on `liquidGlassHeaderActive`.
     val artworkBackdrop = rememberBackdrop(Color.Black)
 
+    // Per user report (2026-08-29): "Whenever I open artist page there's
+    // always a refresh indicator who Refreshes automatically. it should
+    // only appear when I manually slide to refresh it." Wrap the LazyColumn
+    // in PullToRefresh so the user can manually pull to refresh. The
+    // PullToRefresh indicator only shows when `isManuallyRefreshing` is true
+    // — auto-fetches (init + preference changes) don't set it, so the
+    // indicator doesn't appear during the silent auto-fetch.
+    val isManuallyRefreshing = viewModel.isManuallyRefreshing
+
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(surfaceColor),
     ) {
+        ExpressivePullToRefreshBox(
+            isRefreshing = isManuallyRefreshing,
+            onRefresh = viewModel::manualRefresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(
             modifier =
                 if (layerBackdropActive) {
@@ -408,7 +423,14 @@ fun ArtistScreen(
                     bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
                 ),
         ) {
-            if (artistPage == null && !showLocal) {
+            if (isManuallyRefreshing && artistPage == null && !showLocal) {
+                // Shimmer skeleton shows ONLY during manual pull-to-refresh
+                // (when `isManuallyRefreshing` is true). During the silent
+                // auto-fetch on screen open / preference change, this branch
+                // is skipped — the else branch renders the artist header
+                // using the cached `libraryArtist` flow instead, so the user
+                // sees the artist's name + thumbnail immediately without a
+                // refresh indicator.
                 item(key = "shimmer") {
                     ShimmerHost {
                         Box(
@@ -1096,6 +1118,7 @@ fun ArtistScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
+        }
         }
 
         // FAB for switching between local/remote view
