@@ -85,16 +85,21 @@ fun IconButton(
     // whether the caller passed explicit `colors`. Settings callers don't
     // typically pass explicit colors, and the user wants ALL glass removed
     // from settings — so transparent is always correct there.
+    //
+    // Note: IconButtonDefaults.iconButtonColors() is @Composable (it reads
+    // MaterialTheme.colorScheme), so we cannot wrap the call in
+    // `remember { ... }` (remember's calculation lambda is annotated
+    // @DisallowComposableCalls). Calling it directly in the @Composable
+    // function body is fine and Material3 caches the result internally.
+    val isPlainHeader = LocalPlainHeaderPill.current
     val effectiveColors =
-        if (LocalPlainHeaderPill.current) {
-            remember(colors) {
-                IconButtonDefaults.iconButtonColors(
-                    containerColor = Color.Transparent,
-                    contentColor = colors.contentColor,
-                    disabledContainerColor = Color.Transparent,
-                    disabledContentColor = colors.disabledContentColor,
-                )
-            }
+        if (isPlainHeader) {
+            IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Transparent,
+                contentColor = colors.contentColor,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = colors.disabledContentColor,
+            )
         } else {
             colors
         }
