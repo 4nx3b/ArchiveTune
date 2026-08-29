@@ -1342,7 +1342,26 @@ fun LyricsEnhanced(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
                 ) {
-                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
+                    // Offset of the active karaoke line from the top of the lyrics
+                    // viewport. Doubled from 0.08f → 0.16f per the user's
+                    // "The lyrics from text is always cutoff. Shift it down a
+                    // bit so that it's always visible" report.
+                    //
+                    // The "Lyrics from [provider]" attribution is injected as the
+                    // FIRST SyncedLine of the karaoke stream (see
+                    // `buildSyncedLyrics`), so it sits ABOVE the active line in
+                    // the karaoke list. The mocharealm library positions lines
+                    // above the active line at `offset - N * line_height`. With
+                    // the original 8% offset (~56dp on a typical 700dp lyrics
+                    // viewport), the attribution — at offset - line_height ≈
+                    // 56 - 50 = 6dp from the top — was barely inside the
+                    // viewport, and depending on the line-height the library
+                    // measured for the Bold lyricsTextSize line, was often
+                    // partially clipped above the top edge / overlapped by the
+                    // mini header. Doubling to 16% (~112dp on the same 700dp
+                    // viewport) puts the attribution at ~62dp from the top —
+                    // fully visible with comfortable buffer.
+                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.16f }
 
                     // Keyed on the session + a position-reset counter so that when
                     // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the
