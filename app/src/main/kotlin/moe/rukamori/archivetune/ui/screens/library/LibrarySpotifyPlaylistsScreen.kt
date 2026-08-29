@@ -50,6 +50,7 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -100,7 +101,17 @@ fun LibrarySpotifyPlaylistsScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Defer the layerBackdrop activation for ~500ms after first composition so
+    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
+    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
+    // Per user report (2026-08-29): "Whenever I open a page the transition/page
+    // switch animation lags a lot. this only happens in the pages that has
+    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
+    // backdrop, no per-frame recording) until the screen has settled, then swap
+    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
+    // NOT removed — only delayed.
+    val screenSettled = rememberLayerBackdropSettled()
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -134,18 +145,20 @@ fun LibrarySpotifyPlaylistsScreen(
         ) {
             LazyColumn(
                 state = rememberLazyListState(),
+                // Per user request (2026-08-29 redesign): "The Playlist
+                // Detail page (source of truth) has NO visible divider
+                // lines between rows; spacing is clean and relies on
+                // whitespace to separate items." The hairline divider
+                // block has been removed and horizontal contentPadding
+                // is 0 so each shared `ListItem` row's internal 8dp +
+                // 8dp Box padding gives the row 16dp horizontal breathing
+                // room — exactly matching the Playlist Detail page's
+                // song rows.
                 contentPadding =
                     PaddingValues(
-                        start = 24.dp,
                         top = systemBarsTopPadding + 64.dp,
-                        end = 24.dp,
                         bottom = playerAwareBottomPadding,
                     ),
-                // Per user request (2026-08-28): "add divider lines like
-                // it's on main library page". The Library main page renders
-                // a 0.6dp hairline divider between rows with no vertical
-                // spacing. Mirroring that here: zero spacing, divider drawn
-                // between rows.
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier =
                     Modifier
@@ -177,25 +190,11 @@ fun LibrarySpotifyPlaylistsScreen(
                     items = playlists,
                     key = { _, playlist -> playlist.id },
                     contentType = { _, _ -> "spotify_playlist" },
-                ) { index, playlist ->
+                ) { _, playlist ->
                     SpotifyLibraryPlaylistListItem(
                         playlist = playlist,
                         navController = navController,
                     )
-                    // Hairline divider between rows, NOT after the last —
-                    // matches the Library main page style.
-                    if (index < playlists.lastIndex) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 72.dp)
-                                    .height(0.6.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
-                                    ),
-                        )
-                    }
                 }
             }
         }
@@ -273,6 +272,40 @@ fun LibrarySpotifyPlaylistsScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(end = 12.dp),
                 )
+            }
+        }
+
+        // Persistent header pill at top-end. Mirrors the Playlist Detail
+        // page (source of truth) layout which has a LiquidGlassActionPill
+        // at top-end with Search + More icon buttons. The Spotify Library
+        // page's equivalent right-side action is a Refresh button — same
+        // behavior as the existing pull-to-refresh, but reachable from
+        // the header without scrolling. Per user request (2026-08-29
+        // redesign): "The right-side controls should also follow the
+        // same visual language as the Playlist Detail page."
+        if (layerBackdropActive) {
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(
+                        onClick = { viewModel.refreshPlaylists() },
+                        enabled = !isRefreshing,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.sync),
+                            contentDescription = stringResource(R.string.refresh),
+                            tint = Color.White,
+                        )
+                    }
+                }
             }
         }
     }

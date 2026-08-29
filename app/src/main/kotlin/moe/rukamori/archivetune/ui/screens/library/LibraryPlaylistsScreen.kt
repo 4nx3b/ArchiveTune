@@ -19,6 +19,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,6 +45,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -69,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,11 +95,13 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.constants.PlaylistSortTypeKey
+import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.constants.PlaylistViewTypeKey
 import moe.rukamori.archivetune.constants.LibraryViewType
 import moe.rukamori.archivetune.constants.PureBlackKey
@@ -112,8 +117,11 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
+import moe.rukamori.archivetune.ui.component.ListItem
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.PlaylistThumbnail
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
@@ -175,7 +183,17 @@ fun LibraryPlaylistsScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Defer the layerBackdrop activation for ~500ms after first composition so
+    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
+    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
+    // Per user report (2026-08-29): "Whenever I open a page the transition/page
+    // switch animation lags a lot. this only happens in the pages that has
+    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
+    // backdrop, no per-frame recording) until the screen has settled, then swap
+    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
+    // NOT removed — only delayed.
+    val screenSettled = rememberLayerBackdropSettled()
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -479,8 +497,20 @@ fun LibraryPlaylistsScreen(
                 }
 
                 // Right: list/grid toggle & add button
+                //
+                // Per user request (2026-08-29 redesign): the Add and Lock
+                // icon buttons have been MOVED to the persistent top-end
+                // LiquidGlassActionPill (see the header section below) so
+                // they fit the visual language of the Playlist Detail page
+                // (which has a LiquidGlassActionPill at top-end with Search
+                // + More). When liquid glass is ACTIVE, this control row
+                // only contains the Sort dropdown (the Add/Lock live in
+                // the pill). When liquid glass is OFF (SDK < S or master
+                // toggle off), the pill isn't rendered, so we fall back
+                // to the original Add/Lock icon buttons here — preserving
+                // the existing functionality in both modes.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (sortType == PlaylistSortType.CUSTOM) {
+                    if (sortType == PlaylistSortType.CUSTOM && !layerBackdropActive) {
                         IconButton(
                             onClick = { locked = !locked },
                             modifier = Modifier.size(40.dp),
@@ -494,6 +524,26 @@ fun LibraryPlaylistsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
+                    if (!layerBackdropActive) {
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        IconButton(
+                            onClick = { showCreatePlaylistDialog = true },
+                            colors =
+                                IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                ),
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.add),
+                                contentDescription = stringResource(R.string.create_playlist),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+
                     // List/Grid layout toggle removed per user request
                     // (2026-08-28): "There's two icons besides the + icon on
                     // the left which lets you change the layout of playlists,
@@ -505,24 +555,6 @@ fun LibraryPlaylistsScreen(
                     // toggled grid view will see their setting honored on
                     // next launch — but the toggle UI is gone so they can
                     // no longer flip back to grid.
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    IconButton(
-                        onClick = { showCreatePlaylistDialog = true },
-                        colors =
-                            IconButtonDefaults.iconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.add),
-                            contentDescription = stringResource(R.string.create_playlist),
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
                 }
             }
 
@@ -585,13 +617,19 @@ fun LibraryPlaylistsScreen(
                 val showDragHandles = sortType == PlaylistSortType.CUSTOM && !locked
                 LazyColumn(
                     state = lazyListState,
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
-                    // Per user request (2026-08-28): "add divider lines
-                    // like it's on main library page". The Library main
-                    // page renders a 0.6dp hairline divider between rows
-                    // with no vertical spacing between row composables.
-                    // Mirroring that here: zero spacing, divider drawn
-                    // between rows.
+                    // Per user request (2026-08-29 redesign): "The Playlist
+                    // Detail page (source of truth) has NO visible divider
+                    // lines between rows; spacing is clean and relies on
+                    // whitespace to separate items." The hairline divider
+                    // block has been removed and verticalArrangement uses
+                    // spacedBy(0.dp) so each `ListItem` row's internal
+                    // 72dp height + 8dp horizontal padding handle all
+                    // spacing — exactly matching the Playlist Detail page
+                    // layout. Horizontal contentPadding is 0 so the
+                    // ListItem's internal 8dp+8dp gives the row 16dp of
+                    // horizontal breathing room (matching the source of
+                    // truth's Playlist Detail song rows).
+                    contentPadding = PaddingValues(bottom = playerAwareBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -599,7 +637,7 @@ fun LibraryPlaylistsScreen(
                         items = listPlaylists,
                         key = { _, playlist -> playlist.id },
                         contentType = { _, _ -> "playlist_list" },
-                    ) { index, playlist ->
+                    ) { _, playlist ->
                         ReorderableItem(
                             state = reorderableState,
                             key = playlist.id,
@@ -634,20 +672,6 @@ fun LibraryPlaylistsScreen(
                                     Modifier
                                         .draggableHandle()
                                         .graphicsLayer { alpha = 0.99f },
-                            )
-                        }
-                        // Hairline divider between rows, NOT after the
-                        // last — matches the Library main page style.
-                        if (index < listPlaylists.lastIndex) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 72.dp)
-                                        .height(0.6.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
-                                        ),
                             )
                         }
                     }
@@ -734,6 +758,58 @@ fun LibraryPlaylistsScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(end = 12.dp),
                 )
+            }
+        }
+
+        // Persistent header pill at top-end. Mirrors the Playlist Detail
+        // page (source of truth) layout which has a LiquidGlassActionPill
+        // at top-end with Search + More icon buttons. The Playlists
+        // Library page's equivalent right-side actions are:
+        //   - Lock toggle (only rendered when sortType == CUSTOM, since
+        //     reordering is only meaningful in custom-order mode).
+        //   - Add playlist (always rendered — opens the existing
+        //     create-playlist dialog).
+        // Per user request (2026-08-29 redesign): "restyle them so they
+        // fit the visual language of the Playlist Detail page." All
+        // existing onClick handlers are reused verbatim.
+        if (layerBackdropActive) {
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                if (sortType == PlaylistSortType.CUSTOM) {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.IconButton(
+                            onClick = { locked = !locked },
+                        ) {
+                            Icon(
+                                painter = painterResource(if (locked) R.drawable.lock else R.drawable.lock_open),
+                                contentDescription = null,
+                                tint = Color.White,
+                            )
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(
+                        onClick = { showCreatePlaylistDialog = true },
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.add),
+                            contentDescription = stringResource(R.string.create_playlist),
+                            tint = Color.White,
+                        )
+                    }
+                }
             }
         }
     }
@@ -907,30 +983,39 @@ fun PlaylistListCard(
     showDragHandle: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
-    // Per user request (2026-08-28): "The playlists are in list style
-    // but not the one i want. I want the list style of library page,
-    // how the playlists, artists and others are displayed exactly
-    // like that." The card was previously a rounded 32dp-corner card
-    // with 72dp thumbnail + name + song count + a separate play
-    // button + a separate 3-dot menu — visually heavier than the
-    // flat icon + title + count + chevron rows the Library overview
-    // uses for Playlists / Spotify / Artists / etc.
+    // Per user request (2026-08-29 redesign): "Make all three screens feel
+    // like they were designed as part of the same UI system by the same
+    // designer." The Playlist Detail page (source of truth — "high nights"
+    // screenshot) uses the shared `ListItem` composable from Items.kt for
+    // its song rows: 72dp height, 56dp 10dp-corner thumbnail, `bodyLarge`
+    // SemiBold title, `bodySmall` subtitle with metadata joined by
+    // bullets, three-dot menu in trailingContent, NO hairline dividers
+    // between rows (whitespace separation only).
     //
-    // Now it mirrors `LibraryCategoryRow` from LibraryMixScreen.kt:
-    //   - 40dp rounded-square thumbnail (rounded 8dp) on the left,
-    //     sized close to `LibraryCategoryIconSize` (28dp) but slightly
-    //     larger so the per-playlist artwork remains identifiable.
-    //   - 22sp medium-weight playlist name in the middle, onBackground.
-    //   - Song count + chevron on the right (matching the category row's
-    //     count + chevron treatment, including alpha).
-    //   - No separate play button and no separate 3-dot menu — clicking
-    //     the row opens the playlist (same as `onClick`), and long-
-    //     press opens the playlist menu (handled by the call site's
-    //     `combinedClickable`).
+    // This card now delegates to `ListItem`, passing:
+    //   - title: playlist name
+    //   - subtitle: "{N} songs" via pluralStringResource — same metadata
+    //     pattern as Playlist Detail's "{artist} • {duration}" subtitle,
+    //     adapted for playlist data. The song count that previously sat
+    //     on the right of the row (visually competing with the chevron)
+    //     now lives in the subtitle line, matching the source of truth's
+    //     ARTWORK → TITLE → METADATA → ACTIONS row structure.
+    //   - thumbnailContent: `PlaylistThumbnail` from Items.kt (handles
+    //     single-artwork + 4-tile collage + placeholder icon). Uses
+    //     `ListThumbnailSize` (56dp) + `ThumbnailCornerRadius` (10dp)
+    //     — the exact same constants as `PlaylistListItem` in Items.kt.
+    //   - trailingContent: drag handle (when reordering is unlocked) +
+    //     chevron (always — the navigation affordance) + hidden-playlist
+    //     visibility icon (when applicable). Drag handle uses
+    //     `dragHandleModifier` from `ReorderableItem` so reorder gestures
+    //     keep working — preserves the existing custom-order reordering
+    //     functionality without any business-logic change.
     //
     // `onPlay` and `onMenuClick` are kept in the signature for source
     // compatibility with the call site, but they are no longer rendered
-    // as visible buttons — the row-level click/long-click cover both.
+    // as visible buttons — the row-level click covers onClick, and long
+    // press is handled by the call site's `combinedClickable` wrapper
+    // (the grid path still uses PlaylistGridCard with combinedClickable).
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -938,20 +1023,83 @@ fun PlaylistListCard(
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
         label = "PlaylistListCardScale",
     )
-
     val hiddenAlpha = if (playlist.playlist.isHidden) 0.45f else 1f
 
-    Row(
+    // Subtitle: "{N} songs" via pluralStringResource. Mirrors the subtitle
+    // pattern used by `PlaylistListItem` in Items.kt — including the
+    // remote-song-count fallback for playlists whose local song list
+    // hasn't been synced but whose remote count is known (e.g. Spotify
+    // playlists presented on the local Playlists Library page).
+    val subtitleText =
+        if (playlist.songCount == 0 && playlist.playlist.remoteSongCount != null) {
+            pluralStringResource(
+                R.plurals.n_song,
+                playlist.playlist.remoteSongCount,
+                playlist.playlist.remoteSongCount,
+            )
+        } else {
+            pluralStringResource(
+                R.plurals.n_song,
+                playlist.songCount,
+                playlist.songCount,
+            )
+        }
+
+    ListItem(
+        title = playlist.playlist.name,
+        subtitle = subtitleText,
+        thumbnailContent = {
+            PlaylistThumbnail(
+                thumbnails = playlist.thumbnails,
+                size = ListThumbnailSize,
+                placeHolder = {
+                    val painter =
+                        when (playlist.playlist.name) {
+                            stringResource(R.string.liked) -> R.drawable.favorite_border
+                            stringResource(R.string.offline) -> R.drawable.offline
+                            stringResource(R.string.cached_playlist) -> R.drawable.cached
+                            else -> R.drawable.queue_music
+                        }
+                    Icon(
+                        painter = painterResource(painter),
+                        contentDescription = null,
+                        tint = LocalContentColor.current.copy(alpha = 0.8f),
+                        modifier = Modifier.size(ListThumbnailSize / 2),
+                    )
+                },
+                shape = RoundedCornerShape(ThumbnailCornerRadius),
+            )
+        },
+        trailingContent = {
+            if (showDragHandle) {
+                Icon(
+                    painter = painterResource(id = R.drawable.drag_handle),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f),
+                    modifier =
+                        Modifier
+                            .size(28.dp)
+                            .then(dragHandleModifier),
+                )
+            }
+            Icon(
+                painter = painterResource(id = R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f),
+                modifier = Modifier.size(20.dp),
+            )
+            if (playlist.playlist.isHidden) {
+                Icon(
+                    painter = painterResource(id = R.drawable.visibility_off),
+                    contentDescription = stringResource(R.string.hide_playlist),
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                )
+            }
+        },
         modifier =
             Modifier
                 .fillMaxWidth()
-                // Bumped from 56.dp to 72.dp so the bumped 56.dp thumbnail
-                // (was 40.dp) sits with comfortable top/bottom breathing room
-                // — matches the shared ListItemHeight constant used by the
-                // generic Items.kt rows. Per user request (2026-08-28):
-                // "Increase the size of the thumbnails in playlist and
-                // Spotify playlists page".
-                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -960,85 +1108,8 @@ fun PlaylistListCard(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = onClick,
-                ).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f),
-        ) {
-            ItemThumbnail(
-                thumbnailUrl = playlist.thumbnails.getOrNull(0),
-                isActive = false,
-                isPlaying = false,
-                shape = RoundedCornerShape(8.dp),
-                contentScale = ContentScale.Crop,
-                showPlaceholder = true,
-                // Bumped from 40.dp to 56.dp — matches the shared
-                // ListThumbnailSize constant used by SongListItem /
-                // AlbumListItem / ArtistListItem / PlaylistListItem in
-                // Items.kt. Per user request (2026-08-28): "Increase the
-                // size of the thumbnails in playlist and Spotify playlists
-                // page".
-                modifier = Modifier.size(56.dp),
-            )
-            Text(
-                text = playlist.playlist.name,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.Medium,
-                fontSize = 22.sp,
-                letterSpacing = (-0.2).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (playlist.playlist.isHidden) {
-                Icon(
-                    painter = painterResource(id = R.drawable.visibility_off),
-                    contentDescription = stringResource(R.string.hide_playlist),
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                )
-            }
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // Drag handle renders inline with the count + chevron row
-            // when the user has unlocked custom-order reordering. Kept
-            // compact (28dp) so it doesn't visually outweigh the count
-            // and chevron, matching the category row's tight trailing
-            // cluster.
-            if (showDragHandle) {
-                Icon(
-                    painter = painterResource(id = R.drawable.drag_handle),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
-                    modifier =
-                        Modifier
-                            .size(28.dp)
-                            .then(dragHandleModifier),
-                )
-            }
-            if (playlist.songCount > 0) {
-                Text(
-                    text = playlist.songCount.toString(),
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 19.sp,
-                    maxLines = 1,
-                )
-            }
-            Icon(
-                painter = painterResource(id = R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
+                ),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
