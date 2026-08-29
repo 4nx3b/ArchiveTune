@@ -179,7 +179,7 @@ fun LibrarySpotifyPlaylistsScreen(
                 // song rows.
                 contentPadding =
                     PaddingValues(
-                        top = systemBarsTopPadding + 64.dp,
+                        top = systemBarsTopPadding + 150.dp,
                         bottom = playerAwareBottomPadding,
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -212,37 +212,6 @@ fun LibrarySpotifyPlaylistsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                         )
-                    }
-                    Box {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .padding(top = 12.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                                    .clickable { showSortMenu = true }
-                                    .padding(horizontal = 18.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = if (sortByName) stringResource(R.string.sort_a_to_z) else stringResource(R.string.recently_added),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                painter = painterResource(R.drawable.expand_more),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.recently_added)) }, onClick = { sortByName = false; showSortMenu = false })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.sort_a_to_z)) }, onClick = { sortByName = true; sortDescending = false; showSortMenu = false })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.sort_z_to_a)) }, onClick = { sortByName = true; sortDescending = true; showSortMenu = false })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.hidden_playlists)) }, onClick = { showHidden = !showHidden; showSortMenu = false })
-                        }
                     }
                 }
                 item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
