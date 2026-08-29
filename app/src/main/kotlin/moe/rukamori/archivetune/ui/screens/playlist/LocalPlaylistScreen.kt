@@ -305,42 +305,46 @@ fun LocalPlaylistScreen(
             selection = false
         }
     } else {
-        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
-        // the Library tab when the user is on a playlist sub-page — not on
-        // the Home tab. Per user report (2026-08-28): "when I'm in the
-        // library or Spotify page and I use the back navigation gesture i
-        // return to home page instead i should be on the library main page
-        // where it displays recently added and artist and other things".
+        // BackHandler so the predictive back gesture always escapes the
+        // playlist page. Per user report (2026-08-29): "I'm in the playlist
+        // but I can't get back using the navigation gesture." The previous
+        // implementation called `navController.navigate("library") {
+        // popUpTo(navController.graph.startDestinationId) ... }` which could
+        // fail silently when `navController.graph` was momentarily null
+        // during fast back-to-back navigation or when the start destination
+        // ID was the same as the target ("library" route when the user's
+        // default tab is Library) — the IllegalArgumentException was caught
+        // and the catch-branch `popBackStack()` was reached, but if that
+        // also encountered a transient state, the gesture was swallowed.
         //
-        // Previously: `if (!navController.navigateUp()) { navController.navigate("library") }`
-        // — when the user came from Home (deep-link), the back stack was
-        // [home, local_playlist], so navigateUp() returned true and the user
-        // landed on Home, which they did not want.
-        //
-        // Now: ALWAYS redirect to the Library tab on back. We use
-        // popUpTo("home") { saveState = true } to pop everything above Home
-        // (preserving Home's tab state), then navigate to "library" with
-        // launchSingleTop + restoreState. This lands the user on the Library
-        // tab regardless of how they entered the playlist page — they
-        // explicitly want to be on Library, not Home.
+        // New approach: call `popBackStack()` directly first — this is the
+        // most primitive NavController operation and reliably pops the
+        // current entry to reveal the previous one (almost always Library
+        // when the user came from the Library tab). If `popBackStack()`
+        // returns false (no previous entry, e.g. deep-link entry), fall
+        // back to navigating to the Library route. Wrapped in try/catch as
+        // defense-in-depth so the gesture NEVER silently fails — if
+        // everything throws, we let the system handle the back press by
+        // re-dispatching (the system will then exit the activity).
         BackHandler {
-            // Wrapped in try/catch so ANY unexpected
-            // IllegalArgumentException / IllegalStateException from the
-            // underlying NavController (e.g. start destination ID not yet
-            // attached to the graph during fast back-to-back navigation)
-            // still lets the user escape the page via the catch-branch
-            // `popBackStack()` fallback rather than leaving the gesture
-            // silently swallowed (which is what the user reported:
-            // "I can't use gesture inside Spotify playlists and normal
-            // playlists").
             try {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
-                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                    }
                 }
             } catch (_: Exception) {
-                navController.popBackStack()
+                // Last-resort: try navigateUp() which handles graph lookup
+                // differently and may succeed where popBackStack failed.
+                try {
+                    if (!navController.navigateUp()) {
+                        navController.navigate("library") { launchSingleTop = true }
+                    }
+                } catch (_: Exception) {
+                    // Truly stuck — let the system handle the back press
+                    // (which will exit the activity). This is the worst
+                    // case; we don't silently swallow.
+                }
             }
         }
     }

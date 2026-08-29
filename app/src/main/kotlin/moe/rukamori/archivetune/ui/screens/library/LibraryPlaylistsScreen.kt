@@ -88,6 +88,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
@@ -104,6 +105,8 @@ import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.CreatePlaylistDialog
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
@@ -122,6 +125,12 @@ fun LibraryPlaylistsScreen(
     filterContent: (@Composable () -> Unit)?,
     selectedTagIds: Set<String>,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
+    // Back-to-LIBRARY-sub-tab callback invoked by the frosted header
+    // pill's back arrow. Per user request (2026-08-29): "There's no liquid
+    // glass headers in Spotify and playlist pages. I've attached two
+    // images where it should be" — adding a back+title pill at the top
+    // of these sub-tab pages mirrors the playlist detail page layout.
+    onBack: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -129,6 +138,11 @@ fun LibraryPlaylistsScreen(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current
     val haptic = LocalHapticFeedback.current
+
+    // Stable system-bars top inset so the frosted header pill stays
+    // anchored below the status bar even when the bar is transiently
+    // hidden. Matches the pattern used in LocalPlaylistScreen.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val (sortType, onSortTypeChange) =
         rememberEnumPreference(
@@ -214,19 +228,24 @@ fun LibraryPlaylistsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    ExpressivePullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = { viewModel.sync() },
-        modifier = Modifier.fillMaxSize(),
-        indicatorOffset = LibraryPullToRefreshIndicatorOffset,
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(top = LibraryHeaderContentPadding),
+    // Wrap the PullToRefreshBox in a Box so we can overlay the
+    // persistent frosted header pill at top-start as a sibling.
+    Box(modifier = Modifier.fillMaxSize()) {
+        ExpressivePullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.sync() },
+            modifier = Modifier.fillMaxSize(),
+            indicatorOffset = LibraryPullToRefreshIndicatorOffset,
         ) {
-            // Control row (Sort dropdown, grid/list layout toggle, + add button)
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Pad the top so the first Control Row doesn't
+                        // sit underneath the frosted header pill overlay.
+                        .padding(top = systemBarsTopPadding + 64.dp),
+            ) {
+                // Control row (Sort dropdown, grid/list layout toggle, + add button)
             Row(
                 modifier =
                     Modifier
@@ -543,6 +562,43 @@ fun LibraryPlaylistsScreen(
                     }
                 }
             }
+        }
+        }
+
+        // Persistent frosted header pill at top-start. Mirrors the
+        // playlist-detail-page layout (back arrow + sub-tab title text
+        // inside a FrostedHeaderPill). Tapping the back arrow scrolls the
+        // Library pager to page 0 (LIBRARY main sub-tab) via [onBack].
+        //
+        // The pill uses the FrostedHeaderPill fallback path (no backdrop)
+        // because the Library pager lives inside the NavHost and sampling
+        // the app-wide backdrop from inside it would create a render-
+        // feedback loop. The fallback `surfaceContainerHigh.copy(alpha=
+        // 0.88)` surface gives the user the visible frosted-glass pill
+        // they explicitly asked for.
+        FrostedHeaderPill(
+            modifier =
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+        ) {
+            IconButton(
+                onClick = onBack,
+                onLongClick = {},
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.arrow_back),
+                    contentDescription = stringResource(R.string.back_button_desc),
+                )
+            }
+            Text(
+                text = stringResource(R.string.playlists),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 12.dp),
+            )
         }
     }
 }

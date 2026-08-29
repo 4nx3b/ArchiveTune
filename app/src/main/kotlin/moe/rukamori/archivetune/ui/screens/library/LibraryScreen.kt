@@ -329,11 +329,34 @@ fun LibraryScreen(navController: NavController) {
                                     null
                                 },
                             selectedTagIds = activeSelectedTagIds,
+                            // Pass the pager scroll-back callback so the
+                            // frosted header pill's back arrow can scroll
+                            // the pager to the LIBRARY main sub-tab
+                            // (page 0). Per user request (2026-08-29):
+                            // "There's no liquid glass headers in Spotify
+                            // and playlist pages. I've attached two images
+                            // where it should be" — adding a back+title
+                            // pill at the top of these sub-tab pages
+                            // mirrors the playlist detail page layout.
+                            onBack = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(0)
+                                }
+                            },
                         )
                     }
 
                     LibraryFilter.SPOTIFY -> {
-                        LibrarySpotifyPlaylistsScreen(navController = navController)
+                        LibrarySpotifyPlaylistsScreen(
+                            navController = navController,
+                            // Same back-to-LIBRARY callback as Playlists
+                            // sub-tab — scrolls the pager to page 0.
+                            onBack = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(0)
+                                }
+                            },
+                        )
                     }
 
                     LibraryFilter.SONGS -> {

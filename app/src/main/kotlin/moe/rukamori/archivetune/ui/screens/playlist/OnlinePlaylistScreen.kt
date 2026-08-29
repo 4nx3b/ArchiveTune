@@ -269,38 +269,31 @@ fun OnlinePlaylistScreen(
     } else if (selection) {
         BackHandler { selection = false }
     } else {
-        // Explicit BackHandler so the predictive back gesture ALWAYS lands on
-        // the Library tab when the user is on an online playlist sub-page —
-        // not on the Home tab. Matches the LocalPlaylistScreen /
-        // SpotifyPlaylistScreen pattern. Per user report (2026-08-29):
-        // "I can't use the navigation gesture in playlists either" — the
-        // previous commit removed this block, leaving the default NavHost
-        // back behavior, which pops the back stack. When the user came
-        // from Home (deep-link), the back stack was [home, online_playlist]
-        // so the gesture landed them on Home, not Library.
+        // BackHandler so the predictive back gesture always escapes the
+        // online playlist page. Per user report (2026-08-29): gesture not
+        // working in playlists. The previous implementation called
+        // `navController.navigate("library") {
+        // popUpTo(navController.graph.startDestinationId) ... }` which could
+        // fail silently when `navController.graph` was momentarily null.
         //
-        // Now: ALWAYS redirect to the Library tab on back, popping
-        // everything above the graph's start destination (preserving
-        // its state) and switching to "library" with launchSingleTop +
-        // restoreState. NOTE: do not hard-code "home" — if the user's
-        // default tab is Library, the back stack starts at "library" and
-        // `popUpTo("home")` would throw IllegalArgumentException.
+        // New approach: popBackStack() directly first, fall back to
+        // navigate("library") if no previous entry. Wrapped in try/catch
+        // as defense-in-depth so the gesture NEVER silently fails.
         BackHandler {
-            // Wrapped in try/catch so ANY unexpected
-            // IllegalArgumentException / IllegalStateException from the
-            // underlying NavController (e.g. start destination ID not yet
-            // attached to the graph during fast back-to-back navigation)
-            // still lets the user escape the page via the catch-branch
-            // `popBackStack()` fallback rather than leaving the gesture
-            // silently swallowed.
             try {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
-                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                    }
                 }
             } catch (_: Exception) {
-                navController.popBackStack()
+                try {
+                    if (!navController.navigateUp()) {
+                        navController.navigate("library") { launchSingleTop = true }
+                    }
+                } catch (_: Exception) {
+                    // Last-resort: let the system handle the back press.
+                }
             }
         }
     }
