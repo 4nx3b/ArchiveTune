@@ -12,8 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -25,15 +28,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,7 +63,6 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -66,6 +78,20 @@ fun LibrarySpotifyPlaylistsScreen(
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    var sortByName by remember { mutableStateOf(false) }
+    var sortDescending by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showHidden by remember { mutableStateOf(false) }
+    val hiddenPlaylistIds = remember { mutableStateListOf<String>() }
+    val visiblePlaylists =
+        remember(playlists, sortByName, sortDescending, showHidden, hiddenPlaylistIds.toList()) {
+            playlists
+                .filter { playlist -> showHidden || playlist.id !in hiddenPlaylistIds }
+                .let { source ->
+                    if (sortByName) source.sortedBy { it.name.lowercase() } else source
+                }
+                .let { source -> if (sortDescending) source.reversed() else source }
+        }
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -110,8 +136,7 @@ fun LibrarySpotifyPlaylistsScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -171,6 +196,57 @@ fun LibrarySpotifyPlaylistsScreen(
                             },
                         ),
             ) {
+                item(key = "spotify_heading", contentType = "spotify_heading") {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+                        Text(
+                            text = "LIST",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = stringResource(R.string.spotify),
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = pluralStringResource(R.plurals.n_playlist, playlists.size, playlists.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                        )
+                    }
+                    Box {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .padding(top = 12.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                    .clickable { showSortMenu = true }
+                                    .padding(horizontal = 18.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = if (sortByName) stringResource(R.string.sort_a_to_z) else stringResource(R.string.recently_added),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                painter = painterResource(R.drawable.expand_more),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.recently_added)) }, onClick = { sortByName = false; showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.sort_a_to_z)) }, onClick = { sortByName = true; sortDescending = false; showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.sort_z_to_a)) }, onClick = { sortByName = true; sortDescending = true; showSortMenu = false })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.hidden_playlists)) }, onClick = { showHidden = !showHidden; showSortMenu = false })
+                        }
+                    }
+                }
                 item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
                     SpotifyLikedSongsListItem(navController = navController)
                 }
@@ -187,13 +263,17 @@ fun LibrarySpotifyPlaylistsScreen(
                 }
 
                 itemsIndexed(
-                    items = playlists,
+                    items = visiblePlaylists,
                     key = { _, playlist -> playlist.id },
                     contentType = { _, _ -> "spotify_playlist" },
                 ) { _, playlist ->
                     SpotifyLibraryPlaylistListItem(
                         playlist = playlist,
                         navController = navController,
+                        onHide = {
+                            if (playlist.id in hiddenPlaylistIds) hiddenPlaylistIds.remove(playlist.id)
+                            else hiddenPlaylistIds.add(playlist.id)
+                        },
                     )
                 }
             }
@@ -291,6 +371,11 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.IconButton(onClick = { navController.navigate("search") }) {
+                        Icon(painter = painterResource(R.drawable.search), contentDescription = stringResource(R.string.search), tint = Color.White)
+                    }
+                }
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -304,6 +389,11 @@ fun LibrarySpotifyPlaylistsScreen(
                             contentDescription = stringResource(R.string.refresh),
                             tint = Color.White,
                         )
+                    }
+                }
+                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.IconButton(onClick = { showSortMenu = true }) {
+                        Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null, tint = Color.White)
                     }
                 }
             }

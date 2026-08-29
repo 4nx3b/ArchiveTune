@@ -26,11 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,46 +42,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-
-/**
- * Returns `false` for the first [delayMillis] milliseconds after this composable
- * enters the composition, then `true` afterwards.
- *
- * Used by liquid-glass screens to defer the expensive `Modifier.layerBackdrop`
- * recording until after the page transition animation has settled. Per user
- * report (2026-08-29): "Whenever I open a page the transition/page switch
- * animation lags a lot. this only happens in the pages that has liquid glass
- * implementation." Root cause: when a new screen enters, the kyant
- * `layerBackdrop` modifier on the screen's LazyColumn starts recording every
- * frame into a GraphicsLayer + RuntimeShader the moment the screen is first
- * composed — which is exactly when the NavHost `slideInHorizontally` transition
- * is also running. The two compete for the GPU/frame budget, producing visible
- * jank during the transition. By returning `false` for ~500ms (longer than the
- * NavHost default 250ms enter transition), the screen first renders WITHOUT
- * the layerBackdrop, lets the slide-in complete smoothly, then enables the
- * liquid glass once the page is settled — preserving the visual liquid glass
- * effect without the lag.
- *
- * Call sites pattern:
- * ```
- * val screenSettled = rememberLayerBackdropSettled()
- * val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
- * ```
- *
- * @param delayMillis How long to wait after composition before returning
- *        `true`. Default 500ms — comfortably longer than the app's default
- *        NavHost enter transition (250ms) + a buffer for any in-between
- *        animation.
- */
-@Composable
-fun rememberLayerBackdropSettled(delayMillis: Long = 500L): Boolean {
-    var settled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(delayMillis)
-        settled = true
-    }
-    return settled
-}
 
 /** Alias so call sites can refer to a stable type name regardless of the backdrop impl. */
 typealias PlatformBackdrop = LayerBackdrop
