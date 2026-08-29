@@ -108,6 +108,16 @@ class ArtistViewModel
     ) : ViewModel() {
         val artistId = savedStateHandle.get<String>("artistId")!!
         var artistPage by mutableStateOf<ArtistPage?>(null)
+        // Per user report (2026-08-29): "Whenever I open artist page there's
+        // always a refresh indicator who Refreshes automatically. it should
+        // only appear when I manually slide to refresh it." Splits the
+        // auto-fetch (silent, runs in `init` from preference changes) from
+        // the manual pull-to-refresh (loud — shows the PullToRefresh
+        // indicator and the shimmer skeleton). When `isManuallyRefreshing`
+        // is `false`, the screen renders cached/local content without any
+        // refresh indicator; when `true` (set only by `manualRefresh()`),
+        // the PullToRefresh indicator + shimmer show.
+        var isManuallyRefreshing by mutableStateOf(false)
         private val eventChannel = Channel<ArtistEvent>(capacity = Channel.BUFFERED)
         val events = eventChannel.receiveAsFlow()
         private var blockJob: Job? = null
@@ -147,6 +157,15 @@ class ArtistViewModel
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         init {
+            // Auto-fetch on first composition AND on hide-explicit /
+            // hide-video preference changes. Per user report (2026-08-29):
+            // "Whenever I open artist page there's always a refresh indicator
+            // who Refreshes automatically. it should only appear when I
+            // manually slide to refresh it." This auto-fetch is SILENT —
+            // it does NOT set `isManuallyRefreshing`, so the PullToRefresh
+            // indicator + shimmer skeleton do NOT appear during this fetch.
+            // The user perceives it as the page populating itself, not as a
+            // refresh.
             viewModelScope.launch {
                 context.dataStore.data
                     .map { preferences ->
@@ -159,7 +178,24 @@ class ArtistViewModel
             }
         }
 
-        fun fetchArtistsFromYTM() {
+        /**
+         * Manual pull-to-refresh entry point. Sets `isManuallyRefreshing`
+         * so the PullToRefresh indicator + shimmer skeleton show during the
+         * fetch, then clears it on completion (success or failure).
+         */
+        fun manualRefresh() {
+            if (isManuallyRefreshing) return
+            isManuallyRefreshing = true
+            viewModelScope.launch {
+                try {
+                    fetchArtistsFromYTM(manual = true)
+                } finally {
+                    isManuallyRefreshing = false
+                }
+            }
+        }
+
+        fun fetchArtistsFromYTM(manual: Boolean = false) {
             viewModelScope.launch {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
@@ -189,6 +225,12 @@ class ArtistViewModel
                     }.onFailure {
                         reportException(it)
                     }
+                if (manual) {
+                    // Cleared by the caller (manualRefresh) — kept here as a
+                    // safety net in case the caller's finally block doesn't run
+                    // (e.g. CancellationException on the outer scope).
+                    isManuallyRefreshing = false
+                }
             }
         }
 
