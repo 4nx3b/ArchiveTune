@@ -34,7 +34,9 @@ import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistItemsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistSongsScreen
+import moe.rukamori.archivetune.ui.screens.library.LibraryPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.library.LibraryScreen
+import moe.rukamori.archivetune.ui.screens.library.LibrarySpotifyPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.library.LocalSongScreen
 import moe.rukamori.archivetune.ui.screens.musicrecognition.MusicRecognitionScreen
 import moe.rukamori.archivetune.ui.screens.musicrecognition.MusicRecognitionDetailsScreen
@@ -148,6 +150,21 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("history") {
         HistoryScreen(navController)
+    }
+    // Per user request (2026-08-29): Spotify and Playlists were previously
+    // sub-tabs of the Library HorizontalPager. The pager slide animation
+    // felt different from the standard app-wide slide-in-from-right page
+    // transition, and the asymmetry (Playlists opens faster than Spotify
+    // because of pager position) read as "still following the old category
+    // pill logic". Moving both out of the pager into their own NavHost
+    // routes makes them ordinary pages — they use the same default
+    // slide-in-from-right transition as every other page (history, albums,
+    // playlist detail, etc.) and the speed feels consistent.
+    composable("library_playlists") {
+        LibraryPlaylistsScreen(navController)
+    }
+    composable("library_spotify_playlists") {
+        LibrarySpotifyPlaylistsScreen(navController)
     }
     composable("stats") {
         StatsScreen(navController)
