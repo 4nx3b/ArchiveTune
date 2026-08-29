@@ -75,6 +75,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistFilter
 import moe.rukamori.archivetune.constants.ArtistFilterKey
@@ -129,12 +130,25 @@ fun LibraryArtistsScreen(
 
     val topArtist = artists.firstOrNull()
 
-    // Issue 2: player-aware bottom padding
+    // Player-aware bottom padding so the mini player never covers content.
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
+
+    // Stable system-bars + display-cutout top inset. The previous
+    // implementation used `WindowInsets.systemBars.only(Top)` which only
+    // accounts for the status bar, NOT the display cutout (notch). On
+    // notched devices the LazyVerticalGrid's first row collided with the
+    // notch because the cutout extends below the status bar height. Per
+    // user report (2026-08-29): "The artist page is colliding with the
+    // notch." `LocalStableSystemBarsTopPadding` (defined in MainActivity)
+    // returns `max(live status bar top, live display cutout top, cached
+    // display cutout top)` — the same value used by the persistent LG
+    // header pills in LocalPlaylistScreen / ArtistScreen so the cards
+    // now sit below the notch consistently with the rest of the app.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -147,7 +161,7 @@ fun LibraryArtistsScreen(
             contentPadding =
                 PaddingValues(
                     start = 24.dp,
-                    top = WindowInsets.systemBars.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding() + LibraryHeaderContentPadding,
+                    top = systemBarsTopPadding + LibraryHeaderContentPadding,
                     end = 24.dp,
                     bottom = playerAwareBottomPadding,
                 ),

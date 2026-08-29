@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,14 +60,18 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
+import moe.rukamori.archivetune.ui.component.AppleMusicStyleAccentColor
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
+import moe.rukamori.archivetune.ui.menu.SpotifyPlaylistMenu
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -78,7 +83,17 @@ fun LibrarySpotifyPlaylistsScreen(
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val menuState = LocalMenuState.current
+    val coroutineScope = rememberCoroutineScope()
+    // Sort mode for the Spotify list. Mirrors the Playlists page's
+    // PlaylistSortType but reduced to the options Spotify's API exposes
+    // (no Last Updated, no Custom order — Spotify returns its own ordering
+    // we can't reorder). Per user report (2026-08-29): "Also Add a sorting
+    // button below the number of playlists in Pink/red accent like history
+    // page which lets me sort playlists."
+    var sortByRecent by remember { mutableStateOf(true) }     // true = Recently added (default API order)
     var sortByName by remember { mutableStateOf(false) }
+    var sortByTrackCount by remember { mutableStateOf(false) }
     var sortDescending by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
@@ -88,15 +103,23 @@ fun LibrarySpotifyPlaylistsScreen(
     // it from the list (and toggling `showHidden` reveals it again).
     val hiddenPlaylistIds = remember { mutableStateListOf<String>() }
     val visiblePlaylists =
-        remember(playlists, sortByName, sortDescending, showHidden, hiddenPlaylistIds.size) {
+        remember(playlists, sortByRecent, sortByName, sortByTrackCount, sortDescending, showHidden, hiddenPlaylistIds.size) {
             val hiddenSnapshot = hiddenPlaylistIds.toList()
             playlists
                 .filter { playlist -> showHidden || playlist.id !in hiddenSnapshot }
                 .let { source ->
-                    if (sortByName) source.sortedBy { it.name.lowercase() } else source
+                    when {
+                        sortByName -> if (sortDescending) source.sortedByDescending { it.name.lowercase() } else source.sortedBy { it.name.lowercase() }
+                        sortByTrackCount -> if (sortDescending) source.sortedByDescending { it.tracks?.total ?: 0 } else source.sortedBy { it.tracks?.total ?: 0 }
+                        else -> source // Recently added — keep Spotify's default API order
+                    }
                 }
-                .let { source -> if (sortDescending) source.reversed() else source }
         }
+    val currentSortLabel = when {
+        sortByName -> if (sortDescending) stringResource(R.string.sort_z_to_a) else stringResource(R.string.sort_a_to_z)
+        sortByTrackCount -> stringResource(R.string.tracks_count_label)
+        else -> stringResource(R.string.recently_added)
+    }
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -141,7 +164,9 @@ fun LibrarySpotifyPlaylistsScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val screenSettled = rememberLayerBackdropSettled()
+
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
@@ -186,7 +211,13 @@ fun LibrarySpotifyPlaylistsScreen(
                 // song rows.
                 contentPadding =
                     PaddingValues(
-                        top = systemBarsTopPadding + 150.dp,
+                        // Per user report (2026-08-29): "Fix empty space in Spotify
+                        // page." The previous 150.dp top padding left a large empty
+                        // gap between the header pill and the first row. Reduced
+                        // to systemBarsTopPadding + 64.dp so the heading block
+                        // sits just below the persistent header pill — matching
+                        // the LocalPlaylistScreen / LibraryPlaylistsScreen spacing.
+                        top = systemBarsTopPadding + 64.dp,
                         bottom = playerAwareBottomPadding,
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -207,7 +238,7 @@ fun LibrarySpotifyPlaylistsScreen(
                             text = "LIST",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = AppleMusicStyleAccentColor,
                         )
                         Text(
                             text = stringResource(R.string.spotify),
@@ -219,6 +250,96 @@ fun LibrarySpotifyPlaylistsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                         )
+                        // Per user report (2026-08-29): "Also Add a sorting
+                        // button below the number of playlists in Pink/red
+                        // accent like history page which lets me sort
+                        // playlists." Visual language mirrors the Playlists
+                        // page sort pill: pill-shaped with `accent.copy(0.12f)`
+                        // background, accent text, accent expand_more icon.
+                        // Sort options live in the DropdownMenu wired to
+                        // `showSortMenu` (also triggered by the more_vert
+                        // icon in the top-end liquid glass pill).
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Box {
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .clip(CircleShape)
+                                        .background(AppleMusicStyleAccentColor.copy(alpha = 0.12f))
+                                        .clickable { showSortMenu = true }
+                                        .padding(horizontal = 18.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = currentSortLabel,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = AppleMusicStyleAccentColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    painter = painterResource(id = R.drawable.expand_more),
+                                    contentDescription = null,
+                                    tint = AppleMusicStyleAccentColor,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.recently_added)) },
+                                    onClick = {
+                                        sortByRecent = true
+                                        sortByName = false
+                                        sortByTrackCount = false
+                                        showSortMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_a_to_z)) },
+                                    onClick = {
+                                        sortByRecent = false
+                                        sortByName = true
+                                        sortByTrackCount = false
+                                        sortDescending = false
+                                        showSortMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sort_z_to_a)) },
+                                    onClick = {
+                                        sortByRecent = false
+                                        sortByName = true
+                                        sortByTrackCount = false
+                                        sortDescending = true
+                                        showSortMenu = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.tracks_count_label)) },
+                                    onClick = {
+                                        sortByRecent = false
+                                        sortByName = false
+                                        sortByTrackCount = true
+                                        sortDescending = false
+                                        showSortMenu = false
+                                    },
+                                )
+                                // Hidden playlists toggle — mirrors the Playlists
+                                // page's "Hidden playlists" entry. Per user report:
+                                // "Also i should be able to hide Spotify playlists too."
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.hidden_playlists)) },
+                                    onClick = {
+                                        showHidden = !showHidden
+                                        showSortMenu = false
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
                 item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
@@ -244,9 +365,29 @@ fun LibrarySpotifyPlaylistsScreen(
                     SpotifyLibraryPlaylistListItem(
                         playlist = playlist,
                         navController = navController,
-                        onHide = {
-                            if (playlist.id in hiddenPlaylistIds) hiddenPlaylistIds.remove(playlist.id)
-                            else hiddenPlaylistIds.add(playlist.id)
+                        onMenuClick = {
+                            // Per user report (2026-08-29): "There should also be
+                            // Overflow menu icon in liquid glass inside Spotify
+                            // Playlists. I've attached two images on how it should be
+                            // and what functions i should have. You can copy the exact
+                            // code for the functions from Normal playlists code." The
+                            // per-row 3-dot menu now opens a SpotifyPlaylistMenu
+                            // bottom sheet (mirrors PlaylistMenu's structure + actions
+                            // adapted for Spotify playlists).
+                            menuState.show {
+                                SpotifyPlaylistMenu(
+                                    playlist = playlist,
+                                    coroutineScope = coroutineScope,
+                                    onDismiss = menuState::dismiss,
+                                    onHide = {
+                                        if (playlist.id in hiddenPlaylistIds) {
+                                            hiddenPlaylistIds.remove(playlist.id)
+                                        } else {
+                                            hiddenPlaylistIds.add(playlist.id)
+                                        }
+                                    },
+                                )
+                            }
                         },
                     )
                 }
