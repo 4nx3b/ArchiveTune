@@ -1361,7 +1361,28 @@ fun LyricsEnhanced(
                     // mini header. Doubling to 16% (~112dp on the same 700dp
                     // viewport) puts the attribution at ~62dp from the top —
                     // fully visible with comfortable buffer.
-                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.16f }
+                    //
+                    // Per user report (2026-08-29 follow-up): "When the bottom
+                    // controls are visible for a few seconds then the lyrics
+                    // from text gets cutoff. It gets fixed when the bottom
+                    // controls hide automatically." Root cause: when the
+                    // persistent playback controls (seekbar + transport row)
+                    // slide in via AnimatedVisibility, the parent reserves
+                    // vertical space for them, so this BoxWithConstraints's
+                    // maxHeight shrinks. The proportional offset then shrinks
+                    // too (e.g., 700dp * 0.16 = 112dp, but 500dp * 0.16 = 80dp),
+                    // and the attribution — positioned at
+                    // `lyricsViewportOffset - line_height` — can drop below
+                    // ~30dp from the top, getting clipped by the top inset /
+                    // mini header. Fix: clamp the offset to a minimum of 112dp
+                    // (the original 0.16 value on a 700dp viewport) so the
+                    // attribution stays fully visible regardless of whether
+                    // the bottom controls are showing.
+                    val lyricsViewportOffset =
+                        remember(maxHeight) {
+                            val proportional = maxHeight * 0.16f
+                            if (proportional > 112.dp) proportional else 112.dp
+                        }
 
                     // Keyed on the session + a position-reset counter so that when
                     // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the

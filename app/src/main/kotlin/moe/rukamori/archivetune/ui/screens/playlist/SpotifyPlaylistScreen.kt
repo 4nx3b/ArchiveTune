@@ -98,6 +98,7 @@ import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
@@ -405,7 +406,17 @@ fun SpotifyPlaylistScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Defer the layerBackdrop activation for ~500ms after first composition so
+    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
+    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
+    // Per user report (2026-08-29): "Whenever I open a page the transition/page
+    // switch animation lags a lot. this only happens in the pages that has
+    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
+    // backdrop, no per-frame recording) until the screen has settled, then swap
+    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
+    // NOT removed — only delayed.
+    val screenSettled = rememberLayerBackdropSettled()
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     // Use the theme surface color (not Color.Black) so the initial frame, before
     // any scrolling content is recorded into the backdrop, blends with the page
     // background instead of flashing solid black. Matches the LocalPlaylistScreen
