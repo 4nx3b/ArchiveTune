@@ -162,95 +162,97 @@ fun SpotifyPlaylistMenu(
         onHide()
     }
 
-    NewMenuContainer {
-        NewMenuContent(
-            headerContent = {
-                MenuSurfaceSection(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+    NewMenuContainer(
+        content = {
+            NewMenuContent(
+                headerContent = {
+                    MenuSurfaceSection(
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        ItemThumbnail(
-                            thumbnailUrl = coverUrl,
-                            isActive = false,
-                            isPlaying = false,
-                            shape = RoundedCornerShape(ThumbnailCornerRadius),
-                            contentScale = ContentScale.Crop,
-                            showPlaceholder = true,
-                            modifier = Modifier.size(ListThumbnailSize),
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = playlistName,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurface,
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ItemThumbnail(
+                                thumbnailUrl = coverUrl,
+                                isActive = false,
+                                isPlaying = false,
+                                shape = RoundedCornerShape(ThumbnailCornerRadius),
+                                contentScale = ContentScale.Crop,
+                                showPlaceholder = true,
+                                modifier = Modifier.size(ListThumbnailSize),
                             )
-                            if (songCount > 0) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = pluralStringResource(R.plurals.n_song, songCount, songCount),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    text = playlistName,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
+                                if (songCount > 0) {
+                                    Text(
+                                        text = pluralStringResource(R.plurals.n_song, songCount, songCount),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            },
-            actionGrid = {
-                NewActionGrid(
-                    actions =
-                        listOf(
-                            NewAction(
-                                icon = { Icon(painter = painterResource(R.drawable.play), contentDescription = null, tint = accentColor) },
-                                text = stringResource(R.string.play),
-                                onClick = onPlay,
-                                contentColor = accentColor,
+                },
+                actionGrid = {
+                    NewActionGrid(
+                        actions =
+                            listOf(
+                                NewAction(
+                                    icon = { Icon(painter = painterResource(R.drawable.play), contentDescription = null, tint = accentColor) },
+                                    text = stringResource(R.string.play),
+                                    onClick = onPlay,
+                                    contentColor = accentColor,
+                                ),
+                                NewAction(
+                                    icon = { Icon(painter = painterResource(R.drawable.shuffle), contentDescription = null, tint = accentColor) },
+                                    text = stringResource(R.string.shuffle),
+                                    onClick = onShuffle,
+                                    contentColor = accentColor,
+                                ),
+                                NewAction(
+                                    icon = { Icon(painter = painterResource(R.drawable.share), contentDescription = null, tint = accentColor) },
+                                    text = stringResource(R.string.share),
+                                    onClick = onShare,
+                                    contentColor = accentColor,
+                                ),
                             ),
-                            NewAction(
-                                icon = { Icon(painter = painterResource(R.drawable.shuffle), contentDescription = null, tint = accentColor) },
-                                text = stringResource(R.string.shuffle),
-                                onClick = onShuffle,
-                                contentColor = accentColor,
-                            ),
-                            NewAction(
-                                icon = { Icon(painter = painterResource(R.drawable.share), contentDescription = null, tint = accentColor) },
-                                text = stringResource(R.string.share),
-                                onClick = onShare,
-                                contentColor = accentColor,
-                            ),
-                        ),
-                )
-            },
-            menuItems = {
-                MenuSurfaceSection {
-                    NewMenuItem(
-                        leadingContent = { Icon(painter = painterResource(R.drawable.playlist_play), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        headlineContent = { Text(text = stringResource(R.string.play_next)) },
-                        onClick = onPlayNext,
                     )
-                    NewMenuItem(
-                        leadingContent = { Icon(painter = painterResource(R.drawable.queue_music), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
-                        onClick = onAddToQueue,
-                    )
-                    NewMenuItem(
-                        leadingContent = { Icon(painter = painterResource(R.drawable.visibility_off), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        headlineContent = { Text(text = stringResource(R.string.hide_playlist)) },
-                        onClick = onToggleHide,
-                    )
-                }
-            },
-        )
-    }
+                },
+                menuItems = {
+                    MenuSurfaceSection {
+                        NewMenuItem(
+                            leadingContent = { Icon(painter = painterResource(R.drawable.playlist_play), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            headlineContent = { Text(text = stringResource(R.string.play_next)) },
+                            onClick = onPlayNext,
+                        )
+                        NewMenuItem(
+                            leadingContent = { Icon(painter = painterResource(R.drawable.queue_music), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
+                            onClick = onAddToQueue,
+                        )
+                        NewMenuItem(
+                            leadingContent = { Icon(painter = painterResource(R.drawable.visibility_off), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            headlineContent = { Text(text = stringResource(R.string.hide_playlist)) },
+                            onClick = onToggleHide,
+                        )
+                    }
+                },
+            )
+        },
+    )
 }
 
 /**
