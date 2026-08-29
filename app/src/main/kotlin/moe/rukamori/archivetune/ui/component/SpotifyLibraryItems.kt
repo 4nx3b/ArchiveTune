@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -60,6 +61,7 @@ import moe.rukamori.archivetune.utils.makeTimeString
 fun SpotifyLibraryPlaylistListItem(
     playlist: SpotifyPlaylist,
     navController: NavController,
+    onHide: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
 ) {
@@ -131,6 +133,15 @@ fun SpotifyLibraryPlaylistListItem(
             )
         },
         trailingContent = {
+            if (onHide != null) {
+                IconButton(onClick = onHide) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_vert),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Icon(
                 painter = painterResource(R.drawable.navigate_next),
                 contentDescription = null,
