@@ -91,6 +91,16 @@ fun SpotifyPlaylistMenu(
     coroutineScope: CoroutineScope,
     onDismiss: () -> Unit,
     onHide: () -> Unit,
+    // Per user report (2026-08-29): "Play, Shuffle, Play next, Add to queue
+    // button in Spotify's playlists overflow menu doesn't do anything." The
+    // SpotifyPlaylistQueue fetches tracks via Spotify.playlistTracks(...)
+    // directly, which requires Spotify.accessToken to be set, but the Library
+    // page doesn't auto-refresh the token on screen open. Calling
+    // viewModel.ensureAccessToken() before the queue / resolveFirstPage calls
+    // mints/refreshes the token via the repository's auth path so the queue
+    // can actually fetch tracks.
+    viewModel: moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel =
+        androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel(),
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -113,12 +123,16 @@ fun SpotifyPlaylistMenu(
     val onPlay: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
+            // Ensure Spotify.accessToken is set before the queue tries to
+            // fetch tracks via Spotify.playlistTracks(...).
+            viewModel.ensureAccessToken()
             playerConnection.playQueue(SpotifyPlaylistQueue(playlistId = playlistId, title = playlistName))
         }
     }
     val onShuffle: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
+            viewModel.ensureAccessToken()
             // Pick a random startIndex within the first page so the queue
             // starts at a non-deterministic position without having to
             // pre-fetch the entire playlist.
@@ -142,6 +156,7 @@ fun SpotifyPlaylistMenu(
     val onPlayNext: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
+            viewModel.ensureAccessToken()
             val mediaItems = resolveFirstPageAsMediaItems(playlistId)
             if (mediaItems.isNotEmpty()) {
                 playerConnection.playNext(mediaItems)
@@ -151,6 +166,7 @@ fun SpotifyPlaylistMenu(
     val onAddToQueue: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
+            viewModel.ensureAccessToken()
             val mediaItems = resolveFirstPageAsMediaItems(playlistId)
             if (mediaItems.isNotEmpty()) {
                 playerConnection.addToQueue(mediaItems)

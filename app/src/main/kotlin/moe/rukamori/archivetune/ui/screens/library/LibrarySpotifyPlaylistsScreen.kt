@@ -28,6 +28,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -36,13 +39,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -50,6 +54,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -97,16 +102,27 @@ fun LibrarySpotifyPlaylistsScreen(
     var sortDescending by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
-    // Session-local set of Spotify playlist IDs the user has hidden via the
-    // per-row "more" menu. Used by the `onHide` callback below and consulted
-    // by the `visiblePlaylists` filter so hiding a playlist actually removes
-    // it from the list (and toggling `showHidden` reveals it again).
-    val hiddenPlaylistIds = remember { mutableStateListOf<String>() }
+    // Per user report (2026-08-29): "The search button should search the
+    // Playlists available in Spotify. Right now it takes me to the normal
+    // song search." Tapping the search icon in the top-end pill now toggles
+    // an inline search field above the sort pill; typing a query filters the
+    // list by name (case-insensitive substring match) — the list never
+    // navigates away from this screen.
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var showSearchField by rememberSaveable { mutableStateOf(false) }
+    // Persisted across sessions via DataStore so hiding a Spotify playlist
+    // survives process death AND is surfaced in the account-page
+    // "Hidden playlists" section. The repository exposes the set as a
+    // StateFlow so the screen re-renders when other screens (e.g.
+    // HiddenPlaylistsScreen) unhide a playlist.
+    val hiddenPlaylistIds by viewModel.hiddenPlaylistIds.collectAsStateWithLifecycle()
     val visiblePlaylists =
-        remember(playlists, sortByRecent, sortByName, sortByTrackCount, sortDescending, showHidden, hiddenPlaylistIds.size) {
-            val hiddenSnapshot = hiddenPlaylistIds.toList()
+        remember(playlists, sortByRecent, sortByName, sortByTrackCount, sortDescending, showHidden, hiddenPlaylistIds.size, searchQuery) {
+            val hiddenSnapshot = hiddenPlaylistIds
+            val query = searchQuery.trim()
             playlists
                 .filter { playlist -> showHidden || playlist.id !in hiddenSnapshot }
+                .filter { playlist -> query.isBlank() || playlist.name.contains(query, ignoreCase = true) }
                 .let { source ->
                     when {
                         sortByName -> if (sortDescending) source.sortedByDescending { it.name.lowercase() } else source.sortedBy { it.name.lowercase() }
@@ -259,6 +275,52 @@ fun LibrarySpotifyPlaylistsScreen(
                         // Sort options live in the DropdownMenu wired to
                         // `showSortMenu` (also triggered by the more_vert
                         // icon in the top-end liquid glass pill).
+                        // Inline search field — only visible when the user
+                        // taps the search icon in the top-end pill. Mirrors the
+                        // Playlists page's pill visual language so the
+                        // transition between collapsed and expanded search
+                        // doesn't shift the sort pill's position.
+                        if (showSearchField) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.6f))
+                                        .padding(horizontal = 18.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.search),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                                    cursorBrush = SolidColor(AppleMusicStyleAccentColor),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = { /* no-op; live filter */ }),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    androidx.compose.material3.IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.close),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
                         Box {
                             Row(
@@ -329,13 +391,25 @@ fun LibrarySpotifyPlaylistsScreen(
                                     },
                                 )
                                 // Hidden playlists toggle — mirrors the Playlists
-                                // page's "Hidden playlists" entry. Per user report:
+                                // page's "Hidden playlists" entry (same leadingIcon
+                                // + conditional check trailingIcon). Per user report:
                                 // "Also i should be able to hide Spotify playlists too."
+                                // Per user report (2026-08-29): "Also the hidden
+                                // playlist category from sort drop-down in Spotify
+                                // page doesn't do anything. Fix it" — now wired to
+                                // the persisted `hiddenPlaylistIds` set + has a
+                                // visual check indicator like the Playlists page.
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.hidden_playlists)) },
                                     onClick = {
                                         showHidden = !showHidden
                                         showSortMenu = false
+                                    },
+                                    leadingIcon = { Icon(painter = painterResource(R.drawable.visibility_off), contentDescription = null) },
+                                    trailingIcon = {
+                                        if (showHidden) {
+                                            Icon(painter = painterResource(R.drawable.check), contentDescription = null)
+                                        }
                                     },
                                 )
                             }
@@ -380,11 +454,11 @@ fun LibrarySpotifyPlaylistsScreen(
                                     coroutineScope = coroutineScope,
                                     onDismiss = menuState::dismiss,
                                     onHide = {
-                                        if (playlist.id in hiddenPlaylistIds) {
-                                            hiddenPlaylistIds.remove(playlist.id)
-                                        } else {
-                                            hiddenPlaylistIds.add(playlist.id)
-                                        }
+                                        // Persisted via SpotifyLibraryRepository's
+                                        // DataStore-backed hidden-playlist-id set so
+                                        // the hide survives process death and surfaces
+                                        // on the account-page "Hidden playlists" section.
+                                        viewModel.toggleHiddenPlaylist(playlist.id)
                                     },
                                 )
                             }
@@ -486,9 +560,27 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                // Per user report (2026-08-29): "Remove the ... overflow
+                // liquid glass icon on the top right in Spotify page" — the
+                // more_vert overflow icon has been removed. The sort menu is
+                // still reachable via the sort pill in the heading block.
+                //
+                // Per user report (2026-08-29): "The search button should
+                // search the Playlists available in Spotify. Right now it
+                // takes me to the normal song search." The search icon now
+                // toggles an inline search field above the sort pill that
+                // filters `visiblePlaylists` by name (case-insensitive
+                // substring match). No navigation away from the screen.
                 Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    androidx.compose.material3.IconButton(onClick = { navController.navigate("search") }) {
-                        Icon(painter = painterResource(R.drawable.search), contentDescription = stringResource(R.string.search), tint = Color.White)
+                    androidx.compose.material3.IconButton(onClick = {
+                        showSearchField = !showSearchField
+                        if (!showSearchField) searchQuery = ""
+                    }) {
+                        Icon(
+                            painter = painterResource(if (showSearchField) R.drawable.close else R.drawable.search),
+                            contentDescription = stringResource(R.string.search),
+                            tint = Color.White,
+                        )
                     }
                 }
                 Box(
@@ -504,11 +596,6 @@ fun LibrarySpotifyPlaylistsScreen(
                             contentDescription = stringResource(R.string.refresh),
                             tint = Color.White,
                         )
-                    }
-                }
-                Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    androidx.compose.material3.IconButton(onClick = { showSortMenu = true }) {
-                        Icon(painter = painterResource(R.drawable.more_vert), contentDescription = null, tint = Color.White)
                     }
                 }
             }
