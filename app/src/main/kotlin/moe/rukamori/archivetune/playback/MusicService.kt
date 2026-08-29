@@ -1446,11 +1446,25 @@ class MusicService :
             val shouldFetch =
                 stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
+                // Use getLyricsWithProvider (not getLyrics) so we preserve
+                // the providerName. Per user report (2026-08-29): "The lyrics
+                // from text doesn't appear unless I manually select a lyrics
+                // for lyrics search popup." The previous call to getLyrics()
+                // discarded the providerName (it just returned .lyrics), so
+                // the auto-fetched lyrics were stored with a blank providerName
+                // and the "Lyrics from [provider]" header never rendered until
+                // the user manually triggered the lyrics search popup (which
+                // re-fetched via getLyricsWithProvider and backfilled).
+                //
+                // Also pass the providerName through to
+                // replaceLyricsIfAbsentOrNotFound so the stored LyricsEntity
+                // carries the attribution from the moment of first fetch.
+                val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
-                        lyrics = lyrics,
+                        lyrics = lyricsResult.lyrics,
+                        providerName = lyricsResult.providerName,
                     )
                 }
             }

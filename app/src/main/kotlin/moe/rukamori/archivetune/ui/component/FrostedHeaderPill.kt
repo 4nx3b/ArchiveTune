@@ -17,10 +17,31 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+
+/**
+ * CompositionLocal that signals to descendant components (notably the custom
+ * [IconButton]) that they are being rendered inside a `plain = true`
+ * [FrostedHeaderPill]. When `true`, the custom [IconButton] overrides its
+ * default `IconButtonColors` to use a transparent `containerColor` so no
+ * circular background is drawn behind the icon — matching the user's
+ * explicit request (2026-08-29): "There's still frosted header pills in
+ * settings and it's submenus. Remove it." Even with `FrostedHeaderPill(
+ * plain = true)`, the wrapping Row alone didn't remove the visual pill
+ * appearance because the inner [IconButton] component still rendered a
+ * `CircleShape`-clipped `containerColor` background, which read as a
+ * circular "pill" behind the back arrow. This CompositionLocal lets the
+ * IconButton self-detect the plain-header context and switch to a fully
+ * transparent container without requiring every call site to explicitly
+ * pass `colors = IconButtonDefaults.iconButtonColors(containerColor =
+ * Color.Transparent)`.
+ */
+val LocalPlainHeaderPill = compositionLocalOf { false }
 
 /**
  * A frosted-glass-looking pill that wraps header content (title text, icon buttons) so the
@@ -78,11 +99,22 @@ fun FrostedHeaderPill(
         // same padding as the pill path so the layout doesn't shift when
         // toggling between plain and frosted. This is the "remove all the
         // liquid glass from settings" path the user explicitly requested.
-        Row(
-            modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            content()
+        //
+        // We wrap content in a CompositionLocalProvider that signals
+        // `LocalPlainHeaderPill = true` so descendant IconButtons (the
+        // custom moe.rukamori.archivetune.ui.component.IconButton) override
+        // their default `containerColor` to transparent — without this, the
+        // IconButton's CircleShape-clipped background would still render
+        // as a circular "pill" behind the back arrow, which the user
+        // explicitly reported seeing ("still frosted header pills in
+        // settings and it's submenus").
+        CompositionLocalProvider(LocalPlainHeaderPill provides true) {
+            Row(
+                modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                content()
+            }
         }
     } else if (backdrop != null) {
         // Real liquid glass path: kyant `drawBackdrop` effect stack (vibrancy +
