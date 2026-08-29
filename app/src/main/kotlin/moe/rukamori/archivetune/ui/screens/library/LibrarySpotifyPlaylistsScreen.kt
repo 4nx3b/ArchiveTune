@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,10 +82,16 @@ fun LibrarySpotifyPlaylistsScreen(
     var sortDescending by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
+    // Session-local set of Spotify playlist IDs the user has hidden via the
+    // per-row "more" menu. Used by the `onHide` callback below and consulted
+    // by the `visiblePlaylists` filter so hiding a playlist actually removes
+    // it from the list (and toggling `showHidden` reveals it again).
+    val hiddenPlaylistIds = remember { mutableStateListOf<String>() }
     val visiblePlaylists =
-        remember(playlists, sortByName, sortDescending, showHidden) {
+        remember(playlists, sortByName, sortDescending, showHidden, hiddenPlaylistIds.size) {
+            val hiddenSnapshot = hiddenPlaylistIds.toList()
             playlists
-                .filter { playlist -> showHidden || playlist.public != false }
+                .filter { playlist -> showHidden || playlist.id !in hiddenSnapshot }
                 .let { source ->
                     if (sortByName) source.sortedBy { it.name.lowercase() } else source
                 }
@@ -237,6 +244,10 @@ fun LibrarySpotifyPlaylistsScreen(
                     SpotifyLibraryPlaylistListItem(
                         playlist = playlist,
                         navController = navController,
+                        onHide = {
+                            if (playlist.id in hiddenPlaylistIds) hiddenPlaylistIds.remove(playlist.id)
+                            else hiddenPlaylistIds.add(playlist.id)
+                        },
                     )
                 }
             }
