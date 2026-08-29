@@ -98,7 +98,6 @@ import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
@@ -363,8 +362,7 @@ fun AutoPlaylistScreen(
     // backdrop, no per-frame recording) until the screen has settled, then swap
     // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
     // NOT removed — only delayed.
-    val screenSettled = rememberLayerBackdropSettled()
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
     // content recording only happens when `Modifier.layerBackdrop(backdrop)`
     // is applied to the LazyColumn below, gated on `layerBackdropActive`.
@@ -709,7 +707,7 @@ fun AutoPlaylistScreen(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.library),
+                    text = playlist,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
