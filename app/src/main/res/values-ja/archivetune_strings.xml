@@ -351,7 +351,6 @@
     <string name="not_logged_in_youtube">YouTubeにログインしていない</string>
     <string name="default_links">対応リンクを開く</string>
     <string name="open_app_settings_error">アプリ設定を開けなかった</string>
-    <string name="release_notes">リリースノート</string>
     <string name="all_time">全期間</string>
     <string name="past_24_hours">過去24時間</string>
     <string name="past_week">過去1週間</string>
