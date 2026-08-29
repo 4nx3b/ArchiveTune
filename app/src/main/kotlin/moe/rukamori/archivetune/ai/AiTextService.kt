@@ -294,11 +294,12 @@ object AiTextService {
 
             // DeepL / Mistral are translation-only providers (not generic chat completion).
             // AiTextService is used for AI Mix / Wrapped / chat-style prompts, so these
-            // providers throw — translation calls go through LyricsTranslationHelper instead.
+            // providers throw — translation calls go through the in-app lyrics translation
+            // pipeline instead.
             AiProvider.DEEPL,
             AiProvider.MISTRAL,
             -> {
-                throw AiServiceException("${config.provider.name} is a translation-only provider; use LyricsTranslationHelper for translation calls")
+                throw AiServiceException("${config.provider.name} is a translation-only provider; use the in-app lyrics translation pipeline for translation calls")
             }
 
             AiProvider.NONE -> {

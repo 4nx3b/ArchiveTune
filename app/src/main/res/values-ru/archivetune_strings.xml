@@ -138,7 +138,6 @@
     <string name="not_logged_in_youtube">Не авторизован в YouTube</string>
     <string name="default_links">Открыть поддерживаемые ссылки</string>
     <string name="open_app_settings_error">Не удалось открыть настройки приложения</string>
-    <string name="release_notes">Примечание к релизу</string>
     <string name="all_time">Всё время</string>
     <string name="past_24_hours">Последние 24 часа</string>
     <string name="past_week">Последняя неделя</string>
