@@ -7,11 +7,14 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,27 +44,24 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
+import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberPreference
 
 @Composable
 fun LibrarySpotifyPlaylistsScreen(
     navController: NavController,
     viewModel: SpotifyLibraryViewModel = hiltViewModel(),
-    // Back-to-LIBRARY-sub-tab callback invoked by the frosted header pill's
-    // back arrow. Per user request (2026-08-29): "There's no liquid glass
-    // headers in Spotify and playlist pages. I've attached two images
-    // where it should be" — the user wants the playlist-detail-page-style
-    // frosted header pill (back arrow + sub-tab title) at the top of these
-    // sub-tab pages too. The back arrow scrolls the Library pager to page 0
-    // (LIBRARY main sub-tab) instead of popping the NavController — the
-    // user is already in Library, the pill just takes them back to the
-    // Library overview.
-    onBack: () -> Unit = {},
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -70,10 +71,59 @@ fun LibrarySpotifyPlaylistsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    // Stable system-bars top inset so the frosted header pill stays
-    // anchored below the status bar even when the bar is transiently
-    // hidden. Matches the pattern used in LocalPlaylistScreen.
+    // Stable system-bars top inset so the header pill stays anchored
+    // below the status bar even when the bar is transiently hidden.
+    // Matches the pattern used in LocalPlaylistScreen. Declared near
+    // the top so it can be referenced both by the LazyColumn
+    // contentPadding below and by the persistent header pill.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    // Per user request (2026-08-29): "The liquid glass navigation buttons
+    // is not in liquid glass in playlist and Spotify page. Its just
+    // frosted. Use the exact same logic from playlist page for liquid
+    // glass buttons on the header".
+    //
+    // The playlist detail page (LocalPlaylistScreen / SpotifyPlaylistScreen)
+    // uses `LiquidGlassActionPill(backdrop = artworkBackdrop, interactive =
+    // true, ...) { back arrow + title text }` as the persistent top-start
+    // header, with `Modifier.layerBackdrop(artworkBackdrop)` applied to the
+    // scrolling LazyColumn to record the content the pill samples from.
+    // Mirroring that pattern here gives the Spotify Library page the same
+    // liquid glass header the user explicitly asked for.
+    //
+    // This screen is now a separate NavHost route (no longer a child of
+    // the Library HorizontalPager), so sampling the screen-local backdrop
+    // no longer risks the render-feedback loop documented in
+    // FrostedHeaderPill.kt — the backdrop is created and consumed inside
+    // the same composition boundary.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
+
+    // BackHandler so the predictive back gesture always escapes the
+    // Spotify Library page. Per user report (2026-08-29). Same pattern
+    // as SpotifyPlaylistScreen.kt — popBackStack first, fall back to
+    // navigateUp, then navigate("library") so the gesture NEVER
+    // silently fails.
+    BackHandler {
+        try {
+            if (!navController.popBackStack()) {
+                navController.navigate("library") { launchSingleTop = true }
+            }
+        } catch (_: Exception) {
+            try {
+                if (!navController.navigateUp()) {
+                    navController.navigate("library") { launchSingleTop = true }
+                }
+            } catch (_: Exception) {
+                // Last-resort: let the system handle the back press
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ExpressivePullToRefreshBox(
@@ -97,7 +147,16 @@ fun LibrarySpotifyPlaylistsScreen(
                 // spacing. Mirroring that here: zero spacing, divider drawn
                 // between rows.
                 verticalArrangement = Arrangement.spacedBy(0.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (layerBackdropActive) {
+                                Modifier.layerBackdrop(artworkBackdrop)
+                            } else {
+                                Modifier
+                            },
+                        ),
             ) {
                 item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
                     SpotifyLikedSongsListItem(navController = navController)
@@ -141,40 +200,80 @@ fun LibrarySpotifyPlaylistsScreen(
             }
         }
 
-        // Persistent frosted header pill at top-start. Mirrors the
-        // playlist-detail-page layout (back arrow + sub-tab title text
-        // inside a FrostedHeaderPill). Tapping the back arrow scrolls the
-        // Library pager to page 0 (LIBRARY main sub-tab) via [onBack].
-        //
-        // The pill uses the FrostedHeaderPill fallback path (no backdrop)
-        // because the Library pager lives inside the NavHost and sampling
-        // the app-wide backdrop from inside it would create a render-
-        // feedback loop. The fallback `surfaceContainerHigh.copy(alpha=
-        // 0.88)` surface gives the user the visible frosted-glass pill
-        // they explicitly asked for.
-        FrostedHeaderPill(
-            modifier =
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
-        ) {
-            IconButton(
-                onClick = onBack,
-                onLongClick = {},
+        // Persistent header pill at top-start. Mirrors the playlist-detail
+        // page layout: `LiquidGlassActionPill(backdrop = artworkBackdrop,
+        // interactive = true, ...) { back arrow + sub-tab title text }` when
+        // liquid glass is active, falling back to `FrostedHeaderPill` (no
+        // backdrop) when the master toggle is off or the platform doesn't
+        // support the kyant RuntimeShader.
+        if (layerBackdropActive) {
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                interactive = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_back),
-                    contentDescription = stringResource(R.string.back_button_desc),
+                IconButton(
+                    onClick = {
+                        if (!navController.navigateUp()) {
+                            navController.navigate("library") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onLongClick = { navController.backToMain() },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                        tint = Color.White,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.spotify),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
-            Text(
-                text = stringResource(R.string.spotify),
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(end = 12.dp),
-            )
+        } else {
+            FrostedHeaderPill(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        if (!navController.navigateUp()) {
+                            navController.navigate("library") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onLongClick = { navController.backToMain() },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.spotify),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
         }
     }
 }

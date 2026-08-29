@@ -96,24 +96,21 @@ fun LibraryScreen(navController: NavController) {
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
         remember(showSpotifyPlaylists) {
-            if (showSpotifyPlaylists) {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SPOTIFY,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            } else {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            }
+            // Per user request (2026-08-29): Spotify and Playlists are no
+            // longer sub-tabs of the Library HorizontalPager — they are
+            // separate NavHost routes (library_spotify_playlists and
+            // library_playlists) that use the standard app-wide slide-in-
+            // from-right transition. The pager now only hosts the LIBRARY
+            // overview + Songs / Artists / Albums sub-tabs. The
+            // showSpotifyPlaylists flag still gates whether the "Spotify"
+            // category row appears on the Library overview (LibraryMixScreen),
+            // but it no longer affects the pager's filter list.
+            listOf(
+                LibraryFilter.LIBRARY,
+                LibraryFilter.SONGS,
+                LibraryFilter.ARTISTS,
+                LibraryFilter.ALBUMS,
+            )
         }
 
     if (showTagsManagementDialog) {
@@ -312,52 +309,13 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
 
-                    LibraryFilter.PLAYLISTS -> {
-                        LibraryPlaylistsScreen(
-                            navController = navController,
-                            filterContent =
-                                if (showTagsInLibrary) {
-                                    {
-                                        PlaylistTagFilterRow(
-                                            tags = allTags,
-                                            selectedTagIds = selectedTagIds,
-                                            onSelectedTagIdsChange = onSelectedTagIdsChange,
-                                            onManageTagsClick = { showTagsManagementDialog = true },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                            selectedTagIds = activeSelectedTagIds,
-                            // Pass the pager scroll-back callback so the
-                            // frosted header pill's back arrow can scroll
-                            // the pager to the LIBRARY main sub-tab
-                            // (page 0). Per user request (2026-08-29):
-                            // "There's no liquid glass headers in Spotify
-                            // and playlist pages. I've attached two images
-                            // where it should be" — adding a back+title
-                            // pill at the top of these sub-tab pages
-                            // mirrors the playlist detail page layout.
-                            onBack = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                        )
-                    }
-
-                    LibraryFilter.SPOTIFY -> {
-                        LibrarySpotifyPlaylistsScreen(
-                            navController = navController,
-                            // Same back-to-LIBRARY callback as Playlists
-                            // sub-tab — scrolls the pager to page 0.
-                            onBack = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                        )
-                    }
+                    // LibraryFilter.PLAYLISTS and LibraryFilter.SPOTIFY
+                    // cases were removed per user request (2026-08-29):
+                    // Spotify and Playlists are now separate NavHost routes
+                    // (library_spotify_playlists / library_playlists),
+                    // reachable via navController.navigate(...) from
+                    // LibraryMixScreen's category rows. They no longer
+                    // render as paged children of the Library pager.
 
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
