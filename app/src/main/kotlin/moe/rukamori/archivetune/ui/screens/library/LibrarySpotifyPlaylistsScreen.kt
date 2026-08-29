@@ -36,7 +36,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -82,11 +81,10 @@ fun LibrarySpotifyPlaylistsScreen(
     var sortDescending by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
-    val hiddenPlaylistIds = remember { mutableStateListOf<String>() }
     val visiblePlaylists =
-        remember(playlists, sortByName, sortDescending, showHidden, hiddenPlaylistIds.toList()) {
+        remember(playlists, sortByName, sortDescending, showHidden) {
             playlists
-                .filter { playlist -> showHidden || playlist.id !in hiddenPlaylistIds }
+                .filter { playlist -> showHidden || playlist.public != false }
                 .let { source ->
                     if (sortByName) source.sortedBy { it.name.lowercase() } else source
                 }
