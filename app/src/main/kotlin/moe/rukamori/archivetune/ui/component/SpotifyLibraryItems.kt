@@ -15,6 +15,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,11 +37,11 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListThumbnailSize
@@ -61,22 +63,30 @@ fun SpotifyLibraryPlaylistListItem(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(26.dp),
 ) {
-    // Per user request (2026-08-28): "I want the list style of library
-    // page, how the playlists, artists and others are displayed exactly
-    // like that." and "There's empty spacing in Spotify playlists too.
-    // Fix that and the liked songs in Spotify playlists looks a bit
-    // faded. Fix it and make it compact." Previously the Spotify
-    // playlists sub-page rendered each playlist via
-    // `LibraryPlaylistFeatureCard` (a rounded 26dp-corner card with 72dp
-    // thumbnail + name + count + Spotify trailing icon). The new
-    // compact row mirrors `PlaylistListCard` and `LibraryCategoryRow`:
-    //   - 40dp rounded-square thumbnail on the left
-    //   - 22sp medium-weight playlist name in the middle
-    //   - Song count + chevron on the right (replaces the trailing
-    //     Spotify logo — the green Spotify accent was the source of the
-    //     "looks a bit faded" complaint because it sat next to the
-    //     chevron-less count and visually competed; the chevron alone
-    //     reads cleaner).
+    // Per user request (2026-08-29 redesign): "Make all three screens
+    // feel like they were designed as part of the same UI system by the
+    // same designer." The Playlist Detail page (source of truth — "high
+    // nights" screenshot) uses the shared `ListItem` composable from
+    // Items.kt for its song rows: 72dp height, 56dp 10dp-corner thumbnail,
+    // `bodyLarge` SemiBold title, `bodySmall` subtitle with metadata
+    // joined by bullets, three-dot menu in trailingContent, NO hairline
+    // dividers between rows.
+    //
+    // This row now delegates to `ListItem`, passing:
+    //   - title: playlist name (via `toLibraryPlaylist()` mapper)
+    //   - subtitle: "{N} songs" via pluralStringResource — same metadata
+    //     pattern as the source of truth's subtitle line. The song count
+    //     that previously sat on the right of the row (visually competing
+    //     with the chevron) now lives in the subtitle, matching the
+    //     ARTWORK → TITLE → METADATA → NAVIGATION row structure.
+    //   - thumbnailContent: 56dp 10dp-corner artwork via `ItemThumbnail`
+    //     (matching `PlaylistListItem` in Items.kt exactly).
+    //   - trailingContent: just the chevron (navigation affordance).
+    //
+    // All existing functionality preserved: tap navigates to
+    // `spotify_playlist/{id}`, the press-scale animation is kept via
+    // graphicsLayer, the `SpotifyLikedSongsListItem` row below uses the
+    // same pattern.
     val libraryPlaylist = remember(playlist) { playlist.toLibraryPlaylist() }
     val openPlaylist = {
         navController.navigate("spotify_playlist/${playlist.id}")
@@ -89,17 +99,48 @@ fun SpotifyLibraryPlaylistListItem(
         label = "SpotifyPlaylistListRowScale",
     )
 
-    Row(
+    val subtitleText =
+        if (libraryPlaylist.songCount > 0) {
+            pluralStringResource(
+                R.plurals.n_song,
+                libraryPlaylist.songCount,
+                libraryPlaylist.songCount,
+            )
+        } else {
+            null
+        }
+
+    ListItem(
+        title = libraryPlaylist.playlist.name,
+        subtitle = subtitleText,
+        badges = {},
+        thumbnailContent = {
+            ItemThumbnail(
+                thumbnailUrl = libraryPlaylist.thumbnails.getOrNull(0),
+                isActive = false,
+                isPlaying = false,
+                shape = RoundedCornerShape(ThumbnailCornerRadius),
+                contentScale = ContentScale.Crop,
+                showPlaceholder = true,
+                // 56dp — matches the shared `ListThumbnailSize` constant
+                // used by SongListItem / AlbumListItem / ArtistListItem /
+                // PlaylistListItem in Items.kt. The Playlist Detail page
+                // (source of truth) uses this exact same size for its
+                // song rows.
+                modifier = Modifier.size(ListThumbnailSize),
+            )
+        },
+        trailingContent = {
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f),
+                modifier = Modifier.size(20.dp),
+            )
+        },
         modifier =
             modifier
                 .fillMaxWidth()
-                // Bumped from 56.dp to 72.dp so the bumped 56.dp thumbnail
-                // (was 40.dp) sits with comfortable top/bottom breathing
-                // room — matches the shared ListItemHeight constant used
-                // by the generic Items.kt rows. Per user request
-                // (2026-08-28): "Increase the size of the thumbnails in
-                // playlist and Spotify playlists page".
-                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -107,62 +148,8 @@ fun SpotifyLibraryPlaylistListItem(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = openPlaylist,
-                ).focusable()
-                .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f),
-        ) {
-            ItemThumbnail(
-                thumbnailUrl = libraryPlaylist.thumbnails.getOrNull(0),
-                isActive = false,
-                isPlaying = false,
-                shape = RoundedCornerShape(8.dp),
-                contentScale = ContentScale.Crop,
-                showPlaceholder = true,
-                // Bumped from 40.dp to 56.dp — matches the shared
-                // ListThumbnailSize constant used by SongListItem /
-                // AlbumListItem / ArtistListItem / PlaylistListItem in
-                // Items.kt. Per user request (2026-08-28): "Increase the
-                // size of the thumbnails in playlist and Spotify playlists
-                // page".
-                modifier = Modifier.size(56.dp),
-            )
-            Text(
-                text = libraryPlaylist.playlist.name,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.Medium,
-                fontSize = 22.sp,
-                letterSpacing = (-0.2).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (libraryPlaylist.songCount > 0) {
-                Text(
-                    text = libraryPlaylist.songCount.toString(),
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
-                    fontWeight = FontWeight.Normal,
-                    fontSize = 19.sp,
-                    maxLines = 1,
-                )
-            }
-            Icon(
-                painter = painterResource(R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
+                ).focusable(),
+    )
 }
 
 @Composable
@@ -170,14 +157,12 @@ fun SpotifyLikedSongsListItem(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-    // Compact row matching the new PlaylistListCard / LibraryCategoryRow
-    // style: 40dp rounded-square icon tile on the left, "Liked Songs"
-    // title in the middle, chevron on the right. Replaces the previous
-    // `LibraryPinnedCollectionTile` (a tall rounded card with a
-    // gradient backdrop and accent surface — the "looks a bit faded"
-    // complaint was specifically about this tile in the Spotify
-    // playlists sub-page, since its gradient muted the pink accent
-    // against the surrounding list items).
+    // Per user request (2026-08-29 redesign): matches the Playlist Detail
+    // design system via shared `ListItem`. The 56dp accent-tinted icon
+    // tile on the left mirrors `PlaylistListItem`'s placeholder-icon
+    // treatment (Icon in a surfaceContainer Box) — visually consistent
+    // with the rest of the design system, while still carrying the
+    // primary-color "Liked Songs" affordance the user expects.
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -187,15 +172,35 @@ fun SpotifyLikedSongsListItem(
     )
     val accentColor = MaterialTheme.colorScheme.primary
 
-    Row(
+    ListItem(
+        title = stringResource(R.string.liked_songs),
+        subtitle = null,
+        badges = {},
+        thumbnailContent = {
+            Surface(
+                color = accentColor.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(ThumbnailCornerRadius),
+                modifier = Modifier.size(ListThumbnailSize),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.favorite),
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.padding(8.dp),
+                )
+            }
+        },
+        trailingContent = {
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f),
+                modifier = Modifier.size(20.dp),
+            )
+        },
         modifier =
             modifier
                 .fillMaxWidth()
-                // Bumped from 56.dp to 72.dp to match the bumped 56dp
-                // icon tile (was 40dp) on the left. Per user request
-                // (2026-08-28): "Increase the size of the thumbnails in
-                // playlist and Spotify playlists page".
-                .height(72.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -203,48 +208,8 @@ fun SpotifyLikedSongsListItem(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = { navController.navigate("spotify_playlist/$SPOTIFY_LIKED_SONGS_ID") },
-                ).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f),
-        ) {
-            Surface(
-                color = accentColor.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(8.dp),
-                // Bumped from 40.dp to 56.dp to match the bumped playlist
-                // row thumbnails above.
-                modifier = Modifier.size(56.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.favorite),
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier =
-                        Modifier
-                            .padding(8.dp),
-                )
-            }
-            Text(
-                text = stringResource(R.string.liked_songs),
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.Medium,
-                fontSize = 22.sp,
-                letterSpacing = (-0.2).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Icon(
-            painter = painterResource(R.drawable.navigate_next),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.40f),
-            modifier = Modifier.size(20.dp),
-        )
-    }
+                ).focusable(),
+    )
 }
 
 @Composable
