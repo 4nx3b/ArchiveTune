@@ -345,7 +345,7 @@ private fun LogcatTopBar(
     MediumFlexibleTopAppBar(
         title = {},
         navigationIcon = {
-            FrostedHeaderPill {
+            FrostedHeaderPill(plain = true) {
                 ArchiveTuneIconButton(
                     onClick = onNavigateBack,
                     onLongClick = onNavigateBackLongClick,

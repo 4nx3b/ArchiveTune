@@ -509,7 +509,7 @@ fun UpdateScreen(
             MediumFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

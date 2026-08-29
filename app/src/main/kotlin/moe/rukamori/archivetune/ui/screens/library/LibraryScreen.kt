@@ -96,24 +96,21 @@ fun LibraryScreen(navController: NavController) {
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
         remember(showSpotifyPlaylists) {
-            if (showSpotifyPlaylists) {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SPOTIFY,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            } else {
-                listOf(
-                    LibraryFilter.LIBRARY,
-                    LibraryFilter.PLAYLISTS,
-                    LibraryFilter.SONGS,
-                    LibraryFilter.ARTISTS,
-                    LibraryFilter.ALBUMS,
-                )
-            }
+            // Per user request (2026-08-29): Spotify and Playlists are no
+            // longer sub-tabs of the Library HorizontalPager — they are
+            // separate NavHost routes (library_spotify_playlists and
+            // library_playlists) that use the standard app-wide slide-in-
+            // from-right transition. The pager now only hosts the LIBRARY
+            // overview + Songs / Artists / Albums sub-tabs. The
+            // showSpotifyPlaylists flag still gates whether the "Spotify"
+            // category row appears on the Library overview (LibraryMixScreen),
+            // but it no longer affects the pager's filter list.
+            listOf(
+                LibraryFilter.LIBRARY,
+                LibraryFilter.SONGS,
+                LibraryFilter.ARTISTS,
+                LibraryFilter.ALBUMS,
+            )
         }
 
     if (showTagsManagementDialog) {
@@ -312,29 +309,13 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
 
-                    LibraryFilter.PLAYLISTS -> {
-                        LibraryPlaylistsScreen(
-                            navController = navController,
-                            filterContent =
-                                if (showTagsInLibrary) {
-                                    {
-                                        PlaylistTagFilterRow(
-                                            tags = allTags,
-                                            selectedTagIds = selectedTagIds,
-                                            onSelectedTagIdsChange = onSelectedTagIdsChange,
-                                            onManageTagsClick = { showTagsManagementDialog = true },
-                                        )
-                                    }
-                                } else {
-                                    null
-                                },
-                            selectedTagIds = activeSelectedTagIds,
-                        )
-                    }
-
-                    LibraryFilter.SPOTIFY -> {
-                        LibrarySpotifyPlaylistsScreen(navController = navController)
-                    }
+                    // LibraryFilter.PLAYLISTS and LibraryFilter.SPOTIFY
+                    // cases were removed per user request (2026-08-29):
+                    // Spotify and Playlists are now separate NavHost routes
+                    // (library_spotify_playlists / library_playlists),
+                    // reachable via navController.navigate(...) from
+                    // LibraryMixScreen's category rows. They no longer
+                    // render as paged children of the Library pager.
 
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
@@ -368,6 +349,56 @@ fun LibraryScreen(navController: NavController) {
                             },
                         )
                     }
+
+                    // LibraryFilter.PLAYLISTS and LibraryFilter.SPOTIFY
+                    // cases were removed per user request (2026-08-29):
+                    // Spotify and Playlists are now separate NavHost routes
+                    // (library_spotify_playlists / library_playlists),
+                    // reachable via navController.navigate(...) from
+                    // LibraryMixScreen's category rows. They no longer
+                    // render as paged children of the Library pager.
+                    //
+                    // The `else ->` branch is required for exhaustiveness
+                    // because the LibraryFilter enum still declares
+                    // PLAYLISTS and SPOTIFY values (they're no longer
+                    // added to [libraryFilters] but the enum entries
+                    // themselves remain defined for backward-compat with
+                    // the ChipSortTypeKey preference — a user may have
+                    // previously set their default Library sub-tab to
+                    // Spotify or Playlists, and `rememberEnumPreference`
+                    // would still deserialize to those values; the
+                    // `libraryFilters.indexOf(targetFilter).takeIf { it
+                    // >= 0 } ?: 0` lookup in `onTabSelected` falls back
+                    // to page 0 in that case). The else branch is a
+                    // safety net — if somehow a PLAYLISTS or SPOTIFY
+                    // value ends up in the pager, it renders the LIBRARY
+                    // page (page 0) instead of crashing.
+                    else -> {
+                        LibraryMixScreen(
+                            navController = navController,
+                            filterContent =
+                                if (showTagsInLibrary) {
+                                    {
+                                        PlaylistTagFilterRow(
+                                            tags = allTags,
+                                            selectedTagIds = selectedTagIds,
+                                            onSelectedTagIdsChange = onSelectedTagIdsChange,
+                                            onManageTagsClick = { showTagsManagementDialog = true },
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                            selectedTagIds = activeSelectedTagIds,
+                            showSpotify = showSpotifyPlaylists,
+                            onTabSelected = { targetFilter ->
+                                coroutineScope.launch {
+                                    val targetPage = libraryFilters.indexOf(targetFilter)
+                                    pagerState.animateScrollToPage(targetPage.takeIf { it >= 0 } ?: 0)
+                                }
+                            },
+                        )
+                    }
                 }
                 }
             }
@@ -376,7 +407,7 @@ fun LibraryScreen(navController: NavController) {
 }
 
 @Composable
-private fun PlaylistTagFilterRow(
+internal fun PlaylistTagFilterRow(
     tags: List<TagEntity>,
     selectedTagIds: Set<String>,
     onSelectedTagIdsChange: (Set<String>) -> Unit,

@@ -273,7 +273,7 @@ fun AccountSettings(
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

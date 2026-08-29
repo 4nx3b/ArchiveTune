@@ -161,7 +161,7 @@ private fun AboutScreenContent(
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = onNavigateUp,
                             onLongClick = onNavigateHome,

@@ -268,6 +268,34 @@ fun OnlinePlaylistScreen(
         }
     } else if (selection) {
         BackHandler { selection = false }
+    } else {
+        // BackHandler so the predictive back gesture always escapes the
+        // online playlist page. Per user report (2026-08-29): gesture not
+        // working in playlists. The previous implementation called
+        // `navController.navigate("library") {
+        // popUpTo(navController.graph.startDestinationId) ... }` which could
+        // fail silently when `navController.graph` was momentarily null.
+        //
+        // New approach: popBackStack() directly first, fall back to
+        // navigate("library") if no previous entry. Wrapped in try/catch
+        // as defense-in-depth so the gesture NEVER silently fails.
+        BackHandler {
+            try {
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                    }
+                }
+            } catch (_: Exception) {
+                try {
+                    if (!navController.navigateUp()) {
+                        navController.navigate("library") { launchSingleTop = true }
+                    }
+                } catch (_: Exception) {
+                    // Last-resort: let the system handle the back press.
+                }
+            }
+        }
     }
 
     val wrappedSongs =

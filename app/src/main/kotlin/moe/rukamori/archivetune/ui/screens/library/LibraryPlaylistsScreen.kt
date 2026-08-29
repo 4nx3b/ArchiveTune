@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -88,7 +90,9 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
@@ -96,6 +100,7 @@ import moe.rukamori.archivetune.constants.PlaylistSortTypeKey
 import moe.rukamori.archivetune.constants.PlaylistViewTypeKey
 import moe.rukamori.archivetune.constants.LibraryViewType
 import moe.rukamori.archivetune.constants.PureBlackKey
+import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.extensions.move
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -104,11 +109,19 @@ import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.CreatePlaylistDialog
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.TagsManagementDialog
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LibraryPlaylistsViewModel
@@ -119,8 +132,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun LibraryPlaylistsScreen(
     navController: NavController,
-    filterContent: (@Composable () -> Unit)?,
-    selectedTagIds: Set<String>,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -129,6 +140,76 @@ fun LibraryPlaylistsScreen(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current
     val haptic = LocalHapticFeedback.current
+
+    // Per user request (2026-08-29): Spotify and Playlists were previously
+    // sub-tabs of the Library HorizontalPager. The pager slide animation
+    // felt different from the standard app-wide slide-in-from-right page
+    // transition. Moving both out of the pager into their own NavHost
+    // routes makes them ordinary pages — they use the same default
+    // slide-in-from-right transition as every other page.
+    //
+    // As a consequence, the screen now owns its own tag-filter state
+    // (previously constructed by the parent LibraryScreen and passed
+    // in via the `filterContent` and `selectedTagIds` params). The
+    // `rememberPlaylistTagFilterState` helper lives in the same package
+    // and is self-contained, so the screen constructs it locally.
+    val (selectedTagIds, onSelectedTagIdsChange) = rememberPlaylistTagFilterState(database)
+    val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
+    val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
+    val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
+    var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Per user request (2026-08-29): "The liquid glass navigation buttons
+    // is not in liquid glass in playlist and Spotify page. Its just
+    // frosted. Use the exact same logic from playlist page for liquid
+    // glass buttons on the header".
+    //
+    // The playlist detail page (LocalPlaylistScreen) uses
+    // `LiquidGlassActionPill(backdrop = artworkBackdrop, interactive =
+    // true, ...) { back arrow + title text }` as the persistent top-start
+    // header, with `Modifier.layerBackdrop(artworkBackdrop)` applied to
+    // the scrolling LazyColumn to record the content the pill samples
+    // from. Mirroring that pattern here gives the Playlists Library page
+    // the same liquid glass header the user explicitly asked for.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
+
+    // Stable system-bars top inset so the header pill stays
+    // anchored below the status bar even when the bar is transiently
+    // hidden. Matches the pattern used in LocalPlaylistScreen.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    // BackHandler so the predictive back gesture always escapes the
+    // Playlists Library page. Per user report (2026-08-29). Same pattern
+    // as LocalPlaylistScreen.kt — popBackStack first, fall back to
+    // navigateUp, then navigate("library") so the gesture NEVER
+    // silently fails.
+    BackHandler {
+        try {
+            if (!navController.popBackStack()) {
+                navController.navigate("library") { launchSingleTop = true }
+            }
+        } catch (_: Exception) {
+            try {
+                if (!navController.navigateUp()) {
+                    navController.navigate("library") { launchSingleTop = true }
+                }
+            } catch (_: Exception) {
+                // Last-resort: let the system handle the back press
+            }
+        }
+    }
+
+    if (showTagsManagementDialog) {
+        TagsManagementDialog(
+            onDismiss = { showTagsManagementDialog = false },
+        )
+    }
 
     val (sortType, onSortTypeChange) =
         rememberEnumPreference(
@@ -214,19 +295,40 @@ fun LibraryPlaylistsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    ExpressivePullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = { viewModel.sync() },
-        modifier = Modifier.fillMaxSize(),
-        indicatorOffset = LibraryPullToRefreshIndicatorOffset,
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(top = LibraryHeaderContentPadding),
+    // Wrap the PullToRefreshBox in a Box so we can overlay the
+    // persistent header pill at top-start as a sibling (the kyant
+    // liquid glass backdrop sampler must be a SIBLING of the layer
+    // source — never a child — see LiquidGlass.kt KDoc).
+    Box(modifier = Modifier.fillMaxSize()) {
+        ExpressivePullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.sync() },
+            modifier = Modifier.fillMaxSize(),
+            indicatorOffset = LibraryPullToRefreshIndicatorOffset,
         ) {
-            // Control row (Sort dropdown, grid/list layout toggle, + add button)
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Record the scrolling content into the screen-local
+                        // backdrop so the persistent LiquidGlassActionPill
+                        // at top-start can sample it for the blur effect.
+                        // Gated on `layerBackdropActive` (Liquid Glass master
+                        // toggle on + Android 12+ + no full-screen lyrics
+                        // overlay) to match the playlist-detail-screen
+                        // pattern in LocalPlaylistScreen.kt.
+                        .then(
+                            if (layerBackdropActive) {
+                                Modifier.layerBackdrop(artworkBackdrop)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        // Pad the top so the first Control Row doesn't
+                        // sit underneath the header pill overlay.
+                        .padding(top = systemBarsTopPadding + 64.dp),
+            ) {
+                // Control row (Sort dropdown, grid/list layout toggle, + add button)
             Row(
                 modifier =
                     Modifier
@@ -424,9 +526,17 @@ fun LibraryPlaylistsScreen(
                 }
             }
 
-            val playlistTagFilterContent = filterContent
-            if (playlistTagFilterContent != null) {
-                playlistTagFilterContent()
+            // Tag filter row — previously passed in as a `filterContent`
+            // lambda from the parent LibraryScreen. Since this screen is
+            // now its own NavHost route, the row is constructed locally
+            // using the same tag-filter state the screen owns above.
+            if (showTagsInLibrary) {
+                PlaylistTagFilterRow(
+                    tags = allTags,
+                    selectedTagIds = selectedTagIds,
+                    onSelectedTagIdsChange = onSelectedTagIdsChange,
+                    onManageTagsClick = { showTagsManagementDialog = true },
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -542,6 +652,88 @@ fun LibraryPlaylistsScreen(
                         }
                     }
                 }
+            }
+        }
+        }
+
+        // Persistent header pill at top-start. Mirrors the playlist-detail
+        // page layout: `LiquidGlassActionPill(backdrop = artworkBackdrop,
+        // interactive = true, ...) { back arrow + sub-tab title text }`
+        // when liquid glass is active, falling back to `FrostedHeaderPill`
+        // (no backdrop) when the master toggle is off or the platform
+        // doesn't support the kyant RuntimeShader.
+        //
+        // Per user request (2026-08-29): "Use the exact same logic from
+        // playlist page for liquid glass buttons on the header" — the
+        // LiquidGlassActionPill + layerBackdrop combo is the exact pattern
+        // used in LocalPlaylistScreen.kt for the persistent back pill.
+        if (layerBackdropActive) {
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                interactive = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        if (!navController.navigateUp()) {
+                            navController.navigate("library") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onLongClick = { navController.backToMain() },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                        tint = Color.White,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.playlists),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
+        } else {
+            FrostedHeaderPill(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        if (!navController.navigateUp()) {
+                            navController.navigate("library") {
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onLongClick = { navController.backToMain() },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.playlists),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
             }
         }
     }

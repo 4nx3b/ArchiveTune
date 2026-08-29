@@ -1011,7 +1011,7 @@ fun PalettePickerScreen(navController: NavController) {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
@@ -1212,7 +1212,7 @@ fun ThemeCreatorScreen(navController: NavController) {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,

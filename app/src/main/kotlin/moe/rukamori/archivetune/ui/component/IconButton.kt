@@ -72,13 +72,44 @@ fun IconButton(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable () -> Unit,
 ) {
+    // When rendered inside a `plain = true` FrostedHeaderPill (Settings +
+    // submenus), force the `containerColor` to transparent so no circular
+    // background is drawn behind the icon. The user explicitly requested
+    // (2026-08-29): "There's still frosted header pills in settings and
+    // it's submenus. Remove it." — the plain FrostedHeaderPill path
+    // doesn't draw its own Surface/clip/border, but without this override
+    // the IconButton's own CircleShape-clipped `containerColor` would
+    // still render as a circular "pill" behind the back arrow.
+    //
+    // We always override in the plain-header context regardless of
+    // whether the caller passed explicit `colors`. Settings callers don't
+    // typically pass explicit colors, and the user wants ALL glass removed
+    // from settings — so transparent is always correct there.
+    //
+    // Note: IconButtonDefaults.iconButtonColors() is @Composable (it reads
+    // MaterialTheme.colorScheme), so we cannot wrap the call in
+    // `remember { ... }` (remember's calculation lambda is annotated
+    // @DisallowComposableCalls). Calling it directly in the @Composable
+    // function body is fine and Material3 caches the result internally.
+    val isPlainHeader = LocalPlainHeaderPill.current
+    val effectiveColors =
+        if (isPlainHeader) {
+            IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Transparent,
+                contentColor = colors.contentColor,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = colors.disabledContentColor,
+            )
+        } else {
+            colors
+        }
     Box(
         modifier =
             modifier
                 .minimumInteractiveComponentSize()
                 .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 .clip(CircleShape)
-                .background(color = colors.containerColor)
+                .background(color = effectiveColors.containerColor)
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -93,7 +124,7 @@ fun IconButton(
                 ),
         contentAlignment = Alignment.Center,
     ) {
-        val contentColor = colors.contentColor
+        val contentColor = effectiveColors.contentColor
         CompositionLocalProvider(LocalContentColor provides contentColor, content = content)
     }
 }

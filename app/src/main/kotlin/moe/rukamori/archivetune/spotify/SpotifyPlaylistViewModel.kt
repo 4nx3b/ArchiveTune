@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
@@ -74,17 +75,32 @@ class SpotifyPlaylistViewModel
             }
             reloadJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
+                    // Network-call timeout: previously a hung HTTP request
+                    // (e.g. user's Spotify session silently expired and the
+                    // token refresh endpoint is unreachable) would leave
+                    // `isLoading = true` forever, trapping the user on the
+                    // page with no way to know what went wrong. The 20s
+                    // ceiling matches typical mobile network tolerances —
+                    // long enough for a slow cell connection, short enough
+                    // that the user sees a recoverable error state instead
+                    // of an infinite spinner. On timeout we surface a
+                    // user-facing error message so the page renders the
+                    // "tap to retry" CTA via the existing errorMessage UI.
                     val (playlist, tracks) =
-                        if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
-                            val likedTracks = repository.likedSongs()
-                            SpotifyPlaylist(
-                                id = playlistId,
-                                name = context.getString(R.string.liked_songs),
-                                tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
-                            ) to likedTracks
-                        } else {
-                            repository.playlist(playlistId) to repository.playlistTracks(playlistId)
-                        }
+                        withTimeoutOrNull(PLAYLIST_LOAD_TIMEOUT_MS) {
+                            if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
+                                val likedTracks = repository.likedSongs()
+                                SpotifyPlaylist(
+                                    id = playlistId,
+                                    name = context.getString(R.string.liked_songs),
+                                    tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
+                                ) to likedTracks
+                            } else {
+                                repository.playlist(playlistId) to repository.playlistTracks(playlistId)
+                            }
+                        } ?: throw java.util.concurrent.TimeoutException(
+                            context.getString(R.string.spotify_load_timeout),
+                        )
                     _uiState.value =
                         SpotifyPlaylistUiState(
                             playlist = playlist,
@@ -98,7 +114,7 @@ class SpotifyPlaylistViewModel
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = error.message,
+                            errorMessage = error.message ?: context.getString(R.string.spotify_load_failed),
                         )
                     }
                 }
@@ -139,6 +155,13 @@ class SpotifyPlaylistViewModel
                         eventChannel.send(SpotifyPlaylistEvent.DownloadResolutionFailed)
                     }
                 }
+        }
+
+        companion object {
+            // 20s ceiling for the playlist + tracks fetch. Long enough for
+            // a slow cell connection, short enough that the user sees a
+            // recoverable error state instead of an infinite spinner.
+            private const val PLAYLIST_LOAD_TIMEOUT_MS = 20_000L
         }
     }
 

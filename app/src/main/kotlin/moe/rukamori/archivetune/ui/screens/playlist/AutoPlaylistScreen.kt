@@ -195,20 +195,25 @@ fun AutoPlaylistScreen(
             wrappedSongs.forEach { it.isSelected = false }
         }
     } else {
-        // Explicit BackHandler so the predictive back gesture lands on the
-        // Library tab when the previous back-stack entry is not a main
-        // screen (e.g. when the user entered this screen directly via a
-        // deep link from Home). Calling [navigateUp] first preserves the
-        // natural back stack; if that returns false (no previous entry to
-        // pop), we explicitly navigate to the Library tab so the user
-        // always lands somewhere meaningful instead of being dropped on
-        // Home. Matches the LocalPlaylistScreen / SpotifyPlaylistScreen
-        // pattern.
+        // BackHandler so the predictive back gesture always escapes the
+        // auto playlist page. Per user report (2026-08-29): gesture not
+        // working in playlists. New approach: popBackStack() directly
+        // first, fall back to navigate("library") if no previous entry.
+        // Wrapped in try/catch as defense-in-depth.
         BackHandler {
-            if (!navController.navigateUp()) {
-                navController.navigate("library") {
-                    launchSingleTop = true
-                    restoreState = true
+            try {
+                if (!navController.popBackStack()) {
+                    navController.navigate("library") {
+                        launchSingleTop = true
+                    }
+                }
+            } catch (_: Exception) {
+                try {
+                    if (!navController.navigateUp()) {
+                        navController.navigate("library") { launchSingleTop = true }
+                    }
+                } catch (_: Exception) {
+                    // Last-resort: let the system handle the back press.
                 }
             }
         }
