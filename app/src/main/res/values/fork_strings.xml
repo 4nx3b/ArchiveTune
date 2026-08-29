@@ -57,11 +57,6 @@
     <string name="translate_mode_romanize">Romanize (transliterate to Latin)</string>
 
     <!-- Update info dialog (ported from vivi-music under GPL-3.0). -->
-    <string name="update_info_badge">Update info</string>
-    <string name="update_info_title">Downloaded updates</string>
-    <string name="clear_downloaded_updates_auto_info">Downloaded update APKs are cleared automatically after a successful install. You can also delete them manually from storage settings.</string>
-    <string name="manual_delete_hint_title">Manual delete</string>
-    <string name="manual_delete_hint_desc">If an update download was interrupted, the partial file lives in cache/app_update and is safe to delete.</string>
 
     <!-- Minimal Home Mode (AppearanceSettings.kt + HomeScreen.kt).
          When enabled, the Home feed collapses to a focused subset:

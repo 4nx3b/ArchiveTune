@@ -1978,11 +1978,12 @@ fun VideoArtworkSurface(
     // screen — the explicit surface wiring raced with the PlayerView's own
     // internal surface lifecycle and the codec never attached. We reverted
     // to Media3's ContentFrame composable with SURFACE_TYPE_TEXTURE_VIEW,
-    // which was the working implementation. The Flow files (VideoSurfacePolicy,
-    // VideoSurfaceManager, the two XML layouts) are kept in the tree for a
-    // future attempt — the PlaceholderSurface codec-preservation insight is
-    // sound; the wiring just needs more careful integration with the
-    // VideoArtworkState's existing Player.Listener + kickRenderer paths.
+    // which was the working implementation. The Flow files
+    // (VideoSurfacePolicy, VideoSurfaceManager) were removed from the tree as
+    // dead code — the PlaceholderSurface codec-preservation insight may be
+    // sound, but the wiring would need careful integration with the
+    // VideoArtworkState's existing Player.Listener + kickRenderer paths if
+    // revived.
     Box(modifier = modifier) {
         // ── Ambient mode background ──
         // Render a slowly drifting, blurred copy of the song thumbnail
