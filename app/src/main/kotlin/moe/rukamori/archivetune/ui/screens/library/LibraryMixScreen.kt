@@ -320,7 +320,7 @@ fun LibraryMixScreen(
                         hideTop50 = hideTop50Card,
                         onPlaylistsClick = { navController.navigate("library_playlists") },
                         onSpotifyClick = { navController.navigate("library_spotify_playlists") },
-                        onArtistsClick = { onTabSelected(LibraryFilter.ARTISTS) },
+                        onArtistsClick = { navController.navigate("library_artists") },
                         onFavoritesClick = { navController.navigate("auto_playlist/liked") },
                         onOfflineClick = { navController.navigate("auto_playlist/downloaded") },
                         onCachedClick = { navController.navigate("cache_playlist/cached") },

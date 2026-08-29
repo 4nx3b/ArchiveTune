@@ -504,25 +504,15 @@ object LyricsUtils {
             return false
         }
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
-        // When the target is English (or unset, which defaults to English), we also
-        // trigger on non-ASCII Latin letters (á, é, í, ó, ú, ñ, ü, ç, etc.) so that
-        // Spanish/French/German/Portuguese/Italian lyrics auto-translate to English.
-        // Without this, Latin-to-English pairs never fire because both share the
-        // Latin script. For non-English Latin targets (e.g. Spanish→French), we
-        // skip this heuristic to avoid wasteful same-script translations.
-        val targetIsEnglish = isEnglishTarget(targetLanguage)
+        // Automatic translation is intentionally script-based. Latin-script lyrics,
+        // including transliterated Hindi or extended-Latin spelling, must remain
+        // untouched: their language cannot be inferred reliably from characters.
+        // Users can still translate them explicitly from the lyrics menu.
         return lyrics.asSequence().any { char ->
-            if (!char.isLetter()) return@any false
-            val script = UnicodeScript.of(char.code)
-            script !in allowedScripts ||
-                (targetIsEnglish && script == UnicodeScript.LATIN && char.code > 127)
+            char.isLetter() && UnicodeScript.of(char.code) !in allowedScripts
         }
     }
 
-    private fun isEnglishTarget(language: String): Boolean {
-        val normalized = language.trim().lowercase().replace('_', '-').substringBefore('-')
-        return normalized.isEmpty() || normalized == "english" || normalized == "en"
-    }
 
     /**
      * Returns the uppercase language code (e.g. "JAPANESE", "KOREAN", "CHINESE", "HINDI",
