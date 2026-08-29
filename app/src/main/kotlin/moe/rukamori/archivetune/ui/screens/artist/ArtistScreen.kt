@@ -16,6 +16,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -132,6 +133,7 @@ import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
@@ -202,8 +204,48 @@ fun ArtistScreen(
     // `layerBackdropActive`) so the visual structure is preserved when lyrics
     // closes — the pills simply re-appear.
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
+    // Defer the layerBackdrop activation for ~500ms after first composition so
+    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
+    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
+    // Per user report (2026-08-29): "Whenever I open a page the transition/page
+    // switch animation lags a lot. this only happens in the pages that has
+    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
+    // backdrop, no per-frame recording) until the screen has settled, then swap
+    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
+    // NOT removed — only delayed.
+    val screenSettled = rememberLayerBackdropSettled()
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
+
+    // Per user report (2026-08-29): "Opening Artist page also feels too
+    // fast. Apply the exact same logic you did for Spotify and playlist
+    // pages." The Spotify/Playlists/Playlist-detail fix in batches 4-5
+    // included a BackHandler with popBackStack-first fallback so the
+    // predictive back gesture never silently fails. ArtistScreen was
+    // missing this — the system default back behavior worked but could
+    // land the user on Home instead of the previous screen when the
+    // navController was momentarily null during fast back-to-back
+    // navigation. Mirroring the playlist-screen pattern: popBackStack()
+    // first, fall back to navigateUp(), then navigate("library") so the
+    // gesture NEVER silently fails. Wrapped in try/catch so unexpected
+    // IllegalArgumentException / IllegalStateException from the
+    // NavController doesn't break the gesture.
+    BackHandler {
+        try {
+            if (!navController.popBackStack()) {
+                navController.navigate("library") { launchSingleTop = true }
+            }
+        } catch (_: Exception) {
+            try {
+                if (!navController.navigateUp()) {
+                    navController.navigate("library") { launchSingleTop = true }
+                }
+            } catch (_: Exception) {
+                // Last-resort: let the system handle the back press
+            }
+        }
+    }
+
     val artistPage =
         remember(loadedArtistPage, isArtistBlocked) {
             if (isArtistBlocked) {
