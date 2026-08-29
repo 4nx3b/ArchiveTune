@@ -348,7 +348,7 @@ fun LibraryPlaylistsScreen(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 ) {
                     Text(
-                        text = "LIST",
+                        text = "PLAYLISTS",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
