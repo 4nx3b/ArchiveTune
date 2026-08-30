@@ -45,13 +45,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -1343,13 +1342,6 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    fun getBottomNavPadding(): Dp =
-                        if (shouldShowNavigationBar && !useRail) {
-                            NavigationBarHeight
-                        } else {
-                            0.dp
-                        }
-
                     // FLOATING detaches the bar into a pill: bigger bottom margin, tighter width.
                     // Every consumer below (collapsed player anchor, slide distance, insets, FAB
                     // padding) derives from these two values so the styles stay in sync.
@@ -1365,6 +1357,13 @@ class MainActivity : ComponentActivity() {
                     val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+
+                    fun getBottomNavPadding(): Dp =
+                        if (shouldShowNavigationBar && !useRail) {
+                            NavigationBarHeight
+                        } else {
+                            0.dp
+                        }
 
                     // Frosted backdrop (nav bar + mini player + tablet rail): allocated whenever
                     // any frosted surface can run (RenderEffect available). The bottom toolbar and
@@ -1717,33 +1716,44 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
-                    val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
-                        if (isSelected) {
-                            if (screen == Screens.Search) {
-                                openSearch()
-                                coroutineScope.launch { searchScrollBehavior.state.resetHeightOffset() }
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                                when (screen) {
-                                    Screens.Home -> {
-                                        coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
-                                    }
+                    // Per audit (2026-08-30): wrap in remember(...) so the lambda
+                    // identity stays stable across recompositions. Previously the
+                    // lambda was re-allocated every recomposition of MainActivity's
+                    // setContent body, which cascaded to FloatingNavigationToolbar's
+                    // `remember(screen, selected, onItemClick, onDoubleClick) { ... }`
+                    // cache — re-allocating the per-tab click-handler body on every
+                    // recomposition. With ~5 tabs × heavy scroll-driven recompositions,
+                    // this was hundreds of lambda allocations per second.
+                    val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit =
+                        remember(coroutineScope, navController, openSearch, searchScrollBehavior, homeScrollBehavior) {
+                            { screen, isSelected ->
+                                if (isSelected) {
+                                    if (screen == Screens.Search) {
+                                        openSearch()
+                                        coroutineScope.launch { searchScrollBehavior.state.resetHeightOffset() }
+                                    } else {
+                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                        when (screen) {
+                                            Screens.Home -> {
+                                                coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
+                                            }
 
-                                    else -> {}
-                                }
-                            }
-                        } else {
-                            if (navController.currentDestination?.route != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
+                                            else -> {}
+                                        }
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                } else {
+                                    if (navController.currentDestination?.route != screen.route) {
+                                        navController.navigate(screen.route) {
+                                            popUpTo(navController.graph.startDestinationId) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
                     LaunchedEffect(currentRoute) {
                         when (currentRoute) {
@@ -2099,7 +2109,12 @@ class MainActivity : ComponentActivity() {
                                     val canRailLiquidGlass =
                                         liquidGlassEnabled && liquidGlassNavBarEnabled &&
                                             liquidGlassBackdrop != null && !isPreS
-                                    var railPositionInRoot by remember {
+                                    // Per audit (2026-08-30): a plain `var railPositionInRoot by remember { mutableStateOf(Offset.Zero) }`
+                                    // delegate accessor is fine for state reads but every
+                                    // recomposition re-allocated the inline lambda body.
+                                    // Hold the State in a local so the hoisted lambda can
+                                    // capture it stably and still see updates via State.value.
+                                    val railPositionState = remember {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railContainerColor =
@@ -2123,9 +2138,21 @@ class MainActivity : ComponentActivity() {
                                         modifier =
                                             Modifier
                                                 .fillMaxHeight()
-                                                .onGloballyPositioned { coordinates ->
-                                                    railPositionInRoot = coordinates.positionInRoot()
-                                                },
+                                                // Per audit (2026-08-30): the inline lambda
+                                                // was re-allocated on every recomposition of
+                                                // the rail Box. `remember(-1)` returns the
+                                                // same lambda instance across recompositions,
+                                                // and reading railPositionState.value inside
+                                                // picks up the latest mutableState setter
+                                                // without re-allocating the lambda.
+                                                .onGloballyPositioned(
+                                                    remember(railPositionState) {
+                                                        { coordinates ->
+                                                            railPositionState.value =
+                                                                coordinates.positionInRoot()
+                                                        }
+                                                    },
+                                                ),
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
                                             val overlayAlpha =
@@ -2146,7 +2173,7 @@ class MainActivity : ComponentActivity() {
                                                         }.drawBehind {
                                                             val offset =
                                                                 navBarFrostedBackdrop.contentOffsetInRoot -
-                                                                    railPositionInRoot
+                                                                    railPositionState.value
                                                             translate(offset.x, offset.y) {
                                                                 drawLayer(navBarFrostedBackdrop.layer)
                                                             }
@@ -2201,18 +2228,31 @@ class MainActivity : ComponentActivity() {
                                             // refraction / lens effects from the bottom toolbar
                                             // require per-item geometry that doesn't translate to
                                             // the rail's vertical layout.
+                                            //
+                                            // Per audit (2026-08-30): the drawBackdrop chain was
+                                            // inline, so every recomposition of the rail Box
+                                            // re-allocated the entire kyant effects stack and
+                                            // re-installed the RuntimeShader on the GraphicsLayer.
+                                            // Wrap in remember(...) keyed on (backdrop) so the
+                                            // chain is built once and reused across recompositions.
                                             Box(
                                                 modifier =
                                                     Modifier
                                                         .matchParentSize()
-                                                        .drawBackdrop(
-                                                            backdrop = liquidGlassBackdrop,
-                                                            effects = {
-                                                                vibrancy()
-                                                                blur(4f.dp.toPx())
+                                                        .then(
+                                                            remember(liquidGlassBackdrop) {
+                                                                Modifier.drawBackdrop(
+                                                                    backdrop = liquidGlassBackdrop,
+                                                                    effects = {
+                                                                        vibrancy()
+                                                                        blur(4f.dp.toPx())
+                                                                    },
+                                                                    onDrawBackdrop = { drawBackdrop ->
+                                                                        drawBackdrop()
+                                                                    },
+                                                                    shape = { RectangleShape },
+                                                                )
                                                             },
-                                                            onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                                                            shape = { RectangleShape },
                                                         ),
                                             )
                                         }
@@ -2264,46 +2304,55 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .onSizeChanged { size ->
                                                         if (size.height > 0) headerHeightPx = size.height
-                                                    }.offset {
-                                                        IntOffset(
-                                                            x = 0,
-                                                            y =
-                                                                if (isLibraryRoute) {
-                                                                    0
-                                                                } else {
-                                                                    currentScrollBehavior.state.heightOffset
-                                                                        .roundToInt()
-                                                                },
-                                                        )
+                                                    }
+                                                    // Per audit (2026-08-30): the inline
+                                                    // `Modifier.offset { IntOffset(...) }` ran
+                                                    // in the LAYOUT phase on every scroll frame
+                                                    // and invalidated the top-app-bar subtree
+                                                    // for re-layout. Folding the Y translation
+                                                    // into `graphicsLayer` moves the work to
+                                                    // the DRAW phase; the layout pass stays
+                                                    // cached while the user scrolls.
+                                                    .graphicsLayer {
+                                                        translationY =
+                                                            if (isLibraryRoute) {
+                                                                0f
+                                                            } else {
+                                                                currentScrollBehavior.state.heightOffset
+                                                            }
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
                                                 Box(
-                                                    modifier =
-                                                        Modifier
-                                                            .offset {
-                                                                if (isLibraryRoute) {
-                                                                    IntOffset(x = 0, y = 0)
-                                                                } else {
-                                                                    val raw = currentScrollBehavior.state.heightOffset
-                                                                    val clamped = raw.coerceAtLeast(-appBarHeightPx)
-                                                                    IntOffset(x = 0, y = (clamped - raw).roundToInt())
-                                                                }
-                                                            }.fillMaxWidth()
-                                                            .height(
-                                                                AppBarHeight + effectiveStatusBarTop,
-                                                            ).background(
-                                                                Brush.verticalGradient(
-                                                                    colors =
-                                                                        listOf(
-                                                                            surfaceColor.copy(alpha = 0.95f),
-                                                                            surfaceColor.copy(alpha = 0.85f),
-                                                                            surfaceColor.copy(alpha = 0.6f),
-                                                                            Color.Transparent,
-                                                                        ),
+modifier =
+                                                            Modifier
+                                                                // Per audit (2026-08-30): same
+                                                                // layout-phase offset → draw-phase
+                                                                // graphicsLayer conversion as the
+                                                                // outer Box above. This is the
+                                                                // blur background overlay under
+                                                                // the top app bar.
+                                                                .graphicsLayer {
+                                                                    if (!isLibraryRoute) {
+                                                                        val raw = currentScrollBehavior.state.heightOffset
+                                                                        val clamped = raw.coerceAtLeast(-appBarHeightPx)
+                                                                        translationY = clamped - raw
+                                                                    }
+                                                                }.fillMaxWidth()
+                                                                .height(
+                                                                    AppBarHeight + effectiveStatusBarTop,
+                                                                ).background(
+                                                                    Brush.verticalGradient(
+                                                                        colors =
+                                                                            listOf(
+                                                                                surfaceColor.copy(alpha = 0.95f),
+                                                                                surfaceColor.copy(alpha = 0.85f),
+                                                                                surfaceColor.copy(alpha = 0.6f),
+                                                                                Color.Transparent,
+                                                                            ),
+                                                                    ),
                                                                 ),
-                                                            ),
                                                 )
                                             }
 
@@ -2792,64 +2841,52 @@ class MainActivity : ComponentActivity() {
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
-                                        // Per user report (2026-08-29): "switching from a
-                                        // page with liquid glass elements to other page which
-                                        // has liquid glass elements make the app lag way too
-                                        // much. Fix it without removing or sacrificing anything.
-                                        // The lag is the most intense when the mini player is
-                                        // visible."
-                                        //
-                                        // The previous implementation used `Modifier.offset {
-                                        // IntOffset(0, y) }` which runs in the LAYOUT phase:
-                                        // every spring frame (from `bottomNavigationBarHeight`
-                                        // animating between 0 and navVisibleHeight when the
-                                        // mini player docks/undocks) AND every sheet-drag
-                                        // frame (from `playerBottomSheetState.progress`
-                                        // updating continuously) re-laid-out the entire
-                                        // FloatingNavigationToolbar subtree. That re-layout
-                                        // cascaded to every `onGloballyPositioned` callback
-                                        // inside the toolbar (containerPos, barPositionInRoot,
-                                        // selectedCenter), which in turn re-positioned the
-                                        // kyant `drawBackdrop` shaders under the nav bar AND
-                                        // invalidated the app-wide
-                                        // `Modifier.layerBackdrop(liquidGlassBackdrop)`
-                                        // recording on the NavHost root — compounding into
-                                        // severe frame drops.
-                                        //
-                                        // Switching to `Modifier.graphicsLayer {
-                                        // translationY = y }` runs in the DRAW phase only:
-                                        // children's layout coordinates stay stable across
-                                        // spring frames, so onGloballyPositioned callbacks
-                                        // don't fire and the kyant shader chain doesn't have
-                                        // to re-compute its sample coordinates every frame.
-                                        // The visual is identical (the bar still slides
-                                        // down/out when the mini player appears and the bar
-                                        // collapses) — only the invalidation pattern changes.
+                                        // Restored to the original layout-phase offset (per
+                                        // user report 2026-08-30: "i somehow messed up liquid
+                                        // glass navigation bar. Restore it to how it used to be
+                                        // before"). The previous batch-8 attempt to switch to
+                                        // `Modifier.graphicsLayer { translationY = y }` (draw
+                                        // phase) caused the nav bar to render ON TOP of the
+                                        // mini-player because the wrapper Box's layout space
+                                        // stayed claimed at BottomCenter even when translated
+                                        // off-screen — the mini-player's collapsed sheet anchor
+                                        // couldn't "see" the nav bar's actual layout position,
+                                        // so they ended up stacked at the same BottomCenter.
+                                        // Reverting to `Modifier.offset { IntOffset(0, y) }`
+                                        // restores the layout-aware slide: when the bar
+                                        // translates down, its layout position changes too, so
+                                        // the parent (bottomBar Box) and the BottomSheetPlayer
+                                        // can correctly react.
                                         Box(
                                             modifier =
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    .graphicsLayer {
-                                                        translationY =
-                                                            if (bottomNavigationBarHeight == 0.dp) {
-                                                                navSlideDistance.toPx()
-                                                            } else {
-                                                                val slideOffset =
-                                                                    navSlideDistance.toPx() *
-                                                                        playerBottomSheetState.progress.coerceIn(
-                                                                            0f,
-                                                                            1f,
-                                                                        )
-                                                                val hideOffset =
-                                                                    navSlideDistance.toPx() *
-                                                                        (
-                                                                            1 -
-                                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
-                                                                                navVisibleHeight
-                                                                        )
-                                                                slideOffset + hideOffset
-                                                            }
+                                                    .offset {
+                                                        if (bottomNavigationBarHeight == 0.dp) {
+                                                            IntOffset(
+                                                                x = 0,
+                                                                y = navSlideDistance.roundToPx(),
+                                                            )
+                                                        } else {
+                                                            val slideOffset =
+                                                                navSlideDistance *
+                                                                    playerBottomSheetState.progress.coerceIn(
+                                                                        0f,
+                                                                        1f,
+                                                                    )
+                                                            val hideOffset =
+                                                                navSlideDistance *
+                                                                    (
+                                                                        1 -
+                                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                            navVisibleHeight
+                                                                    )
+                                                            IntOffset(
+                                                                x = 0,
+                                                                y = (slideOffset + hideOffset).roundToPx(),
+                                                            )
+                                                        }
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
@@ -2874,13 +2911,19 @@ class MainActivity : ComponentActivity() {
                                                     navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
                                                         true
                                                 },
-                                                onItemClick = { screen, isSelected ->
-                                                    handlePrimaryNavigationClick(screen, isSelected)
-                                                },
-                                                onSearchItemDoubleClick = {
-                                                    searchSource = SearchSource.ONLINE
-                                                    openSearch()
-                                                },
+                                                // Per audit (2026-08-30): pass the stable
+                                                // handlePrimaryNavigationClick directly (no
+                                                // wrapping lambda) so FloatingNavigationToolbar's
+                                                // `remember(screen, selected, onItemClick, ...)`
+                                                // cache key stays stable across recompositions.
+                                                onItemClick = handlePrimaryNavigationClick,
+                                                onSearchItemDoubleClick =
+                                                    remember(openSearch) {
+                                                        {
+                                                            searchSource = SearchSource.ONLINE
+                                                            openSearch()
+                                                        }
+                                                    },
                                             )
                                         }
                                     }
@@ -2932,17 +2975,40 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Material "fade through" for bottom-nav switches: the
-                                            // incoming screen fades in slightly delayed while gently
-                                            // scaling up from 92%, so Home↔Search↔Library feels animated
-                                            // instead of an imperceptible straight crossfade.
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            // Fluid Material-style fade-through for bottom-nav
+                                            // switches. The outgoing page is still partly visible
+                                            // (~50% alpha) when the incoming page starts to fade
+                                            // in — the two animations overlap continuously so
+                                            // there's no visible "gap" between the two screens,
+                                            // which is what makes a transition feel abrupt.
+                                            // - exit: 220ms LinearOutSlowInEasing — gentle,
+                                            //   decelerating fade-out (no scale; the outgoing
+                                            //   page is just dissolving away).
+                                            // - enter: 260ms FastOutSlowInEasing with 60ms
+                                            //   delay, scaled up from 0.94→1.0 — the small
+                                            //   delay lets the outgoing page establish before
+                                            //   the incoming settles in, and the cubic-bezier
+                                            //   easing keeps both motions buttery.
+                                            // - The window where exit+enter overlap (~160ms) is
+                                            //   a real per-frame GPU cost (the NavHost content
+                                            //   is animating), but the overlap is short enough
+                                            //   and the per-frame work cheap enough (just two
+                                            //   opacity tweens + one scale tween) that it's well
+                                            //   under one frame's worth of work.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { it / 2 }
+                                            // Detail route (e.g. tapping a song → album screen).
+                                            // Same fluid fade-through as bottom-nav so the whole
+                                            // app has a single, consistent motion language.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     exitTransition = {
@@ -2951,9 +3017,9 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
@@ -2965,13 +3031,17 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     popExitTransition = {
@@ -2983,9 +3053,9 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     modifier =
@@ -3004,10 +3074,20 @@ class MainActivity : ComponentActivity() {
                                                 // layer each frame so the bar can draw it blurred.
                                                 if (navBarFrostedBackdrop != null) {
                                                     Modifier
-                                                        .onGloballyPositioned { coordinates ->
-                                                            navBarFrostedBackdrop.contentOffsetInRoot =
-                                                                coordinates.positionInRoot()
-                                                        }.drawWithContent {
+                                                        // Per audit (2026-08-30): memoize the
+                                                        // lambda so OnGloballyPositionedElement
+                                                        // equals() returns true across recompositions.
+                                                        // navBarFrostedBackdrop is a stable `remember`
+                                                        // instance (allocated once in MainActivity:1435),
+                                                        // so we can safely key on it.
+                                                        .onGloballyPositioned(
+                                                            remember(navBarFrostedBackdrop) {
+                                                                { coordinates ->
+                                                                    navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                        coordinates.positionInRoot()
+                                                                }
+                                                            },
+                                                        ).drawWithContent {
                                                             navBarFrostedBackdrop.layer.record {
                                                                 this@drawWithContent.drawContent()
                                                             }

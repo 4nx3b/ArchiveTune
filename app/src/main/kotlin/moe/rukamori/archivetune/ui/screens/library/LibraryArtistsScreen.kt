@@ -619,7 +619,7 @@ fun LibraryArtistsScreen(
                         contentPadding = PaddingValues(vertical = 4.dp),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        items(artists.take(5)) { artistWrapper ->
+                        items(artists.take(5), key = { it.artist.id }) { artistWrapper ->
                             val artist = artistWrapper.artist
                             Column(
                                 modifier =

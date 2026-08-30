@@ -46,7 +46,6 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -323,7 +322,15 @@ private fun NewMiniPlayer(
                 Modifier
                     .fillMaxWidth()
                     .height(MiniPlayerHeight)
-                    .offset { IntOffset(offsetX.roundToInt(), 0) }
+                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(offsetX.roundToInt(), 0) }`
+                    // ran in the LAYOUT phase on every drag frame of the mini player's
+                    // horizontal-swipe gesture and invalidated the Box's children for
+                    // re-layout each frame. Folding the translation into `graphicsLayer`
+                    // moves the transform to the DRAW phase — the layout pass stays cached
+                    // while the user swipes. No visual change.
+                    .graphicsLayer {
+                        translationX = offsetX
+                    }
                     .clip(miniPlayerShape),
         ) {
             MiniPlayerBackground(
@@ -453,8 +460,13 @@ private fun MiniPlayerBackground(
                 // mini player (not the full screen), captured and blurred every ~80 ms — fast
                 // enough for smooth frosted tracking without tanking pre-S hardware. The blurred
                 // slice is already aligned to the mini player's top-left, so we draw at (0, 0).
-                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
-                var miniPlayerSize by remember { mutableStateOf(IntSize.Zero) }
+                // Per audit (2026-08-30): hoisted to State holders so the
+                // onGloballyPositioned lambda can be memoized on the holder
+                // (stable across recompositions).
+                val positionInRootState = remember { mutableStateOf(Offset.Zero) }
+                val miniPlayerSizeState = remember { mutableStateOf(IntSize.Zero) }
+                val positionInRoot by positionInRootState
+                val miniPlayerSize by miniPlayerSizeState
                 val blurredBitmap = rememberPreSFrostedBitmap(
                     backdrop = backdrop,
                     barPositionInRoot = positionInRoot,
@@ -465,10 +477,17 @@ private fun MiniPlayerBackground(
                 Box(
                     modifier =
                         modifier
-                            .onGloballyPositioned {
-                                positionInRoot = it.positionInRoot()
-                                miniPlayerSize = it.size
-                            }
+                            .onGloballyPositioned(
+                                // Per audit (2026-08-30): memoize the lambda so the
+                                // OnGloballyPositionedElement.equals() returns true
+                                // across recompositions.
+                                remember(positionInRootState, miniPlayerSizeState) {
+                                    { coordinates ->
+                                        positionInRootState.value = coordinates.positionInRoot()
+                                        miniPlayerSizeState.value = coordinates.size
+                                    }
+                                },
+                            )
                             .background(baseColor),
                 ) {
                     if (blurredBitmap != null) {
@@ -486,11 +505,18 @@ private fun MiniPlayerBackground(
                     }
                 }
             } else {
-                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
+                // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
+                // lambda memoization.
+                val positionInRootState = remember { mutableStateOf(Offset.Zero) }
+                val positionInRoot by positionInRootState
                 Box(
                     modifier =
                         modifier
-                            .onGloballyPositioned { positionInRoot = it.positionInRoot() }
+                            .onGloballyPositioned(
+                                remember(positionInRootState) {
+                                    { coordinates -> positionInRootState.value = coordinates.positionInRoot() }
+                                },
+                            )
                             .background(baseColor),
                 ) {
                     Box(
@@ -519,27 +545,35 @@ private fun MiniPlayerBackground(
 
         MiniPlayerBackgroundStyle.GRADIENT -> {
             val colors = requireNotNull(palette)
+            // Per audit (2026-08-30): hoist the Brush.verticalGradient + Color
+            // constants out of the .background() call into `remember(colors)`.
+            // Previously, every recomposition of MiniPlayer (which is on screen
+            // 100% of the time during playback) allocated a new ShaderBrush +
+            // 3 × Color.copy(alpha=...) values + a Color.Black.copy(alpha=...).
+            // The brush is now allocated ONCE per `colors` tuple change.
+            val gradientBrush = remember(colors) {
+                Brush.verticalGradient(
+                    colorStops =
+                        arrayOf(
+                            0f to colors.first.copy(alpha = 0.95f),
+                            0.52f to colors.second.copy(alpha = 0.82f),
+                            1f to colors.third.copy(alpha = 0.72f),
+                        ),
+                )
+            }
+            val overlayColor = remember { Color.Black.copy(alpha = 0.32f) }
             Box(modifier = modifier) {
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colorStops =
-                                        arrayOf(
-                                            0f to colors.first.copy(alpha = 0.95f),
-                                            0.52f to colors.second.copy(alpha = 0.82f),
-                                            1f to colors.third.copy(alpha = 0.72f),
-                                        ),
-                                ),
-                            ),
+                            .background(gradientBrush),
                 )
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.32f)),
+                            .background(overlayColor),
                 )
             }
         }

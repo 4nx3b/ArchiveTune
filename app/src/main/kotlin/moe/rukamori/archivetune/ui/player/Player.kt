@@ -2438,11 +2438,20 @@ fun BottomSheetPlayer(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        queueSurfaceColor.copy(
+                    // Per audit (2026-08-30): use drawBehind + drawRect's `alpha`
+                    // parameter instead of `Modifier.background(color.copy(alpha=...))`.
+                    // The previous call allocated a new Color value every frame during
+                    // sheet drag (queueSheetState.progress updates ~60 fps). drawRect's
+                    // `alpha` param is a primitive Float — zero per-frame Color allocation.
+                    // Visual is identical: same color, same alpha math, default
+                    // RectangleShape (the Box has no shape modifier, so background()
+                    // was also using RectangleShape).
+                    .drawBehind {
+                        drawRect(
+                            color = queueSurfaceColor,
                             alpha = queueSurfaceColor.alpha * queueSheetState.progress.coerceIn(0f, 1f),
-                        ),
-                    ),
+                        )
+                    },
         )
 
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
