@@ -2072,17 +2072,41 @@ private fun TrackOverflowSheet(
     var genre by remember(track.artworkKey()) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(track.title, track.artist) {
+        // ─────────────────────────────────────────────────────────────────────────
+        // LastFm genre with internet fallback (user request 2026-08-30):
+        //  "Sometimes a song doesn't show what genre it is in LastFm stats
+        //   page. use internet to find its genre"
+        //
+        // Last.fm's `track.getInfo` returns `toptags.tag[]` populated for most
+        // scrobbled tracks, but it comes up empty for a meaningful minority
+        // (obscure tracks, new releases, anything Last.fm's tagger community
+        // hasn't reached). Previously the row fell through to "Unknown" in
+        // those cases. Now we add a two-provider fallback:
+        //
+        //  1. iTunes Search API — `results[].primaryGenreName` (single primary
+        //     genre from Apple's catalogue). Free, no auth, no extra call
+        //     needed (the search response already carries the field).
+        //  2. MusicBrainz recording lookup with `inc=tags+genres` — community
+        //     free-form tags + curated genre entries.
+        //
+        // Both are bundled into [CatalogueCoverProvider.resolveGenres], which
+        // deduplicates, caps at 3, and caches per (title, artist) so a re-open
+        // of the same track's overflow sheet doesn't re-hit the network.
+        // ─────────────────────────────────────────────────────────────────────────
         genre = track.artist
             ?.takeIf { it.isNotBlank() }
             ?.let { artist ->
                 withContext(Dispatchers.IO) {
-                    LastFM.getTrackInfo(artist = artist, track = track.title)
+                    val fromLastFm = LastFM.getTrackInfo(artist = artist, track = track.title)
                         .getOrNull()
                         ?.toptags
                         ?.tag
                         ?.mapNotNull { it.name?.trim()?.takeIf(String::isNotBlank) }
-                        ?.take(3)
-                        ?.joinToString(", ")
+                        .orEmpty()
+                    val resolved = fromLastFm.ifEmpty {
+                        CatalogueCoverProvider.resolveGenres(track.title, artist).orEmpty()
+                    }
+                    resolved.take(3).joinToString(", ").takeIf(String::isNotBlank)
                 }
             }
     }

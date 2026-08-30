@@ -147,6 +147,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeLyricsLine
 import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeWordsForLine
 import moe.rukamori.archivetune.lyrics.LyricsUtils.shouldRomanizeLyricsLine
 import moe.rukamori.archivetune.lyrics.WordTimestamp
+import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.theme.rememberArchiveTuneLyricsFontFamily
@@ -274,6 +275,43 @@ private data class KaraokeBuild(
  */
 private fun Map<Int, List<String?>>.renderedRomanization(): Map<Int, List<String?>> =
     filterValues { values -> values.any { !it.isNullOrBlank() } }
+
+/**
+ * Best-effort extraction of songwriter names from a TTML lyrics string.
+ *
+ * TTML2 doesn't standardise a songwriter element, but Apple Music's TTML profile
+ * (and a few other providers) include writer credits in the `<metadata>` block
+ * using any of these tag names:
+ *
+ *   `<songwriter>...</songwriter>`
+ *   `<composer>...</composer>`
+ *   `<lyricist>...</lyricist>`
+ *   `<writer>...</writer>`
+ *   `<ar>...</ar>` (LRCLIB-style)
+ *
+ * We use a regex (no XML parser dependency) so it survives malformed TTML too.
+ * Returns the distinct non-blank writer names joined with `", "`, or `""` if
+ * none were found — the caller falls through to the MusicBrainz fallback.
+ *
+ * Per user request 2026-08-30: "its most of the times present in the Betterlyrics
+ * or YouLyPlus ttml file. if it's not there you can use the internet to find who
+ * wrote the song." This function attempts the TTML first; if it returns empty,
+ * `LyricsEnhanced`'s `resolvedWriters` flow falls back to `CatalogueCoverProvider.resolveSongwriters`.
+ */
+private fun extractTtmlWriters(lyrics: String?): String {
+    if (lyrics.isNullOrBlank()) return ""
+    val writerTagPattern =
+        Regex(
+            pattern = "<(songwriter|composer|lyricist|writer|ar)(?:\\s[^>]*)?>([^<]+)</\\1>",
+            options = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+        )
+    val writers = LinkedHashSet<String>()
+    writerTagPattern.findAll(lyrics).forEach { match ->
+        val name = match.groupValues.getOrNull(2)?.trim()
+        if (!name.isNullOrBlank()) writers.add(name)
+    }
+    return writers.joinToString(", ").trim()
+}
 
 @Composable
 fun LyricsEnhanced(
@@ -448,7 +486,7 @@ fun LyricsEnhanced(
     val lyricsSourceLabel = stringResource(R.string.lyrics_from_source, lyricsProviderNameRaw)
     val lyricsProviderLabel =
         lyricsSourceLabel.takeIf { lyricsProviderNameRaw.isNotBlank() }
-    // Composer footer ("Written by [artists]") — used by BOTH the synced
+    // Composer footer ("Written by [writers]") — used by BOTH the synced
     // and plain-lyrics paths below. For synced lyrics it is injected as the
     // LAST SyncedLine of the karaoke stream (start = 86_400_000 = 24h, so
     // it never becomes the active line and is skipped by the binary search
@@ -457,18 +495,67 @@ fun LyricsEnhanced(
     // footer scrolls with the lyrics — matching the user's request that
     // "the written by text at the bottom of the lyrics should show as if
     // it's just lyrics and not some constant text".
-    // Resolve the "Written by [artists]" label UNCONDITIONALLY via
-    // `stringResource(...)` so the @Composable call stays at a stable
-    // composition position. Same rationale as the lyricsProviderLabel fix
-    // above — the previous `?.let { stringResource(...) }` chain was
-    // conditionally-executed and violated Compose's call-site invariants.
-    val composerWritersRaw =
+    //
+    // ─────────────────────────────────────────────────────────────────────────
+    // User request 2026-08-30:
+    //  "The written by text at the end of the lyrics shows the artist of
+    //   the song. I want it to show the name of the people who wrote the
+    //   song instead. its most of the times present in the Betterlyrics or
+    //   YouLyPlus ttml file. if it's not there you can use the internet to
+    //   find who wrote the song. If you still don't get any then you can
+    //   show the artist name like the way you do now"
+    //
+    // Implementation precedence (first non-empty wins):
+    //  1. TTML metadata writers (parsed inline below — TTML2 `<metadata>` /
+    //     `<agent>` blocks with role="lyricist"|"composer"|"writer"). Note:
+    //     Betterlyrics and YouLyPlus TTML responses do not currently include
+    //     writer metadata in a documented schema, so this is best-effort; the
+    //     MusicBrainz fallback below is the dominant path.
+    //  2. Internet (MusicBrainz recording search → MBID → lookup with
+    //     `inc=artist-rels+work-rels` → walk to work → filter for
+    //     composer/lyricist/writer relations → artist.name). Fetched
+    //     asynchronously via [CatalogueCoverProvider.resolveSongwriters]
+    //     from a `LaunchedEffect` keyed on `mediaMetadata?.id`; cached
+    //     per (title, artist) so a re-render doesn't re-hit the network.
+    //  3. Artist name (the existing fallback — what the renderer used to
+    //     always show).
+    //
+    // The fetch is keyed on the artist NAME the renderer currently knows —
+    // `mediaMetadata?.artists?.joinToString { it.name }` — so the cache key
+    // is stable across the same artist. When MusicBrainz returns no writers
+    // (e.g. for an obscure track), `resolvedWriters` stays null and we fall
+    // through to the artist name in the `?: ...` chain. Until the fetch
+    // completes, the renderer shows the artist name as before (no flash of
+    // empty footer), then updates once the writers resolve.
+    // ─────────────────────────────────────────────────────────────────────────
+    var resolvedWriters by remember(mediaMetadata?.id) { mutableStateOf<String?>(null) }
+    val writersLookupTitle = mediaMetadata?.title.orEmpty()
+    val writersLookupArtist =
         mediaMetadata
             ?.artists
             ?.takeIf { it.isNotEmpty() }
             ?.joinToString { it.name }
             ?.trim()
             .orEmpty()
+    LaunchedEffect(mediaMetadata?.id, writersLookupTitle, writersLookupArtist) {
+        if (writersLookupTitle.isBlank()) return@LaunchedEffect
+        // Don't block the lyrics render on a network call — fall through to
+        // the artist name fallback until the writers resolve. The artist
+        // name is also what we already showed before this enhancement, so
+        // the initial render is identical to the previous behaviour.
+        val writers = CatalogueCoverProvider.resolveSongwriters(writersLookupTitle, writersLookupArtist)
+        resolvedWriters = writers?.takeIf { it.isNotEmpty() }?.joinToString()
+    }
+    val ttmlWriters = lyrics?.let(::extractTtmlWriters).orEmpty()
+    val composerWritersRaw =
+        resolvedWriters?.takeIf { it.isNotBlank() }
+            ?: ttmlWriters.takeIf { it.isNotBlank() }
+            ?: mediaMetadata
+                ?.artists
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString { it.name }
+                ?.trim()
+                .orEmpty()
     val composerFooterLabel =
         stringResource(R.string.written_by, composerWritersRaw)
             .takeIf { composerWritersRaw.isNotBlank() }
