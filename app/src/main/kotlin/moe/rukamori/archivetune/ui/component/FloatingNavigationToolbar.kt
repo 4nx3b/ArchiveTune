@@ -239,14 +239,7 @@ fun FloatingNavigationToolbar(
     // Liquid-Glass variants keep the original 8.dp vertical-only padding.
     val itemVerticalPadding =
         if (canLiquidGlass) SukiSUItemPadding else NavigationItemVerticalPadding
-    // Per user report (2026-08-30): "extra space between navigation bar icons in
-    // liquid glass". SukiSU applies 4.dp on ALL sides of the items Row, but our
-    // ShortNavigationBarItem already adds its own internal horizontal padding
-    // around the icon/label slot — so the extra 4.dp on the Row translates to a
-    // visible gap between icons. Keep the vertical 4.dp (which the active
-    // Liquid Glass pill depends on for sizing), but use 0.dp horizontally —
-    // matching the non-Liquid-Glass variants.
-    val itemHorizontalPadding = if (canLiquidGlass) 0.dp else 0.dp
+    val itemHorizontalPadding = if (canLiquidGlass) SukiSUItemPadding else 0.dp
     val navigationShape =
         if (canLiquidGlass) {
             RoundedCornerShape(percent = 50)

@@ -50,6 +50,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -2951,27 +2953,17 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Per user request (2026-08-30): "Maybe try a different type
-                                            // of page switch animation across all the app that is light
-                                            // weight and works extremely smoothly." Crossfade-with-
-                                            // scale: outgoing fades out while incoming fades in with
-                                            // a tiny 0.96→1.0 scale. ~120ms each side — well under the
-                                            // old fade(220ms)+slide(250ms)/scale combo, and crucially
-                                            // keeps the NavHost's per-frame invalidation footprint
-                                            // small enough that the app-wide liquid-glass backdrop
-                                            // recording (suspended during the transition window) stays
-                                            // suspended for the entire visible motion.
-                                            fadeIn(tween(120)) +
+                                            // Material "fade through" for bottom-nav switches: the
+                                            // incoming screen fades in slightly delayed while gently
+                                            // scaling up from 92%, so Home↔Search↔Library feels animated
+                                            // instead of an imperceptible straight crossfade.
+                                            fadeIn(tween(220, delayMillis = 90)) +
                                                 scaleIn(
-                                                    animationSpec = tween(120),
-                                                    initialScale = 0.96f,
+                                                    animationSpec = tween(220, delayMillis = 90),
+                                                    initialScale = 0.92f,
                                                 )
                                         } else {
-                                            fadeIn(tween(120)) +
-                                                scaleIn(
-                                                    animationSpec = tween(120),
-                                                    initialScale = 0.96f,
-                                                )
+                                            fadeIn(tween(250)) + slideInHorizontally { it / 2 }
                                         }
                                     },
                                     exitTransition = {
@@ -2980,17 +2972,9 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(120)) +
-                                                scaleOut(
-                                                    animationSpec = tween(120),
-                                                    targetScale = 0.96f,
-                                                )
+                                            fadeOut(tween(90))
                                         } else {
-                                            fadeOut(tween(120)) +
-                                                scaleOut(
-                                                    animationSpec = tween(120),
-                                                    targetScale = 0.96f,
-                                                )
+                                            fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
                                         }
                                     },
                                     popEnterTransition = {
@@ -3002,17 +2986,13 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(120)) +
+                                            fadeIn(tween(220, delayMillis = 90)) +
                                                 scaleIn(
-                                                    animationSpec = tween(120),
-                                                    initialScale = 0.96f,
+                                                    animationSpec = tween(220, delayMillis = 90),
+                                                    initialScale = 0.92f,
                                                 )
                                         } else {
-                                            fadeIn(tween(120)) +
-                                                scaleIn(
-                                                    animationSpec = tween(120),
-                                                    initialScale = 0.96f,
-                                                )
+                                            fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
                                         }
                                     },
                                     popExitTransition = {
@@ -3024,17 +3004,9 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(120)) +
-                                                scaleOut(
-                                                    animationSpec = tween(120),
-                                                    targetScale = 0.96f,
-                                                )
+                                            fadeOut(tween(90))
                                         } else {
-                                            fadeOut(tween(120)) +
-                                                scaleOut(
-                                                    animationSpec = tween(120),
-                                                    targetScale = 0.96f,
-                                                )
+                                            fadeOut(tween(200)) + slideOutHorizontally { it / 2 }
                                         }
                                     },
                                     modifier =
@@ -3652,12 +3624,10 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
 
 // How long the app-wide NavHost liquid-glass backdrop recording is suspended after a
-// page-switch begins. Covers the new lightweight NavHost crossfade-with-scale (~120ms) plus
+// page-switch begins. Covers the longest NavHost transition (tween(250) slide + fade) plus
 // a small settle margin, so the expensive full-NavHost re-record is skipped for the whole
-// animation window and resumes as soon as the page has settled. Previously this was 320ms
-// to cover a longer tween(250) slide+fade — that's been replaced, so the suspend window
-// can shrink accordingly and the liquid-glass backdrop restores ~140ms sooner per switch.
-private const val NAV_TRANSITION_SUSPEND_MILLIS = 180L
+// animation window and resumes once the page has settled.
+private const val NAV_TRANSITION_SUSPEND_MILLIS = 320L
 
 @Composable
 private fun OnlineSearchSortMenu(
