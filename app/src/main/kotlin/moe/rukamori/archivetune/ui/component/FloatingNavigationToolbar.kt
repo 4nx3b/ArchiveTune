@@ -884,39 +884,61 @@ fun FloatingNavigationToolbar(
                                 scaleX = pressScale / (1f - velocityStretch * 0.75f)
                                 scaleY = pressScale * (1f - velocityStretch * 0.25f)
                             }
-                            .drawBackdrop(
-                                backdrop = liquidGlassBackdrop,
-                                effects = {
-                                    vibrancy()
-                                    blur(4f.dp.toPx())
-                                    lens(
-                                        refractionHeight = 24f.dp.toPx(),
-                                        refractionAmount = size.minDimension / 4f,
-                                        chromaticAberration = false,
+                            .then(
+                                // Per audit (2026-08-30): the Liquid Glass pill's drawBackdrop
+                                // chain was inline above, so every recomposition of the
+                                // FloatingNavigationToolbar re-allocated the entire kyant
+                                // effects stack (BlurEffect, LensEffect, vibrancy, shape,
+                                // onDrawSurface, onDrawBehind) and re-installed the
+                                // RuntimeShader on the GraphicsLayer. The pill box
+                                // recomposes on every spring frame during the drag/press
+                                // animation because of the dragAnim State reads — so the
+                                // per-frame cost was the dominant per-frame overhead while
+                                // the user was rubbing the bar.
+                                //
+                                // Memoizing the chain on (backdrop, shape, fallbackColor,
+                                // isDark) means the kyant effect stack is built ONCE per
+                                // (backdrop, shape, dark-theme) tuple and reused across
+                                // recompositions. The dragAnim.pressProgress / velocity
+                                // reads inside `onDrawSurface` and the `lens()` amount that
+                                // depends on `size` happen in draw scope and refresh per
+                                // frame without invalidating the remember. (This is the same
+                                // pattern already used by `Modifier.liquidGlass` in
+                                // LiquidGlass.kt:152.)
+                                remember(liquidGlassBackdrop, pillShape, pillFallbackColor, isDark) {
+                                    Modifier.drawBackdrop(
+                                        backdrop = liquidGlassBackdrop,
+                                        effects = {
+                                            vibrancy()
+                                            blur(4f.dp.toPx())
+                                            lens(
+                                                refractionHeight = 24f.dp.toPx(),
+                                                refractionAmount = size.minDimension / 4f,
+                                                chromaticAberration = false,
+                                            )
+                                        },
+                                        onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                                        shape = { pillShape },
+                                        onDrawBehind = {
+                                            drawRect(pillFallbackColor)
+                                        },
+                                        onDrawSurface = {
+                                            val progress = dragAnim.pressProgress
+                                            // Pre-allocate the static tint color at
+                                            // drawScope level so we don't allocate a new
+                                            // Color object every frame. The dynamic alpha
+                                            // (`0.03f * progress`) must stay per-frame
+                                            // because progress varies with the press
+                                            // animation — that's one cheap Color allocation
+                                            // per frame instead of two.
+                                            val tintColor = if (isDark) Color.Black else Color.White
+                                            drawRect(
+                                                color = tintColor.copy(alpha = 0.1f),
+                                                alpha = 1f - progress,
+                                            )
+                                            drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                        },
                                     )
-                                },
-                                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                                shape = { pillShape },
-                                // Fallback surface drawn UNDER the backdrop sample.
-                                // When the backdrop has content (album art, page content
-                                // behind the nav bar), the backdrop sample covers this
-                                // and you see the liquid glass refraction. When the
-                                // backdrop is EMPTY (e.g. bottom of a short page with
-                                // nothing behind the nav bar), the backdrop sample is
-                                // transparent and this opaque surface shows through —
-                                // matching the existing pattern used by the bar Surface
-                                // (baseColor = surfaceContainerHigh) and the Frosted nav
-                                // bar variant (opaque surface + 30% alpha overlay).
-                                onDrawBehind = {
-                                    drawRect(pillFallbackColor)
-                                },
-                                onDrawSurface = {
-                                    val progress = dragAnim.pressProgress
-                                    drawRect(
-                                        color = (if (isDark) Color.Black else Color.White).copy(alpha = 0.1f),
-                                        alpha = 1f - progress,
-                                    )
-                                    drawRect(Color.Black.copy(alpha = 0.03f * progress))
                                 },
                             )
                             .innerShadow(shape = pillShape) {
