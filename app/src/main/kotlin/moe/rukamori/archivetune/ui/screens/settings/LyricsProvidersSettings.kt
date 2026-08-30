@@ -52,11 +52,9 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
 import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
-import moe.rukamori.archivetune.constants.EnableBiniLyricsKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
-import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -108,10 +106,6 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
     val (enableYouLyPlusLyrics, onEnableYouLyPlusLyricsChange) =
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
-    val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) =
-        rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
-    val (enableBiniLyrics, onEnableBiniLyricsChange) =
-        rememberPreference(key = EnableBiniLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
     val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
@@ -294,41 +288,19 @@ fun LyricsProvidersSettings(
                     )
                 }
 
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("enable_simpmusic_lyrics", "simpmusic_lyrics"),
-                        title = { Text(stringResource(R.string.enable_simpmusic_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableSimpMusicLyrics,
-                        onCheckedChange = onEnableSimpMusicLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
-
                 // Megalobiz lyrics provider removed per user request
                 // (2026-08-28): "Remove megalobiz lyrics provider". The
                 // MegalobizLyricsProvider file was deleted; the
                 // PreferredLyricsProvider.MEGALOBIZ enum value and the
                 // DefaultLyricsProviderOrder entry are also gone.
-
-                // BiniLyrics replaces the Paxsenix: Apple Music provider in the
-                // user-visible priority list (commit 717db4f19). The toggle
-                // here is the user's on/off for that single provider — the
-                // per-Paxsenix sub-toggles (NetEase / Spotify / Musixmatch /
-                // YouTube) and the retired Paxsenix stats / endpoint / API
-                // key entries are removed per user request (2026-08-28):
-                // "I still see enable paxesnix lyrics switch in lyrics
-                // provider. Remove it".
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("enable_bini_lyrics", "bini_lyrics"),
-                        title = { Text(stringResource(R.string.enable_bini_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableBiniLyrics,
-                        onCheckedChange = onEnableBiniLyricsChange,
-                        isEnabled = providerTogglesEnabled,
-                    )
-                }
+                //
+                // SimpMusic and BiniLyrics lyrics providers removed per user
+                // request (2026-08-30): "Remove simpmusic and binilyrics lyrics
+                // provider and their entire code too". The provider files,
+                // settings toggles, enum entries, gradle module includes and
+                // the underlying :lyrics:simpmusic / :lyrics:paxsenix gradle
+                // modules have all been deleted. Only the no-op DataStore keys
+                // remain for backward-compatible reads.
 
                 // "Lyrics test" — sweeps every enabled provider with a known
                 // test track (Ed Sheeran — Shape of You) and reports per-

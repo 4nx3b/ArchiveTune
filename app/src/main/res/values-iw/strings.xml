@@ -393,7 +393,6 @@
     <string name="pin_to_speed_dial">הצמדה להפעלה מהירה</string>
     <string name="lyrics_mode">מצב מילות השיר</string>
     <string name="pause_on_device_mute_desc">השהה בעוצמת קול אפס, הסבר על ניסיונות השמעה וחידוש השמעה כאשר עוצמת הקול עולה</string>
-    <string name="enable_simpmusic_lyrics">הפעלת SimpMusic lyrics</string>
     <string name="palette_charcoal">פחם</string>
     <plurals name="n_year">
         <item quantity="one">שנה אחת</item>
@@ -530,15 +529,10 @@
     <string name="clear_song_cache">נקה את מטמון השירים</string>
     <string name="clear_lyrics_cache">נקה את מטמון המילים</string>
     <string name="clear_lyrics_cache_confirm">האם אתה בטוח שאתה רוצה לנקות את כל מטמון המילים?</string>
-    <string name="paxsenix_stats">סטטיסטיקות ה-API של Paxsenix</string>
     <string name="uptime">זמן פעולה</string>
     <string name="total_requests">סך כל הבקשות</string>
     <string name="success_rate">שיעור הצלחה</string>
     <string name="providers">ספקים</string>
-    <string name="paxsenix_status_operational">פעיל</string>
-    <string name="paxsenix_status_degraded">פגום</string>
-    <string name="paxsenix_status_down">מטה</string>
-    <string name="paxsenix_stats_failed">טעינת סטטיסטיקות ה-API נכשלה</string>
     <string name="visit_website">ביקור באתר</string>
     <string name="recent_requests">בקשות אחרונות</string>
     <string name="size_used">%s בשימוש</string>

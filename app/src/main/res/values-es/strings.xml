@@ -308,7 +308,6 @@
     <string name="enable_proxy">Activar proxy</string>
     <string name="proxy_type">Tipo de proxy</string>
     <string name="enable_betterlyrics">Activar BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Activar letras de SimpMusic</string>
     <string name="player_and_audio">Reproductor y audio</string>
     <string name="audio_quality">Calidad de audio</string>
     <string name="audio_quality_auto">Automático</string>
@@ -666,7 +665,6 @@
     <string name="enable_paxsenix_lyrics">Activar la letra de Paxsenix</string>
     <string name="clear_lyrics_cache">Borrar la caché de las letras</string>
     <string name="clear_lyrics_cache_confirm">¿Estás seguro de que quieres borrar la caché de todas las letras de las canciones?</string>
-    <string name="paxsenix_stats">Monitoreo y estadísticas de Paxsenix</string>
     <string name="uptime">Tiempo de actividad</string>
     <string name="total_requests">Solicitudes totales</string>
     <string name="success_rate">Tasa de éxito</string>
@@ -771,10 +769,6 @@
     <string name="device_mute_recovery_volume">Subir el volumen desde 0</string>
     <string name="device_mute_recovery_volume_disabled">Desactivado</string>
     <string name="device_volume_zero_playback_paused">La reproducción se ha detenido porque el volumen del dispositivo está en 0. Sube el volumen para reanudarla.</string>
-    <string name="paxsenix_status_operational">En funcionamiento</string>
-    <string name="paxsenix_status_degraded">Deteriorado</string>
-    <string name="paxsenix_status_down">Abajo</string>
-    <string name="paxsenix_stats_failed">Error al cargar las estadísticas de la API</string>
     <string name="visit_website">Visita la página web</string>
     <string name="recent_requests">Peticiones recientes</string>
     <string name="display">Pantalla</string>

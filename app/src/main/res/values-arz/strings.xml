@@ -527,7 +527,6 @@
     <string name="enable_betterlyrics">تفعيل BetterLyrics</string>
     <string name="enable_youlyplus_lyrics">تفعيل كلمات YouLyPlus</string>
     <string name="enable_unison_lyrics">تفعيل كلمات Unison</string>
-    <string name="enable_simpmusic_lyrics">تفعيل كلمات SimpMusic</string>
     <string name="enable_paxsenix_lyrics">تفعيل كلمات Paxsenix</string>
     <string name="player_and_audio">المشغل والصوت</string>
     <string name="audio_quality">جودة الصوت</string>
@@ -600,15 +599,10 @@
     <string name="clear_song_cache">مسح التخزين المؤقت للأغاني</string>
     <string name="clear_lyrics_cache">مسح التخزين المؤقت للكلمات</string>
     <string name="clear_lyrics_cache_confirm">متأكد إنك عايز تمسح كل التخزين المؤقت للكلمات؟</string>
-    <string name="paxsenix_stats">إحصائيات واجهة Paxsenix</string>
     <string name="uptime">مدة التشغيل</string>
     <string name="total_requests">إجمالي الطلبات</string>
     <string name="success_rate">نسبة النجاح</string>
     <string name="providers">موفري الخدمة</string>
-    <string name="paxsenix_status_operational">يعمل بشكل طبيعي</string>
-    <string name="paxsenix_status_degraded">أداء منخفض</string>
-    <string name="paxsenix_status_down">متوقف</string>
-    <string name="paxsenix_stats_failed">فشل تحميل إحصائيات واجهة البرمجة</string>
     <string name="visit_website">زيارة الموقع</string>
     <string name="recent_requests">الطلبات الأخيرة</string>
     <string name="size_used">%s مستخدمة</string>

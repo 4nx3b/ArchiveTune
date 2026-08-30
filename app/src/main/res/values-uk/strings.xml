@@ -338,7 +338,6 @@
     <string name="stream_bypass_proxy">Обходити проксі для потоків</string>
     <string name="stream_bypass_proxy_desc">Використовуйте свою пряму IP-адресу для відтворення, щоб уникнути невідповідності IP-адрес</string>
     <string name="enable_betterlyrics">Увімкнути BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Увімкнути SimpMusic</string>
     <string name="player_and_audio">Плеєр та аудіо</string>
     <string name="audio_quality">Якість звуку</string>
     <string name="audio_quality_auto">Авто</string>
@@ -662,7 +661,6 @@
     <string name="enable_paxsenix_lyrics">Увімкнути тексти пісень Paxsenix</string>
     <string name="clear_lyrics_cache">Очистити кеш текстів пісень</string>
     <string name="clear_lyrics_cache_confirm">Ви впевнені, що хочете очистити весь кеш текстів пісень?</string>
-    <string name="paxsenix_stats">Статистика API Paxsenix</string>
     <string name="uptime">Час безвідмовної роботи</string>
     <string name="total_requests">Загальна кількість запитів</string>
     <string name="success_rate">Відсоток успішності</string>

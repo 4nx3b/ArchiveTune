@@ -428,7 +428,7 @@ fun buildSettingsGroups(
             // search shortcuts still work.
             hidden = true,
             children = listOf(
-                SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "paxsenix", "betterlyrics", "portato", "youlyplus", "unison", "simpmusic", "megalobiz")),
+                SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "betterlyrics", "portato", "youlyplus", "unison")),
                 // "Lyrics mode" + "Use lyrics V2" search entries removed — the picker and
                 // toggle are gone; Enhanced is the sole renderer now.
                 SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle", "lyrics show")) { SearchResultSwitch(ShowLyricsKey, false) },
@@ -454,11 +454,10 @@ fun buildSettingsGroups(
                 SettingsChild("LRCLIB", "lrclib", listOf("lrclib", "lrclib lyrics", "lrclib provider")),
                 SettingsChild("Kugou Lyrics", "kugou", listOf("kugou", "kugou lyrics", "kugou provider", "kugou music")),
                 SettingsChild("Unison Lyrics", "unison_lyrics", listOf("unison", "unison lyrics", "unison provider")),
-                SettingsChild("Simpmusic Lyrics", "simpmusic_lyrics", listOf("simpmusic", "simpmusic lyrics", "simpmusic provider")),
-                // Megalobiz Lyrics removed per user request (2026-08-28):
-                // "Remove megalobiz lyrics provider".
-                SettingsChild("Paxsenix Lyrics", "paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics", "paxsenix provider")),
-                SettingsChild("Paxsenix Stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix statistics", "paxsenix analytics")),
+                // SimpMusic Lyrics, Paxsenix Lyrics, Paxsenix Stats, Paxsenix API key,
+                // Paxsenix endpoint search entries removed (2026-08-30) along with the
+                // providers + their settings toggles + the :lyrics:simpmusic / :lyrics:paxsenix
+                // gradle modules.
                 SettingsChild("First lyrics provider", "first_lyrics_provider", listOf("first lyrics", "lyrics priority", "primary lyrics provider", "lyrics order")),
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "default lyrics provider", "lyrics priority")),
                 SettingsChild("Prioritize word synced lyrics", "prioritize_word_synced_lyrics", listOf("word synced", "word by word", "karaoke lyrics", "prioritize word synced")),
@@ -468,8 +467,6 @@ fun buildSettingsGroups(
                 SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics", "tidal lyric provider")),
                 SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics", "deezer lyric provider")),
                 SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")),
-                SettingsChild("Paxsenix API key", "paxsenix_api_key", listOf("paxsenix api key", "paxsenix key", "paxsenix token")),
-                SettingsChild("Paxsenix endpoint", "paxsenix_endpoint", listOf("paxsenix endpoint", "paxsenix url", "paxsenix server")),
                 SettingsChild("Lyrics text size", "lyrics_text_size", listOf("lyrics text size", "lyrics font size", "lyrics size", "bigger lyrics")),
             ),
         )
@@ -481,7 +478,7 @@ fun buildSettingsGroups(
             title = "Lyrics providers",
             subtitle = "Enable and prioritise lyrics sources",
             accentColor = MaterialTheme.colorScheme.secondary,
-            keywords = listOf("lyrics provider", "lyrics providers", "lyrics source", "lrclib", "kugou", "musixmatch", "betterlyrics", "paxsenix", "youlyplus", "unison", "simpmusic", "megalobiz"),
+            keywords = listOf("lyrics provider", "lyrics providers", "lyrics source", "lrclib", "kugou", "musixmatch", "betterlyrics", "youlyplus", "unison"),
             onClick = { navController.navigate("settings/lyrics/providers") },
             hidden = true,
             children = listOf(
@@ -492,16 +489,14 @@ fun buildSettingsGroups(
                 SettingsChild("Enable LrcLib lyrics provider", "enable_lrclib", listOf("lrclib", "lrc lib", "lrclib lyrics")),
                 SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
                 SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
-                SettingsChild("Enable SimpMusic lyrics", "enable_simpmusic_lyrics", listOf("simpmusic", "simp music", "simpmusic lyrics")),
-                // Megalobiz lyrics removed per user request (2026-08-28).
-                SettingsChild("Enable Paxsenix lyrics", "enable_paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics")),
+                // Enable SimpMusic / Enable Paxsenix / Paxsenix API stats /
+                // Paxsenix API key / Paxsenix endpoint / Check Paxsenix endpoints
+                // search entries removed (2026-08-30) along with the providers +
+                // their settings rows + the :lyrics:simpmusic / :lyrics:paxsenix
+                // gradle modules.
                 SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
                 SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),
                 SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")),
-                SettingsChild("Paxsenix API stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix usage", "paxsenix quota")),
-                SettingsChild("Paxsenix API key", "paxsenix_api_key", listOf("paxsenix api key", "paxsenix key")),
-                SettingsChild("Paxsenix endpoint", "paxsenix_endpoint", listOf("paxsenix endpoint", "paxsenix url")),
-                SettingsChild("Check Paxsenix endpoints", "paxsenix_check_endpoints", listOf("check paxsenix", "paxsenix endpoints", "test paxsenix", "paxsenix status", "endpoint check")),
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "first lyrics provider", "lyrics priority")),
             ),
         )
