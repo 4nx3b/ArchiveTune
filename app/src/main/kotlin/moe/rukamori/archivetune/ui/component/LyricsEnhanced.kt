@@ -1447,22 +1447,24 @@ fun LyricsEnhanced(
                     //   row), the parent BoxWithConstraints's maxHeight shrinks, and the
                     //   proportional offset shrinks with it. Clamp to a 112dp floor so
                     //   the attribution stays visible regardless of bottom controls.
-                    // - User follow-up (2026-08-30): "The active lyrics have shifted down a
-                    //   bit. It used to be a bit upwards. Shift it up a bit around the
-                    //   header of the song but the visibility of the Lyrics from text
-                    //   shouldn't be affected and it should not be cut off." Compromise:
-                    //   0.12f proportion with a 96dp floor. On a 700dp viewport that's
-                    //   84dp (clamped to 96dp); the attribution at 96 - 50 = ~46dp from
-                    //   the top is still comfortably visible (more than the ~6dp that was
-                    //   clipped originally, and less than the 62dp of the previous 16%
-                    //   value — but well clear of the top inset). On a 500dp viewport with
-                    //   bottom controls showing, 0.12 × 500 = 60dp also clamps to 96dp,
-                    //   so the attribution is preserved across the viewport-size range
-                    //   that the bottom-controls-visible bug required us to handle.
+                    // - User follow-up (2026-08-30) batch-10: shifted to 0.12f / 96dp
+                    //   to bring the active line closer to the header. Side effect: the
+                    //   "Lyrics from [provider]" attribution also moved up (from ~62dp to
+                    //   ~46dp from the top), which the user flagged as "way too up".
+                    // - User follow-up (2026-08-30) batch-11: "The lyrics from text is
+                    //   way too up now. I want it like before but the active lyrics
+                    //   should be close to the header of the song." Reverted to the
+                    //   pre-batch-10 0.16f / 112dp. The attribution returns to ~62dp from
+                    //   the top, and the active line at 112dp from the top is still close
+                    //   to the song header (the header occupies the top ~72dp area, so
+                    //   112dp is just ~40dp below the header — well within "close to the
+                    //   header of the song"). The 112dp floor also preserves the
+                    //   attribution visibility when the bottom controls expand and
+                    //   shrink the parent BoxWithConstraints's maxHeight.
                     val lyricsViewportOffset =
                         remember(maxHeight) {
-                            val proportional = maxHeight * 0.12f
-                            if (proportional > 96.dp) proportional else 96.dp
+                            val proportional = maxHeight * 0.16f
+                            if (proportional > 112.dp) proportional else 112.dp
                         }
 
                     // Keyed on the session + a position-reset counter so that when

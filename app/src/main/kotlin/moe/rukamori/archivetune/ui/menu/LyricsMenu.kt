@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -74,6 +75,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -106,10 +109,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.drawBackdrop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -132,8 +139,10 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewMenuItem
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.TranslatorLang
 import moe.rukamori.archivetune.utils.TranslatorLanguages
@@ -166,6 +175,15 @@ fun LyricsMenu(
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     showControlsToggles: Boolean = true,
+    // When true, the outer `MenuSurfaceSection` card (which is otherwise an
+    // OPAQUE `surfaceContainerLow` Surface) is replaced with a TRANSPARENT
+    // Surface of the same shape. Used by `AnchoredLyricsOverflowMenu` so the
+    // frosted-glass blur applied to the popup's outer Box is NOT hidden by
+    // an opaque white card sitting on top of it. Without this, the user
+    // sees a plain white popup instead of the intended frosted-glass look
+    // (user report 2026-08-30: "the white popup is loading on top of the
+    // liquid glass effect").
+    transparentSurface: Boolean = false,
 ) {
     val context = LocalContext.current
     val showPlayerControls = showPlayerControlsState?.value ?: true
@@ -906,18 +924,42 @@ fun LyricsMenu(
                     ),
                 )
 
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            // When `transparentSurface` is true (popup context), use a
+            // transparent Surface so the frosted-glass blur applied to the
+            // popup's outer Box is visible. The opaque `surfaceContainerLow`
+            // background of `MenuSurfaceSection` would otherwise completely
+            // cover the blur — the user reported "the white popup is loading
+            // on top of the liquid glass effect". The transparent surface
+            // keeps the same `extraLarge` corner shape so the rounded clip
+            // still matches the popup's outer clip (no dark gap).
+            //
+            // Vertical padding 8dp -> 4dp per "apply the dimensions and
+            // scaling from this commit" (batch-13 reference, 2026-08-31).
+            // The user reported the batch-14 redesign made the popup too
+            // big; reverting to batch-13's compact surface padding while
+            // keeping batch-14's dark-glass visual style (white text,
+            // dark tint, blur, shadow).
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(vertical = 0.dp)) {
                     menuItems.forEachIndexed { index, item ->
                         AppleMusicLyricsMenuRow(
                             item = item,
-                            modifier = Modifier.padding(horizontal = 8.dp),
                         )
                         // Hairline divider BETWEEN items only — no divider before the first
                         // or after the last, matching Apple Music's grid-separated look.
+                        // Color: white at 12% opacity per reference "Divider lines
+                        //   should be approximately 10–18% white/gray opacity"
+                        //   (kept from batch-14 visual style).
+                        // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
+                        //   16dp per batch-13 dimensions (2026-08-31) — the
+                        //   batch-14 redesign was reported as too big.
                         if (index < menuItems.size - 1) {
                             HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = Color.White.copy(alpha = 0.12f),
                                 thickness = 0.5.dp,
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )
@@ -1856,45 +1898,66 @@ private fun AppleMusicLyricsMenuRow(
     item: AppleMusicLyricsMenuItem,
     modifier: Modifier = Modifier,
 ) {
+    // Per "redesign the lyrics popup — match the second reference image"
+    // (2026-08-30): the reference uses pure white text + off-white icons on
+    // a dark translucent vibrancy surface, with the destructive row in
+    // bright system red. The previous implementation used Material3
+    // `onSurface`/`onSurfaceVariant` (theme-tinted) which adapts to light/
+    // dark theme — but the reference popup is ALWAYS dark charcoal glass,
+    // so theme-tinted colors are wrong. Hardcoding white + red matches the
+    // reference's "white/off-white" + "bright system-style red" spec.
     val headlineColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A) // iOS System Red (dark mode)
         } else {
-            MaterialTheme.colorScheme.onSurface
+            Color.White
         }
     val iconColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A)
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            Color.White
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
-    Surface(
-        onClick = item.onClick,
-        enabled = item.enabled,
-        modifier = modifier.fillMaxWidth(),
-        color = Color.Transparent,
+    // Row geometry reverted to batch-13 compact dimensions (2026-08-31)
+    // per user report that the batch-14 redesign made the popup too big.
+    // The batch-14 visual style (white text + iOS System Red destructive)
+    // is preserved above — only the dimensions revert:
+    //   - row min height 56dp -> 44dp (batch-13 value; still meets touch
+    //     target guidance).
+    //   - horizontal padding 20dp -> 16dp (batch-13 value).
+    //   - vertical padding 8dp -> 4dp (batch-13 value; tighter row
+    //     breathing room).
+    //   - icon size 24dp -> 20dp (batch-13 value).
+    //   - text fontSize 17sp -> 16sp (batch-13 value).
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = ripple(),
+                    enabled = item.enabled,
+                    onClick = item.onClick,
+                )
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ListItem(
-            headlineContent = {
-                Text(
-                    text = item.label,
-                    color = headlineColor,
-                    fontWeight = headlineWeight,
-                )
-            },
-            trailingContent = {
-                Icon(
-                    painter = painterResource(item.iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                    tint = iconColor,
-                )
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            tonalElevation = 0.dp,
-            modifier = Modifier.heightIn(min = 56.dp),
+        Text(
+            text = item.label,
+            color = headlineColor,
+            fontWeight = headlineWeight,
+            fontSize = 16.sp,
+        )
+        Icon(
+            painter = painterResource(item.iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = iconColor,
         )
     }
 }
@@ -1909,17 +1972,33 @@ private fun AppleMusicLyricsMenuRow(
  *
  * ## Visual design
  *
- * - Anchored to [iconBoundsInRoot.right] × [iconBoundsInRoot.bottom] so the
+ * - Anchored to [iconBoundsInRoot.right] x [iconBoundsInRoot.bottom] so the
  *   popup's right edge aligns with the icon's right edge, with the popup
  *   appearing just below the icon.
- * - 280dp max width, 16dp corner radius, 0.7 alpha dark background — the
- *   translucent dark tint over the lyrics view produces the frosted-glass
- *   look (true backdrop blur would require either the parent Box to have
- *   [Modifier.layerBackdrop] or the popup to live in a separate window with
- *   FLAG_BLUR_BEHIND; we approximate the effect with a translucent tint so
- *   it works on all Android versions and stays performant during scroll).
- * - 0.5dp white-at-0.1-alpha border to define the popup edge against busy
- *   backgrounds (matching Apple Music's "Action Sheet" style).
+ * - 220dp width (compact fixed width per batch-13 reference, restored 2026-08-31
+ *   after batch-14's 65%-of-screen width was reported as too big), 16dp corner
+ *   radius (was `MaterialTheme.shapes.extraLarge` ~28dp, reduced 2026-08-30
+ *   per reference "24 px corner radius at the reference scale"), frosted-glass
+ *   vibrancy background — when the
+ *   caller provides a non-null [backdrop] (a kyant [PlatformBackdrop] that
+ *   captures the player content behind the popup), the popup samples that
+ *   backdrop with a 20dp blur, producing a real "frosted glass" effect that
+ *   shows the blurred album art / lyrics behind it. When [backdrop] is null
+ *   (e.g. on pre-Android-12 or when Liquid Glass is disabled), the popup
+ *   falls back to a translucent dark tint — still visible against any
+ *   background but without the real blur.
+ * - NO outer border and NO outer dark tint around the inner [MenuSurfaceSection]
+ *   card. The previous implementation layered a translucent dark background
+ *   (`Color.Black.copy(alpha = 0.7f)`) and a faint white border AROUND the
+ *   inner [MenuSurfaceSection], which has its own opaque `surfaceContainerLow`
+ *   surface with a different corner radius (`MaterialTheme.shapes.extraLarge`
+ *   ~ 28dp) than the popup's 16dp outer clip. The radius mismatch left a
+ *   visible dark gap around the inner card that the user perceived as a
+ *   "thick black border". The fix: drop the outer dark tint + border, and
+ *   match the popup's clip radius to the inner card's surface shape
+ *   (`extraLarge`) so the inner card fills the popup's entire surface. The
+ *   popup's only visible surface is now the inner card itself — clean,
+ *   single-card appearance matching Apple Music's anchored action sheet.
  *
  * ## Morph animation
  *
@@ -1932,9 +2011,22 @@ private fun AppleMusicLyricsMenuRow(
  * to the icon position), then the parent removes the composable from
  * composition via [onDismiss].
  *
- * The scrim behind the popup fades in/out in lock-step so the user perceives
- * a single coordinated animation rather than scrim-then-popup or
- * popup-then-scrim.
+ * ## Opening animation fix (batch-11)
+ *
+ * The previous implementation used `animateFloatAsState` keyed on the
+ * `dismissed` flag. `animateFloatAsState` initialises its first frame to
+ * the target value (1f for scale, 1f for alpha on enter) — so the OPENING
+ * animation never played; the popup just appeared at full size/opacity
+ * immediately. Only the CLOSING animation played (because the target
+ * changed from 1f to 0f / 0.3f when `dismissed` flipped to true).
+ *
+ * The fix: use [Animatable] initialised to the ENTER values (0.3f scale,
+ * 0f alpha), and a `LaunchedEffect(Unit)` that fires once on first
+ * composition to call `animateTo(1f, ...)` — this is a real state change
+ * from 0.3f -> 1f, so the opening animation plays. A separate
+ * `LaunchedEffect(dismissed)` fires when `dismissed` flips to true and
+ * animates back to the EXIT values (0.3f scale, 0f alpha), then calls
+ * [onDismiss] after the exit animation completes.
  *
  * ## Taps
  *
@@ -1950,6 +2042,14 @@ private fun AppleMusicLyricsMenuRow(
  *   coords.boundsInRoot() }`). The popup's right edge aligns with
  *   [Rect.right] and the popup's top edge sits [Rect.bottom] + 4dp below
  *   the icon's bottom edge.
+ * @param backdrop Optional kyant [PlatformBackdrop] that captures the
+ *   player content behind the popup. When non-null, the popup samples this
+ *   backdrop with a 20dp blur to produce a real frosted-glass effect. The
+ *   backdrop MUST be set up by the caller via [rememberBackdrop] + applied
+ *   to a sibling Box via [Modifier.layerBackdrop] so the popup is NOT
+ *   nested inside the layer-capturing Box (the kyant library warns that
+ *   nesting a drawBackdrop sampler inside the layer-capturing Box creates a
+ *   render-feedback loop that crashes the RuntimeShader).
  * @param onDismiss Called after the exit animation finishes — the parent
  *   should set `showLyricsMenu = false` (or equivalent) in response so the
  *   composable leaves composition.
@@ -1968,56 +2068,145 @@ fun AnchoredLyricsOverflowMenu(
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     showControlsToggles: Boolean = true,
+    backdrop: PlatformBackdrop? = null,
 ) {
     // Local dismissal state — set to true when the user requests dismissal
     // (tap on scrim / a menu item that closes). Drives the exit animation
-    // (alpha → 0, scale → 0.3). The animation's completion is observed by
+    // (alpha -> 0, scale -> 0.3). The animation's completion is observed by
     // a LaunchedEffect which then calls [onDismiss] so the parent removes
     // the composable from composition.
     var dismissed by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    // NOTE: batch-14 captured `LocalConfiguration.current` here to compute
+    // a 65%-of-screen popup width. batch-15 (2026-08-31) reverts to a fixed
+    // 220dp width per user request "apply the dimensions and scaling from
+    // this commit" (batch-13 reference). The capture is no longer needed.
 
-    // Scale: 0.3 → 1.0 on enter, 1.0 → 0.3 on exit. Spring for a slight
-    // overshoot that matches Apple Music's "morph" feel.
-    val scale by animateFloatAsState(
-        targetValue = if (dismissed) 0.3f else 1f,
-        animationSpec =
-            spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
-        label = "anchored-overflow-scale",
-    )
+    // Scale: starts at 0.3f (small, centred on top-right corner) on first
+    // composition, animates to 1.0f via LaunchedEffect(Unit) below. On
+    // dismissal, animates back to 0.3f. Spring for a slight overshoot that
+    // matches Apple Music's "morph" feel.
+    //
+    // NOTE: Animatable (not animateFloatAsState) is critical here. The
+    // previous implementation used animateFloatAsState which initialises its
+    // first frame to the target value — so the OPENING animation never
+    // played; the popup just appeared at full scale immediately. Animatable
+    // lets us set an explicit initial value (0.3f) and then drive a real
+    // state change (0.3f -> 1f) via LaunchedEffect, which IS animated.
+    val scaleAnim = remember { Animatable(0.3f) }
+    val alphaAnim = remember { Animatable(0f) }
 
-    // Alpha: 0 → 1 on enter, 1 → 0 on exit. Tween so the fade doesn't bounce.
-    // The finishedListener fires once the EXIT animation completes (alpha == 0)
-    // so we can call [onDismiss] and remove the composable from composition.
-    val alpha by animateFloatAsState(
-        targetValue = if (dismissed) 0f else 1f,
-        animationSpec = tween(180),
-        label = "anchored-overflow-alpha",
-    )
+    // Enter animation: fires ONCE on first composition. Animates 0.3f -> 1f
+    // scale and 0f -> 1f alpha in parallel. The state changes are real
+    // (from the initial Animatable values to the new targets) so the
+    // animations actually play, unlike the previous animateFloatAsState
+    // approach where the first frame was already at the target.
+    //
+    // Damping: `DampingRatioNoBouncy` (was `MediumBouncy`) — user report
+    // 2026-08-30: "I don't want the bounce effect at the end of the opening
+    // animation". The previous medium-bouncy spring produced a visible
+    // overshoot at the end of the scale-in, which the user found jarring.
+    // NoBouncy gives a clean ease-out deceleration with zero overshoot.
+    LaunchedEffect(Unit) {
+        // Don't play if already dismissing (defensive — shouldn't happen
+        // on first composition but guards against edge cases).
+        if (dismissed) return@LaunchedEffect
+        // Animate scale and alpha in parallel via two launched coroutines.
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(180),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+    }
 
-    // Trigger onDismiss after exit animation completes — the alpha target is
-    // 0 only during dismissal, and the finishedListener fires when the
-    // animation reaches that target. (Also fires on enter when alpha reaches
-    // 1, but the `dismissed` check ensures we only call onDismiss on the way
-    // OUT.)
-    LaunchedEffect(alpha) {
-        if (dismissed && alpha == 0f) {
-            onDismiss()
+    // Exit animation: fires when `dismissed` flips to true. Animates
+    // 1f -> 0.3f scale and 1f -> 0f alpha, then calls onDismiss after both
+    // complete so the parent removes the composable from composition.
+    LaunchedEffect(dismissed) {
+        if (!dismissed) return@LaunchedEffect
+        val scaleJob = scope.launch {
+            scaleAnim.animateTo(
+                targetValue = 0.3f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        }
+        val alphaJob = scope.launch {
+            alphaAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(180),
+            )
+        }
+        scaleJob.join()
+        alphaJob.join()
+        // Both exit animations have completed — tell the parent to remove
+        // us from composition.
+        onDismiss()
+    }
+
+    val scale = scaleAnim.value
+    val alpha = alphaAnim.value
+
+    // Memoize the drawBackdrop modifier chain so it isn't rebuilt on every
+    // recomposition. The chain depends only on `backdrop` — stable across
+    // scroll-driven recompositions of the host screen. Without this,
+    // every recomposition rebuilt the kyant effect stack and re-installed
+    // the RuntimeShader on the GraphicsLayer.
+    val frostedBlurModifier = remember(backdrop) {
+        if (backdrop != null) {
+            Modifier.drawBackdrop(
+                backdrop = backdrop,
+                effects = {
+                    vibrancy()
+                    // Blur radius 20f -> 32f per reference "strong backdrop
+                    // blur". The reference popup is a dark charcoal translucent
+                    // glass with heavy blur of the content behind — 20dp was
+                    // too subtle; 32dp produces a more premium vibrancy look.
+                    blur(32f.dp.toPx())
+                },
+                onDrawBackdrop = { drawBackdrop ->
+                    drawBackdrop()
+                },
+                shape = { RoundedCornerShape(16.dp) },
+            )
+        } else {
+            null
         }
     }
 
     // Full-screen scrim — translucent black so the lyrics view is still
     // visible behind (matches Apple Music's "dim the background but don't
     // black it out" style). Clickable to trigger dismissal.
+    //
+    // Scrim alpha 0.35f -> 0.45f per reference "darkened/dimmed background
+    // ... existing lyrics remain faintly visible". The reference shows a
+    // stronger dim than the previous 35% — 45% matches the reference's
+    // ~40-50% dim. The `* alpha` multiplier is preserved so the scrim
+    // continues to fade in/out with the existing enter/exit animation —
+    // THIS IS A STATIC COLOR CHANGE, NOT AN ANIMATION CHANGE.
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.35f * alpha))
+                .background(Color.Black.copy(alpha = 0.45f * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -2033,11 +2222,45 @@ fun AnchoredLyricsOverflowMenu(
         // scale animation grows from the top-right corner, the corner
         // where the popup meets the icon the user just tapped. This is
         // the "morph from the overflow icon" effect the user asked for.
+        //
+        // Per "apply the dimensions and scaling from this commit"
+        // (2026-08-31, batch-13 reference), the popup width reverts from
+        // batch-14's `fillMaxWidth(0.65f)` (65% screen) back to batch-13's
+        // compact `widthIn(max = 220.dp)`. The user reported the batch-14
+        // redesign made the popup too big; we keep batch-14's visual style
+        // (dark-glass material, white text, blur, shadow, red destructive)
+        // but restore batch-13's compact dimensions.
+        //
+        // The popup remains anchored to the overflow icon's right edge so
+        // the existing enter/exit scale animation (transformOrigin =
+        // top-right) continues to look like the popup "grows out of" the
+        // icon — THE ANIMATION IS COMPLETELY UNCHANGED.
+        //
+        // Visual stack (outermost -> innermost):
+        //   1. offset — positions the popup's top-right corner at the icon.
+        //   2. widthIn(max = 220.dp) — compact fixed width (batch-13 value).
+        //   3. heightIn(max = 520.dp) — safety bound for tall content.
+        //   4. graphicsLayer — UNCHANGED (alpha + scale + transformOrigin).
+        //      The animation reads scaleAnim.value / alphaAnim.value and
+        //      applies them via this graphicsLayer. Untouched per user spec.
+        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — soft elevated
+        //      shadow per reference "soft shadow, large shadow blur, subtle
+        //      depth". Applied AFTER graphicsLayer so the shadow scales +
+        //      fades with the popup's enter/exit animation (no janky
+        //      full-size shadow during the small-scale enter frame).
+        //   6. frostedBlurModifier (or fallback dark tint) — backdrop blur.
+        //   7. background(Color.Black at 55%) — dark charcoal tint over the
+        //      blur, per reference "dark charcoal/black translucent
+        //      material". The graphicsLayer's alpha animates this tint in/out.
+        //   8. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
+        //      reduced to 16dp per reference "24 px corner radius at the
+        //      reference scale" (24px ≈ 16dp at mdpi).
+        //   9. clickable — consumes taps inside the popup.
         Box(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { 280.dp.toPx() }.toInt()
+                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
@@ -2048,7 +2271,7 @@ fun AnchoredLyricsOverflowMenu(
                         val y = iconBottom + verticalOffsetPx
                         IntOffset(x = x, y = y)
                     }
-                    .widthIn(max = 280.dp)
+                    .widthIn(max = 220.dp)
                     .heightIn(max = 520.dp)
                     .graphicsLayer {
                         this.alpha = alpha
@@ -2056,13 +2279,31 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleY = scale
                         this.transformOrigin = TransformOrigin(1f, 0f)
                     }
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.7f * alpha))
-                    .border(
-                        width = 0.5.dp,
-                        color = Color.White.copy(alpha = 0.12f * alpha),
+                    .shadow(
+                        elevation = 16.dp,
                         shape = RoundedCornerShape(16.dp),
+                        clip = false,
                     )
+                    // Apply the frosted-blur backdrop sampler FIRST
+                    // (before clip + background), so the blur samples the
+                    // full backdrop at the popup's location, then the clip
+                    // + background draw on top. When `backdrop` is null
+                    // (pre-S / Liquid Glass off), fall back to a plain
+                    // translucent dark tint — still visible but without
+                    // the real blur.
+                    .then(
+                        frostedBlurModifier
+                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
+                    )
+                    // Dark charcoal tint over the blur. The reference popup
+                    // is NOT a clear glass window — it is a dark translucent
+                    // vibrancy surface. Without this tint, the blurred
+                    // content shows through too brightly (e.g., album art
+                    // colors would dominate). 55% black over the blur
+                    // produces the reference's "dark charcoal" feel while
+                    // still letting the blur's vibrancy show through.
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -2075,10 +2316,14 @@ fun AnchoredLyricsOverflowMenu(
             // composable — same Edit / Refetch / Translate / Romanise /
             // Undo / Search list, same click handlers, same dialogs. The
             // MenuSurfaceSection card that LyricsMenu draws inside itself
-            // is transparent against the popup's dark frosted background,
-            // so the visual result is a flat list of menu rows — matching
-            // Apple Music's anchored action sheet (see screenshot
-            // reference: Screenshot_20260827-235641_Accord.png).
+            // is now the popup's only visible surface (we removed the outer
+            // dark tint + border above so there's no gap around the card).
+            // Pass transparentSurface = true so the inner MenuSurfaceSection
+            // (an opaque `surfaceContainerLow` card) is replaced with a
+            // transparent surface — otherwise the white popup card sits ON
+            // TOP of the frosted-glass blur and hides it (user report:
+            // "liquid glass effect is behind the white popup but the white
+            // popup is loading on top of it").
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,
@@ -2093,6 +2338,7 @@ fun AnchoredLyricsOverflowMenu(
                 onShowPlayerControlsChange = onShowPlayerControlsChange,
                 onAutoHidePlayerControlsChange = onAutoHidePlayerControlsChange,
                 showControlsToggles = showControlsToggles,
+                transparentSurface = true,
             )
         }
     }
