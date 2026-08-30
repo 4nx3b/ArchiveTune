@@ -480,8 +480,8 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":lyrics:kugou"))
     implementation(project(":lyrics:lrclib"))
-    implementation(project(":lyrics:simpmusic"))
-    implementation(project(":lyrics:paxsenix"))
+    // :lyrics:simpmusic and :lyrics:paxsenix module dependencies removed per user
+    // request (2026-08-30) — see settings.gradle.kts comment for the full rationale.
     implementation(project(":lyrics:betterlyrics"))
     implementation(project(":lyrics:unison"))
     implementation(project(":lyrics:youlyplus"))

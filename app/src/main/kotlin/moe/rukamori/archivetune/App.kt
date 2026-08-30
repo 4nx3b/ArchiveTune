@@ -49,7 +49,6 @@ import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
-import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.spotify.Spotify
@@ -181,24 +180,18 @@ class App :
             com.downloader.PRDownloader.initialize(this, config)
         }
         CanvasArtworkPlaybackCache.init(this)
-        PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
-        // Route PaxsenixLyrics diagnostic logs through GlobalLog so they show up
-        // in the in-app logcat viewer with the proper tag, instead of going to
-        // System.err (which Android redirects to logcat one line at a time as
-        // `W/System.err`, with synchronized I/O that causes contention during
-        // parallel lyrics prefetch).
-        PaxsenixLyrics.logger = { message ->
-            moe.rukamori.archivetune.utils.GlobalLog.append(
-                android.util.Log.INFO,
-                "PaxsenixLyrics",
-                message,
-            )
-        }
-
+        // PaxsenixLyrics backend removed (2026-08-30) along with the BiniLyrics
+        // provider that was its only consumer. The setUserAgent / logger /
+        // refreshAmpToken / API key + endpoint collector calls that used to
+        // wire it up have all been deleted here and in
+        // ContentSettingsViewModel.kt. See PreferenceKeys.kt for the no-op
+        // DataStore keys retained for source compatibility.
+        //
         // Route AppleMusicProvider (canvas) diagnostic logs through GlobalLog
-        // too — same rationale as PaxsenixLyrics.logger above. Previously the
-        // canvas module used `println(...)` which Android redirects to logcat
-        // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
+        // so they show up in the in-app logcat viewer with the proper tag,
+        // instead of going to System.err (which Android redirects to logcat
+        // one line at a time as `W/System.err`, with synchronized I/O that
+        // causes contention during parallel lyrics prefetch).
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
         }
@@ -236,7 +229,6 @@ class App :
         applicationScope.launch(Dispatchers.IO) {
             runCatching {
                 AppleMusicProvider.refreshToken()
-                PaxsenixLyrics.refreshAmpToken()
             }
         }
 
@@ -455,16 +447,12 @@ class App :
         // PaxsenixLyrics.setApiKey()/setEndpoint() take effect immediately
         // (the Ktor client reads these vars at request time via
         // defaultRequest {}).
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { (it[PaxsenixApiKeyKey] ?: "") to (it[PaxsenixEndpointKey] ?: "") }
-                .distinctUntilChanged()
-                .collect { (key, endpoint) ->
-                    PaxsenixLyrics.setApiKey(key)
-                    PaxsenixLyrics.setEndpoint(normalizePaxsenixEndpoint(endpoint))
-                }
-        }
-
+        //
+        // REMOVED (2026-08-30): the PaxsenixLyrics backend was deleted along
+        // with the BiniLyrics provider that was its only consumer. The
+        // PaxsenixApiKeyKey / PaxsenixEndpointKey DataStore keys are still
+        // defined (see PreferenceKeys.kt) so any user who previously set them
+        // does not crash on read, but they are pure no-ops now.
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it.toPlaybackAuthState() }
@@ -661,65 +649,11 @@ internal data class ImageDiskCacheConfig(
     val maxSizeBytes: Long,
 )
 
-/**
- * Per-provider sub-paths served by the Paxsenix ("Lyrically") API, longest first
- * so `apple-music/cache/cleanup` is stripped before `apple-music/cache`.
- *
- * [PaxsenixLyrics] appends the sub-path for whichever provider is being queried,
- * so the configured endpoint has to be the *service root*.
- */
-private val PAXSENIX_PROVIDER_PATHS =
-    listOf(
-        "apple-music/cache/cleanup",
-        "apple-music/lyrics",
-        "apple-music/cache",
-        "musixmatch/lyrics",
-        "spotify/lyrics",
-        "spotify/search",
-        "spotify/home",
-        "netease/lyrics",
-        "netease/search",
-        "youtube/lyrics",
-        "youtube/search",
-        "deezer/lyrics",
-        "genius/lyrics",
-        "kugou/lyrics",
-        "kugou/search",
-        "qq/lyrics",
-        "qq/search",
-        "api/stats",
-        "playground",
-        "docs",
-    )
-
-/**
- * Normalises a user-supplied Paxsenix endpoint down to the service root.
- *
- * The API documents a *separate* URL per lyrics provider
- * (`…/apple-music/lyrics`, `…/spotify/lyrics`, and so on), so users reasonably
- * paste one of those into the endpoint field. [PaxsenixLyrics] then appends its
- * own provider sub-path, producing `…/apple-music/lyrics/spotify/lyrics` and a
- * 404 for every request. Stripping any known provider path (plus query string
- * and fragment) means pasting any documented URL resolves to the same working
- * root, and a blank value still falls through to the built-in default.
- */
-private fun normalizePaxsenixEndpoint(raw: String): String {
-    val trimmed = raw.trim()
-    if (trimmed.isBlank()) return ""
-
-    var url = trimmed.substringBefore('?').substringBefore('#').trimEnd('/')
-    for (path in PAXSENIX_PROVIDER_PATHS) {
-        if (url.endsWith("/$path", ignoreCase = true)) {
-            url = url.removeRange(url.length - path.length - 1, url.length)
-            break
-        }
-        if (url.endsWith(path, ignoreCase = true)) {
-            url = url.removeRange(url.length - path.length, url.length)
-            break
-        }
-    }
-    return url.trimEnd('/').ifBlank { "" }
-}
+// PaxsenixLyrics backend + the BiniLyrics provider that was its only consumer
+// were removed per user request (2026-08-30): "Remove simpmusic and binilyrics
+// lyrics provider and their entire code too". The PAXSENIX_PROVIDER_PATHS
+// list and the normalizePaxsenixEndpoint helper that used to live here were
+// deleted along with the :lyrics:paxsenix gradle module they supported.
 
 /**
  * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider]
