@@ -747,6 +747,13 @@
     <string name="romanization_overridden_by_ai">Overridden — AI romanisation is on (Settings → Integration → AI integration)</string>
     <string name="ai_romanize_now">Romanise with AI</string>
     <string name="ai_romanize_started">Romanising lyrics with AI…</string>
+    <string name="ai_romanize_already_cached">Romanisation already cached — re-applied</string>
+    <string name="ai_romanize_in_flight">A romanisation for this track is already running</string>
+    <string name="ai_romanize_settings_disabled">AI romanisation isn\'t configured — set a provider and API key in Settings → Integration</string>
+    <string name="ai_romanize_no_lyrics">No lyrics to romanise on this track</string>
+    <string name="ai_romanize_excluded_language">This language is in your romanisation exclusion list — remove it in Settings → Lyrics to romanise</string>
+    <string name="ai_romanize_no_romanizable_script">Lyrics are already in Latin script — nothing to romanise</string>
+    <string name="ai_romanize_empty_result">AI returned no romanisation — check the provider/model in Settings → Integration, or try another track</string>
     <string name="update_remind_later">Remind me later</string>
     <string name="update_never_show_again">Never show again</string>
     <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>
