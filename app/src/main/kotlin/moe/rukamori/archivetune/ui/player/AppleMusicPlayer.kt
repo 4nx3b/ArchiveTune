@@ -859,18 +859,26 @@ fun AppleMusicPlayerContent(
     }
 
     BoxWithConstraints(modifier = modifier) {
-        // Inner Box wraps ALL the player content (backdrop + landscape/portrait
-        // layouts) and carries the `Modifier.layerBackdrop(popupBackdrop)` so
-        // the kyant backdrop captures the player content every frame. The
-        // anchored popup (rendered as a SIBLING of this inner Box below)
+        // Inner BoxWithConstraints wraps ALL the player content (backdrop +
+        // landscape/portrait layouts) and carries the
+        // `Modifier.layerBackdrop(popupBackdrop)` so the kyant backdrop
+        // captures the player content every frame. The anchored popup
+        // (rendered as a SIBLING of this inner BoxWithConstraints below)
         // samples from this backdrop with a 20dp blur to produce the real
         // frosted-glass effect — keeping the popup OUT of the layer-capturing
         // Box avoids the kyant render-feedback loop warning.
         //
-        // `matchParentSize()` is a BoxScope modifier — the inner Box is a
-        // direct child of BoxWithConstraints (which IS a BoxScope), so this
-        // works.
-        Box(
+        // BoxWithConstraints (not Box) so the inner content keeps access to
+        // `maxWidth`/`maxHeight` from the BoxWithConstraintsScope — many
+        // child lines (sharpArtworkHeight, fullPlayerHeightForArtwork,
+        // blurBackdropFootprint's remember key, the morph area's nested
+        // BoxWithConstraints) read these. A plain `Box` would shadow the
+        // scope and break the build.
+        //
+        // `matchParentSize()` is a BoxScope modifier — the inner
+        // BoxWithConstraints is a direct child of the outer BoxWithConstraints
+        // (which IS a BoxScope), so this works.
+        BoxWithConstraints(
             modifier =
                 Modifier
                     .matchParentSize()
