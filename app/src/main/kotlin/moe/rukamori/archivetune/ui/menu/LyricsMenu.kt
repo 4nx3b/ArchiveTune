@@ -933,14 +933,16 @@ fun LyricsMenu(
             // keeps the same `extraLarge` corner shape so the rounded clip
             // still matches the popup's outer clip (no dark gap).
             //
-            // Vertical padding 4dp -> 8dp per "redesign the lyrics popup —
-            // match the second reference image" (2026-08-30). The reference
-            // shows generous breathing room above the first row and below
-            // the last row (~24px at reference scale ≈ 8dp at mdpi).
+            // Vertical padding 8dp -> 4dp per "apply the dimensions and
+            // scaling from this commit" (batch-13 reference, 2026-08-31).
+            // The user reported the batch-14 redesign made the popup too
+            // big; reverting to batch-13's compact surface padding while
+            // keeping batch-14's dark-glass visual style (white text,
+            // dark tint, blur, shadow).
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(),
+                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(vertical = 0.dp)) {
                     menuItems.forEachIndexed { index, item ->
@@ -949,16 +951,17 @@ fun LyricsMenu(
                         )
                         // Hairline divider BETWEEN items only — no divider before the first
                         // or after the last, matching Apple Music's grid-separated look.
-                        // Color: white at 12% opacity (was `outlineVariant`) per reference
-                        //   "Divider lines should be approximately 10–18% white/gray opacity".
-                        // Thickness: 0.5dp -> 1.dp per reference "1 px at reference scale".
-                        // Horizontal padding: 16dp -> 20dp to align with the row's
-                        //   text and icon (both at horizontal = 20.dp now).
+                        // Color: white at 12% opacity per reference "Divider lines
+                        //   should be approximately 10–18% white/gray opacity"
+                        //   (kept from batch-14 visual style).
+                        // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
+                        //   16dp per batch-13 dimensions (2026-08-31) — the
+                        //   batch-14 redesign was reported as too big.
                         if (index < menuItems.size - 1) {
                             HorizontalDivider(
                                 color = Color.White.copy(alpha = 0.12f),
-                                thickness = 1.dp,
-                                modifier = Modifier.padding(horizontal = 20.dp),
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                         }
                     }
@@ -1917,36 +1920,30 @@ private fun AppleMusicLyricsMenuRow(
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
-    // Reference row geometry (720x1536 screenshot):
-    //   - each row ~80px tall (~5.2% of screen height)
-    //   - text begins ~30px from popup left edge
-    //   - icon center ~48px from popup right edge
-    //   - icon size ~28-32px
-    //   - text size ~28-30px (≈17-18sp on a typical Android device)
-    //
-    // Mapped to dp/sp using responsive proportions:
-    //   - row min height 56dp (was 44dp, was 56dp via ListItem) — generous
-    //     Apple-Music-style touch target.
-    //   - horizontal padding 20dp (was 16dp) — text starts ~20dp from
-    //     popup edge, matches the reference's ~30px at mdpi.
-    //   - vertical padding 8dp (was 4dp) — keeps the label vertically
-    //     centered within the taller row.
-    //   - icon size 24dp (was 20dp) — matches reference's ~28-32px range.
-    //   - text fontSize 17sp (was 16sp) — matches reference's ~28-30px
-    //     range on a typical xxhdpi Android device.
+    // Row geometry reverted to batch-13 compact dimensions (2026-08-31)
+    // per user report that the batch-14 redesign made the popup too big.
+    // The batch-14 visual style (white text + iOS System Red destructive)
+    // is preserved above — only the dimensions revert:
+    //   - row min height 56dp -> 44dp (batch-13 value; still meets touch
+    //     target guidance).
+    //   - horizontal padding 20dp -> 16dp (batch-13 value).
+    //   - vertical padding 8dp -> 4dp (batch-13 value; tighter row
+    //     breathing room).
+    //   - icon size 24dp -> 20dp (batch-13 value).
+    //   - text fontSize 17sp -> 16sp (batch-13 value).
     val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp)
+                .heightIn(min = 44.dp)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = ripple(),
                     enabled = item.enabled,
                     onClick = item.onClick,
                 )
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1954,12 +1951,12 @@ private fun AppleMusicLyricsMenuRow(
             text = item.label,
             color = headlineColor,
             fontWeight = headlineWeight,
-            fontSize = 17.sp,
+            fontSize = 16.sp,
         )
         Icon(
             painter = painterResource(item.iconRes),
             contentDescription = null,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(20.dp),
             tint = iconColor,
         )
     }
@@ -1978,7 +1975,8 @@ private fun AppleMusicLyricsMenuRow(
  * - Anchored to [iconBoundsInRoot.right] x [iconBoundsInRoot.bottom] so the
  *   popup's right edge aligns with the icon's right edge, with the popup
  *   appearing just below the icon.
- * - 65% of screen width (per reference "65% of screen width"), 16dp corner
+ * - 220dp width (compact fixed width per batch-13 reference, restored 2026-08-31
+ *   after batch-14's 65%-of-screen width was reported as too big), 16dp corner
  *   radius (was `MaterialTheme.shapes.extraLarge` ~28dp, reduced 2026-08-30
  *   per reference "24 px corner radius at the reference scale"), frosted-glass
  *   vibrancy background — when the
@@ -2081,15 +2079,10 @@ fun AnchoredLyricsOverflowMenu(
 
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    // Per "redesign the lyrics popup — match the second reference image"
-    // (2026-08-30): the reference popup occupies ~65% of screen width and is
-    // positioned toward the RIGHT side of the screen. We capture
-    // `LocalConfiguration.current` here (composable scope) so the offset
-    // lambda (a non-composable `Density.() -> IntOffset`) can compute the
-    // popup's pixel width from the screen's dp width without re-calling the
-    // composable function on every recomposition.
-    val configuration = LocalConfiguration.current
-    val screenWidthDp = configuration.screenWidthDp
+    // NOTE: batch-14 captured `LocalConfiguration.current` here to compute
+    // a 65%-of-screen popup width. batch-15 (2026-08-31) reverts to a fixed
+    // 220dp width per user request "apply the dimensions and scaling from
+    // this commit" (batch-13 reference). The capture is no longer needed.
 
     // Scale: starts at 0.3f (small, centred on top-right corner) on first
     // composition, animates to 1.0f via LaunchedEffect(Unit) below. On
@@ -2230,30 +2223,34 @@ fun AnchoredLyricsOverflowMenu(
         // where the popup meets the icon the user just tapped. This is
         // the "morph from the overflow icon" effect the user asked for.
         //
-        // Per "redesign the lyrics popup — match the second reference image"
-        // (2026-08-30), the popup was widened from `widthIn(max = 220.dp)` to
-        // `fillMaxWidth(0.65f)` (65% of the screen width, matching the
-        // reference popup's ~65% screen-width proportion). The popup remains
-        // anchored to the overflow icon's right edge so the existing
-        // enter/exit scale animation (transformOrigin = top-right) continues
-        // to look like the popup "grows out of" the icon — THE ANIMATION IS
-        // COMPLETELY UNCHANGED.
+        // Per "apply the dimensions and scaling from this commit"
+        // (2026-08-31, batch-13 reference), the popup width reverts from
+        // batch-14's `fillMaxWidth(0.65f)` (65% screen) back to batch-13's
+        // compact `widthIn(max = 220.dp)`. The user reported the batch-14
+        // redesign made the popup too big; we keep batch-14's visual style
+        // (dark-glass material, white text, blur, shadow, red destructive)
+        // but restore batch-13's compact dimensions.
+        //
+        // The popup remains anchored to the overflow icon's right edge so
+        // the existing enter/exit scale animation (transformOrigin =
+        // top-right) continues to look like the popup "grows out of" the
+        // icon — THE ANIMATION IS COMPLETELY UNCHANGED.
         //
         // Visual stack (outermost -> innermost):
         //   1. offset — positions the popup's top-right corner at the icon.
-        //   2. fillMaxWidth(0.65f) — responsive width (65% of screen).
+        //   2. widthIn(max = 220.dp) — compact fixed width (batch-13 value).
         //   3. heightIn(max = 520.dp) — safety bound for tall content.
         //   4. graphicsLayer — UNCHANGED (alpha + scale + transformOrigin).
         //      The animation reads scaleAnim.value / alphaAnim.value and
         //      applies them via this graphicsLayer. Untouched per user spec.
-        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — NEW: soft elevated
+        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — soft elevated
         //      shadow per reference "soft shadow, large shadow blur, subtle
         //      depth". Applied AFTER graphicsLayer so the shadow scales +
         //      fades with the popup's enter/exit animation (no janky
         //      full-size shadow during the small-scale enter frame).
         //   6. frostedBlurModifier (or fallback dark tint) — backdrop blur.
-        //   7. background(Color.Black at 55%) — NEW: dark charcoal tint over
-        //      the blur, per reference "dark charcoal/black translucent
+        //   7. background(Color.Black at 55%) — dark charcoal tint over the
+        //      blur, per reference "dark charcoal/black translucent
         //      material". The graphicsLayer's alpha animates this tint in/out.
         //   8. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
         //      reduced to 16dp per reference "24 px corner radius at the
@@ -2263,7 +2260,7 @@ fun AnchoredLyricsOverflowMenu(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { (screenWidthDp * 0.65f).dp.toPx() }.toInt()
+                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
@@ -2274,7 +2271,7 @@ fun AnchoredLyricsOverflowMenu(
                         val y = iconBottom + verticalOffsetPx
                         IntOffset(x = x, y = y)
                     }
-                    .fillMaxWidth(0.65f)
+                    .widthIn(max = 220.dp)
                     .heightIn(max = 520.dp)
                     .graphicsLayer {
                         this.alpha = alpha
