@@ -1141,6 +1141,27 @@ class MainActivity : ComponentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
+                    // True while a NavHost page-switch transition is animating. The app-wide
+                    // `Modifier.layerBackdrop(liquidGlassBackdrop)` on the NavHost root re-records
+                    // the ENTIRE NavHost into a GraphicsLayer every frame its content changes. During
+                    // a page switch the whole NavHost animates (fade/scale/slide), so that re-record
+                    // runs every frame and is the dominant cost of the "lag when switching pages"
+                    // symptom (worst with the mini player visible, which also samples the backdrop).
+                    // The nav bar + mini player don't need a fresh backdrop while the page is
+                    // mid-transition — the content behind them is moving anyway — so we suspend the
+                    // recording for the ~300ms transition window. Nothing is removed or sacrificed:
+                    // the liquid glass effect is fully restored the moment the transition settles.
+                    var navTransitionInProgress by remember { mutableStateOf(false) }
+                    LaunchedEffect(navController) {
+                        navController.currentBackStackEntryFlow
+                            .map { it.destination.route }
+                            .distinctUntilChanged()
+                            .collectLatest { _ ->
+                                navTransitionInProgress = true
+                                delay(NAV_TRANSITION_SUSPEND_MILLIS)
+                                navTransitionInProgress = false
+                            }
+                    }
                     val onlineSearchEncodedQuery =
                         navBackStackEntry
                             ?.takeIf {
@@ -3017,7 +3038,11 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen) {
+                                                if (
+                                                    liquidGlassBackdrop != null &&
+                                                    !isPlayerLyricsFullScreen &&
+                                                    !navTransitionInProgress
+                                                ) {
                                                     // Suspend the outer app-wide layerBackdrop while the
                                                     // full-screen lyrics overlay is open. The overlay is
                                                     // opaque, so nothing visible samples this backdrop
@@ -3025,6 +3050,15 @@ class MainActivity : ComponentActivity() {
                                                     // player is expanded). Recording the entire NavHost
                                                     // into a GraphicsLayer every frame steals GPU budget
                                                     // from the 60 Hz karaoke sweep on top.
+                                                    //
+                                                    // Also suspend it during a page-switch transition
+                                                    // (navTransitionInProgress): the NavHost content
+                                                    // animates every frame, so the full-NavHost re-record
+                                                    // would otherwise run every frame — the dominant cost
+                                                    // of the "lag when switching pages" symptom. The nav
+                                                    // bar + mini player don't need a fresh backdrop while
+                                                    // the page is mid-transition, so we skip the recording
+                                                    // for the ~320ms window and restore it once settled.
                                                     Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
@@ -3588,6 +3622,12 @@ val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No Downl
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
+
+// How long the app-wide NavHost liquid-glass backdrop recording is suspended after a
+// page-switch begins. Covers the longest NavHost transition (tween(250) slide + fade) plus
+// a small settle margin, so the expensive full-NavHost re-record is skipped for the whole
+// animation window and resumes once the page has settled.
+private const val NAV_TRANSITION_SUSPEND_MILLIS = 320L
 
 @Composable
 private fun OnlineSearchSortMenu(
