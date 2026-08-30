@@ -10663,13 +10663,18 @@ class MusicService :
             ) >= requestedLength
         } ?: return null
 
-        // DataSpec.Builder has no subrange() method (subrange() is defined
-        // on the DataSpec data class, not on its Builder). Use the Builder
-        // equivalents setPosition() / setLength() to scope the cached
-        // request to the bytes that are actually present.
-        return dataSpec.buildUpon()
+        // DataSpec.Builder.buildUpon() preserves the original DataSpec's
+        // position — we only need to set the matching cache key and trim the
+        // length to the bytes that are actually cached. Resetting the
+        // position to 0 here was a regression introduced when migrating
+        // off of DataSpec.subrange() — it caused CacheDataSource to return
+        // bytes [0..requestedLength) for byte-range requests at non-zero
+        // offsets, which the extractor fed to the decoder at the wrong
+        // position and produced silence for the second half of cached songs
+        // after process death (force-stop) until the song repeated.
+        return dataSpec
+            .buildUpon()
             .setKey(matchingKey)
-            .setPosition(0L)
             .setLength(requestedLength)
             .build()
     }
