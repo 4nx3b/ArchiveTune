@@ -153,22 +153,8 @@ val LocalNavigationBarBackdrop = compositionLocalOf<NavigationBarBackdrop?> { nu
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
 
-/**
- * SukiSU-Ultra reference: the floating-bottom-bar uses a 64.dp tall container
- * with 4.dp padding on all sides, leaving a 56.dp content row (and the sliding
- * pill underneath is also 56.dp tall).
- *
- * Made public so [MainActivity] can:
- *   - Compute the wrapper Box height that matches the actual rendered bar
- *     height when liquid glass is on (so the mini-player's collapsed anchor
- *     aligns with the bar's true top edge — no gap, no overlap).
- *   - Drive `bottomNavigationBarHeight` spring animation with the resolved
- *     bar height (so the slide-out distance is correct).
- *
- * @see <a href="https://github.com/sukisu-ultra/sukisu-ultra/blob/main/manager/app/src/main/java/com/sukisu/ultra/ui/component/FloatingBottomBar.kt">SukiSU FloatingBottomBar.kt</a>
- */
-val SukiSUBarHeight = 64.dp
-val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
+private val SukiSUBarHeight = 64.dp
+private val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
 
 // Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
 private const val FrostedNavBarBlurRadiusPx = 60f
@@ -543,8 +529,8 @@ fun FloatingNavigationToolbar(
         Box(
             modifier =
                 Modifier
-                    .widthIn(max = if (isFloating && !canLiquidGlass) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
-                    .fillMaxWidth(if (isFloating && !canLiquidGlass) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
+                    .fillMaxWidth(if (isFloating) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
                     .height(resolvedBarHeight),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -659,17 +645,11 @@ fun FloatingNavigationToolbar(
                                 modifier =
                                     Modifier
                                         .align(Alignment.TopStart)
-                                        // Per audit (2026-08-30): the sliding indicator pill used
-                                        // `Modifier.offset { IntOffset(indicatorX.value.roundToInt(),
-                                        //  indicatorY.roundToInt()) }` — that runs in the LAYOUT
-                                        // phase on every spring frame of the tab-switch animation
-                                        // and invalidates the indicator's children for re-layout
-                                        // each frame. Switching to `graphicsLayer { translationX/Y }`
-                                        // moves the transform to the DRAW phase, so the layout pass
-                                        // can stay cached while the pill slides. No visual change.
-                                        .graphicsLayer {
-                                            translationX = indicatorX.value
-                                            translationY = indicatorY
+                                        .offset {
+                                            IntOffset(
+                                                indicatorX.value.roundToInt(),
+                                                indicatorY.roundToInt(),
+                                            )
                                         }
                                         .width(pillWidth)
                                         .height(pillHeight)
@@ -865,15 +845,7 @@ fun FloatingNavigationToolbar(
                 Box(
                     modifier =
                         Modifier
-                            // Per audit (2026-08-30): the Liquid Glass pill used
-                            // `Modifier.offset { IntOffset(...) }` to compute its X — that runs
-                            // in the LAYOUT phase on every drag/spring frame. The pill already
-                            // has a `Modifier.graphicsLayer { ... }` after for the press scale
-                            // and velocity-stretch, so folding the offset translationX into
-                            // that same graphicsLayer moves the work to the DRAW phase. The
-                            // layout pass can stay cached while the pill slides under the
-                            // user's finger.
-                            .graphicsLayer {
+                            .offset {
                                 val pillWidthPx = pillWidth.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
                                 // X: align with the items Row's content area, then slide.
@@ -898,8 +870,11 @@ fun FloatingNavigationToolbar(
                                 // Y = 0: the wrapper Box's CenterStart alignment
                                 // centers the pill vertically. No Y computation needed.
                                 val xRelativeToWrapper = xInRoot - barPositionInRoot.x
-                                translationX = xRelativeToWrapper
-
+                                IntOffset(xRelativeToWrapper.roundToInt(), 0)
+                            }
+                            .width(pillWidth)
+                            .height(pillHeight)
+                            .graphicsLayer {
                                 // SukiSU pressedScale = 78f / 56f ≈ 1.393.
                                 // Velocity-stretch: the pill squishes horizontally when
                                 // flung (a physical "rubber" feel). The asymmetry (0.75 ×
@@ -909,61 +884,39 @@ fun FloatingNavigationToolbar(
                                 scaleX = pressScale / (1f - velocityStretch * 0.75f)
                                 scaleY = pressScale * (1f - velocityStretch * 0.25f)
                             }
-                            .then(
-                                // Per audit (2026-08-30): the Liquid Glass pill's drawBackdrop
-                                // chain was inline above, so every recomposition of the
-                                // FloatingNavigationToolbar re-allocated the entire kyant
-                                // effects stack (BlurEffect, LensEffect, vibrancy, shape,
-                                // onDrawSurface, onDrawBehind) and re-installed the
-                                // RuntimeShader on the GraphicsLayer. The pill box
-                                // recomposes on every spring frame during the drag/press
-                                // animation because of the dragAnim State reads — so the
-                                // per-frame cost was the dominant per-frame overhead while
-                                // the user was rubbing the bar.
-                                //
-                                // Memoizing the chain on (backdrop, shape, fallbackColor,
-                                // isDark) means the kyant effect stack is built ONCE per
-                                // (backdrop, shape, dark-theme) tuple and reused across
-                                // recompositions. The dragAnim.pressProgress / velocity
-                                // reads inside `onDrawSurface` and the `lens()` amount that
-                                // depends on `size` happen in draw scope and refresh per
-                                // frame without invalidating the remember. (This is the same
-                                // pattern already used by `Modifier.liquidGlass` in
-                                // LiquidGlass.kt:152.)
-                                remember(liquidGlassBackdrop, pillShape, pillFallbackColor, isDark) {
-                                    Modifier.drawBackdrop(
-                                        backdrop = liquidGlassBackdrop,
-                                        effects = {
-                                            vibrancy()
-                                            blur(4f.dp.toPx())
-                                            lens(
-                                                refractionHeight = 24f.dp.toPx(),
-                                                refractionAmount = size.minDimension / 4f,
-                                                chromaticAberration = false,
-                                            )
-                                        },
-                                        onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                                        shape = { pillShape },
-                                        onDrawBehind = {
-                                            drawRect(pillFallbackColor)
-                                        },
-                                        onDrawSurface = {
-                                            val progress = dragAnim.pressProgress
-                                            // Pre-allocate the static tint color at
-                                            // drawScope level so we don't allocate a new
-                                            // Color object every frame. The dynamic alpha
-                                            // (`0.03f * progress`) must stay per-frame
-                                            // because progress varies with the press
-                                            // animation — that's one cheap Color allocation
-                                            // per frame instead of two.
-                                            val tintColor = if (isDark) Color.Black else Color.White
-                                            drawRect(
-                                                color = tintColor.copy(alpha = 0.1f),
-                                                alpha = 1f - progress,
-                                            )
-                                            drawRect(Color.Black.copy(alpha = 0.03f * progress))
-                                        },
+                            .drawBackdrop(
+                                backdrop = liquidGlassBackdrop,
+                                effects = {
+                                    vibrancy()
+                                    blur(4f.dp.toPx())
+                                    lens(
+                                        refractionHeight = 24f.dp.toPx(),
+                                        refractionAmount = size.minDimension / 4f,
+                                        chromaticAberration = false,
                                     )
+                                },
+                                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                                shape = { pillShape },
+                                // Fallback surface drawn UNDER the backdrop sample.
+                                // When the backdrop has content (album art, page content
+                                // behind the nav bar), the backdrop sample covers this
+                                // and you see the liquid glass refraction. When the
+                                // backdrop is EMPTY (e.g. bottom of a short page with
+                                // nothing behind the nav bar), the backdrop sample is
+                                // transparent and this opaque surface shows through —
+                                // matching the existing pattern used by the bar Surface
+                                // (baseColor = surfaceContainerHigh) and the Frosted nav
+                                // bar variant (opaque surface + 30% alpha overlay).
+                                onDrawBehind = {
+                                    drawRect(pillFallbackColor)
+                                },
+                                onDrawSurface = {
+                                    val progress = dragAnim.pressProgress
+                                    drawRect(
+                                        color = (if (isDark) Color.Black else Color.White).copy(alpha = 0.1f),
+                                        alpha = 1f - progress,
+                                    )
+                                    drawRect(Color.Black.copy(alpha = 0.03f * progress))
                                 },
                             )
                             .innerShadow(shape = pillShape) {
