@@ -85,7 +85,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEachIndexed
@@ -2199,7 +2198,13 @@ fun SwipeToSongBox(
         Box(
             modifier =
                 Modifier
-                    .offset { IntOffset(offset.value.roundToInt(), 0) }
+                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(...) }` ran
+                    // in the LAYOUT phase on every swipe-dismiss drag frame. Folding
+                    // into `graphicsLayer` moves the transform to the DRAW phase; the
+                    // layout pass stays cached while the user swipes the row out.
+                    .graphicsLayer {
+                        translationX = offset.value
+                    }
                     .fillMaxWidth()
                     .background(resolvedContentBackgroundColor),
             content = content,
