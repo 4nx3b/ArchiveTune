@@ -12,7 +12,15 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -37,6 +46,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -79,9 +89,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -89,6 +104,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -833,6 +849,14 @@ fun LyricsMenu(
                                     ),
                                 lines = AiLyricsRomanization.linesOf(lyricsText, mediaMetadataProvider().duration),
                                 settings = aiRomanizationSettings,
+                                // force = true: this is the manual menu action. The user explicitly
+                                // asked the AI to romanise, so we hand the lyrics to the model even
+                                // when they look Latin-script. The model is instructed to echo
+                                // Latin lines unchanged, so the visible effect on Latin lyrics is
+                                // still "nothing changes" — but the user no longer sees the
+                                // misleading "nothing to romanise" toast that said the click did
+                                // nothing.
+                                force = true,
                             )
                             val toastResId = when (status) {
                                 AiLyricsRomanization.RequestStatus.STARTED -> R.string.ai_romanize_started
@@ -1872,5 +1896,204 @@ private fun AppleMusicLyricsMenuRow(
             tonalElevation = 0.dp,
             modifier = Modifier.heightIn(min = 56.dp),
         )
+    }
+}
+
+/**
+ * Apple-Music-style anchored overflow popup for the lyrics screen.
+ *
+ * Renders the SAME menu content as [LyricsMenu] (Edit / Refetch / Translate /
+ * Romanise with AI / Undo translation / Search) but as a frosted-glass popup
+ * anchored to the top-right overflow ("...") icon — instead of the previous
+ * bottom slide-up ModalBottomSheet.
+ *
+ * ## Visual design
+ *
+ * - Anchored to [iconBoundsInRoot.right] × [iconBoundsInRoot.bottom] so the
+ *   popup's right edge aligns with the icon's right edge, with the popup
+ *   appearing just below the icon.
+ * - 280dp max width, 16dp corner radius, 0.7 alpha dark background — the
+ *   translucent dark tint over the lyrics view produces the frosted-glass
+ *   look (true backdrop blur would require either the parent Box to have
+ *   [Modifier.layerBackdrop] or the popup to live in a separate window with
+ *   FLAG_BLUR_BEHIND; we approximate the effect with a translucent tint so
+ *   it works on all Android versions and stays performant during scroll).
+ * - 0.5dp white-at-0.1-alpha border to define the popup edge against busy
+ *   backgrounds (matching Apple Music's "Action Sheet" style).
+ *
+ * ## Morph animation
+ *
+ * The popup enters by scaling up from a small initial scale centred on the
+ * top-right corner of itself — the corner that meets the icon — so it
+ * visually appears to "grow out of" the overflow icon the user tapped. This
+ * matches the iOS Action Sheet behaviour the user explicitly referenced
+ * ("enlarge smoothly from the overflow menu icon just like the morph
+ * animation"). On dismissal the same animation reverses (scale back down
+ * to the icon position), then the parent removes the composable from
+ * composition via [onDismiss].
+ *
+ * The scrim behind the popup fades in/out in lock-step so the user perceives
+ * a single coordinated animation rather than scrim-then-popup or
+ * popup-then-scrim.
+ *
+ * ## Taps
+ *
+ * Taps inside the popup are consumed (the popup's clickable has an empty
+ * onClick) so they never bubble up to the scrim and dismiss the menu
+ * accidentally. Taps anywhere outside the popup (on the scrim) trigger
+ * dismissal via [DismissRequest] — same as the previous ModalBottomSheet
+ * tap-outside-to-dismiss behaviour.
+ *
+ * @param iconBoundsInRoot On-screen rectangle of the overflow icon, in the
+ *   coordinates of the lyrics screen's root composable (i.e. as reported
+ *   by `Modifier.onGloballyPositioned { coords -> iconBounds =
+ *   coords.boundsInRoot() }`). The popup's right edge aligns with
+ *   [Rect.right] and the popup's top edge sits [Rect.bottom] + 4dp below
+ *   the icon's bottom edge.
+ * @param onDismiss Called after the exit animation finishes — the parent
+ *   should set `showLyricsMenu = false` (or equivalent) in response so the
+ *   composable leaves composition.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun AnchoredLyricsOverflowMenu(
+    iconBoundsInRoot: Rect,
+    lyricsProvider: () -> LyricsEntity?,
+    mediaMetadataProvider: () -> MediaMetadata,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    viewModel: LyricsMenuViewModel = hiltViewModel(),
+    showPlayerControlsState: State<Boolean>? = null,
+    onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
+    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
+    showControlsToggles: Boolean = true,
+) {
+    // Local dismissal state — set to true when the user requests dismissal
+    // (tap on scrim / a menu item that closes). Drives the exit animation
+    // (alpha → 0, scale → 0.3). The animation's completion is observed by
+    // a LaunchedEffect which then calls [onDismiss] so the parent removes
+    // the composable from composition.
+    var dismissed by remember { mutableStateOf(false) }
+
+    val density = LocalDensity.current
+
+    // Scale: 0.3 → 1.0 on enter, 1.0 → 0.3 on exit. Spring for a slight
+    // overshoot that matches Apple Music's "morph" feel.
+    val scale by animateFloatAsState(
+        targetValue = if (dismissed) 0.3f else 1f,
+        animationSpec =
+            spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            ),
+        label = "anchored-overflow-scale",
+    )
+
+    // Alpha: 0 → 1 on enter, 1 → 0 on exit. Tween so the fade doesn't bounce.
+    // The finishedListener fires once the EXIT animation completes (alpha == 0)
+    // so we can call [onDismiss] and remove the composable from composition.
+    val alpha by animateFloatAsState(
+        targetValue = if (dismissed) 0f else 1f,
+        animationSpec = tween(180),
+        label = "anchored-overflow-alpha",
+    )
+
+    // Trigger onDismiss after exit animation completes — the alpha target is
+    // 0 only during dismissal, and the finishedListener fires when the
+    // animation reaches that target. (Also fires on enter when alpha reaches
+    // 1, but the `dismissed` check ensures we only call onDismiss on the way
+    // OUT.)
+    LaunchedEffect(alpha) {
+        if (dismissed && alpha == 0f) {
+            onDismiss()
+        }
+    }
+
+    // Full-screen scrim — translucent black so the lyrics view is still
+    // visible behind (matches Apple Music's "dim the background but don't
+    // black it out" style). Clickable to trigger dismissal.
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.35f * alpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    if (!dismissed) dismissed = true
+                },
+    ) {
+        // The popup itself. Positioned via Modifier.offset { } so its
+        // right edge aligns with the icon's right edge (in root coords),
+        // and its top edge sits 4dp below the icon's bottom edge.
+        //
+        // transformOrigin = (1f, 0f) = top-right of the popup — so the
+        // scale animation grows from the top-right corner, the corner
+        // where the popup meets the icon the user just tapped. This is
+        // the "morph from the overflow icon" effect the user asked for.
+        Box(
+            modifier =
+                Modifier
+                    .offset {
+                        val popupWidthPx = with(density) { 280.dp.toPx() }.toInt()
+                        val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
+                        val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+                        val iconRight = iconBoundsInRoot.right.toInt()
+                        val iconBottom = iconBoundsInRoot.bottom.toInt()
+                        val x =
+                            (iconRight - popupWidthPx)
+                                .coerceAtLeast(horizontalMarginPx)
+                        val y = iconBottom + verticalOffsetPx
+                        IntOffset(x = x, y = y)
+                    }
+                    .widthIn(max = 280.dp)
+                    .heightIn(max = 520.dp)
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        this.scaleX = scale
+                        this.scaleY = scale
+                        this.transformOrigin = TransformOrigin(1f, 0f)
+                    }
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.7f * alpha))
+                    .border(
+                        width = 0.5.dp,
+                        color = Color.White.copy(alpha = 0.12f * alpha),
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        // Consume taps inside the popup so they don't bubble
+                        // up to the scrim and trigger dismissal.
+                    },
+        ) {
+            // Delegate the actual menu items to the existing [LyricsMenu]
+            // composable — same Edit / Refetch / Translate / Romanise /
+            // Undo / Search list, same click handlers, same dialogs. The
+            // MenuSurfaceSection card that LyricsMenu draws inside itself
+            // is transparent against the popup's dark frosted background,
+            // so the visual result is a flat list of menu rows — matching
+            // Apple Music's anchored action sheet (see screenshot
+            // reference: Screenshot_20260827-235641_Accord.png).
+            LyricsMenu(
+                lyricsProvider = lyricsProvider,
+                mediaMetadataProvider = mediaMetadataProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                onDismiss = {
+                    // Defer the actual removal to the exit-animation completion.
+                    if (!dismissed) dismissed = true
+                },
+                viewModel = viewModel,
+                showPlayerControlsState = showPlayerControlsState,
+                onShowPlayerControlsChange = onShowPlayerControlsChange,
+                onAutoHidePlayerControlsChange = onAutoHidePlayerControlsChange,
+                showControlsToggles = showControlsToggles,
+            )
+        }
     }
 }

@@ -130,9 +130,11 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "lyrics_providers", "lyrics",
             "first_lyrics_provider", "set_first_lyrics_provider", "prioritize_word_synced_lyrics",
             "enable_tidal_lyrics", "enable_deezer_lyrics", "enable_musixmatch_experimental",
-            "paxsenix_api_key", "paxsenix_endpoint", "paxsenix_stats", "paxsenix_lyrics",
             "betterlyrics", "betterlyrics_portato", "youlyplus_lyrics", "lrclib", "kugou",
-            "unison_lyrics", "simpmusic_lyrics", "megalobiz_lyrics",
+            "unison_lyrics",
+            // "paxsenix_*" and "simpmusic_lyrics" anchor keys removed (2026-08-30) along
+            // with the providers + their settings rows + the :lyrics:paxsenix / :lyrics:simpmusic
+            // gradle modules.
         )
         own(
             "lyrics_romanisation", "lyrics",

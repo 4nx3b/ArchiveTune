@@ -275,7 +275,6 @@
     <string name="enable_proxy">Abilita proxy</string>
     <string name="proxy_type">Tipo di procura</string>
     <string name="enable_betterlyrics">Abilita BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">Abilita i testi di SimpMusic</string>
     <string name="player_and_audio">Lettore e audio</string>
     <string name="audio_quality">Qualità audio</string>
     <string name="audio_quality_auto">Automatico</string>

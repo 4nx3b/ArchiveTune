@@ -404,7 +404,6 @@
     <string name="mime_type">MIME类型</string>
     <string name="lyrics_animation_style">动态歌词样式</string>
     <string name="enable_betterlyrics">启用BetterLyrics</string>
-    <string name="enable_simpmusic_lyrics">启用SimpMusic lyrics</string>
     <string name="player_and_audio">播放器与音频</string>
     <string name="clear">清除</string>
     <string name="song_cache">歌曲缓存</string>
