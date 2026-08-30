@@ -231,29 +231,18 @@ fun FloatingNavigationToolbar(
     // liquid glass surface tints itself with `surfaceContainerHigh`, so it stays
     // visible even when the rest of the UI is pitch black. The user explicitly
     // opts in via the Liquid Glass toggle, so honour that choice in pure dark too.
-val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
-    // Per user request (2026-08-30): "Dimensions customisation should also be
-    // available for liquid glass navigation bar." The Liquid Glass bar
-    // honours the user's Height multiplier (applied on top of SukiSU's 64dp
-    // baseline), Label spacing (between icon and label inside the bar), and
-    // Corner radius (lets the user opt OUT of the perfect-circle 50% pill
-    // and pick any rounded-rect shape). Opacity/Transparency don't apply —
-    // the bar surface is `Color.Transparent` because the kyant shader
-    // controls the visible tint, so modulating alpha has no visible effect.
+    val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
     val resolvedBarHeight =
-        if (canLiquidGlass) SukiSUBarHeight * navBarHeightMultiplier
-        else NavigationBarHeight * navBarHeightMultiplier
+        if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the items Row uses
+    // 4.dp padding on ALL sides (matching SukiSU's Row.padding(4.dp)). The non-
+    // Liquid-Glass variants keep the original 8.dp vertical-only padding.
     val itemVerticalPadding =
         if (canLiquidGlass) SukiSUItemPadding else NavigationItemVerticalPadding
-    val itemHorizontalPadding = if (canLiquidGlass) 0.dp else 0.dp
+    val itemHorizontalPadding = if (canLiquidGlass) SukiSUItemPadding else 0.dp
     val navigationShape =
         if (canLiquidGlass) {
-            // SukiSU uses a perfect-circle pill (percent=50). Honour the
-            // user's corner-radius preference so they can pick any
-            // rounded-rect shape — clamp to a sensible range so the shape
-            // stays a pill (never square, never inverted corners on a
-            // shorter-than-tall bar).
-            RoundedCornerShape(navBarCornerRadius.coerceIn(0f, 48f).dp)
+            RoundedCornerShape(percent = 50)
         } else {
             remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
                 when {
@@ -498,7 +487,7 @@ val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
         if (canLiquidGlass) {
             if (tabWidthPx <= 0f) return@LaunchedEffect
             liquidGlassPillWidth = with(density) { tabWidthPx.toDp() }
-            liquidGlassPillHeight = resolvedBarHeight - SukiSUItemPadding * 2 // bar height - 8dp vertical padding
+            liquidGlassPillHeight = SukiSUBarHeight - SukiSUItemPadding * 2 // 64 - 8 = 56.dp
             // Position the pill at the items Row's content area top (which is
             // `itemVerticalPadding` below the bar's top edge). The items Row
             // fills the Surface height (64.dp) with 4.dp vertical padding, so
@@ -810,15 +799,10 @@ val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
                                 } else {
                                     {
                                         if (canLiquidGlass) {
-                                            // Liquid Glass: small negative offset to bring the
-                                            // underlying label closer to the icon (matching
-                                            // SukiSU's tighter vertical rhythm). The user's
-                                            // Label-spacing preference modulates this offset
-                                            // — more spacing pushes the label further down.
                                             Text(
                                                 text = stringResource(screen.titleId),
                                                 maxLines = 1,
-                                                modifier = Modifier.offset(y = -(4f - navBarLabelSpacing).coerceAtLeast(-12f).dp),
+                                                modifier = Modifier.offset(y = (-4).dp),
                                                 // Liquid Glass: underlying label is always Normal.
                                                 // The pill overlay renders the active label in
                                                 // SemiBold (primary color) on top of the glass.

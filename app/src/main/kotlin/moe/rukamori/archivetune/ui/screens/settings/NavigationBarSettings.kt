@@ -313,21 +313,12 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
             }
 
-            // Customization sliders: affect both the FLOATING and Liquid Glass styles,
-            // plus the corner radius for DEFAULT. They are shown unconditionally so the
-            // user can pre-configure a look before switching to it. Each slider opens a
+            // Customization sliders: only meaningfully affect the FLOATING style (and the
+            // corner radius for DEFAULT). They are shown unconditionally so the user can
+            // pre-configure the floating look before switching to it. Each slider opens a
             // dialog with a live preview that reflects the in-progress value (and the
             // committed values of the other dimensions) so the user can see exactly how
             // the bar will look before committing.
-            //
-            // Per user request (2026-08-30): "Dimensions customisation should also be
-            // available for liquid glass navigation bar." Previously these sliders were
-            // disabled when the Liquid Glass nav bar toggle was on (the bar used SukiSU's
-            // fixed 64dp / 4dp / percent=50 dimensions). Now the Liquid Glass bar honours
-            // the user's Height multiplier, Label spacing, and Corner radius preferences
-            // — only Opacity and Transparency stay no-ops on Liquid Glass because the bar
-            // surface is `Color.Transparent` (the kyant shader controls the visible tint,
-            // so alpha modulation has no visible effect there).
             PreferenceGroup(
                 modifier = positions.modifierFor("navigation_bar_dimensions"),
                 title = stringResource(R.string.navigation_bar_dimensions),
@@ -353,6 +344,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -377,6 +369,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -401,6 +394,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -425,6 +419,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -449,6 +444,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -473,15 +469,16 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
                 // Reset all six dimension values to their defaults in one tap. The button is
                 // disabled (greyed out) when every value is already at its default, so the
                 // user can see at a glance whether they have any unsaved customizations.
-                // Always enabled regardless of Liquid Glass toggle — the Liquid Glass bar
-                // honours the same preference keys, so resetting them visibly resets the
-                // Liquid Glass bar too.
+                // Also disabled when Liquid Glass nav bar is active (the Liquid Glass bar
+                // uses SukiSU's exact dimensions and ignores the user's preferences, so
+                // resetting them has no visible effect).
                 item {
                     val allDefaults =
                         navigationBarWidth == NAVIGATION_BAR_WIDTH_DEFAULT &&
@@ -500,7 +497,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             onNavigationBarLabelSpacingChange(NAVIGATION_BAR_LABEL_SPACING_DEFAULT)
                             onNavigationBarCornerRadiusChange(NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
                         },
-                        enabled = !allDefaults,
+                        enabled = !allDefaults && !liquidGlassNavBarEnabled,
                         shapes = ButtonDefaults.shapes(),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -542,6 +539,12 @@ private fun SliderPreferenceRow(
     valueLabel: (Float) -> String,
     default: Float? = null,
     preview: (@Composable (Float) -> Unit)? = null,
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the customization
+    // sliders are DISABLED (greyed out) because the Liquid Glass bar uses
+    // SukiSU's exact dimensions and ignores the user's preferences. The user
+    // explicitly asked for this: "Customisation of navigation bar in Liquid
+    // Glass should be unavailable because it should use the exact same
+    // dimensions from suki su for everything".
     enabled: Boolean = true,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
