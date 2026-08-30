@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -1395,7 +1396,31 @@ private fun AppleMusicHeaderIconButton(
         modifier =
             Modifier
                 .size(48.dp)
-                .let { base -> if (onPositioned != null) base.onGloballyPositioned { coords -> onPositioned(coords.boundsInRoot()) } else base }
+                .let { base ->
+                    if (onPositioned != null) {
+                        // `boundsInRoot()` isn't available on this Compose
+                        // version (only `positionInRoot(): Offset` and `size:
+                        // IntSize` are). Compute the Rect from those two —
+                        // positionInRoot gives the top-left of the layout in
+                        // root coordinates, and the layout's size is the
+                        // 48dp Box dimensions.
+                        base.onGloballyPositioned { coords ->
+                            val pos = coords.positionInRoot()
+                            val sz = coords.size
+                            onPositioned(
+                                androidx.compose.ui.geometry.Rect(
+                                    offset = pos,
+                                    size = androidx.compose.ui.geometry.Size(
+                                        width = sz.width.toFloat(),
+                                        height = sz.height.toFloat(),
+                                    ),
+                                ),
+                            )
+                        }
+                    } else {
+                        base
+                    }
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = ripple(bounded = false, radius = 24.dp),
