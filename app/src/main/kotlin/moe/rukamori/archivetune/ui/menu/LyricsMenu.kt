@@ -75,6 +75,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +108,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -929,16 +931,20 @@ fun LyricsMenu(
             // on top of the liquid glass effect". The transparent surface
             // keeps the same `extraLarge` corner shape so the rounded clip
             // still matches the popup's outer clip (no dark gap).
+            //
+            // Vertical padding reduced 6dp -> 4dp per "make the popup a bit
+            // more compact" (2026-08-30). Combined with the inner Column's
+            // vertical padding reduction (4dp -> 0dp), the top/bottom
+            // breathing room around the menu items dropped from 10dp to 4dp.
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.padding(vertical = 6.dp).fillMaxWidth(),
+                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
             ) {
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Column(modifier = Modifier.padding(vertical = 0.dp)) {
                     menuItems.forEachIndexed { index, item ->
                         AppleMusicLyricsMenuRow(
                             item = item,
-                            modifier = Modifier.padding(horizontal = 8.dp),
                         )
                         // Hairline divider BETWEEN items only — no divider before the first
                         // or after the last, matching Apple Music's grid-separated look.
@@ -1897,31 +1903,49 @@ private fun AppleMusicLyricsMenuRow(
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
-    Surface(
-        onClick = item.onClick,
-        enabled = item.enabled,
-        modifier = modifier.fillMaxWidth(),
-        color = Color.Transparent,
+    // Replaced Material3 `ListItem` (inside a wrapping `Surface(onClick)`) with
+    // a custom `Row` for tighter control over text-to-text spacing. The original
+    // ListItem imposed ~8dp top + 8dp bottom internal content padding (16dp per
+    // row of breathing room) on top of the 56dp min row height — so consecutive
+    // labels were ~16.5dp apart (ListItem bottom pad + 0.5dp divider + ListItem
+    // top pad). User report 2026-08-30: "reduce the spacing between text".
+    //
+    // The custom Row uses 4dp vertical padding + 44dp min row height, so the
+    // gap between consecutive labels is now ~8.5dp (4dp + 0.5dp + 4dp) — about
+    // half the previous spacing. Icon size reduced 22dp -> 20dp for a more
+    // compact Apple-Music-style feel. Horizontal padding 16dp keeps the text
+    // aligned with the divider's `horizontal = 16.dp` padding.
+    //
+    // `clickable` (with no indication override) preserves the existing
+    // ripple behaviour — the previous `Surface(onClick = ...)` also showed a
+    // ripple, so there's no regression.
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = ripple(),
+                    enabled = item.enabled,
+                    onClick = item.onClick,
+                )
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ListItem(
-            headlineContent = {
-                Text(
-                    text = item.label,
-                    color = headlineColor,
-                    fontWeight = headlineWeight,
-                )
-            },
-            trailingContent = {
-                Icon(
-                    painter = painterResource(item.iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                    tint = iconColor,
-                )
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            tonalElevation = 0.dp,
-            modifier = Modifier.heightIn(min = 56.dp),
+        Text(
+            text = item.label,
+            color = headlineColor,
+            fontWeight = headlineWeight,
+            fontSize = 16.sp,
+        )
+        Icon(
+            painter = painterResource(item.iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = iconColor,
         )
     }
 }
@@ -1939,9 +1963,10 @@ private fun AppleMusicLyricsMenuRow(
  * - Anchored to [iconBoundsInRoot.right] x [iconBoundsInRoot.bottom] so the
  *   popup's right edge aligns with the icon's right edge, with the popup
  *   appearing just below the icon.
- * - 240dp max width (was 280dp, reduced 2026-08-30 per "reduce the size of
- *   popup a bit" user request), 16dp corner radius, frosted-glass background —
- *   when the
+ * - 220dp max width (was 280dp, then 240dp, then 220dp — progressive
+ *   reduction per "reduce the size of popup a bit" (batch-12) and "make the
+ *   popup a bit more compact" (batch-13) user requests), 16dp corner radius,
+ *   frosted-glass background — when the
  *   caller provides a non-null [backdrop] (a kyant [PlatformBackdrop] that
  *   captures the player content behind the popup), the popup samples that
  *   backdrop with a 20dp blur, producing a real "frosted glass" effect that
@@ -2170,15 +2195,16 @@ fun AnchoredLyricsOverflowMenu(
         // where the popup meets the icon the user just tapped. This is
         // the "morph from the overflow icon" effect the user asked for.
         //
-        // Popup width reduced from 280dp to 240dp per user request
-        // 2026-08-30: "reduce the size of popup a bit". The widthIn max
-        // and the offset's `popupWidthPx` must stay in sync so the popup's
-        // right edge continues to align with the icon's right edge.
+        // Popup width reduced 280dp -> 240dp -> 220dp per user requests
+        // 2026-08-30: "reduce the size of popup a bit" then "make the
+        // popup a bit more compact". The widthIn max and the offset's
+        // `popupWidthPx` must stay in sync so the popup's right edge
+        // continues to align with the icon's right edge.
         Box(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { 240.dp.toPx() }.toInt()
+                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
@@ -2189,7 +2215,7 @@ fun AnchoredLyricsOverflowMenu(
                         val y = iconBottom + verticalOffsetPx
                         IntOffset(x = x, y = y)
                     }
-                    .widthIn(max = 240.dp)
+                    .widthIn(max = 220.dp)
                     .heightIn(max = 520.dp)
                     .graphicsLayer {
                         this.alpha = alpha
