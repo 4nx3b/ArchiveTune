@@ -63,18 +63,26 @@ typealias PlatformBackdrop = LayerBackdrop
  * pills to take effect now. I want them to be immediate." The user perceives
  * the 250ms settle window as a visible "frosted → liquid glass" swap.
  *
- * The transition-lag symptom that originally motivated the delay has been
- * addressed at its structural root cause: the bottom-nav slide animation in
- * `MainActivity` was using `Modifier.offset { IntOffset(0, y) }` (layout phase),
- * which re-laid-out the entire `FloatingNavigationToolbar` subtree every
- * spring frame — cascading to every `onGloballyPositioned` callback and
- * invalidating the app-wide backdrop recording every frame. That's been
- * switched to `Modifier.graphicsLayer { translationY = y }` (draw phase), so
- * children's layout coordinates stay stable across spring frames and the
- * kyant shader chain no longer re-computes its sample coordinates every
- * frame. With that structural fix in place, the per-screen settle delay is
- * no longer necessary — the layerBackdrop activates immediately when the
- * screen composes.
+ * A batch-8 attempt to remove the delay by switching `MainActivity`'s
+ * bottom-nav slide wrapper from `Modifier.offset { IntOffset(0, y) }`
+ * (layout phase) to `Modifier.graphicsLayer { translationY = y }` (draw
+ * phase) was reverted per user report (2026-08-30): "i somehow messed up
+ * liquid glass navigation bar. Restore it to how it used to be before."
+ * The graphicsLayer variant caused the nav bar to render on top of the
+ * mini-player (the wrapper Box's layout space stayed claimed at
+ * BottomCenter even when translated off-screen, so the BottomSheetPlayer's
+ * collapsed anchor couldn't see the bar's actual position).
+ *
+ * The original lag symptom may therefore reappear during page transitions
+ * when liquid glass surfaces are present. The user has explicitly opted
+ * for immediate pills anyway — perceived transition lag is preferable to
+ * the visible "frosted → liquid glass" swap. If the lag becomes unacceptable
+ * again, a future fix should target the root cause (per-frame re-layout of
+ * the FloatingNavigationToolbar subtree) WITHOUT changing the wrapper's
+ * layout phase, e.g. by hoisting the `onGloballyPositioned` callbacks into
+ * a `Modifier.Node` or by reading `bottomNavigationBarHeight` and
+ * `playerBottomSheetState.progress` directly from a State rather than
+ * recomposing the wrapper Box every frame.
  *
  * Call sites pattern (unchanged):
  * ```

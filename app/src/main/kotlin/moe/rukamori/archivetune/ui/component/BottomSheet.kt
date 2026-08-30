@@ -47,7 +47,6 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -106,12 +105,19 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                .offset {
+                // Per audit (2026-08-30): `Modifier.offset { IntOffset(0, y) }` ran in
+                // the LAYOUT phase on every drag/animation frame of the player
+                // bottom sheet — re-measuring the sheet's content (which can be a
+                // large lyrics surface, queue, expanded player, etc.) every frame.
+                // Folding the Y translation into `graphicsLayer` moves the work to
+                // the DRAW phase; the layout pass stays cached while the user
+                // swipes the sheet up/down. No visual change.
+                .graphicsLayer {
                     val y =
                         (state.expandedBound - state.value)
                             .roundToPx()
                             .coerceAtLeast(0)
-                    IntOffset(x = 0, y = y)
+                    translationY = y.toFloat()
                 }.bottomSheetDraggable(state, onDismiss)
                 .clip(
                     RoundedCornerShape(
