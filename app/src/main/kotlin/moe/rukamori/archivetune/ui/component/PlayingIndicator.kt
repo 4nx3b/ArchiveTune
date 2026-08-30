@@ -104,7 +104,7 @@ fun PlayingIndicator(
                         0.1f at cycleDurationMs
                     },
                     repeatMode = RepeatMode.Restart,
-                    initialStartOffset = StartOffset(delayMillis = delayMs),
+                    initialStartOffset = StartOffset(delayMs),
                 ),
                 label = "bar$index",
             ).value
