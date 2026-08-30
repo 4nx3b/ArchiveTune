@@ -253,7 +253,7 @@ val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
             // rounded-rect shape — clamp to a sensible range so the shape
             // stays a pill (never square, never inverted corners on a
             // shorter-than-tall bar).
-            RoundedCornerShape(navBarCornerRadius.dp.coerceIn(0f, 48f))
+            RoundedCornerShape(navBarCornerRadius.coerceIn(0f, 48f).dp)
         } else {
             remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
                 when {
