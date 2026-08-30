@@ -80,6 +80,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -92,6 +93,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -108,6 +110,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -153,7 +157,10 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
-import moe.rukamori.archivetune.ui.menu.LyricsMenu
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -777,31 +784,51 @@ fun AppleMusicPlayerContent(
             playerConnection.player.togglePlayPause()
         }
     }
+
+    // ── Anchored Apple-Music-style overflow popup state ──
+    //
+    // Per user request (2026-08-30) batch-10 & batch-11: "The new overflow
+    // lyrics menu in apple music is a bottom slide up popup. I want it to
+    // be attached to the overflow menu icon like the image was in. it also
+    // has blur/frosted blur behind it. Add it. Also the popup shouldn't
+    // open abruptly. it should play as if it enlarged smoothly from the
+    // overflow menu icon just like the morph animation" (batch-10), then
+    // "i wanted you to redesign the popup in only apple music player style.
+    // Not the non apple music player styles. ... Fix all these and also
+    // revert the redesign for only non apple music player styles"
+    // (batch-11). The Apple Music-style inline player (this file) hosts
+    // the anchored popup; the legacy/non-Apple-Music BottomSheetPlayer
+    // (Player.kt -> LyricsScreen.kt) keeps the original ModalBottomSheet.
+    //
+    // `moreIconBounds` is captured continuously via `onGloballyPositioned`
+    // wired through `AppleMusicChip` -> the more-icon chip's outer Box. The
+    // anchored popup composable uses the most-recently-captured bounds to
+    // position itself anchored to the icon's top-right corner.
+    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
+    var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
+
+    // Local backdrop that captures the player content behind the popup. The
+    // popup samples this backdrop with a 20dp blur to produce a real
+    // frosted-glass effect (see `AnchoredLyricsOverflowMenu`). The backdrop
+    // is applied via `Modifier.layerBackdrop(...)` to the inner content Box
+    // below, and the popup is rendered as a SIBLING of that inner Box (NOT
+    // nested inside it) — the kyant library warns that nesting a
+    // `drawBackdrop` sampler inside the layer-capturing Box creates a
+    // render-feedback loop that crashes the RuntimeShader.
+    val popupBackdrop: PlatformBackdrop? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rememberBackdrop(Color.Transparent)
+        } else {
+            null
+        }
+
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows lyric actions. The
-            // "Show player controls" / "Auto-hide controls" toggles used to live here
-            // too, but were removed by user request — the controls now always show
-            // and always auto-hide after 5 s. showControlsToggles = false hides those
-            // rows in LyricsMenu.
-            menuState.show {
-                LyricsMenu(
-                    lyricsProvider = { currentLyrics },
-                    mediaMetadataProvider = { mediaMetadata },
-                    lyricsSyncOffset = lyricsSyncOffset,
-                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    // showPlayerControlsState / onShowPlayerControlsChange / onAutoHidePlayerControlsChange
-                    // are no-ops / null because the toggles were removed from the UI. The backing
-                    // preferences are still hardcoded to true in this composable (see
-                    // showLyricsPlayerControls / autoHideLyricsPlayerControls above), so the
-                    // controls always show and always auto-hide after 5 s.
-                    showPlayerControlsState = null,
-                    onShowPlayerControlsChange = null,
-                    onAutoHidePlayerControlsChange = {},
-                    onDismiss = menuState::dismiss,
-                    showControlsToggles = false,
-                )
-            }
+            // When lyrics is open, the overflow menu shows lyric actions.
+            // Per batch-10/11: use the anchored Apple-Music-style popup
+            // (scales up from the more icon with a frosted blur backdrop),
+            // NOT the ModalBottomSheet that the legacy player still uses.
+            showAnchoredLyricsMenu = true
         } else {
             menuState.show {
                 PlayerMenu(
@@ -832,6 +859,37 @@ fun AppleMusicPlayerContent(
     }
 
     BoxWithConstraints(modifier = modifier) {
+        // Inner BoxWithConstraints wraps ALL the player content (backdrop +
+        // landscape/portrait layouts) and carries the
+        // `Modifier.layerBackdrop(popupBackdrop)` so the kyant backdrop
+        // captures the player content every frame. The anchored popup
+        // (rendered as a SIBLING of this inner BoxWithConstraints below)
+        // samples from this backdrop with a 20dp blur to produce the real
+        // frosted-glass effect — keeping the popup OUT of the layer-capturing
+        // Box avoids the kyant render-feedback loop warning.
+        //
+        // BoxWithConstraints (not Box) so the inner content keeps access to
+        // `maxWidth`/`maxHeight` from the BoxWithConstraintsScope — many
+        // child lines (sharpArtworkHeight, fullPlayerHeightForArtwork,
+        // blurBackdropFootprint's remember key, the morph area's nested
+        // BoxWithConstraints) read these. A plain `Box` would shadow the
+        // scope and break the build.
+        //
+        // `matchParentSize()` is a BoxScope modifier — the inner
+        // BoxWithConstraints is a direct child of the outer BoxWithConstraints
+        // (which IS a BoxScope), so this works.
+        BoxWithConstraints(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .let { base ->
+                        if (popupBackdrop != null) {
+                            base.layerBackdrop(popupBackdrop)
+                        } else {
+                            base
+                        }
+                    },
+        ) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
         // The FULL player height — used as the artwork sizing reference so the
         // artwork stays a constant size whether the system navigation bar is
@@ -1241,6 +1299,7 @@ fun AppleMusicPlayerContent(
                         onQualityChipClick = {
                             bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
                         },
+                        onMorePositioned = { moreIconBounds = it },
                         modifier =
                             Modifier
                                 .fillMaxSize()
@@ -1485,6 +1544,7 @@ fun AppleMusicPlayerContent(
                                         // cover radius ensures corners are properly
                                         // rounded from the very first frame.
                                         artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                        onMorePositioned = { moreIconBounds = it },
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     if (targetState == AppleMusicPlayerState.QUEUE) {
@@ -1728,6 +1788,7 @@ fun AppleMusicPlayerContent(
                         showTitleRow = !morphOpen,
                         isQueueActive = queueOpen,
                         isLyricsActive = lyricsOpen,
+                        onMorePositioned = { moreIconBounds = it },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -1741,6 +1802,42 @@ fun AppleMusicPlayerContent(
                     )
                 }
             } // end Column (morph area + controls)
+        }
+        } // end inner layer-capturing Box (player content for the popup backdrop)
+
+        // ── Anchored Apple-Music-style overflow popup ──
+        //
+        // Rendered as a SIBLING of the inner layer-capturing Box above so
+        // the popup's `Modifier.drawBackdrop(popupBackdrop, ...)` samples
+        // the backdrop (which captures the player content) WITHOUT nesting
+        // inside the layer-capturing Box — that nesting pattern is what the
+        // kyant library warns creates a render-feedback loop. The popup is
+        // in composition only when the user taps the more icon while lyrics
+        // is open (see `onMoreClick`); the popup itself manages its own
+        // enter/exit animations and calls `onDismiss` after the exit
+        // animation completes so the parent sets `showAnchoredLyricsMenu =
+        // false` and the composable leaves composition.
+        //
+        // `moreIconBounds` is captured continuously by the
+        // `onGloballyPositioned` wired into the more-icon `AppleMusicChip`
+        // invocations at the two `onMoreClick` call sites below (landscape
+        // + portrait layouts). The popup positions itself anchored to the
+        // icon's top-right corner via `Modifier.offset { ... }` (see
+        // `AnchoredLyricsOverflowMenu`).
+        if (showAnchoredLyricsMenu) {
+            AnchoredLyricsOverflowMenu(
+                iconBoundsInRoot = moreIconBounds,
+                lyricsProvider = { currentLyrics },
+                mediaMetadataProvider = { mediaMetadata },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                showPlayerControlsState = null,
+                onShowPlayerControlsChange = null,
+                onAutoHidePlayerControlsChange = {},
+                onDismiss = { showAnchoredLyricsMenu = false },
+                showControlsToggles = false,
+                backdrop = popupBackdrop,
+            )
         }
     }
 }
@@ -2006,6 +2103,11 @@ private fun AppleMusicControlsColumn(
     isQueueActive: Boolean = false,
     // Whether the in-place lyrics view is currently open. Highlights the lyrics button.
     isLyricsActive: Boolean = false,
+    // Optional callback for capturing the more-icon chip's on-screen Rect
+    // (via `boundsInRoot()`). The Apple-Music-style anchored overflow popup
+    // uses this to position itself anchored to the icon's top-right corner.
+    // Null when the anchored popup is not in use (e.g. legacy callers).
+    onMorePositioned: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
@@ -2147,6 +2249,7 @@ private fun AppleMusicControlsColumn(
                 tint = Color.White,
                 contentDescription = null,
                 onClick = onMoreClick,
+                onPositioned = onMorePositioned,
             )
         }
     }
@@ -2295,12 +2398,27 @@ private fun AppleMusicChip(
     tint: Color,
     contentDescription: String?,
     onClick: () -> Unit,
+    // Optional callback invoked whenever the chip's layout position changes.
+    // Used by the more-icon chip to capture its on-screen Rect (via
+    // `boundsInRoot()`) so the anchored overflow popup can position itself
+    // anchored to the icon's top-right corner. Null for chips that don't
+    // need position tracking (the default).
+    onPositioned: ((Rect) -> Unit)? = null,
 ) {
     Box(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
                 .size(AppleMusicChipSize)
+                .let { base ->
+                    if (onPositioned != null) {
+                        base.onGloballyPositioned { coords ->
+                            onPositioned(coords.boundsInRoot())
+                        }
+                    } else {
+                        base
+                    }
+                }
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.14f))
                 .clickable(onClick = onClick),
@@ -2401,6 +2519,11 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     // radius so corners look properly rounded on the large cover bounds at
     // the start of the morph. See the call site for the full rationale.
     artworkCornerRadiusDp: Dp = 16.dp,
+    // Optional callback for capturing the more-icon chip's on-screen Rect
+    // (via `boundsInRoot()`). The Apple-Music-style anchored overflow popup
+    // uses this to position itself anchored to the icon's top-right corner.
+    // Null when the anchored popup is not in use.
+    onMorePositioned: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -2526,6 +2649,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             tint = Color.White,
             contentDescription = null,
             onClick = onMoreClick,
+            onPositioned = onMorePositioned,
         )
     }
 }

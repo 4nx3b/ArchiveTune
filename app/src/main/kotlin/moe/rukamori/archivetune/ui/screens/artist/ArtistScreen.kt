@@ -758,7 +758,75 @@ fun ArtistScreen(
                 }
 
                 // Content sections
-                if (showLocal) {
+                //
+                // Per user report (2026-08-30) batch-11: "When I open an artist
+                // page i initially see nothing on the artist screen. After two
+                // seconds it loads completely." Root cause: `artistPage` is null
+                // during the silent auto-fetch that runs on screen open (it's
+                // NOT a manual pull-to-refresh, so `isManuallyRefreshing` is
+                // false). The header renders immediately because it falls back
+                // to `libraryArtist` (the cached artist entity from the local
+                // database), but `orderedRemoteSections` is empty (it's derived
+                // from `artistPage?.sections`), so the rest of the screen is
+                // blank for ~2 seconds while the remote fetch completes.
+                //
+                // Fix: render a shimmer skeleton for the content sections
+                // whenever `!showLocal && artistPage == null && !isManuallyRefreshing`
+                // — i.e., the silent auto-fetch is still in flight. The shimmer
+                // mirrors the typical artist-page layout (section title + 5 song
+                // rows) so the user perceives a loading state instead of an empty
+                // screen. The existing manual-refresh shimmer (line ~434 above)
+                // already handles the pull-to-refresh case; this handles the
+                // auto-fetch case that was missed.
+                if (!showLocal && artistPage == null && !isManuallyRefreshing) {
+                    item(key = "auto_fetch_shimmer") {
+                        ShimmerHost {
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                // Section title placeholder ("Top songs" / "Latest release")
+                                TextPlaceholder(
+                                    height = 18.dp,
+                                    modifier = Modifier.fillMaxWidth(0.35f),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                // 5 song row placeholders — matches the `take(5)` cap
+                                // on the Local Songs Section and the typical Top Songs
+                                // section row count.
+                                repeat(5) {
+                                    ListItemPlaceHolder()
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                // Second section title placeholder ("Albums" / "Singles")
+                                TextPlaceholder(
+                                    height = 18.dp,
+                                    modifier = Modifier.fillMaxWidth(0.30f),
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                // Horizontal album-row placeholders
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    repeat(3) {
+                                        Box(
+                                            modifier =
+                                                Modifier
+                                                    .size(width = 120.dp, height = 144.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .shimmer()
+                                                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (showLocal) {
                     // Local Songs Section
                     if (librarySongs.isNotEmpty()) {
                         item {
