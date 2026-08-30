@@ -153,8 +153,22 @@ val LocalNavigationBarBackdrop = compositionLocalOf<NavigationBarBackdrop?> { nu
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
 
-private val SukiSUBarHeight = 64.dp
-private val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
+/**
+ * SukiSU-Ultra reference: the floating-bottom-bar uses a 64.dp tall container
+ * with 4.dp padding on all sides, leaving a 56.dp content row (and the sliding
+ * pill underneath is also 56.dp tall).
+ *
+ * Made public so [MainActivity] can:
+ *   - Compute the wrapper Box height that matches the actual rendered bar
+ *     height when liquid glass is on (so the mini-player's collapsed anchor
+ *     aligns with the bar's true top edge — no gap, no overlap).
+ *   - Drive `bottomNavigationBarHeight` spring animation with the resolved
+ *     bar height (so the slide-out distance is correct).
+ *
+ * @see <a href="https://github.com/sukisu-ultra/sukisu-ultra/blob/main/manager/app/src/main/java/com/sukisu/ultra/ui/component/FloatingBottomBar.kt">SukiSU FloatingBottomBar.kt</a>
+ */
+val SukiSUBarHeight = 64.dp
+val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
 
 // Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
 private const val FrostedNavBarBlurRadiusPx = 60f
@@ -529,8 +543,8 @@ fun FloatingNavigationToolbar(
         Box(
             modifier =
                 Modifier
-                    .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
-                    .fillMaxWidth(if (isFloating) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .widthIn(max = if (isFloating && !canLiquidGlass) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
+                    .fillMaxWidth(if (isFloating && !canLiquidGlass) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
                     .height(resolvedBarHeight),
             contentAlignment = Alignment.CenterStart,
         ) {

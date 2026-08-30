@@ -291,6 +291,7 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.SukiSUBarHeight
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
@@ -1341,13 +1342,6 @@ class MainActivity : ComponentActivity() {
                                 !active
                         }
 
-                    fun getBottomNavPadding(): Dp =
-                        if (shouldShowNavigationBar && !useRail) {
-                            NavigationBarHeight
-                        } else {
-                            0.dp
-                        }
-
                     // FLOATING detaches the bar into a pill: bigger bottom margin, tighter width.
                     // Every consumer below (collapsed player anchor, slide distance, insets, FAB
                     // padding) derives from these two values so the styles stay in sync.
@@ -1360,9 +1354,41 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
                         defaultValue = moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT,
                     )
-                    val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
+                    // canLiquidGlassNavBar: the Liquid Glass nav bar is rendered at SukiSUBarHeight
+                    // (64.dp) — see FloatingNavigationToolbar.kt:resolvedBarHeight. The user's
+                    // customized height multiplier does NOT apply when Liquid Glass is on (per
+                    // user report 2026-08-30: "if i disable liquid glass navigation bar and
+                    // customise the dimensions and then enable the liquid glass navigation bar,
+                    // the customised dimensions gets applied. fix it"). So when canLiquidGlassNavBar,
+                    // navVisibleHeight is forced to SukiSUBarHeight to match the actual rendered
+                    // bar height everywhere it's used: the wrapper Box height, the slide
+                    // animation target, the mini-player's collapsed anchor (via getBottomNavPadding).
+                    val canLiquidGlassNavBar =
+                        liquidGlassEnabled &&
+                            liquidGlassNavBarEnabled &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    val navVisibleHeight =
+                        if (canLiquidGlassNavBar) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+
+                    // When Liquid Glass nav bar is on, the actual rendered bar height is
+                    // SukiSUBarHeight (64.dp). Returning NavigationBarHeight (78.dp) here would
+                    // create a 14.dp gap between the mini-player's collapsed anchor and the
+                    // bar's true top edge. Returning navVisibleHeight (resolved to
+                    // SukiSUBarHeight when canLiquidGlassNavBar above) keeps the anchor aligned
+                    // with the actual bar.
+                    //
+                    // Also: when Liquid Glass is OFF and the user has customized the height
+                    // multiplier, navVisibleHeight already honors that customization
+                    // (NavigationBarHeight * navBarHeightMultiplier), so the anchor matches
+                    // the actual rendered bar height.
+                    fun getBottomNavPadding(): Dp =
+                        if (shouldShowNavigationBar && !useRail) {
+                            navVisibleHeight
+                        } else {
+                            0.dp
+                        }
 
                     // Frosted backdrop (nav bar + mini player + tablet rail): allocated whenever
                     // any frosted surface can run (RenderEffect available). The bottom toolbar and
@@ -2860,64 +2886,52 @@ modifier =
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
-                                        // Per user report (2026-08-29): "switching from a
-                                        // page with liquid glass elements to other page which
-                                        // has liquid glass elements make the app lag way too
-                                        // much. Fix it without removing or sacrificing anything.
-                                        // The lag is the most intense when the mini player is
-                                        // visible."
-                                        //
-                                        // The previous implementation used `Modifier.offset {
-                                        // IntOffset(0, y) }` which runs in the LAYOUT phase:
-                                        // every spring frame (from `bottomNavigationBarHeight`
-                                        // animating between 0 and navVisibleHeight when the
-                                        // mini player docks/undocks) AND every sheet-drag
-                                        // frame (from `playerBottomSheetState.progress`
-                                        // updating continuously) re-laid-out the entire
-                                        // FloatingNavigationToolbar subtree. That re-layout
-                                        // cascaded to every `onGloballyPositioned` callback
-                                        // inside the toolbar (containerPos, barPositionInRoot,
-                                        // selectedCenter), which in turn re-positioned the
-                                        // kyant `drawBackdrop` shaders under the nav bar AND
-                                        // invalidated the app-wide
-                                        // `Modifier.layerBackdrop(liquidGlassBackdrop)`
-                                        // recording on the NavHost root — compounding into
-                                        // severe frame drops.
-                                        //
-                                        // Switching to `Modifier.graphicsLayer {
-                                        // translationY = y }` runs in the DRAW phase only:
-                                        // children's layout coordinates stay stable across
-                                        // spring frames, so onGloballyPositioned callbacks
-                                        // don't fire and the kyant shader chain doesn't have
-                                        // to re-compute its sample coordinates every frame.
-                                        // The visual is identical (the bar still slides
-                                        // down/out when the mini player appears and the bar
-                                        // collapses) — only the invalidation pattern changes.
+                                        // Restored to the original layout-phase offset (per
+                                        // user report 2026-08-30: "i somehow messed up liquid
+                                        // glass navigation bar. Restore it to how it used to be
+                                        // before"). The previous batch-8 attempt to switch to
+                                        // `Modifier.graphicsLayer { translationY = y }` (draw
+                                        // phase) caused the nav bar to render ON TOP of the
+                                        // mini-player because the wrapper Box's layout space
+                                        // stayed claimed at BottomCenter even when translated
+                                        // off-screen — the mini-player's collapsed sheet anchor
+                                        // couldn't "see" the nav bar's actual layout position,
+                                        // so they ended up stacked at the same BottomCenter.
+                                        // Reverting to `Modifier.offset { IntOffset(0, y) }`
+                                        // restores the layout-aware slide: when the bar
+                                        // translates down, its layout position changes too, so
+                                        // the parent (bottomBar Box) and the BottomSheetPlayer
+                                        // can correctly react.
                                         Box(
                                             modifier =
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    .graphicsLayer {
-                                                        translationY =
-                                                            if (bottomNavigationBarHeight == 0.dp) {
-                                                                navSlideDistance.toPx()
-                                                            } else {
-                                                                val slideOffset =
-                                                                    navSlideDistance.toPx() *
-                                                                        playerBottomSheetState.progress.coerceIn(
-                                                                            0f,
-                                                                            1f,
-                                                                        )
-                                                                val hideOffset =
-                                                                    navSlideDistance.toPx() *
-                                                                        (
-                                                                            1 -
-                                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
-                                                                                navVisibleHeight
-                                                                        )
-                                                                slideOffset + hideOffset
-                                                            }
+                                                    .offset {
+                                                        if (bottomNavigationBarHeight == 0.dp) {
+                                                            IntOffset(
+                                                                x = 0,
+                                                                y = navSlideDistance.roundToPx(),
+                                                            )
+                                                        } else {
+                                                            val slideOffset =
+                                                                navSlideDistance *
+                                                                    playerBottomSheetState.progress.coerceIn(
+                                                                        0f,
+                                                                        1f,
+                                                                    )
+                                                            val hideOffset =
+                                                                navSlideDistance *
+                                                                    (
+                                                                        1 -
+                                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                            navVisibleHeight
+                                                                    )
+                                                            IntOffset(
+                                                                x = 0,
+                                                                y = (slideOffset + hideOffset).roundToPx(),
+                                                            )
+                                                        }
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
