@@ -53,9 +53,14 @@ class LyricsHelper
                 // deleted; the PreferredLyricsProvider enum and the
                 // DefaultLyricsProviderOrder list below also no longer
                 // include the MEGALOBIZ entry.
-                SimpMusicLyricsProvider,
+                //
+                // SimpMusicLyricsProvider and BiniLyricsProvider removed per
+                // user request (2026-08-30): "Remove simpmusic and binilyrics
+                // lyrics provider and their entire code too". Provider files,
+                // enum entries, settings toggles, gradle module includes, and
+                // the underlying :lyrics:simpmusic / :lyrics:paxsenix gradle
+                // modules have all been deleted.
                 UnisonLyricsProvider,
-                BiniLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
@@ -427,8 +432,8 @@ class LyricsHelper
                     PreferredLyricsProvider.BETTER_LYRICS to BetterLyricsProvider,
                     PreferredLyricsProvider.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,
-                    PreferredLyricsProvider.SIMPMUSIC to SimpMusicLyricsProvider,
-                    PreferredLyricsProvider.BINI_LYRICS to BiniLyricsProvider,
+                    // SIMPMUSIC and BINI_LYRICS entries removed along with the
+                    // providers themselves — see baseProviders list above.
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
                     PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )
@@ -445,8 +450,8 @@ class LyricsHelper
         ): Boolean {
             val isNonYouTubeId = mediaId.isTelegramMediaId() || mediaId.isLocalMediaId()
             if (!isNonYouTubeId) return true
-            return provider !is SimpMusicLyricsProvider &&
-                provider !is YouTubeLyricsProvider &&
+            // SimpMusicLyricsProvider clause removed — provider no longer exists.
+            return provider !is YouTubeLyricsProvider &&
                 provider !is YouTubeSubtitleLyricsProvider
         }
 

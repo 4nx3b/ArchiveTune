@@ -316,6 +316,7 @@ object AiLyricsRomanization {
         sessionKey: String,
         lines: List<String>,
         settings: Settings,
+        force: Boolean = false,
     ): RequestStatus {
         if (!settings.active) return RequestStatus.SETTINGS_DISABLED
         if (lines.isEmpty()) return RequestStatus.NO_LYRICS
@@ -340,7 +341,15 @@ object AiLyricsRomanization {
         }
         // Nothing to do for lyrics that are already Latin script. Reuses the built-in detectors so
         // the two engines agree on which lines are candidates at all.
-        if (lines.none { LyricsUtils.hasRomanizableScript(it) }) return RequestStatus.NO_ROMANIZABLE_SCRIPT
+        //
+        // The `force` flag is set ONLY by the manual "AI romanise now" menu action — auto-renderer
+        // callers and other automatic triggers never bypass this gate. When the user explicitly
+        // taps the menu, we hand the lines to the model even when they look Latin-script; the model
+        // is instructed to echo Latin lines unchanged, so the visible effect is still "nothing
+        // changes for Latin lyrics" — but the user no longer sees a misleading toast that says
+        // "nothing to romanise" when they explicitly asked the AI to do it. Manual invocation now
+        // behaves as "perform the operation the button promises".
+        if (!force && lines.none { LyricsUtils.hasRomanizableScript(it) }) return RequestStatus.NO_ROMANIZABLE_SCRIPT
 
         val job =
             scope.async {

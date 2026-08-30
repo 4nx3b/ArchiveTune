@@ -277,7 +277,6 @@
     <string name="enable_proxy">Proxy\'yi etkinleştir</string>
     <string name="proxy_type">Vekil türü</string>
     <string name="enable_betterlyrics">BetterLyrics\'i etkinleştir</string>
-    <string name="enable_simpmusic_lyrics">SimpMusic şarkı sözlerini etkinleştir</string>
     <string name="player_and_audio">Oynatıcı ve ses</string>
     <string name="audio_quality">Ses kalitesi</string>
     <string name="audio_quality_auto">Otomatik</string>

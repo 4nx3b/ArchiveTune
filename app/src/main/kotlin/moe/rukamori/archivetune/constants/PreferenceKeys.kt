@@ -224,28 +224,21 @@ val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
-val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
+// MegalobizLyricsProvider, SimpMusicLyricsProvider and BiniLyricsProvider all
+// removed per user requests (2026-08-28 for Megalobiz; 2026-08-30 for
+// SimpMusic + BiniLyrics). The underlying DataStore keys are kept defined
+// here so any user who previously toggled them does not crash on read —
+// they're just no-ops now. The provider files, enum entries, settings
+// toggles and gradle module includes have all been deleted.
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
-// BiniLyrics provider — fetches time-synced Apple Music TTML lyrics.
-// Per user request (2026-08-28): "Remove paxesnix, tidal and deezer lyrics
-// and add BiniLyrics https://github.com/binimum/am-lyrics and also add it
-// to the lyrics priority list". The upstream am-lyrics project is a Python
-// CLI; this Kotlin provider delegates to the same Apple Music lyrics
-// backend that the removed Paxsenix providers used (PaxsenixLyrics), so
-// the underlying fetching logic is unchanged — only the user-visible
-// label changes from "Paxsenix: Apple Music" to "BiniLyrics".
+val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
-// User-configurable PaxSenix API key. When blank, PaxsenixLyrics falls
-// back to the default (no-auth) behavior. When set, it's sent as an
-// Authorization: Bearer header on every Paxsenix API request.
-// Retained because the BiniLyrics provider still delegates to the
-// PaxsenixLyrics backend at runtime; the underlying Apple Music proxy
-// endpoint is unchanged.
+// PaxsenixApiKeyKey / PaxsenixEndpointKey were retained while BiniLyrics
+// was routing through the PaxsenixLyrics backend. With BiniLyrics removed
+// (2026-08-30), the PaxsenixLyrics backend module ":lyrics:paxsenix" is
+// also gone, so these keys are now pure no-ops. Kept defined for source
+// compatibility with any code still referencing them.
 val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
-// User-configurable PaxSenix endpoint override. When blank, the default
-// endpoint is used. When set, all Paxsenix API requests go to this URL.
-// Retained for the same reason as [PaxsenixApiKeyKey] — BiniLyrics still
-// routes through the PaxsenixLyrics backend at runtime.
 val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 // Paxsenix/Tidal/Deezer enable keys are kept defined for source
@@ -935,9 +928,8 @@ enum class PreferredLyricsProvider {
     YOULY_PLUS,
     LRCLIB,
     KUGOU,
-    SIMPMUSIC,
+    // SIMPMUSIC and BINI_LYRICS entries removed per user request (2026-08-30).
     UNISON,
-    BINI_LYRICS,
     MUSIXMATCH_EXPERIMENTAL,
 }
 
@@ -948,9 +940,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.YOULY_PLUS,
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
-        PreferredLyricsProvider.SIMPMUSIC,
         PreferredLyricsProvider.UNISON,
-        PreferredLyricsProvider.BINI_LYRICS,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 

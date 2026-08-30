@@ -1430,45 +1430,39 @@ fun LyricsEnhanced(
                             .nestedScroll(nestedScrollConnection),
                 ) {
                     // Offset of the active karaoke line from the top of the lyrics
-                    // viewport. Doubled from 0.08f → 0.16f per the user's
-                    // "The lyrics from text is always cutoff. Shift it down a
-                    // bit so that it's always visible" report.
+                    // viewport.
                     //
-                    // The "Lyrics from [provider]" attribution is injected as the
-                    // FIRST SyncedLine of the karaoke stream (see
-                    // `buildSyncedLyrics`), so it sits ABOVE the active line in
-                    // the karaoke list. The mocharealm library positions lines
-                    // above the active line at `offset - N * line_height`. With
-                    // the original 8% offset (~56dp on a typical 700dp lyrics
-                    // viewport), the attribution — at offset - line_height ≈
-                    // 56 - 50 = 6dp from the top — was barely inside the
-                    // viewport, and depending on the line-height the library
-                    // measured for the Bold lyricsTextSize line, was often
-                    // partially clipped above the top edge / overlapped by the
-                    // mini header. Doubling to 16% (~112dp on the same 700dp
-                    // viewport) puts the attribution at ~62dp from the top —
-                    // fully visible with comfortable buffer.
-                    //
-                    // Per user report (2026-08-29 follow-up): "When the bottom
-                    // controls are visible for a few seconds then the lyrics
-                    // from text gets cutoff. It gets fixed when the bottom
-                    // controls hide automatically." Root cause: when the
-                    // persistent playback controls (seekbar + transport row)
-                    // slide in via AnimatedVisibility, the parent reserves
-                    // vertical space for them, so this BoxWithConstraints's
-                    // maxHeight shrinks. The proportional offset then shrinks
-                    // too (e.g., 700dp * 0.16 = 112dp, but 500dp * 0.16 = 80dp),
-                    // and the attribution — positioned at
-                    // `lyricsViewportOffset - line_height` — can drop below
-                    // ~30dp from the top, getting clipped by the top inset /
-                    // mini header. Fix: clamp the offset to a minimum of 112dp
-                    // (the original 0.16 value on a 700dp viewport) so the
-                    // attribution stays fully visible regardless of whether
-                    // the bottom controls are showing.
+                    // History:
+                    // - Originally 0.08f (~56dp on a 700dp viewport). The "Lyrics from
+                    //   [provider]" attribution is injected as the FIRST SyncedLine of the
+                    //   karaoke stream (see `buildSyncedLyrics`), so it sits ABOVE the
+                    //   active line — positioned at `offset - line_height` from the top.
+                    //   With 56dp offset, attribution was at ~6dp — barely visible,
+                    //   clipped by the top inset / mini header. User report: "The lyrics
+                    //   from text is always cutoff."
+                    // - Doubled to 0.16f (~112dp). User follow-up: "When the bottom
+                    //   controls are visible for a few seconds then the lyrics from text
+                    //   gets cutoff." Root cause: AnimatedVisibility reserves vertical
+                    //   space for the persistent playback controls (seekbar + transport
+                    //   row), the parent BoxWithConstraints's maxHeight shrinks, and the
+                    //   proportional offset shrinks with it. Clamp to a 112dp floor so
+                    //   the attribution stays visible regardless of bottom controls.
+                    // - User follow-up (2026-08-30): "The active lyrics have shifted down a
+                    //   bit. It used to be a bit upwards. Shift it up a bit around the
+                    //   header of the song but the visibility of the Lyrics from text
+                    //   shouldn't be affected and it should not be cut off." Compromise:
+                    //   0.12f proportion with a 96dp floor. On a 700dp viewport that's
+                    //   84dp (clamped to 96dp); the attribution at 96 - 50 = ~46dp from
+                    //   the top is still comfortably visible (more than the ~6dp that was
+                    //   clipped originally, and less than the 62dp of the previous 16%
+                    //   value — but well clear of the top inset). On a 500dp viewport with
+                    //   bottom controls showing, 0.12 × 500 = 60dp also clamps to 96dp,
+                    //   so the attribution is preserved across the viewport-size range
+                    //   that the bottom-controls-visible bug required us to handle.
                     val lyricsViewportOffset =
                         remember(maxHeight) {
-                            val proportional = maxHeight * 0.16f
-                            if (proportional > 112.dp) proportional else 112.dp
+                            val proportional = maxHeight * 0.12f
+                            if (proportional > 96.dp) proportional else 96.dp
                         }
 
                     // Keyed on the session + a position-reset counter so that when
