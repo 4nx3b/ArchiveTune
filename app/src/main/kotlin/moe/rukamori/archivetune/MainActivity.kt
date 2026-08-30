@@ -163,7 +163,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAny
@@ -2129,7 +2128,12 @@ class MainActivity : ComponentActivity() {
                                     val canRailLiquidGlass =
                                         liquidGlassEnabled && liquidGlassNavBarEnabled &&
                                             liquidGlassBackdrop != null && !isPreS
-                                    var railPositionInRoot by remember {
+                                    // Per audit (2026-08-30): a plain `var railPositionInRoot by remember { mutableStateOf(Offset.Zero) }`
+                                    // delegate accessor is fine for state reads but every
+                                    // recomposition re-allocated the inline lambda body.
+                                    // Hold the State in a local so the hoisted lambda can
+                                    // capture it stably and still see updates via State.value.
+                                    val railPositionState = remember {
                                         mutableStateOf(Offset.Zero)
                                     }
                                     val railContainerColor =
@@ -2153,9 +2157,21 @@ class MainActivity : ComponentActivity() {
                                         modifier =
                                             Modifier
                                                 .fillMaxHeight()
-                                                .onGloballyPositioned { coordinates ->
-                                                    railPositionInRoot = coordinates.positionInRoot()
-                                                },
+                                                // Per audit (2026-08-30): the inline lambda
+                                                // was re-allocated on every recomposition of
+                                                // the rail Box. `remember(-1)` returns the
+                                                // same lambda instance across recompositions,
+                                                // and reading railPositionState.value inside
+                                                // picks up the latest mutableState setter
+                                                // without re-allocating the lambda.
+                                                .onGloballyPositioned(
+                                                    remember(railPositionState) {
+                                                        { coordinates ->
+                                                            railPositionState.value =
+                                                                coordinates.positionInRoot()
+                                                        }
+                                                    },
+                                                ),
                                     ) {
                                         if (canRailBlur && navBarFrostedBackdrop != null) {
                                             val overlayAlpha =
@@ -2176,7 +2192,7 @@ class MainActivity : ComponentActivity() {
                                                         }.drawBehind {
                                                             val offset =
                                                                 navBarFrostedBackdrop.contentOffsetInRoot -
-                                                                    railPositionInRoot
+                                                                    railPositionState.value
                                                             translate(offset.x, offset.y) {
                                                                 drawLayer(navBarFrostedBackdrop.layer)
                                                             }
@@ -2307,46 +2323,55 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .onSizeChanged { size ->
                                                         if (size.height > 0) headerHeightPx = size.height
-                                                    }.offset {
-                                                        IntOffset(
-                                                            x = 0,
-                                                            y =
-                                                                if (isLibraryRoute) {
-                                                                    0
-                                                                } else {
-                                                                    currentScrollBehavior.state.heightOffset
-                                                                        .roundToInt()
-                                                                },
-                                                        )
+                                                    }
+                                                    // Per audit (2026-08-30): the inline
+                                                    // `Modifier.offset { IntOffset(...) }` ran
+                                                    // in the LAYOUT phase on every scroll frame
+                                                    // and invalidated the top-app-bar subtree
+                                                    // for re-layout. Folding the Y translation
+                                                    // into `graphicsLayer` moves the work to
+                                                    // the DRAW phase; the layout pass stays
+                                                    // cached while the user scrolls.
+                                                    .graphicsLayer {
+                                                        translationY =
+                                                            if (isLibraryRoute) {
+                                                                0f
+                                                            } else {
+                                                                currentScrollBehavior.state.heightOffset
+                                                            }
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
                                                 Box(
-                                                    modifier =
-                                                        Modifier
-                                                            .offset {
-                                                                if (isLibraryRoute) {
-                                                                    IntOffset(x = 0, y = 0)
-                                                                } else {
-                                                                    val raw = currentScrollBehavior.state.heightOffset
-                                                                    val clamped = raw.coerceAtLeast(-appBarHeightPx)
-                                                                    IntOffset(x = 0, y = (clamped - raw).roundToInt())
-                                                                }
-                                                            }.fillMaxWidth()
-                                                            .height(
-                                                                AppBarHeight + effectiveStatusBarTop,
-                                                            ).background(
-                                                                Brush.verticalGradient(
-                                                                    colors =
-                                                                        listOf(
-                                                                            surfaceColor.copy(alpha = 0.95f),
-                                                                            surfaceColor.copy(alpha = 0.85f),
-                                                                            surfaceColor.copy(alpha = 0.6f),
-                                                                            Color.Transparent,
-                                                                        ),
+modifier =
+                                                            Modifier
+                                                                // Per audit (2026-08-30): same
+                                                                // layout-phase offset → draw-phase
+                                                                // graphicsLayer conversion as the
+                                                                // outer Box above. This is the
+                                                                // blur background overlay under
+                                                                // the top app bar.
+                                                                .graphicsLayer {
+                                                                    if (!isLibraryRoute) {
+                                                                        val raw = currentScrollBehavior.state.heightOffset
+                                                                        val clamped = raw.coerceAtLeast(-appBarHeightPx)
+                                                                        translationY = clamped - raw
+                                                                    }
+                                                                }.fillMaxWidth()
+                                                                .height(
+                                                                    AppBarHeight + effectiveStatusBarTop,
+                                                                ).background(
+                                                                    Brush.verticalGradient(
+                                                                        colors =
+                                                                            listOf(
+                                                                                surfaceColor.copy(alpha = 0.95f),
+                                                                                surfaceColor.copy(alpha = 0.85f),
+                                                                                surfaceColor.copy(alpha = 0.6f),
+                                                                                Color.Transparent,
+                                                                            ),
+                                                                    ),
                                                                 ),
-                                                            ),
                                                 )
                                             }
 

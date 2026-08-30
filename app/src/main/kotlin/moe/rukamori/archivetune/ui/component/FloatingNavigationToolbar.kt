@@ -645,11 +645,17 @@ fun FloatingNavigationToolbar(
                                 modifier =
                                     Modifier
                                         .align(Alignment.TopStart)
-                                        .offset {
-                                            IntOffset(
-                                                indicatorX.value.roundToInt(),
-                                                indicatorY.roundToInt(),
-                                            )
+                                        // Per audit (2026-08-30): the sliding indicator pill used
+                                        // `Modifier.offset { IntOffset(indicatorX.value.roundToInt(),
+                                        //  indicatorY.roundToInt()) }` — that runs in the LAYOUT
+                                        // phase on every spring frame of the tab-switch animation
+                                        // and invalidates the indicator's children for re-layout
+                                        // each frame. Switching to `graphicsLayer { translationX/Y }`
+                                        // moves the transform to the DRAW phase, so the layout pass
+                                        // can stay cached while the pill slides. No visual change.
+                                        .graphicsLayer {
+                                            translationX = indicatorX.value
+                                            translationY = indicatorY
                                         }
                                         .width(pillWidth)
                                         .height(pillHeight)
@@ -845,7 +851,15 @@ fun FloatingNavigationToolbar(
                 Box(
                     modifier =
                         Modifier
-                            .offset {
+                            // Per audit (2026-08-30): the Liquid Glass pill used
+                            // `Modifier.offset { IntOffset(...) }` to compute its X — that runs
+                            // in the LAYOUT phase on every drag/spring frame. The pill already
+                            // has a `Modifier.graphicsLayer { ... }` after for the press scale
+                            // and velocity-stretch, so folding the offset translationX into
+                            // that same graphicsLayer moves the work to the DRAW phase. The
+                            // layout pass can stay cached while the pill slides under the
+                            // user's finger.
+                            .graphicsLayer {
                                 val pillWidthPx = pillWidth.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
                                 // X: align with the items Row's content area, then slide.
@@ -870,11 +884,8 @@ fun FloatingNavigationToolbar(
                                 // Y = 0: the wrapper Box's CenterStart alignment
                                 // centers the pill vertically. No Y computation needed.
                                 val xRelativeToWrapper = xInRoot - barPositionInRoot.x
-                                IntOffset(xRelativeToWrapper.roundToInt(), 0)
-                            }
-                            .width(pillWidth)
-                            .height(pillHeight)
-                            .graphicsLayer {
+                                translationX = xRelativeToWrapper
+
                                 // SukiSU pressedScale = 78f / 56f ≈ 1.393.
                                 // Velocity-stretch: the pill squishes horizontally when
                                 // flung (a physical "rubber" feel). The asymmetry (0.75 ×

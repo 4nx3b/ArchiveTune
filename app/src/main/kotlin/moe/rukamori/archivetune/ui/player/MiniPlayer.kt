@@ -46,7 +46,6 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -323,7 +322,15 @@ private fun NewMiniPlayer(
                 Modifier
                     .fillMaxWidth()
                     .height(MiniPlayerHeight)
-                    .offset { IntOffset(offsetX.roundToInt(), 0) }
+                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(offsetX.roundToInt(), 0) }`
+                    // ran in the LAYOUT phase on every drag frame of the mini player's
+                    // horizontal-swipe gesture and invalidated the Box's children for
+                    // re-layout each frame. Folding the translation into `graphicsLayer`
+                    // moves the transform to the DRAW phase — the layout pass stays cached
+                    // while the user swipes. No visual change.
+                    .graphicsLayer {
+                        translationX = offsetX
+                    }
                     .clip(miniPlayerShape),
         ) {
             MiniPlayerBackground(
