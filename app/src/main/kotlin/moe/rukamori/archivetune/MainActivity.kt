@@ -1372,19 +1372,50 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
+                    // Per audit (2026-08-30): the app-wide NavHost backdrop captures
+                    // (Modifier.drawWithContent { layer.record { drawContent() } ; drawLayer(layer) }
+                    //  and Modifier.layerBackdrop(liquidGlassBackdrop)) run every frame the
+                    //  NavHost draws — i.e. always while the user is on Home/Search/Library
+                    //  with a mini player visible (which is the default state). These are the
+                    //  dominant per-frame CPU+GPU costs the user reports as "lag when mini
+                    //  player is visible". Both captures run UNCONDITIONALLY on Android 12+
+                    //  regardless of whether any consumer is actually sampling the backdrop.
+                    //
+                    // Gate each capture on whether at least one consumer can possibly need it:
+                    //   - frosted capture: needed when nav bar / nav bar tint / mini player
+                    //     style is FROSTED, or the tablet rail wants the frosted look.
+                    //   - liquid-glass capture: needed when the liquid-glass master toggle is
+                    //     on AND at least one of {nav bar, mini player, tablet rail} can show
+                    //     liquid glass. The user's chosen mini-player style matters here.
+                    //
+                    // When neither preference is on, both captures are skipped — the NavHost
+                    // draws normally without the per-frame GraphicsLayer.record cost, and the
+                    // bar/mini-player surfaces fall back to their plain tint/shape variants.
+                    // This is a "no sacrifice" optimization: nothing visible changes; we just
+                    // stop paying for work that no one reads.
+                    val miniPlayerUsesFrosted =
+                        miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED
+                    val miniPlayerUsesLiquidGlass =
+                        miniPlayerBgStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                            liquidGlassEnabled
+                    val needsFrostedCapture =
+                        navigationBarFrostedBlur ||
+                            navigationBarTintFrostedBlur ||
+                            miniPlayerUsesFrosted
+                    val needsLiquidGlassCapture =
+                        liquidGlassEnabled &&
+                            (liquidGlassNavBarEnabled || miniPlayerUsesLiquidGlass)
                     val navBarFrostedBackdrop =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && needsFrostedCapture) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
                         } else {
                             null
                         }
 
-                    val liquidGlassActive =
-                        liquidGlassEnabled &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     val liquidGlassBackdrop: LayerBackdrop? =
-                        if (liquidGlassActive) {
+                        if (needsLiquidGlassCapture) {
                             rememberLayerBackdrop()
                         } else {
                             null
@@ -2200,18 +2231,31 @@ class MainActivity : ComponentActivity() {
                                             // refraction / lens effects from the bottom toolbar
                                             // require per-item geometry that doesn't translate to
                                             // the rail's vertical layout.
+                                            //
+                                            // Per audit (2026-08-30): the drawBackdrop chain was
+                                            // inline, so every recomposition of the rail Box
+                                            // re-allocated the entire kyant effects stack and
+                                            // re-installed the RuntimeShader on the GraphicsLayer.
+                                            // Wrap in remember(...) keyed on (backdrop) so the
+                                            // chain is built once and reused across recompositions.
                                             Box(
                                                 modifier =
                                                     Modifier
                                                         .matchParentSize()
-                                                        .drawBackdrop(
-                                                            backdrop = liquidGlassBackdrop,
-                                                            effects = {
-                                                                vibrancy()
-                                                                blur(4f.dp.toPx())
+                                                        .then(
+                                                            remember(liquidGlassBackdrop) {
+                                                                Modifier.drawBackdrop(
+                                                                    backdrop = liquidGlassBackdrop,
+                                                                    effects = {
+                                                                        vibrancy()
+                                                                        blur(4f.dp.toPx())
+                                                                    },
+                                                                    onDrawBackdrop = { drawBackdrop ->
+                                                                        drawBackdrop()
+                                                                    },
+                                                                    shape = { RectangleShape },
+                                                                )
                                                             },
-                                                            onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
-                                                            shape = { RectangleShape },
                                                         ),
                                             )
                                         }
