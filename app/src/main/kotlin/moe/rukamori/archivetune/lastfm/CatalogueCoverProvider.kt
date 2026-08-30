@@ -413,4 +413,301 @@ object CatalogueCoverProvider {
                 .orEmpty()
         return first.replace(Regex("\\s+"), " ").trim()
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Non-cover metadata enrichment (songwriters + genres)
+    //
+    // Added 2026-08-30 per user requests:
+    //  • "Written by" text should show songwriters (Task 5)
+    //  • Last.fm stats page should fall back to internet for missing genres (Task 6)
+    //
+    // Both ride the same OkHttpClient + User-Agent + `runCatching`-swallow pattern
+    // the cover resolvers above use. Each is wrapped in a per-(mediaId, query)
+    // LRU so a re-render of the same track doesn't re-hit the network.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private val songwriterCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    private val genreCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    private const val MetadataCacheMaxEntries = 64
+    private val mbUserAgent = "ArchiveTune/1.0 (https://github.com/rukamori/ArchiveTune)"
+
+    /**
+     * Resolve the songwriter(s) — composer / lyricist / writer — for [title] (optionally
+     * with [artist]) using MusicBrainz. Returns the list of distinct writer names (max 5),
+     * or null if no writer credit was found.
+     *
+     * Flow:
+     *  1. Search MusicBrainz for the recording (Lucene query `recording:"X" AND artist:"Y"`,
+     *     limit=1) → first recording's MBID.
+     *  2. Lookup the recording MBID with `inc=artist-rels+work-rels`. The response includes
+     *     `relations[]` where `type-id == "a300566f-a404-437e-8d16-3b0d83b41313"` ("performance
+     *     of"); each such relation carries a `work` block whose own `relations[]` includes
+     *     entries with `type` ∈ {"composer", "lyricist", "writer"} → `artist.name` is the
+     *     writer's name.
+     *  3. Collect distinct writer names in encounter order, capped at 5.
+     *
+     * Cache: keyed by `"${title}|${artist ?: ""}"` so a re-render doesn't re-hit the
+     * network. Bounded LRU-ish eviction (ConcurrentHashMap has no LRU; we just trim the
+     * oldest key when the cap is hit, which is good enough for memory hygiene).
+     *
+     * Public so [LyricsEnhanced] can call it from a `LaunchedEffect` keyed on mediaId.
+     */
+    suspend fun resolveSongwriters(
+        title: String,
+        artist: String?,
+    ): List<String>? {
+        if (title.isBlank()) return null
+        val cleanedTitle = cleanSearchTitle(title)
+        val cleanedArtist = artist?.takeIf(String::isNotBlank)?.let(::cleanSearchArtist)
+        val cacheKey = "${cleanedTitle}|${cleanedArtist.orEmpty()}"
+        songwriterCache[cacheKey]?.let { return it }
+        return withContext(Dispatchers.IO) {
+            val mbid = searchMusicBrainzRecordingMbid(cleanedTitle, cleanedArtist) ?: return@withContext null
+            val writers = fetchRecordingWriters(mbid)
+            if (writers.isEmpty()) {
+                null
+            } else {
+                val distinct = LinkedHashSet<String>().apply { writers.forEach { add(it) } }.toList().take(5)
+                songwriterCache[cacheKey] = distinct
+                trimMetadataCache(songwriterCache)
+                distinct
+            }
+        }
+    }
+
+    /**
+     * Resolve genre tags for [title] (optionally with [artist]) using two providers
+     * in order: iTunes (primaryGenreName from search response — no extra call) →
+     * MusicBrainz (recording search + lookup with `inc=tags+genres`). Returns up to
+     * 3 distinct, non-blank tag names, or null if both providers came up empty.
+     *
+     * Cache: same shape as [resolveSongwriters] — keyed by title+artist, bounded by
+     * [MetadataCacheMaxEntries]. Public so [LastFmDashboardScreen] can use it as the
+     * fallback when Last.fm's `track.getInfo` returns no toptags.
+     */
+    suspend fun resolveGenres(
+        title: String,
+        artist: String?,
+    ): List<String>? {
+        if (title.isBlank()) return null
+        val cleanedTitle = cleanSearchTitle(title)
+        val cleanedArtist = artist?.takeIf(String::isNotBlank)?.let(::cleanSearchArtist)
+        val cacheKey = "${cleanedTitle}|${cleanedArtist.orEmpty()}"
+        genreCache[cacheKey]?.let { return it }
+        return withContext(Dispatchers.IO) {
+            val fromItunes = iTunesPrimaryGenre(cleanedTitle, cleanedArtist)
+            val fromMb = mbRecordingTags(cleanedTitle, cleanedArtist)
+            val combined =
+                LinkedHashSet<String>()
+                    .apply {
+                        fromItunes?.let { add(it) }
+                        fromMb?.forEach { add(it) }
+                    }.toList()
+                    .filter { it.isNotBlank() }
+                    .take(3)
+            if (combined.isEmpty()) {
+                null
+            } else {
+                genreCache[cacheKey] = combined
+                trimMetadataCache(genreCache)
+                combined
+            }
+        }
+    }
+
+    /**
+     * MusicBrainz recording search by (title, artist). Returns the first matching
+     * recording's MBID, or null on any failure (rate limit, no match, parse error).
+     */
+    private fun searchMusicBrainzRecordingMbid(
+        title: String,
+        artist: String?,
+    ): String? {
+        if (title.isBlank()) return null
+        val query = buildString {
+            if (!artist.isNullOrBlank()) {
+                append("artist:\"")
+                append(artist.replace("\"", ""))
+                append("\" AND ")
+            }
+            append("recording:\"")
+            append(title.replace("\"", ""))
+            append("\"")
+        }
+        val searchUrl =
+            "https://musicbrainz.org/ws/2/recording/".toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("query", query)
+                .addQueryParameter("limit", "1")
+                .addQueryParameter("fmt", "json")
+                .build()
+        val response =
+            runCatching {
+                client.newCall(
+                    Request.Builder()
+                        .url(searchUrl)
+                        .header("User-Agent", mbUserAgent)
+                        .get()
+                        .build(),
+                ).execute()
+            }.getOrNull() ?: return null
+        return response.use { resp ->
+            if (!resp.isSuccessful) return@use null
+            val body = runCatching { resp.body?.string() }.getOrNull() ?: return@use null
+            val parsed = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@use null
+            val recordings = parsed["recordings"]?.jsonArray ?: return@use null
+            recordings.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+        }
+    }
+
+    /**
+     * Lookup a recording MBID with `inc=artist-rels+work-rels` and walk the relations to
+     * find writer credits. Returns the list of writer names (with duplicates — caller
+     * deduplicates).
+     *
+     * MusicBrainz relation-type names for writers (case-insensitive):
+     *  - "composer" (type-id d300d7af-ca1f-4c25-b0d0-2c3e57678c82)
+     *  - "lyricist" (type-id 3e48faba-4051-36f4-9d86-7af1b96cd6e7)
+     *  - "writer"  (type-id 75909ea4-2a68-3b51-b743-2ce0fd50d7f0)
+     *
+     * We don't filter by type-id because the type-name lookup is what the API documents
+     * and what the JSON exposes; we just match on the `type` string.
+     */
+    private fun fetchRecordingWriters(mbid: String): List<String> {
+        val lookupUrl =
+            "https://musicbrainz.org/ws/2/recording/$mbid".toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("inc", "artist-rels+work-rels")
+                .addQueryParameter("fmt", "json")
+                .build()
+        val response =
+            runCatching {
+                client.newCall(
+                    Request.Builder()
+                        .url(lookupUrl)
+                        .header("User-Agent", mbUserAgent)
+                        .get()
+                        .build(),
+                ).execute()
+            }.getOrNull() ?: return emptyList()
+        val body = response.use { resp ->
+            if (!resp.isSuccessful) return emptyList()
+            runCatching { resp.body?.string() }.getOrNull() ?: return emptyList()
+        }
+        val parsed = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return emptyList()
+        val relations = parsed["relations"]?.jsonArray ?: return emptyList()
+        val writers = mutableListOf<String>()
+        for (relationEntry in relations) {
+            val relation = relationEntry.jsonObject
+            // Recording-level relations of type "performance of" carry a `work` block.
+            val type = relation["type"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: continue
+            if (type != "performance of") continue
+            val work = relation["work"]?.jsonObject ?: continue
+            val workRelations = work["relations"]?.jsonArray ?: continue
+            for (workRelationEntry in workRelations) {
+                val workRelation = workRelationEntry.jsonObject
+                val workType = workRelation["type"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: continue
+                if (workType != "composer" && workType != "lyricist" && workType != "writer") continue
+                val writerName = workRelation["artist"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
+                if (!writerName.isNullOrBlank()) writers.add(writerName)
+            }
+        }
+        return writers
+    }
+
+    /**
+     * iTunes Search API — extract `primaryGenreName` from the top result. Returns null
+     * on any failure. No extra call needed (the search response already has it).
+     */
+    private suspend fun iTunesPrimaryGenre(
+        title: String,
+        artist: String?,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            if (title.isBlank()) return@withContext null
+            val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
+            val url =
+                "https://itunes.apple.com/search".toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("term", term)
+                    .addQueryParameter("entity", "song")
+                    .addQueryParameter("limit", "3")
+                    .build()
+            val response =
+                runCatching {
+                    client.newCall(Request.Builder().url(url).get().build()).execute()
+                }.getOrNull() ?: return@withContext null
+            response.use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = runCatching { resp.body?.string() }.getOrNull() ?: return@withContext null
+                val parsed = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@withContext null
+                val results = parsed["results"]?.jsonArray ?: return@withContext null
+                // Prefer the result whose trackName closely matches; fall back to the first.
+                val first =
+                    results
+                        .firstOrNull { entry ->
+                            val trackName = entry.jsonObject["trackName"]?.jsonPrimitive?.contentOrNull.orEmpty().lowercase()
+                            trackName.contains(title.lowercase()) || title.lowercase().contains(trackName)
+                        }?.jsonObject
+                        ?: results.firstOrNull()?.jsonObject
+                        ?: return@withContext null
+                first["primaryGenreName"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)
+            }
+        }
+
+    /**
+     * MusicBrainz recording search → MBID → lookup with `inc=tags+genres`. Returns the
+     * tag/genre names (combined). MusicBrainz `genres[]` carry a `count` (lower=less
+     * popular); we just take the names as-is and let the caller deduplicate + cap.
+     */
+    private suspend fun mbRecordingTags(
+        title: String,
+        artist: String?,
+    ): List<String>? =
+        withContext(Dispatchers.IO) {
+            val mbid = searchMusicBrainzRecordingMbid(title, artist) ?: return@withContext null
+            val lookupUrl =
+                "https://musicbrainz.org/ws/2/recording/$mbid".toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("inc", "tags+genres")
+                    .addQueryParameter("fmt", "json")
+                    .build()
+            val response =
+                runCatching {
+                    client.newCall(
+                        Request.Builder()
+                            .url(lookupUrl)
+                            .header("User-Agent", mbUserAgent)
+                            .get()
+                            .build(),
+                    ).execute()
+                }.getOrNull() ?: return@withContext null
+            response.use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = runCatching { resp.body?.string() }.getOrNull() ?: return@withContext null
+                val parsed = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@withContext null
+                val result = mutableListOf<String>()
+                // tags[] — community-supplied free-form
+                parsed["tags"]?.jsonArray?.forEach { tagEntry ->
+                    val name = tagEntry.jsonObject["name"]?.jsonPrimitive?.contentOrNull
+                    if (!name.isNullOrBlank()) result.add(name)
+                }
+                // genres[] — MusicBrainz-curated
+                parsed["genres"]?.jsonArray?.forEach { genreEntry ->
+                    val name = genreEntry.jsonObject["name"]?.jsonPrimitive?.contentOrNull
+                    if (!name.isNullOrBlank()) result.add(name)
+                }
+                result.takeIf { it.isNotEmpty() }
+            }
+        }
+
+    /**
+     * Naive ConcurrentHashMap trim — keeps the metadata caches bounded. Not a true LRU
+     * (CHM doesn't support LRU without LinkedHashMap+sync) but good enough for memory
+     * hygiene at the volumes the lyrics screen generates.
+     */
+    private fun trimMetadataCache(cache: java.util.concurrent.ConcurrentHashMap<String, List<String>>) {
+        if (cache.size <= MetadataCacheMaxEntries) return
+        cache.keys.firstOrNull()?.let { cache.remove(it) }
+    }
 }

@@ -12,7 +12,6 @@ package moe.rukamori.archivetune.ui.component
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandIn
@@ -903,6 +902,35 @@ fun LibraryPinnedCollectionTile(
     subtitle: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
+    // Performance (user request 2026-08-30): hoist the Brush.linearGradient out
+    // of the per-composition `Modifier.background(...)` call. The previous code
+    // re-built the Brush + 3 Color.copy instances on every recomposition of
+    // this tile — which fires on every LazyColumn scroll, every selection-mode
+    // toggle, every theme change. `Modifier.background(Brush.linearGradient(...))`
+    // re-installs the modifier element on every Brush instance change →
+    // `update + invalidateDraw` cascade.
+    //
+    // Now the brush is built once per (accentColor, surfaceContainerHigh,
+    // surfaceContainerLow) tuple — typically stable for the lifetime of a
+    // tile. We hold the three inputs in stable locals and key the remember
+    // on them, so a theme change still rebuilds the brush but a scroll does
+    // not. The actual painting still happens via `Modifier.background`
+    // (cheap; the background modifier's `equals` returns true across
+    // recompositions when the Brush reference is stable).
+    val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
+    val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
+    val pinnedGradientBrush =
+        remember(accentColor, surfaceContainerHigh, surfaceContainerLow) {
+            Brush.linearGradient(
+                colors =
+                    listOf(
+                        accentColor.copy(alpha = 0.45f),
+                        surfaceContainerHigh,
+                        surfaceContainerLow,
+                    ),
+            )
+        }
+
     // Per user request (2026-08-28): "the liked songs in Spotify playlists
     // looks a bit faded. Fix it and make it compact." The previous tile
     // had a 76% opacity surface behind the icon (which muted the accent
@@ -917,22 +945,14 @@ fun LibraryPinnedCollectionTile(
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+
         modifier = modifier,
     ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            colors =
-                                listOf(
-                                    accentColor.copy(alpha = 0.45f),
-                                    MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    MaterialTheme.colorScheme.surfaceContainerLow,
-                                ),
-                        ),
-                    ),
+                    .background(pinnedGradientBrush),
         ) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -994,11 +1014,16 @@ fun LibraryPlaylistFeatureCard(
     val context = LocalContext.current
     val primaryThumbnailUrl = playlist.thumbnails.getOrNull(0)
     var extractedGlowColor by remember(primaryThumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "playlistItemGlow",
-    )
+    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp on
+    // the glow color. The animation was rebuilding `Modifier.shadow(ambientColor = glowColor.copy(alpha = ...),
+    // spotColor = glowColor.copy(alpha = ...))` every frame for 400ms after each thumbnail
+    // color extraction — `Modifier.shadow`'s `equals()` returns false every frame, causing
+    // `update + invalidateDraw` cascade for every visible Spotlight card on screen.
+    // The 400ms ramp is barely perceptible on a thumbnail-card glow shadow; a snap is
+    // visually equivalent (the color extraction happens asynchronously, so the glow appears
+    // only after the thumbnail is already visible). Now we just snap to the extracted color.
+    // Same fix applied below for LibraryAlbumSpotlightCard and LibraryArtistSpotlightCard.
+    val glowColor = extractedGlowColor
     LaunchedEffect(primaryThumbnailUrl) {
         if (primaryThumbnailUrl == null) return@LaunchedEffect
         val bitmap =
@@ -1102,11 +1127,9 @@ fun LibraryAlbumSpotlightCard(
         )
     val context = LocalContext.current
     var extractedGlowColor by remember(album.album.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "albumItemGlow",
-    )
+    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
+    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+    val glowColor = extractedGlowColor
     LaunchedEffect(album.album.thumbnailUrl) {
         val url = album.album.thumbnailUrl ?: return@LaunchedEffect
         val bitmap =
@@ -1216,11 +1239,9 @@ fun LibraryArtistSpotlightCard(
 ) {
     val context = LocalContext.current
     var extractedGlowColor by remember(artist.artist.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    val glowColor by animateColorAsState(
-        targetValue = extractedGlowColor,
-        animationSpec = tween(400),
-        label = "artistItemGlow",
-    )
+    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
+    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+    val glowColor = extractedGlowColor
     LaunchedEffect(artist.artist.thumbnailUrl) {
         val url = artist.artist.thumbnailUrl ?: return@LaunchedEffect
         val bitmap =
