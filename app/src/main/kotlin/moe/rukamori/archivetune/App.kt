@@ -59,6 +59,7 @@ import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
@@ -102,6 +103,17 @@ class App :
      */
     @Inject
     lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
+
+    /**
+     * Pre-warmed at app startup so the Search tab's discovery feed (moods & genres,
+     * charts, suggested songs/albums/artists) loads instantly when the user first taps
+     * Search — see [SearchDiscoveryRepository.loadDiscovery]. The repository caches
+     * its result in-memory for a short TTL, so the cost of one warm-up covers many
+     * subsequent tab re-entries. Fire-and-forget on `applicationScope` (Dispatchers.IO)
+     * so the cold-start path isn't blocked.
+     */
+    @Inject
+    lateinit var searchDiscoveryRepository: SearchDiscoveryRepository
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -252,6 +264,20 @@ class App :
     private fun initializeDeferredAsync() {
         applicationScope.launch(Dispatchers.IO) {
             ytDlpRuntime.preWarm()
+        }
+
+        // Per user request (2026-08-30): "The search tab takes time to load. it
+        // should preload when i open the app." Kick off the discovery load
+        // immediately at app start so the in-memory TTL cache is warm by the
+        // time the user first taps Search. The repository's `loadDiscovery()`
+        // is idempotent — a concurrent call from the actual ViewModel just
+        // joins the in-flight job via the same `loadJob?.isActive` guard.
+        // Errors are swallowed inside the repository (stale cache fallback)
+        // so this fire-and-forget is safe.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                searchDiscoveryRepository.loadDiscovery(forceRefresh = false)
+            }
         }
 
         applicationScope.launch(Dispatchers.IO) {
