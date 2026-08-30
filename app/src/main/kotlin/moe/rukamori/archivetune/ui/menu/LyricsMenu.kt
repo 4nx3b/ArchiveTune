@@ -92,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -932,14 +933,14 @@ fun LyricsMenu(
             // keeps the same `extraLarge` corner shape so the rounded clip
             // still matches the popup's outer clip (no dark gap).
             //
-            // Vertical padding reduced 6dp -> 4dp per "make the popup a bit
-            // more compact" (2026-08-30). Combined with the inner Column's
-            // vertical padding reduction (4dp -> 0dp), the top/bottom
-            // breathing room around the menu items dropped from 10dp to 4dp.
+            // Vertical padding 4dp -> 8dp per "redesign the lyrics popup —
+            // match the second reference image" (2026-08-30). The reference
+            // shows generous breathing room above the first row and below
+            // the last row (~24px at reference scale ≈ 8dp at mdpi).
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+                modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(vertical = 0.dp)) {
                     menuItems.forEachIndexed { index, item ->
@@ -948,11 +949,16 @@ fun LyricsMenu(
                         )
                         // Hairline divider BETWEEN items only — no divider before the first
                         // or after the last, matching Apple Music's grid-separated look.
+                        // Color: white at 12% opacity (was `outlineVariant`) per reference
+                        //   "Divider lines should be approximately 10–18% white/gray opacity".
+                        // Thickness: 0.5dp -> 1.dp per reference "1 px at reference scale".
+                        // Horizontal padding: 16dp -> 20dp to align with the row's
+                        //   text and icon (both at horizontal = 20.dp now).
                         if (index < menuItems.size - 1) {
                             HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                                thickness = 0.5.dp,
-                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = Color.White.copy(alpha = 0.12f),
+                                thickness = 1.dp,
+                                modifier = Modifier.padding(horizontal = 20.dp),
                             )
                         }
                     }
@@ -1889,49 +1895,58 @@ private fun AppleMusicLyricsMenuRow(
     item: AppleMusicLyricsMenuItem,
     modifier: Modifier = Modifier,
 ) {
+    // Per "redesign the lyrics popup — match the second reference image"
+    // (2026-08-30): the reference uses pure white text + off-white icons on
+    // a dark translucent vibrancy surface, with the destructive row in
+    // bright system red. The previous implementation used Material3
+    // `onSurface`/`onSurfaceVariant` (theme-tinted) which adapts to light/
+    // dark theme — but the reference popup is ALWAYS dark charcoal glass,
+    // so theme-tinted colors are wrong. Hardcoding white + red matches the
+    // reference's "white/off-white" + "bright system-style red" spec.
     val headlineColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A) // iOS System Red (dark mode)
         } else {
-            MaterialTheme.colorScheme.onSurface
+            Color.White
         }
     val iconColor =
         if (item.isDestructive) {
-            MaterialTheme.colorScheme.error
+            Color(0xFFFF453A)
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            Color.White
         }
     val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
 
-    // Replaced Material3 `ListItem` (inside a wrapping `Surface(onClick)`) with
-    // a custom `Row` for tighter control over text-to-text spacing. The original
-    // ListItem imposed ~8dp top + 8dp bottom internal content padding (16dp per
-    // row of breathing room) on top of the 56dp min row height — so consecutive
-    // labels were ~16.5dp apart (ListItem bottom pad + 0.5dp divider + ListItem
-    // top pad). User report 2026-08-30: "reduce the spacing between text".
+    // Reference row geometry (720x1536 screenshot):
+    //   - each row ~80px tall (~5.2% of screen height)
+    //   - text begins ~30px from popup left edge
+    //   - icon center ~48px from popup right edge
+    //   - icon size ~28-32px
+    //   - text size ~28-30px (≈17-18sp on a typical Android device)
     //
-    // The custom Row uses 4dp vertical padding + 44dp min row height, so the
-    // gap between consecutive labels is now ~8.5dp (4dp + 0.5dp + 4dp) — about
-    // half the previous spacing. Icon size reduced 22dp -> 20dp for a more
-    // compact Apple-Music-style feel. Horizontal padding 16dp keeps the text
-    // aligned with the divider's `horizontal = 16.dp` padding.
-    //
-    // `clickable` (with no indication override) preserves the existing
-    // ripple behaviour — the previous `Surface(onClick = ...)` also showed a
-    // ripple, so there's no regression.
+    // Mapped to dp/sp using responsive proportions:
+    //   - row min height 56dp (was 44dp, was 56dp via ListItem) — generous
+    //     Apple-Music-style touch target.
+    //   - horizontal padding 20dp (was 16dp) — text starts ~20dp from
+    //     popup edge, matches the reference's ~30px at mdpi.
+    //   - vertical padding 8dp (was 4dp) — keeps the label vertically
+    //     centered within the taller row.
+    //   - icon size 24dp (was 20dp) — matches reference's ~28-32px range.
+    //   - text fontSize 17sp (was 16sp) — matches reference's ~28-30px
+    //     range on a typical xxhdpi Android device.
     val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
+                .heightIn(min = 56.dp)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = ripple(),
                     enabled = item.enabled,
                     onClick = item.onClick,
                 )
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1939,12 +1954,12 @@ private fun AppleMusicLyricsMenuRow(
             text = item.label,
             color = headlineColor,
             fontWeight = headlineWeight,
-            fontSize = 16.sp,
+            fontSize = 17.sp,
         )
         Icon(
             painter = painterResource(item.iconRes),
             contentDescription = null,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(24.dp),
             tint = iconColor,
         )
     }
@@ -1963,10 +1978,10 @@ private fun AppleMusicLyricsMenuRow(
  * - Anchored to [iconBoundsInRoot.right] x [iconBoundsInRoot.bottom] so the
  *   popup's right edge aligns with the icon's right edge, with the popup
  *   appearing just below the icon.
- * - 220dp max width (was 280dp, then 240dp, then 220dp — progressive
- *   reduction per "reduce the size of popup a bit" (batch-12) and "make the
- *   popup a bit more compact" (batch-13) user requests), 16dp corner radius,
- *   frosted-glass background — when the
+ * - 65% of screen width (per reference "65% of screen width"), 16dp corner
+ *   radius (was `MaterialTheme.shapes.extraLarge` ~28dp, reduced 2026-08-30
+ *   per reference "24 px corner radius at the reference scale"), frosted-glass
+ *   vibrancy background — when the
  *   caller provides a non-null [backdrop] (a kyant [PlatformBackdrop] that
  *   captures the player content behind the popup), the popup samples that
  *   backdrop with a 20dp blur, producing a real "frosted glass" effect that
@@ -2066,6 +2081,15 @@ fun AnchoredLyricsOverflowMenu(
 
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    // Per "redesign the lyrics popup — match the second reference image"
+    // (2026-08-30): the reference popup occupies ~65% of screen width and is
+    // positioned toward the RIGHT side of the screen. We capture
+    // `LocalConfiguration.current` here (composable scope) so the offset
+    // lambda (a non-composable `Density.() -> IntOffset`) can compute the
+    // popup's pixel width from the screen's dp width without re-calling the
+    // composable function on every recomposition.
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
 
     // Scale: starts at 0.3f (small, centred on top-right corner) on first
     // composition, animates to 1.0f via LaunchedEffect(Unit) below. On
@@ -2159,7 +2183,11 @@ fun AnchoredLyricsOverflowMenu(
                 backdrop = backdrop,
                 effects = {
                     vibrancy()
-                    blur(20f.dp.toPx())
+                    // Blur radius 20f -> 32f per reference "strong backdrop
+                    // blur". The reference popup is a dark charcoal translucent
+                    // glass with heavy blur of the content behind — 20dp was
+                    // too subtle; 32dp produces a more premium vibrancy look.
+                    blur(32f.dp.toPx())
                 },
                 onDrawBackdrop = { drawBackdrop ->
                     drawBackdrop()
@@ -2174,11 +2202,18 @@ fun AnchoredLyricsOverflowMenu(
     // Full-screen scrim — translucent black so the lyrics view is still
     // visible behind (matches Apple Music's "dim the background but don't
     // black it out" style). Clickable to trigger dismissal.
+    //
+    // Scrim alpha 0.35f -> 0.45f per reference "darkened/dimmed background
+    // ... existing lyrics remain faintly visible". The reference shows a
+    // stronger dim than the previous 35% — 45% matches the reference's
+    // ~40-50% dim. The `* alpha` multiplier is preserved so the scrim
+    // continues to fade in/out with the existing enter/exit animation —
+    // THIS IS A STATIC COLOR CHANGE, NOT AN ANIMATION CHANGE.
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.35f * alpha))
+                .background(Color.Black.copy(alpha = 0.45f * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -2195,16 +2230,40 @@ fun AnchoredLyricsOverflowMenu(
         // where the popup meets the icon the user just tapped. This is
         // the "morph from the overflow icon" effect the user asked for.
         //
-        // Popup width reduced 280dp -> 240dp -> 220dp per user requests
-        // 2026-08-30: "reduce the size of popup a bit" then "make the
-        // popup a bit more compact". The widthIn max and the offset's
-        // `popupWidthPx` must stay in sync so the popup's right edge
-        // continues to align with the icon's right edge.
+        // Per "redesign the lyrics popup — match the second reference image"
+        // (2026-08-30), the popup was widened from `widthIn(max = 220.dp)` to
+        // `fillMaxWidth(0.65f)` (65% of the screen width, matching the
+        // reference popup's ~65% screen-width proportion). The popup remains
+        // anchored to the overflow icon's right edge so the existing
+        // enter/exit scale animation (transformOrigin = top-right) continues
+        // to look like the popup "grows out of" the icon — THE ANIMATION IS
+        // COMPLETELY UNCHANGED.
+        //
+        // Visual stack (outermost -> innermost):
+        //   1. offset — positions the popup's top-right corner at the icon.
+        //   2. fillMaxWidth(0.65f) — responsive width (65% of screen).
+        //   3. heightIn(max = 520.dp) — safety bound for tall content.
+        //   4. graphicsLayer — UNCHANGED (alpha + scale + transformOrigin).
+        //      The animation reads scaleAnim.value / alphaAnim.value and
+        //      applies them via this graphicsLayer. Untouched per user spec.
+        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — NEW: soft elevated
+        //      shadow per reference "soft shadow, large shadow blur, subtle
+        //      depth". Applied AFTER graphicsLayer so the shadow scales +
+        //      fades with the popup's enter/exit animation (no janky
+        //      full-size shadow during the small-scale enter frame).
+        //   6. frostedBlurModifier (or fallback dark tint) — backdrop blur.
+        //   7. background(Color.Black at 55%) — NEW: dark charcoal tint over
+        //      the blur, per reference "dark charcoal/black translucent
+        //      material". The graphicsLayer's alpha animates this tint in/out.
+        //   8. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
+        //      reduced to 16dp per reference "24 px corner radius at the
+        //      reference scale" (24px ≈ 16dp at mdpi).
+        //   9. clickable — consumes taps inside the popup.
         Box(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
+                        val popupWidthPx = with(density) { (screenWidthDp * 0.65f).dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
@@ -2215,7 +2274,7 @@ fun AnchoredLyricsOverflowMenu(
                         val y = iconBottom + verticalOffsetPx
                         IntOffset(x = x, y = y)
                     }
-                    .widthIn(max = 220.dp)
+                    .fillMaxWidth(0.65f)
                     .heightIn(max = 520.dp)
                     .graphicsLayer {
                         this.alpha = alpha
@@ -2223,6 +2282,11 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleY = scale
                         this.transformOrigin = TransformOrigin(1f, 0f)
                     }
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        clip = false,
+                    )
                     // Apply the frosted-blur backdrop sampler FIRST
                     // (before clip + background), so the blur samples the
                     // full backdrop at the popup's location, then the clip
@@ -2234,7 +2298,15 @@ fun AnchoredLyricsOverflowMenu(
                         frostedBlurModifier
                             ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
                     )
-                    .clip(MaterialTheme.shapes.extraLarge)
+                    // Dark charcoal tint over the blur. The reference popup
+                    // is NOT a clear glass window — it is a dark translucent
+                    // vibrancy surface. Without this tint, the blurred
+                    // content shows through too brightly (e.g., album art
+                    // colors would dominate). 55% black over the blur
+                    // produces the reference's "dark charcoal" feel while
+                    // still letting the blur's vibrancy show through.
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
