@@ -148,7 +148,6 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
-import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
@@ -553,29 +552,29 @@ fun LyricsScreen(
         }
     }
 
-    // ── Anchored overflow popup state ──
-    // The previous implementation used `menuState.show { LyricsMenu(...) }`
-    // which opened a Material3 ModalBottomSheet (slide-up from bottom). Per
-    // user request (2026-08-30): "The new overflow lyrics menu in apple music
-    // is a bottom slide up popup. I want it to be attached to the overflow
-    // menu icon like the image was in. it also has blur/frosted blur behind
-    // it. Add it. Also the popup shouldn't open abruptly. it should play as
-    // if it enlarged smoothly from the overflow menu icon just like the
-    // morph animation" — we now use [AnchoredLyricsOverflowMenu], which
-    // renders an Apple-Music-style anchored popup that scales up from the
-    // overflow icon with a frosted-glass background.
-    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
-    var lyricsMenuIconBounds by remember {
-        mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
-    }
-
+    // ── Lyrics overflow menu ──
+    // The standalone LyricsScreen is invoked from the legacy/non-Apple-Music
+    // BottomSheetPlayer (see Player.kt:2679). Per user request (2026-08-30)
+    // batch-11: "i wanted you to redesign the popup in only apple music player
+    // style. Not the non apple music player styles. ... revert the redesign for
+    // only non apple music player styles" — this screen uses the original
+    // ModalBottomSheet (`menuState.show { LyricsMenu(...) }`) slide-up popup
+    // that was used before the batch-10 anchored-popup redesign. The Apple
+    // Music-style inline player (AppleMusicPlayer.kt) keeps the anchored popup.
     val showLyricsMenu = {
-        // Captured icon bounds are stored in `lyricsMenuIconBounds` via the
-        // `onMorePositioned` callback wired through AppleMusicTrackHeader →
-        // AppleMusicHeaderIconButton → onGloballyPositioned. When the user
-        // taps the icon we just flip the visibility flag — the anchored
-        // popup composable uses the most-recently-captured bounds.
-        showAnchoredLyricsMenu = true
+        menuState.show {
+            LyricsMenu(
+                lyricsProvider = { currentLyrics },
+                mediaMetadataProvider = { mediaMetadata },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                showPlayerControlsState = null,
+                onShowPlayerControlsChange = null,
+                onAutoHidePlayerControlsChange = {},
+                onDismiss = menuState::dismiss,
+                showControlsToggles = false,
+            )
+        }
     }
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
@@ -703,7 +702,6 @@ fun LyricsScreen(
                     onDismissClick = onBackClick,
                     isLiked = currentSongLiked,
                     onToggleLike = playerConnection::toggleLike,
-                    onMorePositioned = { rect -> lyricsMenuIconBounds = rect },
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -825,25 +823,6 @@ fun LyricsScreen(
                 }
             }
             }
-        }
-        // Anchored Apple-Music-style overflow popup. Rendered as the last
-        // child of the lyrics screen's root Box so it overlays every other
-        // child (background / lyrics / controls / header). The popup itself
-        // manages its own enter/exit animations; the parent only gates whether
-        // it's in composition at all.
-        if (showAnchoredLyricsMenu) {
-            AnchoredLyricsOverflowMenu(
-                iconBoundsInRoot = lyricsMenuIconBounds,
-                lyricsProvider = { currentLyrics },
-                mediaMetadataProvider = { mediaMetadata },
-                lyricsSyncOffset = lyricsSyncOffset,
-                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
-                onDismiss = { showAnchoredLyricsMenu = false },
-                showControlsToggles = false,
-            )
         }
     }
 }
@@ -1288,7 +1267,6 @@ private fun AppleMusicTrackHeader(
     modifier: Modifier = Modifier,
     isLiked: Boolean = false,
     onToggleLike: () -> Unit = {},
-    onMorePositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     val artistText =
         remember(mediaMetadata.id, mediaMetadata.artists) {
@@ -1379,7 +1357,6 @@ private fun AppleMusicTrackHeader(
             contentDescription = stringResource(R.string.more_options),
             foregroundColor = foregroundColor,
             onClick = onMoreClick,
-            onPositioned = onMorePositioned,
         )
     }
 }
@@ -1390,37 +1367,11 @@ private fun AppleMusicHeaderIconButton(
     contentDescription: String,
     foregroundColor: Color,
     onClick: () -> Unit,
-    onPositioned: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
 ) {
     Box(
         modifier =
             Modifier
                 .size(48.dp)
-                .let { base ->
-                    if (onPositioned != null) {
-                        // `boundsInRoot()` isn't available on this Compose
-                        // version (only `positionInRoot(): Offset` and `size:
-                        // IntSize` are). Compute the Rect from those two —
-                        // positionInRoot gives the top-left of the layout in
-                        // root coordinates, and the layout's size is the
-                        // 48dp Box dimensions.
-                        base.onGloballyPositioned { coords ->
-                            val pos = coords.positionInRoot()
-                            val sz = coords.size
-                            onPositioned(
-                                androidx.compose.ui.geometry.Rect(
-                                    offset = pos,
-                                    size = androidx.compose.ui.geometry.Size(
-                                        width = sz.width.toFloat(),
-                                        height = sz.height.toFloat(),
-                                    ),
-                                ),
-                            )
-                        }
-                    } else {
-                        base
-                    }
-                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = ripple(bounded = false, radius = 24.dp),
