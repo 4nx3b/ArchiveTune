@@ -17,8 +17,11 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import moe.rukamori.archivetune.ai.AiLyricsRomanizer
 import moe.rukamori.archivetune.ai.AiServiceConfig
@@ -36,6 +39,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * AI-provided romanisation for the lyrics views.
@@ -63,6 +67,42 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object AiLyricsRomanization {
     private const val TAG = "AiRomanization"
+
+    /**
+     * Outcome of a [request] call. The manual "AI romanise now" menu action surfaces this to the
+     * user as a specific toast so silent no-ops become actionable feedback.
+     *
+     * The auto-renderer path ignores the return value — it joins the in-flight [Deferred] and
+     * re-reads [linesFor] when [results] emits, so the status is only useful to interactive callers.
+     */
+    enum class RequestStatus {
+        /** A new request was started. Result will publish to [results] when the model responds. */
+        STARTED,
+
+        /** An existing cached result for this session key was re-published to [results]. */
+        ALREADY_CACHED,
+
+        /** A request for this session key is already in-flight. The caller joins the existing one. */
+        IN_FLIGHT,
+
+        /** [Settings.active] is false — provider/key/model are not fully configured. */
+        SETTINGS_DISABLED,
+
+        /** [linesOf] produced an empty list — lyrics are blank or `LYRICS_NOT_FOUND`. */
+        NO_LYRICS,
+
+        /** The lyrics' dominant language is in [Settings.excludedLanguages]. */
+        EXCLUDED_LANGUAGE,
+
+        /** No line contains any script the AI can romanise (e.g. all-Latin lyrics). */
+        NO_ROMANIZABLE_SCRIPT,
+
+        /**
+         * The model returned no usable romanisation for any line (all-null or all-identical-to-source
+         * echoes per [AiLyricsRomanizer]). Nothing was published to [results].
+         */
+        EMPTY_RESULT,
+    }
 
     /** Everything the renderers need to decide whether, and how, to romanise with the AI. */
     @Immutable
@@ -105,11 +145,22 @@ object AiLyricsRomanization {
      *
      * Keying on the text is also just correct: identical lines have identical readings, so a chorus
      * repeat resolves from the first occurrence instead of costing another entry.
+     *
+     * ## The [nonce] field
+     *
+     * [Result] is intentionally NOT a `data class`: it carries a monotonically-increasing [nonce]
+     * so that a re-[publish] of the same `byLine` map (e.g. when the user taps "AI romanise now"
+     * again after a previous run cached the result) still emits through `MutableStateFlow`. With a
+     * `data class`, `StateFlow.distinctUntilChanged` would silently swallow the re-emission because
+     * the old and new values compare equal — the renderer would not re-resolve and the user would
+     * see "clicking again does nothing" on a cached result. The [nonce] defeats that equality so
+     * every explicit [publish] is observable. The [byLine] data is unchanged; only the identity of
+     * the emission is made distinct.
      */
-    @Immutable
-    data class Result(
+    class Result(
         val sessionKey: String,
         val byLine: Map<String, String>,
+        private val nonce: Long = nextNonce(),
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -118,12 +169,32 @@ object AiLyricsRomanization {
     private val cache = ConcurrentHashMap<String, Map<String, String>>()
 
     private val _results = MutableStateFlow<Result?>(null)
+    private val nonceCounter = AtomicLong(0L)
+    private fun nextNonce(): Long = nonceCounter.incrementAndGet()
 
     /**
      * Signals that a romanisation finished. Renderers observe this only to know *when* to re-resolve;
      * the values themselves come from [linesFor], which is index-space independent.
      */
     val results: StateFlow<Result?> = _results.asStateFlow()
+
+    /**
+     * Terminal status of an async [request]. The manual menu caller observes this to surface a
+     * follow-up toast when an async `STARTED` request later completes with no usable romanisation
+     * (the [RequestStatus.EMPTY_RESULT] case — the model echoed back the source text or returned
+     * all-null). Synchronous outcomes (SETTINGS_DISABLED, NO_LYRICS, EXCLUDED_LANGUAGE,
+     * NO_ROMANIZABLE_SCRIPT, IN_FLIGHT, ALREADY_CACHED, STARTED) are returned from [request] directly
+     * and the menu toasts immediately, so they are NOT re-emitted here. Only [RequestStatus.EMPTY_RESULT]
+     * is emitted because it is the only status that materialises asynchronously.
+     *
+     * The flow is `replay = 0` so a fresh collector doesn't see a stale outcome from a previous
+     * request, and `extraBufferCapacity = 1` so a slow collector doesn't drop the emission.
+     */
+    private val _requestOutcomes = MutableSharedFlow<RequestStatus>(
+        replay = 0,
+        extraBufferCapacity = 1,
+    )
+    val requestOutcomes: SharedFlow<RequestStatus> = _requestOutcomes.asSharedFlow()
 
     private val _running = MutableStateFlow(false)
 
@@ -232,23 +303,28 @@ object AiLyricsRomanization {
     /**
      * Requests romanisation for [lines], joining an in-flight request for the same [sessionKey].
      *
-     * Returns immediately; the result is published to [results]. Silent no-op when the settings say
-     * not to, when nothing needs romanising, or when the track's dominant language is excluded — the
-     * caller does not have to pre-check any of that.
+     * Returns a [RequestStatus] so the manual menu caller can show specific feedback instead of
+     * the previous behaviour of unconditionally toasting "AI romanisation started" even when this
+     * function silently no-op'd. The auto-renderer path ignores the return value.
+     *
+     * Idempotent per track — the coordinator joins an in-flight call and serves a cached one — so
+     * a second tap is free. A cached-result re-publish intentionally emits a distinct [Result] (via
+     * the [Result.nonce] field) so the renderer re-resolves even when the [Result.byLine] contents
+     * are unchanged; this fixes the "clicking AI romanise again does nothing" cache-hit masking.
      */
     fun request(
         sessionKey: String,
         lines: List<String>,
         settings: Settings,
-    ) {
-        if (!settings.active) return
-        if (lines.isEmpty()) return
+    ): RequestStatus {
+        if (!settings.active) return RequestStatus.SETTINGS_DISABLED
+        if (lines.isEmpty()) return RequestStatus.NO_LYRICS
 
         cache[sessionKey]?.let { cached ->
             publish(sessionKey, cached)
-            return
+            return RequestStatus.ALREADY_CACHED
         }
-        if (inFlight.containsKey(sessionKey)) return
+        if (inFlight.containsKey(sessionKey)) return RequestStatus.IN_FLIGHT
 
         // The exclusion list is checked against the whole lyric rather than per line: a single track
         // is one language for this purpose, and per-line detection would send a Japanese song's
@@ -260,11 +336,11 @@ object AiLyricsRomanization {
         val dominant = LyricsUtils.detectDominantLanguageCode(lines.joinToString("\n"))
         if (dominant != null && LyricsUtils.matchesExcludedLanguage(dominant, settings.excludedLanguages)) {
             Timber.tag(TAG).d("skipping %s: %s is excluded", sessionKey, dominant)
-            return
+            return RequestStatus.EXCLUDED_LANGUAGE
         }
         // Nothing to do for lyrics that are already Latin script. Reuses the built-in detectors so
         // the two engines agree on which lines are candidates at all.
-        if (lines.none { LyricsUtils.hasRomanizableScript(it) }) return
+        if (lines.none { LyricsUtils.hasRomanizableScript(it) }) return RequestStatus.NO_ROMANIZABLE_SCRIPT
 
         val job =
             scope.async {
@@ -297,14 +373,25 @@ object AiLyricsRomanization {
                 cache[sessionKey] = byLine
                 trimCache(sessionKey)
                 publish(sessionKey, byLine)
+            } else {
+                // Surface EMPTY_RESULT via the outcomes flow so the manual menu caller can show a
+                // follow-up toast explaining why the "Romanising…" toast the user just saw did not
+                // result in any visible romanisation. (Auto-renderer path ignores this — it never
+                // toasts.)
+                _requestOutcomes.tryEmit(RequestStatus.EMPTY_RESULT)
             }
         }
+        return RequestStatus.STARTED
     }
 
     private fun publish(
         sessionKey: String,
         byLine: Map<String, String>,
     ) {
+        // A new `Result` instance is allocated per publish — the `nonce` field guarantees a fresh
+        // identity even when `byLine` is structurally identical to the previously-published value,
+        // so `MutableStateFlow.value = ...` is observable to collectors that compare by reference
+        // (e.g. Compose `collectAsStateWithLifecycle`).
         _results.value = Result(sessionKey = sessionKey, byLine = byLine)
     }
 

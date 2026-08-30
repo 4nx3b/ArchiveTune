@@ -147,8 +147,27 @@ internal fun AppleMusicFlatSlider(
                         size = Size(size.width, height),
                         cornerRadius = radius,
                     )
+                    // ─────────────────────────────────────────────────────────────────────────
+                    // Performance (user request 2026-08-30: "Reduce Gpu/cpu usage so that the
+                    // app is even more smooth without removing or sacrificing anything").
+                    //
+                    // Previously this allocated a fresh `fillColor.copy(alpha = fillColor.alpha * fillAlpha)`
+                    // Color instance per redraw frame during drag (and `dragFraction` /
+                    // `animatedFraction` change every drag frame). `Color.copy(...)` allocates a
+                    // new Color on every call, which is harmless for a one-shot draw but becomes
+                    // measurable during a slider drag (hundreds of frames).
+                    //
+                    // Now we pass the unmodified `fillColor` and let `drawRoundRect`'s `alpha`
+                    // parameter (a primitive Float) multiply it down. `drawRoundRect`'s `alpha`
+                    // multiplies the source color's alpha, so the resulting alpha is
+                    // `fillColor.alpha * fillAlpha` — visually identical to the previous
+                    // `fillColor.copy(alpha = fillColor.alpha * fillAlpha)`, but zero allocation
+                    // per frame. Same pattern the previous perf pass applied to `LiquidGlass`'s
+                    // `onDrawSurface`.
+                    // ─────────────────────────────────────────────────────────────────────────
                     drawRoundRect(
-                        color = fillColor.copy(alpha = fillColor.alpha * fillAlpha),
+                        color = fillColor,
+                        alpha = fillColor.alpha * fillAlpha,
                         topLeft = Offset(0f, top),
                         size = Size(size.width * animatedFraction, height),
                         cornerRadius = radius,

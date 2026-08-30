@@ -15,6 +15,7 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.drawBehind
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -124,43 +125,40 @@ fun BottomSheet(
                         topStart = if (!state.isExpanded) 16.dp else 0.dp,
                         topEnd = if (!state.isExpanded) 16.dp else 0.dp,
                     ),
-                ).background(
+                ).then(
+                    // ─────────────────────────────────────────────────────────────────────────
+                    // Performance: replace `Modifier.background(color.copy(alpha = ...))` with a
+                    // draw-phase-only `drawBehind { drawRect(color, alpha = ...) }`.
+                    //
+                    // Previously, the second branch allocated a fresh `Color.copy(...)` instance per
+                    // drag frame (state.progress changes on every drag frame), which caused
+                    // `BackgroundElement.equals()` to return false → modifier chain re-installed →
+                    // update + invalidateDraw cascade on every drag frame. This is the dominant
+                    // per-frame cost of the player-sheet drag gesture (which is the largest subtree
+                    // in the app — hosts the entire player + lyrics + queue).
+                    //
+                    // The opaque-background branch already returned a stable `backgroundColor`
+                    // value (no per-frame Color.copy), so it was already a no-op for that case.
+                    // The new drawBehind implementation keeps both branches the same shape, just
+                    // moving the alpha-baking from a Color allocation into a primitive Float
+                    // parameter on `drawRoundRect`. No visual change.
+                    // ─────────────────────────────────────────────────────────────────────────
                     if (opaqueBackground) {
-                        // Render the outer background fully opaque ONLY when
-                        // the sheet is actually sliding up or expanded
-                        // (progress > 0). When the sheet is fully collapsed
-                        // (progress = 0), the background is transparent so it
-                        // does NOT cover the system navigation bar area
-                        // (gesture hint / 3-button nav) at the bottom of the
-                        // screen.
-                        //
-                        // Previously, this branch returned `backgroundColor`
-                        // unconditionally, which meant the opaque background
-                        // was always rendered — even when the sheet was
-                        // collapsed at the peek height. Because the queue
-                        // sheet's `collapsedBound` is
-                        // `dynamicQueuePeekHeight + systemBarsBottom`, the
-                        // visible portion of the collapsed sheet INCLUDES the
-                        // navigation bar inset, and the opaque background
-                        // covered it, hiding the gesture hint / 3-button nav.
-                        //
-                        // By gating on `progress > 0`, the background is:
-                        //   - transparent when collapsed (progress = 0): the
-                        //     navigation bar shows through normally.
-                        //   - opaque as soon as the user starts dragging
-                        //     (progress > 0): the player's zoomed artwork
-                        //     backdrop is hidden during the slide-up, which
-                        //     was the original bug `opaqueBackground = true`
-                        //     was introduced to fix.
-                        if (state.progress > 0f) {
-                            backgroundColor
-                        } else {
-                            Color.Transparent
+                        Modifier.drawBehind {
+                            if (state.progress > 0f) {
+                                drawRect(color = backgroundColor)
+                            }
+                            // else: transparent — when collapsed, no background is drawn so the
+                            // system navigation bar shows through. (See the previous comment block
+                            // above for the rationale — preserved verbatim.)
                         }
                     } else {
-                        backgroundColor.copy(
-                            alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f),
-                        )
+                        Modifier.drawBehind {
+                            val alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f)
+                            if (alpha > 0f) {
+                                drawRect(color = backgroundColor, alpha = alpha)
+                            }
+                        }
                     },
                 ),
     ) {

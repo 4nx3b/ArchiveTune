@@ -50,8 +50,11 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -62,6 +65,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -80,6 +84,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -112,8 +117,6 @@ import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
-import moe.rukamori.archivetune.ui.component.NewAction
-import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.utils.TranslatorLang
@@ -252,6 +255,23 @@ fun LyricsMenu(
     LaunchedEffect(Unit) {
         viewModel.aiTranslationEvents.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Terminal outcomes for async AI romanisation. The synchronous branches (SETTINGS_DISABLED,
+    // NO_LYRICS, EXCLUDED_LANGUAGE, NO_ROMANIZABLE_SCRIPT, IN_FLIGHT, ALREADY_CACHED, STARTED) are
+    // returned from `AiLyricsRomanization.request` and the click handler toasts immediately. Only
+    // EMPTY_RESULT materialises later — when the model returns all-identical-to-source echoes or
+    // all-null entries — so we surface it here as a follow-up toast so the user understands why the
+    // "Romanising lyrics with AI…" toast they saw on click did not result in any visible
+    // romanisation. See [AiLyricsRomanization.requestOutcomes] for the rationale.
+    LaunchedEffect(Unit) {
+        AiLyricsRomanization.requestOutcomes.collect { status ->
+            if (status == AiLyricsRomanization.RequestStatus.EMPTY_RESULT) {
+                Toast
+                    .makeText(context, context.getString(R.string.ai_romanize_empty_result), Toast.LENGTH_LONG)
+                    .show()
+            }
         }
     }
 
@@ -727,117 +747,159 @@ fun LyricsMenu(
             ),
     ) {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                NewActionGrid(
-                    actions =
-                        listOf(
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.edit),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.edit),
-                                onClick = { showEditDialog = true },
-                            ),
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.cached),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.refetch),
-                                onClick = {
-                                    viewModel.refetchLyrics(mediaMetadataProvider())
-                                },
-                            ),
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.translate),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.translate),
-                                onClick = { showTranslateDialog = true },
-                                enabled = isTranslateEnabled,
-                            ),
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.language),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.ai_romanize_now),
-                                onClick = {
-                                    val lyricsText = lyricsProvider()?.lyrics.orEmpty()
-                                    AiLyricsRomanization.request(
-                                        sessionKey =
-                                            AiLyricsRomanization.sessionKey(
-                                                mediaId = mediaMetadataProvider().id,
-                                                lyrics = lyricsText,
-                                            ),
-                                        lines = AiLyricsRomanization.linesOf(lyricsText, mediaMetadataProvider().duration),
-                                        settings = aiRomanizationSettings,
-                                    )
-                                    Toast
-                                        .makeText(context, context.getString(R.string.ai_romanize_started), Toast.LENGTH_SHORT)
-                                        .show()
-                                },
-                                enabled = isAiRomanizationEnabled,
-                            ),
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.restore),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.undo_translation),
-                                onClick = { viewModel.undoTranslation(mediaMetadataProvider().id) },
-                                enabled = canUndoTranslation,
-                            ),
-                            // "Lyrics sync offset" action removed per user request
-                            // (2026-08-28): "Remove lyrics sync offset from
-                            // lyrics overflow menu from apple music and non
-                            // apple music styles". The internal
-                            // `lyricsSyncOffset` plumbing is preserved so
-                            // any user who previously set an offset still
-                            // has it applied (LyricsEnhanced.kt reads the
-                            // value during line-timing computation), but
-                            // the menu entry that let them change it is
-                            // gone. The `showLyricsSyncOffsetDialog` state
-                            // and the dialog block below are kept as dead
-                            // code so we don't have to thread-break the
-                            // function signature.
-                            NewAction(
-                                icon = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.search),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                                text = stringResource(R.string.search),
-                                onClick = { showSearchDialog = true },
-                            ),
-                        ),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            // ─────────────────────────────────────────────────────────────────────────
+            // Apple Music–style lyrics overflow menu (user request 2026-08-30):
+            // "I've attached a screenshot reference. I want the same Lyrics ui
+            //  overflow menu but only in apple music style. Recreate the exact
+            //  same design but keep the present features from my app"
+            //
+            // The screenshot shows: a dark translucent sheet, no header, a vertical
+            // list of action rows separated by hairline (0.5dp) dividers. Each row
+            // is ~57dp tall, text is LEFT-aligned, a 22dp icon sits on the FAR RIGHT
+            // edge, font is ~17pt regular. Destructive items ("Delete from Library"
+            // in the screenshot) are tinted `error` red — we mirror that on
+            // "Undo Translation" because it is the closest analogue (an undo/remove
+            // action). All other rows use `onSurface` text + `onSurfaceVariant`
+            // icon, matching Apple Music's white-text/light-grey-icon.
+            //
+            // Outer card: existing `MenuSurfaceSection` (rounded extra-large surface,
+            // `surfaceContainerLow` color — adapts to light/dark theme, matching
+            // Apple Music's dark card on dark theme).
+            //
+            // Inner rows: built from the local `AppleMusicLyricsMenuRow` helper
+            // (defined at the bottom of this file) — a `Surface(onClick)` wrapping a
+            // Material3 `ListItem` with the icon in `trailingContent` (right edge),
+            // `headlineContent` = `Text(label)` on the left. Hairline dividers
+            // (`HorizontalDivider`, `outlineVariant` color, `0.5.dp` thickness) are
+            // emitted BETWEEN items only (no divider before the first or after the
+            // last), matching Apple Music's grid-separated look.
+            //
+            // The 6 action rows preserve the exact same handlers as the previous
+            // `NewActionGrid` (Edit / Refetch / Translate / AI Romanise Now /
+            // Undo Translation / Search). No features were removed; only the
+            // visual presentation changed.
+            // ─────────────────────────────────────────────────────────────────────────
+            val lyricsText = lyricsProvider()?.lyrics.orEmpty()
+            val menuItems: List<AppleMusicLyricsMenuItem> =
+                listOf(
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.edit),
+                        iconRes = R.drawable.edit,
+                        isDestructive = false,
+                        enabled = true,
+                        onClick = { showEditDialog = true },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.refetch),
+                        iconRes = R.drawable.cached,
+                        isDestructive = false,
+                        enabled = true,
+                        onClick = {
+                            viewModel.refetchLyrics(mediaMetadataProvider())
+                        },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.translate),
+                        iconRes = R.drawable.translate,
+                        isDestructive = false,
+                        enabled = isTranslateEnabled,
+                        onClick = { showTranslateDialog = true },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.ai_romanize_now),
+                        iconRes = R.drawable.language,
+                        isDestructive = false,
+                        enabled = isAiRomanizationEnabled,
+                        onClick = {
+                            // ── Manual AI romanisation — explicit feedback per outcome ──
+                            // Previously the toast fired unconditionally before `request()`,
+                            // which silently no-op'd in several cases (excluded language,
+                            // all-Latin lyrics, in-flight, settings disabled). The user reported
+                            // "shows a toast when I click on it but never romanises anything"
+                            // — that was the SETTINGS_DISABLED / EXCLUDED_LANGUAGE /
+                            // NO_ROMANIZABLE_SCRIPT / EMPTY_RESULT branches. Now we surface
+                            // each outcome with a specific toast so the failure mode is
+                            // actionable. The renderer (LyricsEnhanced.kt:495) already observes
+                            // `AiLyricsRomanization.results`; once a `STARTED` or
+                            // `ALREADY_CACHED` call publishes, the lyrics re-resolve.
+                            // A `nonce` field on `Result` defeats the StateFlow equality
+                            // masking on cache-hit re-publish so even a second tap on a cached
+                            // result re-emits and the renderer re-resolves.
+                            val status = AiLyricsRomanization.request(
+                                sessionKey =
+                                    AiLyricsRomanization.sessionKey(
+                                        mediaId = mediaMetadataProvider().id,
+                                        lyrics = lyricsText,
+                                    ),
+                                lines = AiLyricsRomanization.linesOf(lyricsText, mediaMetadataProvider().duration),
+                                settings = aiRomanizationSettings,
+                            )
+                            val toastResId = when (status) {
+                                AiLyricsRomanization.RequestStatus.STARTED -> R.string.ai_romanize_started
+                                AiLyricsRomanization.RequestStatus.ALREADY_CACHED -> R.string.ai_romanize_already_cached
+                                AiLyricsRomanization.RequestStatus.IN_FLIGHT -> R.string.ai_romanize_in_flight
+                                AiLyricsRomanization.RequestStatus.SETTINGS_DISABLED -> R.string.ai_romanize_settings_disabled
+                                AiLyricsRomanization.RequestStatus.NO_LYRICS -> R.string.ai_romanize_no_lyrics
+                                AiLyricsRomanization.RequestStatus.EXCLUDED_LANGUAGE -> R.string.ai_romanize_excluded_language
+                                AiLyricsRomanization.RequestStatus.NO_ROMANIZABLE_SCRIPT -> R.string.ai_romanize_no_romanizable_script
+                                AiLyricsRomanization.RequestStatus.EMPTY_RESULT -> R.string.ai_romanize_empty_result
+                            }
+                            Toast
+                                .makeText(context, context.getString(toastResId), Toast.LENGTH_SHORT)
+                                .show()
+                        },
+                    ),
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.undo_translation),
+                        iconRes = R.drawable.restore,
+                        // Apple Music styles "Delete from Library" (the destructive-action
+                        // row in the screenshot) as bright-red text + red icon. Our closest
+                        // analogue is "Undo Translation" — a remove/restore action — so we
+                        // give it the same `error`-tinted treatment.
+                        isDestructive = true,
+                        enabled = canUndoTranslation,
+                        onClick = { viewModel.undoTranslation(mediaMetadataProvider().id) },
+                    ),
+                    // "Lyrics sync offset" action removed per user request
+                    // (2026-08-28): "Remove lyrics sync offset from
+                    // lyrics overflow menu from apple music and non
+                    // apple music styles". The internal
+                    // `lyricsSyncOffset` plumbing is preserved so
+                    // any user who previously set an offset still
+                    // has it applied (LyricsEnhanced.kt reads the
+                    // value during line-timing computation), but
+                    // the menu entry that let them change it is
+                    // gone. The `showLyricsSyncOffsetDialog` state
+                    // and the dialog block below are kept as dead
+                    // code so we don't have to thread-break the
+                    // function signature.
+                    AppleMusicLyricsMenuItem(
+                        label = stringResource(R.string.search),
+                        iconRes = R.drawable.search,
+                        isDestructive = false,
+                        enabled = true,
+                        onClick = { showSearchDialog = true },
+                    ),
                 )
+
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    menuItems.forEachIndexed { index, item ->
+                        AppleMusicLyricsMenuRow(
+                            item = item,
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                        // Hairline divider BETWEEN items only — no divider before the first
+                        // or after the last, matching Apple Music's grid-separated look.
+                        if (index < menuItems.size - 1) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                    }
+                }
                 // "Show player controls" / "Auto-hide player controls" toggles
                 // are gated behind showControlsToggles. The Apple Music in-place
                 // lyrics view passes false because those toggles were suspected
@@ -1712,5 +1774,103 @@ private fun LyricsSearchInputActions(
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
             Text(stringResource(R.string.search))
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Apple Music–style lyrics overflow menu — local row helpers
+// (user request 2026-08-30: "I want the same Lyrics ui overflow menu but
+//  only in apple music style. Recreate the exact same design but keep the
+//  present features from my app")
+//
+// The screenshot reference shows: each row is ~57dp tall, text is LEFT-aligned
+// at ~17pt regular weight, a 22dp icon sits on the FAR RIGHT edge, hairline
+// dividers separate rows. Destructive rows ("Delete from Library" in the
+// screenshot) are tinted bright `error` red, with semibold text to draw the
+// eye — we mirror that on `isDestructive = true` items.
+//
+// We do NOT extend the shared `NewMenuItem` component because its API takes a
+// `leadingContent` (icon on the LEFT) — Apple Music's design puts the icon on
+// the RIGHT. `AppleMusicLyricsMenuRow` instead wraps a Material3 `ListItem`
+// directly so the icon can go in `trailingContent`.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Immutable description of one row in the Apple Music–style lyrics overflow
+ * menu. Kept as a value-only data class so the rows list can be hoisted out
+ * of composition via `remember` without stability warnings.
+ */
+@Immutable
+private data class AppleMusicLyricsMenuItem(
+    val label: String,
+    val iconRes: Int,
+    val isDestructive: Boolean = false,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+/**
+ * One row of the Apple Music–style lyrics overflow menu. Layout:
+ *  - text on the LEFT (Material3 `ListItem.headlineContent`),
+ *  - 22dp icon on the FAR RIGHT (`trailingContent`),
+ *  - no leading icon, no chevron — matches the screenshot's `info-circle /
+ *    trash / share / mountain / person / dashed-square` set on the right.
+ *
+ * Destructive rows get `MaterialTheme.colorScheme.error` text + icon, with
+ * `FontWeight.SemiBold` on the label so the eye lands on them, mirroring
+ * Apple Music's red "Delete from Library" row. Normal rows use
+ * `onSurface` text + `onSurfaceVariant` icon at `FontWeight.Medium` to match
+ * the screenshot's white-on-dark visual.
+ *
+ * The row is wrapped in a `Surface(onClick = ...)` so the click handler runs
+ * through Material3's ripple + enabled-gating without re-implementing them.
+ * The surface itself is transparent — the outer `MenuSurfaceSection` provides
+ * the visible card.
+ */
+@Composable
+private fun AppleMusicLyricsMenuRow(
+    item: AppleMusicLyricsMenuItem,
+    modifier: Modifier = Modifier,
+) {
+    val headlineColor =
+        if (item.isDestructive) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
+    val iconColor =
+        if (item.isDestructive) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val headlineWeight = if (item.isDestructive) FontWeight.SemiBold else FontWeight.Medium
+
+    Surface(
+        onClick = item.onClick,
+        enabled = item.enabled,
+        modifier = modifier.fillMaxWidth(),
+        color = Color.Transparent,
+    ) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = item.label,
+                    color = headlineColor,
+                    fontWeight = headlineWeight,
+                )
+            },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(item.iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = iconColor,
+                )
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            tonalElevation = 0.dp,
+            modifier = Modifier.heightIn(min = 56.dp),
+        )
     }
 }

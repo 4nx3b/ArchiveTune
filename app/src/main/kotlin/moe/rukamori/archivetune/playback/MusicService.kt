@@ -10323,12 +10323,34 @@ class MusicService :
 
         knownContentLength?.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
-        // When the Tidal source is enabled for this track, the ephemeral YouTube player cache
-        // must not short-circuit playback (otherwise toggling Tidal on would keep replaying the
-        // previously cached YouTube bytes). Persistent downloads still win so offline playback
-        // and explicit downloads are unaffected.
-        val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
-        val allowPlayerCacheShortCircuit = !tidalApplies
+        // ─────────────────────────────────────────────────────────────────────────
+        // Cache-first playback (user request 2026-08-30):
+        // "everytime I restart the app and I start a song it always checks for the
+        //  available sources and then play the song. Instead it should just play
+        //  the cached song everytime until the cached song data is cleared
+        //  manually. The available sources shouldn't affect it all unless I
+        //  manually try to change the track."
+        //
+        // Previously, when any lossless source (Tidal/Qobuz/QobuzBackup/Deezer) was
+        // enabled, the YouTube-bytes player-cache short-circuit was bypassed so that
+        // toggling a lossless source on would take effect immediately instead of
+        // replaying the previously cached YouTube bytes. Per the user's new
+        // requirement, cached bytes now ALWAYS short-circuit the source-check —
+        // regardless of which source produced them or which source is currently
+        // preferred. Source resolution only runs on cache-miss. The user's existing
+        // "Clear song cache" action (StorageSettingsViewModel.clearSongCache →
+        // StorageLocationRepository.clearMediaCache(playerCache, SONGS)) remains the
+        // manual escape hatch that invalidates cached bytes and forces a fresh
+        // source-check on the next play.
+        //
+        // `tidalApplies` is preserved as a computed value (no longer used to gate
+        // the cache short-circuit) so that future logic that wants to know whether
+        // a lossless source is currently preferred can read it without re-running
+        // the datastore lookups. It is intentionally annotated @Suppress("unused")
+        // to keep the compiler quiet without removing the value.
+        // ─────────────────────────────────────────────────────────────────────────
+        @Suppress("unused") val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
+        val allowPlayerCacheShortCircuit = true
 
         if (allowCacheShortCircuit) {
             resolveCachedDataSpec(
