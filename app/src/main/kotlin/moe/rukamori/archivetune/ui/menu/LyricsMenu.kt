@@ -172,6 +172,15 @@ fun LyricsMenu(
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     showControlsToggles: Boolean = true,
+    // When true, the outer `MenuSurfaceSection` card (which is otherwise an
+    // OPAQUE `surfaceContainerLow` Surface) is replaced with a TRANSPARENT
+    // Surface of the same shape. Used by `AnchoredLyricsOverflowMenu` so the
+    // frosted-glass blur applied to the popup's outer Box is NOT hidden by
+    // an opaque white card sitting on top of it. Without this, the user
+    // sees a plain white popup instead of the intended frosted-glass look
+    // (user report 2026-08-30: "the white popup is loading on top of the
+    // liquid glass effect").
+    transparentSurface: Boolean = false,
 ) {
     val context = LocalContext.current
     val showPlayerControls = showPlayerControlsState?.value ?: true
@@ -912,7 +921,19 @@ fun LyricsMenu(
                     ),
                 )
 
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            // When `transparentSurface` is true (popup context), use a
+            // transparent Surface so the frosted-glass blur applied to the
+            // popup's outer Box is visible. The opaque `surfaceContainerLow`
+            // background of `MenuSurfaceSection` would otherwise completely
+            // cover the blur — the user reported "the white popup is loading
+            // on top of the liquid glass effect". The transparent surface
+            // keeps the same `extraLarge` corner shape so the rounded clip
+            // still matches the popup's outer clip (no dark gap).
+            Surface(
+                shape = MaterialTheme.shapes.extraLarge,
+                color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.padding(vertical = 6.dp).fillMaxWidth(),
+            ) {
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
                     menuItems.forEachIndexed { index, item ->
                         AppleMusicLyricsMenuRow(
@@ -1918,7 +1939,9 @@ private fun AppleMusicLyricsMenuRow(
  * - Anchored to [iconBoundsInRoot.right] x [iconBoundsInRoot.bottom] so the
  *   popup's right edge aligns with the icon's right edge, with the popup
  *   appearing just below the icon.
- * - 280dp max width, 16dp corner radius, frosted-glass background — when the
+ * - 240dp max width (was 280dp, reduced 2026-08-30 per "reduce the size of
+ *   popup a bit" user request), 16dp corner radius, frosted-glass background —
+ *   when the
  *   caller provides a non-null [backdrop] (a kyant [PlatformBackdrop] that
  *   captures the player content behind the popup), the popup samples that
  *   backdrop with a 20dp blur, producing a real "frosted glass" effect that
@@ -2038,6 +2061,12 @@ fun AnchoredLyricsOverflowMenu(
     // (from the initial Animatable values to the new targets) so the
     // animations actually play, unlike the previous animateFloatAsState
     // approach where the first frame was already at the target.
+    //
+    // Damping: `DampingRatioNoBouncy` (was `MediumBouncy`) — user report
+    // 2026-08-30: "I don't want the bounce effect at the end of the opening
+    // animation". The previous medium-bouncy spring produced a visible
+    // overshoot at the end of the scale-in, which the user found jarring.
+    // NoBouncy gives a clean ease-out deceleration with zero overshoot.
     LaunchedEffect(Unit) {
         // Don't play if already dismissing (defensive — shouldn't happen
         // on first composition but guards against edge cases).
@@ -2048,7 +2077,7 @@ fun AnchoredLyricsOverflowMenu(
                 targetValue = 1f,
                 animationSpec =
                     spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        dampingRatio = Spring.DampingRatioNoBouncy,
                         stiffness = Spring.StiffnessMediumLow,
                     ),
             )
@@ -2141,16 +2170,15 @@ fun AnchoredLyricsOverflowMenu(
         // where the popup meets the icon the user just tapped. This is
         // the "morph from the overflow icon" effect the user asked for.
         //
-        // No outer dark tint, no border — the inner MenuSurfaceSection
-        // provides the popup's visible surface (opaque surfaceContainerLow
-        // color, extraLarge corner radius). The popup's clip radius
-        // matches the inner card's `MaterialTheme.shapes.extraLarge` so
-        // there's no dark gap around the inner card.
+        // Popup width reduced from 280dp to 240dp per user request
+        // 2026-08-30: "reduce the size of popup a bit". The widthIn max
+        // and the offset's `popupWidthPx` must stay in sync so the popup's
+        // right edge continues to align with the icon's right edge.
         Box(
             modifier =
                 Modifier
                     .offset {
-                        val popupWidthPx = with(density) { 280.dp.toPx() }.toInt()
+                        val popupWidthPx = with(density) { 240.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
                         val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
@@ -2161,7 +2189,7 @@ fun AnchoredLyricsOverflowMenu(
                         val y = iconBottom + verticalOffsetPx
                         IntOffset(x = x, y = y)
                     }
-                    .widthIn(max = 280.dp)
+                    .widthIn(max = 240.dp)
                     .heightIn(max = 520.dp)
                     .graphicsLayer {
                         this.alpha = alpha
@@ -2195,6 +2223,12 @@ fun AnchoredLyricsOverflowMenu(
             // MenuSurfaceSection card that LyricsMenu draws inside itself
             // is now the popup's only visible surface (we removed the outer
             // dark tint + border above so there's no gap around the card).
+            // Pass transparentSurface = true so the inner MenuSurfaceSection
+            // (an opaque `surfaceContainerLow` card) is replaced with a
+            // transparent surface — otherwise the white popup card sits ON
+            // TOP of the frosted-glass blur and hides it (user report:
+            // "liquid glass effect is behind the white popup but the white
+            // popup is loading on top of it").
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,
@@ -2209,6 +2243,7 @@ fun AnchoredLyricsOverflowMenu(
                 onShowPlayerControlsChange = onShowPlayerControlsChange,
                 onAutoHidePlayerControlsChange = onAutoHidePlayerControlsChange,
                 showControlsToggles = showControlsToggles,
+                transparentSurface = true,
             )
         }
     }
