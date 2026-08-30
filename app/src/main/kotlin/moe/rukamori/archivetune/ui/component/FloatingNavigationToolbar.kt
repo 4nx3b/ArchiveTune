@@ -370,7 +370,10 @@ fun FloatingNavigationToolbar(
     // the bubble hugs the icon and leaves the text label outside of it.
     val iconCenters = remember { mutableStateMapOf<Int, Offset>() }
     val itemBounds = remember { mutableStateMapOf<Int, Rect>() }
-    var containerPos by remember { mutableStateOf(Offset.Zero) }
+    // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
+    // lambda memoization.
+    val containerPosState = remember { mutableStateOf(Offset.Zero) }
+    var containerPos by containerPosState
 
     val indicatorX = remember { Animatable(0f) }
     var indicatorY by remember { mutableFloatStateOf(0f) }
@@ -382,13 +385,18 @@ fun FloatingNavigationToolbar(
 
     val animationScope = rememberCoroutineScope()
     val isLtr = true // ArchiveTune doesn't currently support RTL layout flipping
-    var tabWidthPx by remember { mutableFloatStateOf(0f) }
-    var totalWidthPx by remember { mutableFloatStateOf(0f) }
+    // Per audit (2026-08-30): hoisted to State holders for onGloballyPositioned
+    // lambda memoization.
+    val tabWidthPxState = remember { mutableFloatStateOf(0f) }
+    val totalWidthPxState = remember { mutableFloatStateOf(0f) }
+    val itemsRowLeftInContainerState = remember { mutableFloatStateOf(0f) }
+    var tabWidthPx by tabWidthPxState
+    var totalWidthPx by totalWidthPxState
     // The items Row is centered inside the container Box (via the Box's
     // `contentAlignment = Alignment.Center`). To position the sliding pill at
     // `dampedDragAnimation.value × tabWidthPx`, we need to know the items
     // Row's left edge within the container Box — tracked here.
-    var itemsRowLeftInContainer by remember { mutableFloatStateOf(0f) }
+    var itemsRowLeftInContainer by itemsRowLeftInContainerState
     val rubberBandPx = with(density) { 4.dp.toPx() }
     // Accumulated raw drag delta (unclamped). Used as the source for the
     // clamped rubber-band `panelOffset` — at most ±4dp, with an EaseOut curve
@@ -482,7 +490,10 @@ fun FloatingNavigationToolbar(
 
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
     val selectedItemBounds = if (selectedIndex >= 0) itemBounds[selectedIndex] else null
-    var itemsRowTopInContainer by remember { mutableFloatStateOf(0f) }
+    // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
+    // lambda memoization.
+    val itemsRowTopInContainerState = remember { mutableFloatStateOf(0f) }
+    var itemsRowTopInContainer by itemsRowTopInContainerState
     LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass, tabWidthPx, itemsRowTopInContainer, itemVerticalPadding) {
         if (canLiquidGlass) {
             if (tabWidthPx <= 0f) return@LaunchedEffect
@@ -524,8 +535,14 @@ fun FloatingNavigationToolbar(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
         contentAlignment = Alignment.Center,
     ) {
-        var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
-        var barSize by remember { mutableStateOf(IntSize.Zero) }
+        // Per audit (2026-08-30): hoisted to State holders so the
+        // onGloballyPositioned lambda can be memoized on the holder (stable
+        // across recompositions) instead of on the unwrapped value (which
+        // would defeat the memoization).
+        val barPositionInRootState = remember { mutableStateOf(Offset.Zero) }
+        val barSizeState = remember { mutableStateOf(IntSize.Zero) }
+        val barPositionInRoot by barPositionInRootState
+        val barSize by barSizeState
         Box(
             modifier =
                 Modifier
@@ -538,10 +555,18 @@ fun FloatingNavigationToolbar(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .onGloballyPositioned {
-                        barPositionInRoot = it.positionInRoot()
-                        barSize = it.size
-                    }
+                    // Per audit (2026-08-30): memoize the lambda so the
+                    // OnGloballyPositionedElement.equals() returns true across
+                    // recompositions — avoids node re-install + invalidateDraw
+                    // every recomposition.
+                    .onGloballyPositioned(
+                        remember(barPositionInRootState, barSizeState) {
+                            { coordinates ->
+                                barPositionInRootState.value = coordinates.positionInRoot()
+                                barSizeState.value = coordinates.size
+                            }
+                        },
+                    )
                     .graphicsLayer {
                         if (canLiquidGlass) {
                             translationX = panelOffset
@@ -633,7 +658,12 @@ fun FloatingNavigationToolbar(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .onGloballyPositioned { containerPos = it.positionInRoot() },
+                            .onGloballyPositioned(
+                        // Per audit (2026-08-30): memoize the lambda.
+                        remember(containerPosState) {
+                            { coordinates -> containerPosState.value = coordinates.positionInRoot() }
+                        },
+                    ),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (selectedIndex >= 0 && indicatorPlaced && !canLiquidGlass) {
@@ -669,15 +699,23 @@ fun FloatingNavigationToolbar(
                                     vertical = itemVerticalPadding,
                                     horizontal = itemHorizontalPadding,
                                 )
-                                .onGloballyPositioned { coordinates ->
-                                    val rowPosInRoot = coordinates.positionInRoot()
-                                    itemsRowLeftInContainer = rowPosInRoot.x - containerPos.x
-                                    itemsRowTopInContainer = rowPosInRoot.y - containerPos.y
-                                    totalWidthPx = coordinates.size.width.toFloat()
-                                    val horizontalPaddingPx = with(density) { itemHorizontalPadding.toPx() }
-                                    val contentWidthPx = (totalWidthPx - 2f * horizontalPaddingPx).coerceAtLeast(0f)
-                                    tabWidthPx = if (tabsCount > 0) (contentWidthPx / tabsCount).coerceAtLeast(0f) else 0f
-                                }
+                                .onGloballyPositioned(
+                                    // Per audit (2026-08-30): memoize the lambda so
+                                    // the OnGloballyPositionedElement.equals() returns
+                                    // true across recompositions — avoids 5 state-write
+                                    // + Rect/Offset allocations per layout pass.
+                                    remember(itemsRowLeftInContainerState, itemsRowTopInContainerState, totalWidthPxState, tabWidthPxState, containerPosState, density, itemHorizontalPadding, tabsCount) {
+                                        { coordinates ->
+                                            val rowPosInRoot = coordinates.positionInRoot()
+                                            itemsRowLeftInContainerState.value = rowPosInRoot.x - containerPosState.value.x
+                                            itemsRowTopInContainerState.value = rowPosInRoot.y - containerPosState.value.y
+                                            totalWidthPxState.value = coordinates.size.width.toFloat()
+                                            val horizontalPaddingPx = with(density) { itemHorizontalPadding.toPx() }
+                                            val contentWidthPx = (totalWidthPxState.value - 2f * horizontalPaddingPx).coerceAtLeast(0f)
+                                            tabWidthPxState.value = if (tabsCount > 0) (contentWidthPx / tabsCount).coerceAtLeast(0f) else 0f
+                                        }
+                                    },
+                                )
                                 .then(
                                     if (canLiquidGlass && dampedDragAnimation != null) {
                                         dampedDragAnimation.modifier
@@ -742,32 +780,48 @@ fun FloatingNavigationToolbar(
                                 modifier =
                                     Modifier
                                         .weight(1f)
-                                        .onGloballyPositioned { coordinates ->
-                                            // Track the full item bounds (icon + spacing +
-                                            // label) so the Liquid Glass pill can size to
-                                            // cover both. The default variant ignores this
-                                            // and uses the icon-only [iconCenters] map.
-                                            val pos = coordinates.positionInRoot()
-                                            itemBounds[index] =
-                                                Rect(
-                                                    pos.x,
-                                                    pos.y,
-                                                    pos.x + coordinates.size.width,
-                                                    pos.y + coordinates.size.height,
-                                                )
-                                        },
+                                        .onGloballyPositioned(
+                                            // Per audit (2026-08-30): memoize the lambda so
+                                            // the OnGloballyPositionedElement.equals() returns
+                                            // true across recompositions — avoids Rect
+                                            // allocation per layout pass.
+                                            remember(itemBounds, index) {
+                                                { coordinates ->
+                                                    // Track the full item bounds (icon + spacing +
+                                                    // label) so the Liquid Glass pill can size to
+                                                    // cover both. The default variant ignores this
+                                                    // and uses the icon-only [iconCenters] map.
+                                                    val pos = coordinates.positionInRoot()
+                                                    itemBounds[index] =
+                                                        Rect(
+                                                            pos.x,
+                                                            pos.y,
+                                                            pos.x + coordinates.size.width,
+                                                            pos.y + coordinates.size.height,
+                                                        )
+                                                }
+                                            },
+                                        ),
                                 icon = {
                                     // Measure the icon's own bounds so the pill hugs only the icon.
                                     Box(
                                         modifier =
-                                            Modifier.onGloballyPositioned { coordinates ->
-                                                val pos = coordinates.positionInRoot()
-                                                iconCenters[index] =
-                                                    Offset(
-                                                        pos.x + coordinates.size.width / 2f,
-                                                        pos.y + coordinates.size.height / 2f,
-                                                    )
-                                            },
+                                            Modifier.onGloballyPositioned(
+                                                // Per audit (2026-08-30): memoize the lambda
+                                                // so the OnGloballyPositionedElement.equals()
+                                                // returns true across recompositions — avoids
+                                                // Offset allocation per layout pass.
+                                                remember(iconCenters, index) {
+                                                    { coordinates ->
+                                                        val pos = coordinates.positionInRoot()
+                                                        iconCenters[index] =
+                                                            Offset(
+                                                                pos.x + coordinates.size.width / 2f,
+                                                                pos.y + coordinates.size.height / 2f,
+                                                            )
+                                                    }
+                                                },
+                                            ),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         Crossfade(
@@ -912,27 +966,46 @@ fun FloatingNavigationToolbar(
                                 },
                                 onDrawSurface = {
                                     val progress = dragAnim.pressProgress
+                                    // Per audit (2026-08-30): use drawRect's `alpha`
+                                    // parameter instead of `Color.copy(alpha=...)` —
+                                    // zero per-frame Color allocation, identical
+                                    // visual result.
+                                    val tintColor = if (isDark) Color.Black else Color.White
                                     drawRect(
-                                        color = (if (isDark) Color.Black else Color.White).copy(alpha = 0.1f),
-                                        alpha = 1f - progress,
+                                        color = tintColor,
+                                        alpha = 0.1f * (1f - progress),
                                     )
-                                    drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                    drawRect(
+                                        color = Color.Black,
+                                        alpha = 0.03f * progress,
+                                    )
                                 },
                             )
-                            .innerShadow(shape = pillShape) {
-                                // Inner shadow only appears during press — radius + alpha
-                                // both scale with pressProgress. This is the "glass lifted
-                                // off the bar" feel.
-                                if (dragAnim.pressProgress > 0f) {
-                                    InnerShadow(
-                                        radius = 8.dp * dragAnim.pressProgress,
-                                        color = Color.Black.copy(alpha = 0.15f),
-                                        alpha = dragAnim.pressProgress,
-                                    )
-                                } else {
-                                    null
-                                }
-                            },
+                            // Per audit (2026-08-30): memoize the innerShadow lambda
+                            // so InnerShadowElement.equals() returns true across
+                            // recompositions — avoids `update() + invalidateDraw()`
+                            // every recomposition. The lambda still reads
+                            // dragAnim.pressProgress live, so the draw scope sees the
+                            // latest value; only the lambda INSTANCE is stabilized.
+                            .innerShadow(
+                                shape = pillShape,
+                                shadow = remember(dragAnim, pillShape) {
+                                    {
+                                        // Inner shadow only appears during press — radius + alpha
+                                        // both scale with pressProgress. This is the "glass lifted
+                                        // off the bar" feel.
+                                        if (dragAnim.pressProgress > 0f) {
+                                            InnerShadow(
+                                                radius = 8.dp * dragAnim.pressProgress,
+                                                color = Color.Black.copy(alpha = 0.15f),
+                                                alpha = dragAnim.pressProgress,
+                                            )
+                                        } else {
+                                            null
+                                        }
+                                    }
+                                },
+                            ),
                     contentAlignment = Alignment.Center,
                 ) {
                     val displayScreen = items[displayIndex]

@@ -1716,33 +1716,44 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
-                    val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
-                        if (isSelected) {
-                            if (screen == Screens.Search) {
-                                openSearch()
-                                coroutineScope.launch { searchScrollBehavior.state.resetHeightOffset() }
-                            } else {
-                                navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                                when (screen) {
-                                    Screens.Home -> {
-                                        coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
-                                    }
+                    // Per audit (2026-08-30): wrap in remember(...) so the lambda
+                    // identity stays stable across recompositions. Previously the
+                    // lambda was re-allocated every recomposition of MainActivity's
+                    // setContent body, which cascaded to FloatingNavigationToolbar's
+                    // `remember(screen, selected, onItemClick, onDoubleClick) { ... }`
+                    // cache — re-allocating the per-tab click-handler body on every
+                    // recomposition. With ~5 tabs × heavy scroll-driven recompositions,
+                    // this was hundreds of lambda allocations per second.
+                    val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit =
+                        remember(coroutineScope, navController, openSearch, searchScrollBehavior, homeScrollBehavior) {
+                            { screen, isSelected ->
+                                if (isSelected) {
+                                    if (screen == Screens.Search) {
+                                        openSearch()
+                                        coroutineScope.launch { searchScrollBehavior.state.resetHeightOffset() }
+                                    } else {
+                                        navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                        when (screen) {
+                                            Screens.Home -> {
+                                                coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
+                                            }
 
-                                    else -> {}
-                                }
-                            }
-                        } else {
-                            if (navController.currentDestination?.route != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
+                                            else -> {}
+                                        }
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                } else {
+                                    if (navController.currentDestination?.route != screen.route) {
+                                        navController.navigate(screen.route) {
+                                            popUpTo(navController.graph.startDestinationId) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
 
                     LaunchedEffect(currentRoute) {
                         when (currentRoute) {
@@ -2900,13 +2911,19 @@ modifier =
                                                     navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
                                                         true
                                                 },
-                                                onItemClick = { screen, isSelected ->
-                                                    handlePrimaryNavigationClick(screen, isSelected)
-                                                },
-                                                onSearchItemDoubleClick = {
-                                                    searchSource = SearchSource.ONLINE
-                                                    openSearch()
-                                                },
+                                                // Per audit (2026-08-30): pass the stable
+                                                // handlePrimaryNavigationClick directly (no
+                                                // wrapping lambda) so FloatingNavigationToolbar's
+                                                // `remember(screen, selected, onItemClick, ...)`
+                                                // cache key stays stable across recompositions.
+                                                onItemClick = handlePrimaryNavigationClick,
+                                                onSearchItemDoubleClick =
+                                                    remember(openSearch) {
+                                                        {
+                                                            searchSource = SearchSource.ONLINE
+                                                            openSearch()
+                                                        }
+                                                    },
                                             )
                                         }
                                     }
@@ -3057,10 +3074,20 @@ modifier =
                                                 // layer each frame so the bar can draw it blurred.
                                                 if (navBarFrostedBackdrop != null) {
                                                     Modifier
-                                                        .onGloballyPositioned { coordinates ->
-                                                            navBarFrostedBackdrop.contentOffsetInRoot =
-                                                                coordinates.positionInRoot()
-                                                        }.drawWithContent {
+                                                        // Per audit (2026-08-30): memoize the
+                                                        // lambda so OnGloballyPositionedElement
+                                                        // equals() returns true across recompositions.
+                                                        // navBarFrostedBackdrop is a stable `remember`
+                                                        // instance (allocated once in MainActivity:1435),
+                                                        // so we can safely key on it.
+                                                        .onGloballyPositioned(
+                                                            remember(navBarFrostedBackdrop) {
+                                                                { coordinates ->
+                                                                    navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                        coordinates.positionInRoot()
+                                                                }
+                                                            },
+                                                        ).drawWithContent {
                                                             navBarFrostedBackdrop.layer.record {
                                                                 this@drawWithContent.drawContent()
                                                             }

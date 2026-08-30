@@ -166,7 +166,7 @@ fun TopSearch(
     }
 
     BoxWithConstraints(
-        modifier = modifier.offset { IntOffset(x = 0, y = 0) },
+        modifier = modifier,
         propagateMinConstraints = true,
     ) {
         val height: Dp
