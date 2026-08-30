@@ -45,13 +45,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -2953,17 +2952,39 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Material "fade through" for bottom-nav switches: the
-                                            // incoming screen fades in slightly delayed while gently
-                                            // scaling up from 92%, so Home↔Search↔Library feels animated
-                                            // instead of an imperceptible straight crossfade.
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            // Fluid Material-style fade-through for bottom-nav
+                                            // switches. The outgoing page is still partly visible
+                                            // (~50% alpha) when the incoming page starts to fade
+                                            // in — the two animations overlap continuously so
+                                            // there's no visible "gap" between the two screens,
+                                            // which is what makes a transition feel abrupt.
+                                            // - exit: 220ms LinearOutSlowInEasing — gentle,
+                                            //   decelerating fade-out (no scale; the outgoing
+                                            //   page is just dissolving away).
+                                            // - enter: 260ms FastOutSlowInEasing with 60ms
+                                            //   delay, scaled up from 0.94→1.0 — the small
+                                            //   delay lets the outgoing page establish before
+                                            //   the incoming settles in, and the cubic-bezier
+                                            //   easing keeps both motions buttery.
+                                            // - The window where exit+enter overlap (~160ms) is
+                                            //   well within the existing
+                                            //   `navTransitionInProgress` suspend window for
+                                            //   the app-wide layerBackdrop, so the GPU cost of
+                                            //   the overlap stays hidden.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { it / 2 }
+                                            // Detail route (e.g. tapping a song → album screen).
+                                            // Same fluid fade-through as bottom-nav so the whole
+                                            // app has a single, consistent motion language.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     exitTransition = {
@@ -2972,9 +2993,9 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
@@ -2986,13 +3007,17 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     popExitTransition = {
@@ -3004,9 +3029,9 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     modifier =
@@ -3624,10 +3649,14 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
 
 // How long the app-wide NavHost liquid-glass backdrop recording is suspended after a
-// page-switch begins. Covers the longest NavHost transition (tween(250) slide + fade) plus
-// a small settle margin, so the expensive full-NavHost re-record is skipped for the whole
-// animation window and resumes once the page has settled.
-private const val NAV_TRANSITION_SUSPEND_MILLIS = 320L
+// page-switch begins. Covers the new fluid NavHost fade-through (220ms exit + 260ms enter
+// with 60ms delay — total ~320ms visible motion) plus a small settle margin so the
+// expensive full-NavHost re-record is skipped for the entire visible animation window.
+// Crucially: because the exit and enter overlap (~160ms of overlap), the NavHost content
+// is animating during almost the whole window — recording the GraphicsLayer every frame
+// in that window is the dominant cost of the page-switch lag, so the suspend needs to
+// cover the overlap too, not just the entry duration.
+private const val NAV_TRANSITION_SUSPEND_MILLIS = 340L
 
 @Composable
 private fun OnlineSearchSortMenu(
