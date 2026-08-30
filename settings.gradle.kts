@@ -107,8 +107,11 @@ include(":app")
 include(":core")
 include(":lyrics:kugou")
 include(":lyrics:lrclib")
-include(":lyrics:simpmusic")
-include(":lyrics:paxsenix")
+// :lyrics:simpmusic and :lyrics:paxsenix modules removed per user request (2026-08-30):
+// "Remove simpmusic and binilyrics lyrics provider and their entire code too".
+// The BiniLyrics provider delegated to the PaxsenixLyrics backend in :lyrics:paxsenix,
+// so both modules were deleted together with the SimpMusicLyricsProvider / BiniLyricsProvider
+// files and the PreferredLyricsProvider.SIMPMUSIC / BINI_LYRICS enum entries.
 include(":lyrics:betterlyrics")
 include(":lyrics:unison")
 include(":lyrics:youlyplus")

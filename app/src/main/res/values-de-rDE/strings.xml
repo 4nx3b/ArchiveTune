@@ -448,7 +448,6 @@
     <string name="backdrop_blur_amount">Stärke der Hintergrundunschärfe</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
     <string name="enable_unison_lyrics">Unison-Songtexte aktivieren</string>
-    <string name="enable_simpmusic_lyrics">SimpMusic-Songtexte aktivieren</string>
     <string name="enable_paxsenix_lyrics">Paxsenix-Songtexte aktivieren</string>
     <string name="low_data_mode_title">Datensparmodus</string>
     <string name="low_data_mode_description">Reduziert den mobilen Datenverbrauch, indem in Netzwerken mit Datenvolumenbegrenzung Streams in niedriger Qualität verwendet und die Wiedergabecache-Funktion, Canvas sowie das Vorladen von Songtexten im Hintergrund deaktiviert werden</string>
@@ -580,12 +579,10 @@
     <string name="smart_trimmer_description">Der Smart Trimmer verwaltet den Bild- und Song-Cache dynamisch und löscht alte Einträge, um Speicherplatz zu sparen.</string>
     <string name="clear_lyrics_cache">Songtextcache leeren</string>
     <string name="clear_lyrics_cache_confirm">Möchtest du wirklich den gesamten Songtext-Cache löschen?</string>
-    <string name="paxsenix_stats">Paxsenix API Statistik</string>
     <string name="uptime">Verfügbarkeit</string>
     <string name="total_requests">Gesamte Anfragen</string>
     <string name="success_rate">Erfolgsrate</string>
     <string name="providers">Anbieter</string>
-    <string name="paxsenix_stats_failed">Laden der API-Statistiken fehlgeschlagen</string>
     <string name="visit_website">Website besuchen</string>
     <string name="recent_requests">Letzte Anfragen</string>
     <string name="preload_queue_lyrics">Songtexte in der Warteschlange laden</string>
@@ -842,8 +839,6 @@
     <string name="playback_error_code">Code</string>
     <string name="playback_error_cause">Ursache</string>
     <string name="device_volume_zero_playback_paused">Wiedergabe pausiert da die Lautstärke 0 ist. Erhöhe die Lautstärke, um die Wiedergabe fortzusetzen.</string>
-    <string name="paxsenix_status_degraded">Degradiert</string>
-    <string name="paxsenix_status_down">Nicht verfügbar</string>
     <string name="discord_reauthorize_required_title">Discord-Sitzung abgelaufen</string>
     <string name="lastfm_provider_custom">Benutzerdefiniert</string>
     <string name="lastfm_api_key_override">API-Schlüssel</string>
