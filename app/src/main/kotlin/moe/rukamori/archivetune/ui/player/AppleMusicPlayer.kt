@@ -1144,17 +1144,34 @@ fun AppleMusicPlayerContent(
             // Brightened scrim — matches ViviMusic's brighter aesthetic.
             // Previous alphas (0.42/0.60/0.82) were too dark; reduced to
             // 0.25/0.40/0.65 so the blurred artwork's color shows through.
+            // Per audit (2026-08-30): hoist the Brush.verticalGradient + 3 Color.copy
+            // allocations out of the .background() call into `remember(...)`. The brush
+            // identity is stable across recompositions as long as the alpha-tuple
+            // (governed by useCanvasBackdrop / preBlurLoading / SDK) is unchanged.
+            // Previously, every recomposition of the parent allocated a new ShaderBrush +
+            // 3 × Color.copy(alpha=...) values; the brush is now allocated ONCE per
+            // change to the alpha-tuple.
+            val backdropScrimBrush =
+                remember(useCanvasBackdrop, preBlurLoading, Build.VERSION.SDK_INT) {
+                    val (a1, a2, a3) =
+                        if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            Triple(0.25f, 0.40f, 0.65f)
+                        } else if (preBlurLoading) {
+                            Triple(0.55f, 0.65f, 0.85f)
+                        } else {
+                            Triple(0.40f, 0.55f, 0.75f)
+                        }
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = a1),
+                        0.5f to Color.Black.copy(alpha = a2),
+                        1f to Color.Black.copy(alpha = a3),
+                    )
+                }
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.25f else if (preBlurLoading) 0.55f else 0.40f),
-                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.40f else if (preBlurLoading) 0.65f else 0.55f),
-                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.65f else if (preBlurLoading) 0.85f else 0.75f),
-                            ),
-                        ),
+                        .background(backdropScrimBrush),
             )
         }
 
@@ -1761,6 +1778,17 @@ private fun AppleMusicSharpArtwork(
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
+    // Per audit (2026-08-30): hoist the static Brush.verticalGradient out of the
+    // drawWithContent call. The two color stops are CONSTANT (0.62f to Color.Black,
+    // 1f to Color.Transparent), so the brush identity is stable for the lifetime
+    // of the composable. Previously, every draw frame allocated a new ShaderBrush
+    // instance while the artwork stage was visible.
+    val artworkFadeBrush = remember {
+        Brush.verticalGradient(
+            0.62f to Color.Black,
+            1f to Color.Transparent,
+        )
+    }
     Box(
         modifier =
             modifier.then(
@@ -1771,11 +1799,7 @@ private fun AppleMusicSharpArtwork(
                         .drawWithContent {
                             drawContent()
                             drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        0.62f to Color.Black,
-                                        1f to Color.Transparent,
-                                    ),
+                                brush = artworkFadeBrush,
                                 blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
                             )
                         }
