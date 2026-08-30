@@ -292,7 +292,6 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
-import moe.rukamori.archivetune.ui.component.SukiSUBarHeight
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
@@ -1355,38 +1354,13 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
                         defaultValue = moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT,
                     )
-                    // canLiquidGlassNavBar: the Liquid Glass nav bar is rendered at SukiSUBarHeight
-                    // (64.dp) — see FloatingNavigationToolbar.kt:resolvedBarHeight. The user's
-                    // customized height multiplier does NOT apply when Liquid Glass is on (per
-                    // user report 2026-08-30: "if i disable liquid glass navigation bar and
-                    // customise the dimensions and then enable the liquid glass navigation bar,
-                    // the customised dimensions gets applied. fix it"). So when canLiquidGlassNavBar,
-                    // navVisibleHeight is forced to SukiSUBarHeight to match the actual rendered
-                    // bar height everywhere it's used: the wrapper Box height, the slide
-                    // animation target, the mini-player's collapsed anchor (via getBottomNavPadding).
-                    val canLiquidGlassNavBar =
-                        liquidGlassEnabled &&
-                            liquidGlassNavBarEnabled &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    val navVisibleHeight =
-                        if (canLiquidGlassNavBar) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
+                    val navVisibleHeight = NavigationBarHeight * navBarHeightMultiplier
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
 
-                    // When Liquid Glass nav bar is on, the actual rendered bar height is
-                    // SukiSUBarHeight (64.dp). Returning NavigationBarHeight (78.dp) here would
-                    // create a 14.dp gap between the mini-player's collapsed anchor and the
-                    // bar's true top edge. Returning navVisibleHeight (resolved to
-                    // SukiSUBarHeight when canLiquidGlassNavBar above) keeps the anchor aligned
-                    // with the actual bar.
-                    //
-                    // Also: when Liquid Glass is OFF and the user has customized the height
-                    // multiplier, navVisibleHeight already honors that customization
-                    // (NavigationBarHeight * navBarHeightMultiplier), so the anchor matches
-                    // the actual rendered bar height.
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
-                            navVisibleHeight
+                            NavigationBarHeight
                         } else {
                             0.dp
                         }
@@ -1398,50 +1372,19 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
-                    // Per audit (2026-08-30): the app-wide NavHost backdrop captures
-                    // (Modifier.drawWithContent { layer.record { drawContent() } ; drawLayer(layer) }
-                    //  and Modifier.layerBackdrop(liquidGlassBackdrop)) run every frame the
-                    //  NavHost draws — i.e. always while the user is on Home/Search/Library
-                    //  with a mini player visible (which is the default state). These are the
-                    //  dominant per-frame CPU+GPU costs the user reports as "lag when mini
-                    //  player is visible". Both captures run UNCONDITIONALLY on Android 12+
-                    //  regardless of whether any consumer is actually sampling the backdrop.
-                    //
-                    // Gate each capture on whether at least one consumer can possibly need it:
-                    //   - frosted capture: needed when nav bar / nav bar tint / mini player
-                    //     style is FROSTED, or the tablet rail wants the frosted look.
-                    //   - liquid-glass capture: needed when the liquid-glass master toggle is
-                    //     on AND at least one of {nav bar, mini player, tablet rail} can show
-                    //     liquid glass. The user's chosen mini-player style matters here.
-                    //
-                    // When neither preference is on, both captures are skipped — the NavHost
-                    // draws normally without the per-frame GraphicsLayer.record cost, and the
-                    // bar/mini-player surfaces fall back to their plain tint/shape variants.
-                    // This is a "no sacrifice" optimization: nothing visible changes; we just
-                    // stop paying for work that no one reads.
-                    val miniPlayerUsesFrosted =
-                        miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED
-                    val miniPlayerUsesLiquidGlass =
-                        miniPlayerBgStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                            liquidGlassEnabled
-                    val needsFrostedCapture =
-                        navigationBarFrostedBlur ||
-                            navigationBarTintFrostedBlur ||
-                            miniPlayerUsesFrosted
-                    val needsLiquidGlassCapture =
-                        liquidGlassEnabled &&
-                            (liquidGlassNavBarEnabled || miniPlayerUsesLiquidGlass)
                     val navBarFrostedBackdrop =
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && needsFrostedCapture) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
                         } else {
                             null
                         }
 
+                    val liquidGlassActive =
+                        liquidGlassEnabled &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     val liquidGlassBackdrop: LayerBackdrop? =
-                        if (needsLiquidGlassCapture) {
+                        if (liquidGlassActive) {
                             rememberLayerBackdrop()
                         } else {
                             null
