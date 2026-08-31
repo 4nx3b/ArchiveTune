@@ -92,7 +92,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -2240,22 +2239,28 @@ fun AnchoredLyricsOverflowMenu(
         //   1. offset — positions the popup's top-right corner at the icon.
         //   2. widthIn(max = 220.dp) — compact fixed width (batch-13 value).
         //   3. heightIn(max = 520.dp) — safety bound for tall content.
-        //   4. graphicsLayer — UNCHANGED (alpha + scale + transformOrigin).
-        //      The animation reads scaleAnim.value / alphaAnim.value and
-        //      applies them via this graphicsLayer. Untouched per user spec.
-        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — soft elevated
-        //      shadow per reference "soft shadow, large shadow blur, subtle
-        //      depth". Applied AFTER graphicsLayer so the shadow scales +
-        //      fades with the popup's enter/exit animation (no janky
-        //      full-size shadow during the small-scale enter frame).
-        //   6. frostedBlurModifier (or fallback dark tint) — backdrop blur.
-        //   7. background(Color.Black at 55%) — dark charcoal tint over the
+        //   4. graphicsLayer — UNCHANGED animation reads (alpha + scale +
+        //      transformOrigin). NEW (batch-16, 2026-08-31): merged the
+        //      `shadowElevation` + `shape` + `clip = false` INTO this same
+        //      graphicsLayer block — previously this was a SEPARATE
+        //      `Modifier.shadow(16.dp, RoundedCornerShape(16.dp), clip = false)`
+        //      call which created its own internal graphicsLayer, resulting in
+        //      TWO graphicsLayer render passes per frame during the scale
+        //      animation (popup lag). Merging into one layer halves the layer
+        //      overhead while producing identical visuals: the shadow is still
+        //      drawn with 16dp elevation, RoundedCornerShape(16.dp) outline,
+        //      outside the bounds (clip=false), and is still transformed by
+        //      the same alpha/scale/transformOrigin — so it scales + fades
+        //      with the popup's enter/exit animation exactly as before.
+        //      User request: "Fix it without removing or sacrificing anything".
+        //   5. frostedBlurModifier (or fallback dark tint) — backdrop blur.
+        //   6. background(Color.Black at 55%) — dark charcoal tint over the
         //      blur, per reference "dark charcoal/black translucent
         //      material". The graphicsLayer's alpha animates this tint in/out.
-        //   8. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
+        //   7. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
         //      reduced to 16dp per reference "24 px corner radius at the
         //      reference scale" (24px ≈ 16dp at mdpi).
-        //   9. clickable — consumes taps inside the popup.
+        //   8. clickable — consumes taps inside the popup.
         Box(
             modifier =
                 Modifier
@@ -2278,12 +2283,20 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleX = scale
                         this.scaleY = scale
                         this.transformOrigin = TransformOrigin(1f, 0f)
+                        // Merged from the previous `.shadow(16.dp, RoundedCornerShape(16.dp), clip = false)`
+                        // modifier (batch-16, 2026-08-31). Setting these inside the existing
+                        // graphicsLayer avoids creating a SECOND internal graphicsLayer — the
+                        // separate Modifier.shadow internally wraps content in another
+                        // graphicsLayer to render the elevation shadow, so stacking them caused
+                        // 2 layer passes per frame during the scale animation (laggy popup).
+                        // Visuals are identical: 16dp elevation shadow, RoundedCornerShape(16.dp)
+                        // outline, shadow drawn outside bounds (clip = false). The shadow still
+                        // scales + fades with the popup's alpha/scale/transformOrigin because
+                        // these properties live on the same layer.
+                        this.shadowElevation = with(density) { 16.dp.toPx() }
+                        this.shape = RoundedCornerShape(16.dp)
+                        this.clip = false
                     }
-                    .shadow(
-                        elevation = 16.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        clip = false,
-                    )
                     // Apply the frosted-blur backdrop sampler FIRST
                     // (before clip + background), so the blur samples the
                     // full backdrop at the popup's location, then the clip
