@@ -25,6 +25,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -64,9 +65,19 @@ object PoolAccountManager {
     // any service is still empty, retry on this much shorter interval instead.
     private const val MIN_PARTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000L
 
+    /** Suppresses duplicate /api/report calls for the same service+id+type within this window. */
+    private const val REPORT_DEDUPE_WINDOW_MS = 10 * 60 * 1000L
+
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
     private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
+
+    /** Application context for DataStore access in report merge operations. Not Service-scoped. */
+    @Volatile
+    private var appContext: Context? = null
+
+    /** Report deduplication: "$service:$id:$type" → timestamp. Suppresses duplicate reports within ~10 minutes. */
+    private val reportDedupe = ConcurrentHashMap<String, Long>()
 
     /** A shared Tidal subscriber token contributed to the pool. */
     data class TidalPoolAccount(
@@ -170,6 +181,7 @@ object PoolAccountManager {
      */
     suspend fun loadCached(context: Context) {
         if (loadedFromDisk) return
+        appContext = context.applicationContext
         withContext(Dispatchers.IO) {
             runCatching {
                 context.dataStore.getAsync(CACHE_TIDAL_KEY)?.takeIf { it.isNotBlank() }?.let {
@@ -342,6 +354,21 @@ object PoolAccountManager {
     ) {
         if (id == null) return
         val base = sourcesUrl?.removeSuffix("/api/sources") ?: return
+
+        // Deduplicate reports within ~10 minutes to avoid spamming the server when one dead
+        // token is hit by multiple resolvers (e.g., LosslessStreamResolver racing all pool accounts).
+        val dedupeKey = "$service:$id:$reportType"
+        val now = System.currentTimeMillis()
+        val lastReported = reportDedupe[dedupeKey]
+        if (lastReported != null && now - lastReported < REPORT_DEDUPE_WINDOW_MS) {
+            return
+        }
+        reportDedupe[dedupeKey] = now
+
+        // Prune old entries to prevent unbounded map growth (~10min window).
+        reportDedupe.entries.removeIf { (_, ts) -> now - ts > REPORT_DEDUPE_WINDOW_MS }
+
+        val readKey = BuildConfig.SOURCE_PROVIDER_KEY
         reportScope.launch {
             runCatching {
                 val body =
@@ -356,16 +383,86 @@ object PoolAccountManager {
                         .Builder()
                         .url("$base/api/report")
                         .header("User-Agent", "ArchiveTune-Android")
+                        // v2 of the pool feed protocol: the server encrypts sensitive fields with a key
+                        // DERIVED from the read key below, so this client signals v2 support. Older
+                        // servers ignore the header.
+                        .header("X-Pool-Client", "v2")
                         .post(body.toRequestBody(JSON_MEDIA))
-                if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
-                    builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
+                if (readKey.isNotBlank()) {
+                    builder.header("Authorization", "Bearer $readKey")
                 }
                 client.newCall(builder.build()).execute().use { response ->
                     if (!response.isSuccessful) {
                         Timber.tag(TAG).d("Pool report %s/%s/%s returned HTTP %d", service, reportType, id, response.code)
+                        return@use
+                    }
+                    // /api/report answers with replacement credentials for the dead entry — merge
+                    // them into the cache so the next resolve does not refetch the whole feed.
+                    val responseBody = response.body?.string().orEmpty()
+                    if (responseBody.isNotBlank()) {
+                        val root = JSONObject(responseBody)
+                        if (root.optBoolean("ok", false) && kind == "account" && readKey.isNotBlank()) {
+                            mergeReplacement(root, service, id)
+                        }
                     }
                 }
             }.onFailure { Timber.tag(TAG).w(it, "Pool report failed") }
+        }
+    }
+
+    /**
+     * Merges the replacement credentials returned by /api/report into the pool cache. Runs under
+     * [refreshMutex] so a concurrent feed refresh cannot interleave: if the dead entry is already
+     * gone (a refresh landed while the report was in flight), the refreshed cache wins and the
+     * replacement is dropped.
+     */
+    private suspend fun mergeReplacement(
+        root: JSONObject,
+        service: String,
+        deadId: Long,
+    ) {
+        val ctx = appContext ?: return
+        val replacementObj = root.optJSONObject("replacement") ?: return
+        val replacementArr = replacementObj.optJSONObject(service)?.optJSONArray("accounts") ?: JSONArray()
+
+        refreshMutex.withLock {
+            when (service) {
+                "tidal" -> tidalCache = mergeList(tidalCache, deadId, TidalPoolAccount::id, replacementArr, ::parseTidal) ?: return@withLock
+                "qobuz" -> qobuzCache = mergeList(qobuzCache, deadId, QobuzPoolAccount::id, replacementArr, ::parseQobuz) ?: return@withLock
+                "deezer" -> deezerCache = mergeList(deezerCache, deadId, DeezerPoolAccount::id, replacementArr, ::parseDeezer) ?: return@withLock
+                else -> return@withLock
+            }
+            persist(ctx, tidalCache, qobuzCache, deezerCache)
+        }
+    }
+
+    /**
+     * Replaces the dead-id element of [cacheList] with the parsed replacement, preserving order.
+     * Null return means "nothing to persist": the dead entry is no longer cached (a refresh landed
+     * while the report was in flight, so that cache is authoritative) or the replacement failed to
+     * parse. An empty [replacementArr] drops the dead entry with no substitute.
+     */
+    private fun <T> mergeList(
+        cacheList: List<T>,
+        deadId: Long,
+        idOf: (T) -> Long?,
+        replacementArr: JSONArray,
+        parse: (JSONArray?) -> List<T>,
+    ): List<T>? {
+        val deadIndex = cacheList.indexOfFirst { idOf(it) == deadId }
+        if (deadIndex < 0) return null
+
+        if (replacementArr.length() == 0) {
+            return cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        }
+
+        val replacementEntry = parse(replacementArr).firstOrNull() ?: return null
+
+        // Replacement already cached (a concurrent report raced to the same one) — just drop the dead entry.
+        return if (cacheList.any { idOf(it) == idOf(replacementEntry) }) {
+            cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        } else {
+            cacheList.mapIndexed { idx, entry -> if (idx == deadIndex) replacementEntry else entry }
         }
     }
 
