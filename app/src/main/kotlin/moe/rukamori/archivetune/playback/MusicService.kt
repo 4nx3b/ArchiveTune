@@ -9598,19 +9598,7 @@ class MusicService :
      * thread mid-request, surfacing an [InterruptedException] with the real 401 attached only as a
      * suppressed exception — in which case a naive `catch (TidalUnauthorizedException)` misses it.
      */
-    private fun isTidalUnauthorized(root: Throwable?): Boolean {
-        val stack = ArrayDeque<Throwable>()
-        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
-        root?.let { stack.addLast(it) }
-        while (stack.isNotEmpty()) {
-            val t = stack.removeLast()
-            if (!seen.add(t)) continue
-            if (t is TidalAccountManager.TidalUnauthorizedException) return true
-            t.cause?.let { stack.addLast(it) }
-            t.suppressed.forEach { stack.addLast(it) }
-        }
-        return false
-    }
+    private fun isTidalUnauthorized(root: Throwable?) = TidalAccountManager.isUnauthorized(root)
 
     /**
      * Serializes all Tidal token refreshes. Tracks resolve on parallel ExoPlayer loader threads, so
@@ -9729,7 +9717,13 @@ class MusicService :
                 val poolCountry = poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
                 val poolStream =
                     runCatching { attempt(poolAccount.token, poolCountry) }
-                        .onFailure { Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId) }
+                        .onFailure {
+                            if (TidalAccountManager.isUnauthorized(it)) {
+                                PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
+                            } else {
+                                Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId)
+                            }
+                        }
                         .getOrNull()
                 if (poolStream != null) {
                     Timber.tag("MusicService").d("Tidal resolved via pool account (premium=%s)", poolAccount.premium)
@@ -9814,6 +9808,7 @@ class MusicService :
                     appSecret = it.appSecret,
                     label = "Source Pool",
                     subscription = if (it.premium) "premium" else "",
+                    poolId = it.id,
                 )
             }
         val configuredTokens =
