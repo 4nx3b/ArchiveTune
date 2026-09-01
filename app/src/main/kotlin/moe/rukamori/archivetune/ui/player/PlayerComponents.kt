@@ -138,6 +138,7 @@ import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import moe.rukamori.archivetune.ui.utils.fadingEdge
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
