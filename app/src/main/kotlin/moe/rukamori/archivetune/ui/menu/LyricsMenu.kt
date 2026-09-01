@@ -140,6 +140,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
+import moe.rukamori.archivetune.ui.component.NewAction
+import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
@@ -923,103 +925,138 @@ fun LyricsMenu(
                     ),
                 )
 
-            // When `transparentSurface` is true (popup context), use a
-            // transparent Surface so the frosted-glass blur applied to the
-            // popup's outer Box is visible. The opaque `surfaceContainerLow`
-            // background of `MenuSurfaceSection` would otherwise completely
-            // cover the blur — the user reported "the white popup is loading
-            // on top of the liquid glass effect". The transparent surface
-            // keeps the same `extraLarge` corner shape so the rounded clip
-            // still matches the popup's outer clip (no dark gap).
+            // Two visual presentations share this one menu implementation:
+            //
+            //  - `transparentSurface = true` (Apple Music player's anchored popup):
+            //    transparent Surface so the frosted-glass blur applied to the popup's
+            //    outer Box is visible, with the compact dark-glass Apple Music rows
+            //    (white text, iOS-red destructive row, hairline dividers) from
+            //    batches 12-15.
+            //
+            //  - `transparentSurface = false` (non-Apple-Music player styles —
+            //    LyricsScreen's ModalBottomSheet slide-up popup): RESTORED to the
+            //    original pre-batch-10 presentation (user request 2026-09-01:
+            //    "Restore the old bottom screen popup in lyrics page in non
+            //    apple music player styles"): a `MenuSurfaceSection` card with the
+            //    `NewActionGrid` 3-column action tiles (28dp theme-tinted icons over
+            //    labels) exactly as the app's other menus render. The Apple Music
+            //    rows' hardcoded white/red colors were never meant for this light
+            //    `surfaceContainerLow` card — they left the rows unreadable here.
             //
             // Vertical padding 8dp -> 4dp per "apply the dimensions and
-            // scaling from this commit" (batch-13 reference, 2026-08-31).
-            // The user reported the batch-14 redesign made the popup too
-            // big; reverting to batch-13's compact surface padding while
-            // keeping batch-14's dark-glass visual style (white text,
-            // dark tint, blur, shadow).
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(vertical = 0.dp)) {
-                    menuItems.forEachIndexed { index, item ->
-                        AppleMusicLyricsMenuRow(
-                            item = item,
-                        )
-                        // Hairline divider BETWEEN items only — no divider before the first
-                        // or after the last, matching Apple Music's grid-separated look.
-                        // Color: white at 12% opacity per reference "Divider lines
-                        //   should be approximately 10–18% white/gray opacity"
-                        //   (kept from batch-14 visual style).
-                        // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
-                        //   16dp per batch-13 dimensions (2026-08-31) — the
-                        //   batch-14 redesign was reported as too big.
-                        if (index < menuItems.size - 1) {
-                            HorizontalDivider(
-                                color = Color.White.copy(alpha = 0.12f),
-                                thickness = 0.5.dp,
-                                modifier = Modifier.padding(horizontal = 16.dp),
+            // scaling from this commit" (batch-13 reference, 2026-08-31) —
+            // popup path only.
+            if (transparentSurface) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = Color.Transparent,
+                    modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 0.dp)) {
+                        menuItems.forEachIndexed { index, item ->
+                            AppleMusicLyricsMenuRow(
+                                item = item,
                             )
+                            // Hairline divider BETWEEN items only — no divider before the first
+                            // or after the last, matching Apple Music's grid-separated look.
+                            // Color: white at 12% opacity per reference "Divider lines
+                            //   should be approximately 10–18% white/gray opacity"
+                            //   (kept from batch-14 visual style).
+                            // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
+                            //   16dp per batch-13 dimensions (2026-08-31) — the
+                            //   batch-14 redesign was reported as too big.
+                            if (index < menuItems.size - 1) {
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            }
                         }
                     }
+                    // The anchored popup call site always passes
+                    // showControlsToggles = false (the toggles were suspected of
+                    // contributing to the lyrics animation stutter), so the
+                    // switches intentionally live only in the bottom-sheet branch
+                    // below — matching the pre-batch-10 structure.
                 }
-                // "Show player controls" / "Auto-hide player controls" toggles
-                // are gated behind showControlsToggles. The Apple Music in-place
-                // lyrics view passes false because those toggles were suspected
-                // of contributing to the lyrics animation stutter; the standalone
-                // LyricsScreen still renders them.
-                if (showControlsToggles) {
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.show_lyrics_player_controls))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = showPlayerControls,
-                                onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
-                            )
-                        },
-                        onClick = {
-                            onShowPlayerControlsChange?.invoke(!showPlayerControls)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                            ),
+            } else {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    NewActionGrid(
+                        actions =
+                            menuItems.map { item ->
+                                NewAction(
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(item.iconRes),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(28.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    text = item.label,
+                                    onClick = item.onClick,
+                                    enabled = item.enabled,
+                                )
+                            },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                     )
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls))
-                        },
-                        supportingContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = autoHidePlayerControls,
-                                onCheckedChange = {
-                                    onAutoHidePlayerControlsPreferenceChange(it)
-                                    onAutoHidePlayerControlsChange(it)
-                                },
-                                enabled = showPlayerControls,
-                            )
-                        },
-                        enabled = showPlayerControls,
-                        onClick = {
-                            val nextValue = !autoHidePlayerControls
-                            onAutoHidePlayerControlsPreferenceChange(nextValue)
-                            onAutoHidePlayerControlsChange(nextValue)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                                bottom = 8.dp,
-                            ),
-                    )
+                    // "Show player controls" / "Auto-hide player controls" toggles
+                    // are gated behind showControlsToggles. The Apple Music in-place
+                    // lyrics view passes false because those toggles were suspected
+                    // of contributing to the lyrics animation stutter; the standalone
+                    // LyricsScreen still renders them.
+                    if (showControlsToggles) {
+                        NewMenuItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.show_lyrics_player_controls))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = showPlayerControls,
+                                    onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
+                                )
+                            },
+                            onClick = {
+                                onShowPlayerControlsChange?.invoke(!showPlayerControls)
+                            },
+                            modifier =
+                                Modifier.padding(
+                                    start = 8.dp,
+                                    end = 8.dp,
+                                ),
+                        )
+                        NewMenuItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.auto_hide_lyrics_player_controls))
+                            },
+                            supportingContent = {
+                                Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = autoHidePlayerControls,
+                                    onCheckedChange = {
+                                        onAutoHidePlayerControlsPreferenceChange(it)
+                                        onAutoHidePlayerControlsChange(it)
+                                    },
+                                    enabled = showPlayerControls,
+                                )
+                            },
+                            enabled = showPlayerControls,
+                            onClick = {
+                                val nextValue = !autoHidePlayerControls
+                                onAutoHidePlayerControlsPreferenceChange(nextValue)
+                                onAutoHidePlayerControlsChange(nextValue)
+                            },
+                            modifier =
+                                Modifier.padding(
+                                    start = 8.dp,
+                                    end = 8.dp,
+                                    bottom = 8.dp,
+                                ),
+                        )
+                    }
                 }
             }
         }
@@ -2327,16 +2364,14 @@ fun AnchoredLyricsOverflowMenu(
         ) {
             // Delegate the actual menu items to the existing [LyricsMenu]
             // composable — same Edit / Refetch / Translate / Romanise /
-            // Undo / Search list, same click handlers, same dialogs. The
-            // MenuSurfaceSection card that LyricsMenu draws inside itself
-            // is now the popup's only visible surface (we removed the outer
-            // dark tint + border above so there's no gap around the card).
-            // Pass transparentSurface = true so the inner MenuSurfaceSection
-            // (an opaque `surfaceContainerLow` card) is replaced with a
-            // transparent surface — otherwise the white popup card sits ON
-            // TOP of the frosted-glass blur and hides it (user report:
-            // "liquid glass effect is behind the white popup but the white
-            // popup is loading on top of it").
+            // Undo / Search list, same click handlers, same dialogs. With
+            // transparentSurface = true, LyricsMenu renders its compact
+            // Apple-Music dark-glass row list inside a transparent Surface,
+            // so the frosted-glass blur applied to this outer Box stays
+            // visible (user report: "liquid glass effect is behind the white
+            // popup but the white popup is loading on top of it"). The
+            // non-Apple-Music styles (transparentSurface = false) render
+            // the restored NewActionGrid bottom-sheet card instead.
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,
