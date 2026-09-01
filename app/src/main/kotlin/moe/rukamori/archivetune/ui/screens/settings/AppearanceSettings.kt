@@ -92,6 +92,8 @@ import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.HomeScreenStyle
+import moe.rukamori.archivetune.constants.HomeScreenStyleKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -110,6 +112,7 @@ import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
+import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -134,6 +137,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
+    val (wallpaperExtractionFailed) =
+        rememberPreference(WallpaperExtractionFailedKey, defaultValue = false)
     val (dynamicTheme, onDynamicThemeChange) =
         rememberPreference(
             DynamicThemeKey,
@@ -258,6 +263,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(HideScrollbarKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
+    val (homeScreenStyle, onHomeScreenStyleChange) =
+        rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -327,6 +334,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyle.V8,
             PlayerDesignStyle.V9,
             PlayerDesignStyle.APPLE_MUSIC,
+            PlayerDesignStyle.V10,
             -> false
 
             else -> true
@@ -502,7 +510,24 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                item(visible = dynamicTheme && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && wallpaperExtractionFailed) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("wallpaper_permission"),
+                        title = { Text(stringResource(R.string.wallpaper_permission)) },
+                        description = stringResource(R.string.wallpaper_permission_desc),
+                        icon = { Icon(painterResource(R.drawable.storage), null) },
+                        onClick = {
+                            val intent =
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", context.packageName, null),
+                                )
+                            context.startActivity(intent)
+                        },
+                    )
+                }
+
+                item(visible = !dynamicTheme) {
                     SwitchPreference(
                         modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },
@@ -745,6 +770,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                     PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
                                     PlayerDesignStyle.APPLE_MUSIC ->
                                         stringResource(R.string.player_design_apple_music)
+                                    PlayerDesignStyle.V10 ->
+                                        stringResource(R.string.player_design_v10)
                                 }
                             },
                         )
@@ -1035,6 +1062,23 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.home_outlined), null) },
                         checked = minimalHomeMode,
                         onCheckedChange = onMinimalHomeModeChange,
+                    )
+                }
+
+                item {
+                    EnumListPreference(
+                        modifier = positions.modifierFor("home_screen_style"),
+                        title = { Text(stringResource(R.string.home_screen_style)) },
+                        description = stringResource(R.string.home_screen_style_desc),
+                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
+                        selectedValue = homeScreenStyle,
+                        onValueSelected = onHomeScreenStyleChange,
+                        valueText = {
+                            when (it) {
+                                HomeScreenStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
+                                HomeScreenStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
+                            }
+                        },
                     )
                 }
 

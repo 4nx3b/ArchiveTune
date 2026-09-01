@@ -168,9 +168,11 @@ android {
                 ).trim()
         buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
 
-        // End-to-end decryption key for sensitive Source Pool credentials (base64 32-byte AES-256
-        // key, matching the site's POOL_CLIENT_KEY). When the pool returns encrypted account tokens
-        // the app decrypts them locally with this. Optional: blank means the pool is unencrypted.
+        // LEGACY end-to-end decryption key for sensitive Source Pool credentials (base64 32-byte
+        // AES-256 key, matching the site's POOL_CLIENT_KEY). Current builds request the v2 feed
+        // protocol (X-Pool-Client: v2), where the encryption key is derived from the read key
+        // above and this value is only a fallback for older pool deployments. Optional: blank is
+        // fine when every configured pool speaks v2.
         val poolClientKey =
             (
                 localProperties.getProperty("POOL_CLIENT_KEY")
@@ -411,6 +413,8 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
 
     implementation(libs.material3)
+    implementation(libs.androidx.graphics.shapes)
+    
     implementation(libs.palette)
     implementation(libs.androidsvg)
     implementation(libs.aboutlibraries.core)
@@ -485,6 +489,7 @@ dependencies {
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.core)

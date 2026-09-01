@@ -22,8 +22,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
-import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
@@ -289,7 +287,7 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/player") },
             children = listOf(
                 SettingsChild("Low data mode", "low_data_mode", listOf("data", "data saver", "low quality", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
-                SettingsChild("Enable video playback", "enable_video_playback", listOf("video", "music video", "mv", "video playback", "captions", "subtitles")) { SearchResultSwitch(EnableVideoPlaybackKey, true) },
+                SettingsChild("Enable video playback", "enable_video_playback", listOf("video", "music video", "mv", "video playback", "captions", "subtitles")) { SearchResultSwitch(EnableVideoPlaybackKey, false) },
                 SettingsChild("Enable PiP mode", "enable_pip_mode", listOf("pip", "picture in picture", "floating video", "minimize", "pop out", "overlay")) { SearchResultSwitch(EnablePipModeKey, false) },
                 SettingsChild("History duration", "history_duration", listOf("history", "duration", "recent", "queue length")),
                 SettingsChild("Crossfade", "crossfade", listOf("crossfade", "fade", "transition", "mix", "blend")) { SearchResultSwitch(CrossfadeEnabledKey, false) },
@@ -568,9 +566,10 @@ fun buildSettingsGroups(
             title = stringResource(R.string.integration),
             subtitle = stringResource(R.string.settings_integration_subtitle),
             accentColor = MaterialTheme.colorScheme.secondary,
-            keywords = listOf("integration", "lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "discord", "listenbrainz", "spotify"),
+            keywords = listOf("integration", "lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "discord", "listenbrainz", "spotify", "apple music"),
             onClick = { navController.navigate("settings/integration") },
             children = listOf(
+                SettingsChild("Apple Music login", "applemusic", listOf("apple music", "applemusic", "itunes", "music kit", "apple login", "apple music login")),
                 SettingsChild("Last.fm scrobbling", "lastfm_scrobbling", listOf("lastfm", "last.fm", "libre.fm", "scrobble", "scrobbling", "listens")) { SearchResultSwitch(EnableLastFMScrobblingKey, false) },
                 SettingsChild("Last.fm account", "lastfm_account", listOf("lastfm account", "lastfm login", "lastfm session", "lastfm username")),
                 SettingsChild("Last.fm options", "lastfm_options", listOf("lastfm options", "lastfm settings", "scrobble toggle", "now playing")),
@@ -734,9 +733,6 @@ fun buildSettingsGroups(
                 SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")) { SearchResultSwitch(HideAiMixKey, false) },
                 SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")),
                 SettingsChild("Don't auto translate these languages", "auto_translate_excluded_languages", listOf("excluded languages", "skip translation", "do not translate", "translation exclusions")),
-                SettingsChild("AI romanisation", "ai_romanize_lyrics", listOf("ai romanisation", "ai romanization", "romanise", "romanize", "romaji", "transliteration", "ai romaji")) { SearchResultSwitch(AiRomanizeLyricsKey, false) },
-                SettingsChild("Auto AI romanisation", "auto_ai_romanize_lyrics", listOf("auto ai romanisation", "auto ai romanization", "automatic romanisation", "auto romanize")) { SearchResultSwitch(AutoAiRomanizeLyricsKey, false) },
-                SettingsChild("Don't romanise these languages", "ai_romanize_excluded_languages", listOf("excluded languages", "skip romanisation", "do not romanise", "romanisation exclusions")),
                 SettingsChild("Target language", "translate_language", listOf("target language", "translate to", "translation language")),
                 SettingsChild("Translation mode", "translate_mode", listOf("translation mode", "translate mode", "translation style")),
                 SettingsChild("DeepL API key", "deepl_api_key", listOf("deepl", "deepl api key", "deepl key", "deepl token")),
@@ -1004,6 +1000,9 @@ fun buildSettingsGroups(
                     appearanceExtras,
                     aodCustomization,
                     navigationBar,
+                    // lyricsAnimations entry NOT ported: this fork removed the
+                    // Lyrics-animations settings page (and its definition) per
+                    // user request; LyricsEnhanced is the sole renderer here.
                     playback,
                     sources,
                     jioSaavn,

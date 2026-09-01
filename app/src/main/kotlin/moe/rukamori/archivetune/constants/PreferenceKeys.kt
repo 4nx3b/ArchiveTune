@@ -24,6 +24,7 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
+val WallpaperExtractionFailedKey = booleanPreferencesKey("wallpaperExtractionFailed")
 val HideStatusBarKey = booleanPreferencesKey("hideStatusBar")
 
 // UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
@@ -269,8 +270,8 @@ val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
-// When ON (default), music videos render an inline video surface in the player. When OFF,
-// music videos are treated as plain audio (album artwork shown, no video stream is loaded).
+// When ON, music videos render an inline video surface in the player. Default OFF so songs
+// play as plain audio (album artwork shown, no video stream is loaded) unless the user opts in.
 // Distinct from HideVideoKey which filters videos out of the library/queue entirely.
 val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
 // When ON (default OFF), leaving the app while a music video is playing enters Picture-in-
@@ -930,6 +931,10 @@ enum class PreferredLyricsProvider {
     KUGOU,
     // SIMPMUSIC and BINI_LYRICS entries removed per user request (2026-08-30).
     UNISON,
+    // Ported from upstream (2026-08-31 window): Apple Music account lyrics.
+    // Paxsenix* / TIDAL / DEEZER entries from the same upstream hunk are NOT
+    // ported — the Paxsenix layer was removed on 2026-08-30 (batch-10).
+    APPLE_MUSIC,
     MUSIXMATCH_EXPERIMENTAL,
 }
 
@@ -941,6 +946,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
         PreferredLyricsProvider.UNISON,
+        PreferredLyricsProvider.APPLE_MUSIC,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 
@@ -1023,6 +1029,14 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
+/** Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = upstream rukamori layout. */
+enum class HomeScreenStyle {
+    DEFAULT,
+    RUKAMORI,
+}
+
+val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
+
 enum class PlayerDesignStyle {
     V1,
     V2,
@@ -1034,6 +1048,7 @@ enum class PlayerDesignStyle {
     V8,
     V9,
     APPLE_MUSIC,
+    V10,
 }
 
 enum class PlayerBackgroundStyle {
@@ -1166,6 +1181,7 @@ val LyricsModeKey = stringPreferencesKey("lyricsMode")
 enum class LyricsMode {
     V2,
     ENHANCED,
+    SPOTIFY,
 }
 
 // Queue lyrics pre-load settings
@@ -1257,6 +1273,19 @@ val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallback
 val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
+/** Per-user read key for the community Source Pool (created on the site's /dashboard).
+ *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
+val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
+
+// Newline-separated community "paste list" URLs (rentry/gist pages tabulating shared
+// ARLs/tokens). Parsed by PasteListPoolSource and merged into the pool account caches
+// with id=null so playback reports are never sent for them. Opt-in: empty by default.
+val PasteListUrlsKey = stringPreferencesKey("pasteListUrls")
+
+// When ON (default), synced lyrics render in place of the player artwork (BitChord-style
+// inline lyrics on the player screen). The lyrics button still opens the full lyrics page.
+val ShowLyricsOnPlayerKey = booleanPreferencesKey("showLyricsOnPlayer")
+
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 
@@ -1299,6 +1328,22 @@ enum class TidalAudioQuality {
     FLAC,
     HI_RES_LOSSLESS,
 }
+
+/** Apple Music streaming quality for the account path (web ALAC pipeline). */
+enum class AppleMusicQuality {
+    AAC,
+    LOSSLESS,
+    HI_RES_LOSSLESS,
+}
+
+val AppleMusicQualityKey = stringPreferencesKey("appleMusicQuality")
+
+/**
+ * Master enable for Apple Music as a streaming source (Settings → Sources → Apple Music).
+ * Default off: playback needs a Media-User-Token with an active Apple Music subscription,
+ * and the resolution chain hits Apple's unofficial web-playback endpoint.
+ */
+val AppleMusicSourceEnabledKey = booleanPreferencesKey("appleMusicSourceEnabled")
 
 val TidalAudioQualityOptions =
     listOf(
@@ -1413,6 +1458,7 @@ enum class AudioSourceType {
     QOBUZ,
     QOBUZ_BACKUP,
     DEEZER,
+    APPLE,
     JIOSAAVN,
     YOUTUBE,
 }

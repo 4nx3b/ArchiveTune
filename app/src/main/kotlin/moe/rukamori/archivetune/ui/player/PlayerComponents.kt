@@ -31,6 +31,7 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -64,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,11 +82,13 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
@@ -130,6 +134,7 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.component.ResizableIconButton
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -152,6 +157,8 @@ internal fun PlayerTitleText(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = TextUnit.Unspecified,
     textAlign: TextAlign? = null,
+    titleThreshold: Int = PlayerFadeConfig.forStyle(PlayerDesignStyle.V1).titleMinChars,
+    fadeWidth: Dp = 24.dp,
 ) {
     val annotatedTitle =
         remember(title, explicit) {
@@ -190,37 +197,86 @@ internal fun PlayerTitleText(
             }
         }
 
-    Text(
-        text = annotatedTitle,
-        inlineContent = inlineContent,
-        color = color,
-        style = style,
-        fontSize = fontSize,
-        fontWeight = fontWeight,
-        textAlign = textAlign,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier,
-    )
+    // Fade lives on the BOX (the line's viewport), not the Text. The Text scrolls
+    // with basicMarquee inside the Box; the DstIn gradient masks at the Box's
+    // fixed edges (size.width = viewport width) so the fade stays put while the
+    // text moves underneath — same technique as fadingEdge on the playlist
+    // screen. Applying it to the Text node would mask at the full scroll width
+    // instead and leave the visible edge hard-clipped (the "boxy" look).
+    // Fade shows ONLY while the line is actually scrolling: basicMarquee measures
+    // its child with unbounded width, so hasVisualOverflow never fires — compare
+    // the laid-out text width against the box (viewport) width instead. The
+    // marquee scrolls iff the text is wider than the viewport, so this is
+    // exactly "fade while scrolling", nothing else.
+    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val titleViewportWidth = remember { mutableStateOf(0) }
+    val shouldFade =
+        titleViewportWidth.value > 0 &&
+            (titleLayout.value?.size?.width ?: 0) > titleViewportWidth.value
+    Box(
+        modifier =
+            (if (shouldFade) modifier.viewportEdgeFade(fadeWidth) else modifier)
+                .clipToBounds()
+                .onSizeChanged { titleViewportWidth.value = it.width },
+    ) {
+        Text(
+            text = annotatedTitle,
+            inlineContent = inlineContent,
+            color = color,
+            style = style,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { titleLayout.value = it },
+            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+        )
+    }
 }
 
 @Composable
 internal fun PlayerTextBackdrop(
     textColor: Color,
     modifier: Modifier = Modifier,
-    @Suppress("UNUSED_PARAMETER") edgeFadeWidth: Dp = 24.dp,
+    edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // The user explicitly asked to remove the player text edge fade — the
-    // gradient mask that faded scrolling marquee text into the player
-    // background at both ends. The parameter is retained so existing call
-    // sites compile unchanged, but the [fadingEdge] modifier is no longer
-    // applied. The wrapper Box is kept so the marquee measurement still has
-    // a stable bounded container (see the comment in PlayerTitleSection).
+    // Plain passthrough: the viewport fade is applied PER LINE (title and artist
+    // each get their own [marqueeEdgeFade], only while that line marquees) —
+    // never as a wrapper-level gradient over both lines.
     Box(modifier = modifier) {
         content()
     }
 }
+
+/**
+ * Viewport edge fade: gradient at the BOX's fixed edges (the visible text box),
+ * not the scrolling Text content. The Box is the viewport; the Text inside
+ * scrolls with basicMarquee. Delegates to the shared [fadingEdge] utility (the
+ * same fade the playlist screen uses) so every marquee line masks identically:
+ * DstIn gradient inside an offscreen layer — softens the hard clip so long
+ * scrolling titles don't get the boxy look.
+ */
+internal fun Modifier.viewportEdgeFade(
+    width: Dp = 24.dp,
+): Modifier = fadingEdge(horizontal = width)
+
+/**
+ * Legacy: edge fade on Text node. Kept for call sites not yet migrated to
+ * viewportEdgeFade. Behavior is now identical to viewportEdgeFade (fixed at
+ * the node's edges). New code should use viewportEdgeFade on the Box viewport.
+ */
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    layoutState: State<TextLayoutResult?>,
+    width: Dp = 24.dp,
+): Modifier = viewportEdgeFade(width)
+
+@Composable
+internal fun Modifier.marqueeEdgeFade(
+    width: Dp = 24.dp,
+): Modifier = viewportEdgeFade(width)
 
 @Composable
 fun PlayerTitleSection(
@@ -228,6 +284,7 @@ fun PlayerTitleSection(
     textBackgroundColor: Color,
     navController: NavController,
     state: BottomSheetState,
+    playerDesignStyle: PlayerDesignStyle = PlayerDesignStyle.V1,
 ) {
     val actions =
         rememberPlayerTitleActions(
@@ -252,10 +309,11 @@ fun PlayerTitleSection(
                     color = textBackgroundColor,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                    titleThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).titleMinChars,
+                    fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .basicMarquee()
                             .combinedClickable(
                                 enabled = true,
                                 indication = null,
@@ -273,10 +331,9 @@ fun PlayerTitleSection(
                 onArtistClick = actions.onArtistClick,
                 style = MaterialTheme.typography.titleMedium.copy(color = textBackgroundColor, fontSize = 16.sp),
                 onLongClick = actions.onCopyArtists,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .basicMarquee(),
+                artistThreshold = PlayerFadeConfig.forStyle(playerDesignStyle).artistMinChars,
+                fadeWidth = PlayerFadeConfig.forStyle(playerDesignStyle).fadeWidth,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -738,7 +795,7 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
@@ -1809,7 +1866,7 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.V10, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }

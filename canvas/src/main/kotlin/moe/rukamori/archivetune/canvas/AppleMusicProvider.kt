@@ -64,6 +64,20 @@ object AppleMusicProvider {
 
     var logger: ((level: Int, tag: String, message: String) -> Unit)? = null
 
+    /**
+     * Account tokens supplied by the user on the Apple Music settings page.
+     * When a dev (bearer JWT) token is present it REPLACES the scraped/fallback
+     * web token; when a media-user-token is present every AMP request carries
+     * the `Media-User-Token` header, so lookups run against the user's own
+     * account (region + catalog access) instead of anonymous web access.
+     * Providers are installed by the app layer (DataStore lives there).
+     */
+    @Volatile
+    var devTokenProvider: (() -> String?)? = null
+
+    @Volatile
+    var mediaUserTokenProvider: (() -> String?)? = null
+
     private object Log {
         fun d(msg: String) {
             val logger = AppleMusicProvider.logger
@@ -140,6 +154,14 @@ object AppleMusicProvider {
     private const val APPLE_MUSIC_WEB_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
 
+    // Storefront derived from the user's Media-User-Token (e.g. "es" for the ES account
+    // the user pasted). Cached 24h, resolved via /v1/me/storefront so ES/FR/JP tokens
+    // hit the right catalog instead of the hardcoded "us".
+    @Volatile private var cachedStorefront: String? = null
+    @Volatile private var cachedStorefrontAtMs: Long = 0L
+    private val storefrontMutex = Mutex()
+    private const val STOREFRONT_TTL_MS = 1000L * 60 * 60 * 24
+
     private val tokenClient by lazy {
         HttpClient(OkHttp) {
             install(HttpTimeout) {
@@ -181,9 +203,13 @@ object AppleMusicProvider {
     /**
      * Returns a usable Apple Music JWT, refreshing first if the cached one is
      * missing or past its expiry. Refresh failures fall back to whatever we
-     * have on hand (including the hardcoded fallback).
+     * have on hand (including the hardcoded fallback). A user-pasted dev token
+     * always wins over anything scraped or hardcoded.
      */
     private suspend fun ensureTokenFresh(): String {
+        devTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { userDevToken ->
+            return userDevToken
+        }
         val nowSec = System.currentTimeMillis() / 1000L
         val isExpired = appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec <= nowSec
         val needsRefresh =
@@ -201,6 +227,55 @@ object AppleMusicProvider {
         if (!isExpired) return appleMusicToken
 
         return refreshToken() ?: appleMusicToken
+    }
+
+    /**
+     * Resolved storefront for the pasted Media-User-Token (ES/JP/…).
+     * The ES token the user pasted returns `{"data":[{"id":"es",...}]}` via
+     * `/v1/me/storefront` — using that instead of hardcoded "us" makes
+     * search and lyrics resolve against the right catalog and pass the
+     * token's subscription check.
+     */
+    private suspend fun resolveStorefront(): String {
+        val media = mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return "us"
+        val now = System.currentTimeMillis()
+        cachedStorefront?.let { if (now - cachedStorefrontAtMs < STOREFRONT_TTL_MS) return it }
+        return storefrontMutex.withLock {
+            cachedStorefront?.let { if (System.currentTimeMillis() - cachedStorefrontAtMs < STOREFRONT_TTL_MS) return it }
+            val fetched = runCatching { fetchStorefrontFromApi() }.getOrNull()
+            if (fetched != null) {
+                cachedStorefront = fetched
+                cachedStorefrontAtMs = System.currentTimeMillis()
+                Log.d("Apple Music storefront resolved to $fetched from Media-User-Token")
+                fetched
+            } else {
+                cachedStorefront ?: "us"
+            }
+        }
+    }
+
+    private suspend fun fetchStorefrontFromApi(): String? {
+        val token = ensureTokenFresh()
+        val media = mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val resp = client.get("$AMP_BASE_URL/v1/me/storefront") {
+            header("Authorization", "Bearer $token")
+            header("Media-User-Token", media)
+            header("Origin", "https://music.apple.com")
+            header("Referer", "https://music.apple.com/")
+            header("User-Agent", APPLE_MUSIC_WEB_UA)
+        }
+        if (!resp.status.isSuccess()) {
+            Log.w("Apple Music storefront fetch failed: ${resp.status}")
+            return null
+        }
+        val root = resp.body<JsonObject>()
+        return root["data"]?.jsonArray?.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+    }
+
+    /** Clears cached storefront so the next lookup re-resolves (call after token change). */
+    fun clearStorefrontCache() {
+        cachedStorefront = null
+        cachedStorefrontAtMs = 0L
     }
 
     private suspend fun scrapeTokenFromWeb(): String? =
@@ -440,15 +515,17 @@ object AppleMusicProvider {
         forceRefresh: Boolean = false,
     ): CanvasArtwork? {
         return runCatching {
-            Log.d("searching for $type: $term (album: $album) in $storefront")
+            val effectiveStorefront = if (storefront == "us") resolveStorefront() else storefront
+            Log.d("searching for $type: $term (album: $album) in $effectiveStorefront (requested $storefront)")
             var query = if (term.contains(artist, ignoreCase = true)) term else "$artist $term"
             if (!album.isNullOrBlank() && !query.contains(album, ignoreCase = true)) query = "$query $album"
 
-            val searchUrl = "$AMP_BASE_URL/v1/catalog/$storefront/search"
+            val searchUrl = "$AMP_BASE_URL/v1/catalog/$effectiveStorefront/search"
             var token = ensureTokenFresh()
             var response =
                 client.get(searchUrl) {
                     header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
                     header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -466,6 +543,7 @@ object AppleMusicProvider {
                 response =
                     client.get(searchUrl) {
                         header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                         header("Origin", "https://music.apple.com")
                         header("Referer", "https://music.apple.com/")
                         header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -569,12 +647,14 @@ object AppleMusicProvider {
             return null
         }
         return runCatching {
-            Log.d("fetching album $albumId")
-            val albumUrl = "$AMP_BASE_URL/v1/catalog/$storefront/albums/$albumId"
+            val effectiveStorefront = if (storefront == "us") resolveStorefront() else storefront
+            Log.d("fetching album $albumId in $effectiveStorefront")
+            val albumUrl = "$AMP_BASE_URL/v1/catalog/$effectiveStorefront/albums/$albumId"
             var token = ensureTokenFresh()
             var response =
                 client.get(albumUrl) {
                     header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
                     header("User-Agent", APPLE_MUSIC_WEB_UA)
@@ -587,6 +667,7 @@ object AppleMusicProvider {
                 response =
                     client.get(albumUrl) {
                         header("Authorization", "Bearer $token")
+                        mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
                         header("Origin", "https://music.apple.com")
                         header("Referer", "https://music.apple.com/")
                         header("User-Agent", APPLE_MUSIC_WEB_UA)

@@ -61,6 +61,13 @@ class LyricsHelper
                 // the underlying :lyrics:simpmusic / :lyrics:paxsenix gradle
                 // modules have all been deleted.
                 UnisonLyricsProvider,
+                // Ported from upstream (2026-08-31 window): Apple Music account
+                // lyrics via the logged-in pool account. The Paxsenix* / Tidal /
+                // Deezer provider entries from the same upstream hunk are NOT
+                // ported — this fork removed the entire Paxsenix layer on
+                // 2026-08-30 (batch-10) and never carried the account Tidal /
+                // Deezer lyrics providers.
+                AppleMusicAccountLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
@@ -434,6 +441,10 @@ class LyricsHelper
                     PreferredLyricsProvider.YOULY_PLUS to YouLyPlusLyricsProvider,
                     // SIMPMUSIC and BINI_LYRICS entries removed along with the
                     // providers themselves — see baseProviders list above.
+                    // APPLE_MUSIC (account lyrics) ported from upstream
+                    // 2026-08-31 window; Paxsenix* / TIDAL / DEEZER not ported
+                    // (see baseProviders note).
+                    PreferredLyricsProvider.APPLE_MUSIC to AppleMusicAccountLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
                     PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )

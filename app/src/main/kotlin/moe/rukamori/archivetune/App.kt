@@ -112,6 +112,11 @@ class App :
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
+
+    // Latest Apple Music account tokens (see collector wired to AppleMusicProvider below).
+    @Volatile private var appleMusicDevTokenCache: String = ""
+    @Volatile private var appleMusicMediaUserTokenCache: String = ""
+
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
     private fun currentProcessName(): String? =
@@ -189,6 +194,36 @@ class App :
         // causes contention during parallel lyrics prefetch).
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
+        }
+
+        // Feed the user's own Apple Music account tokens (pasted on the Apple
+        // Music settings page) into the canvas module's AMP requests: their
+        // dev JWT replaces the scraped web token, their media-user-token rides
+        // along as the Media-User-Token header. DataStore lives in the app
+        // layer; a collector keeps cached values current and the providers
+        // hand back the latest without ever blocking the caller's thread.
+        applicationScope.launch(Dispatchers.IO) {
+            var lastMedia = ""
+            dataStore.data.collect { prefs ->
+                val newDev = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
+                val newMedia = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+                if (newMedia != lastMedia) {
+                    lastMedia = newMedia
+                    AppleMusicProvider.clearStorefrontCache()
+                }
+                appleMusicDevTokenCache = newDev
+                appleMusicMediaUserTokenCache = newMedia
+            }
+        }
+        AppleMusicProvider.devTokenProvider = {
+            appleMusicDevTokenCache.ifBlank { null }
+        }
+        AppleMusicProvider.mediaUserTokenProvider = {
+            appleMusicMediaUserTokenCache.ifBlank { null }
+                // Fall back to shared Apple Music accounts contributed to the Source Pool when
+                // the user hasn't signed in personally — enables lyrics/canvas/playback for
+                // pool users without their own login.
+                ?: PoolAccountManager.appleMusicAccounts().firstOrNull()?.mediaUserToken
         }
 
         // Spotify Canvas. The canvas module deliberately has no dependency on the

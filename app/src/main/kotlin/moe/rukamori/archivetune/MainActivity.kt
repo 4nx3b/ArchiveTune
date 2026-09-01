@@ -219,6 +219,7 @@ import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
 import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
+import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
@@ -339,6 +340,7 @@ import moe.rukamori.archivetune.ui.theme.ArchiveTuneTheme
 import moe.rukamori.archivetune.ui.theme.ColorSaver
 import moe.rukamori.archivetune.ui.theme.DefaultThemeColor
 import moe.rukamori.archivetune.ui.theme.extractThemeColor
+import moe.rukamori.archivetune.ui.theme.extractWallpaperThemeColor
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.resetHeightOffset
@@ -591,7 +593,7 @@ class MainActivity : ComponentActivity() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val pipEnabled = dataStore.get(EnablePipModeKey, false)
         if (!pipEnabled) return false
-        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true)
+        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, false)
         if (!videoPlaybackEnabled) return false
         val connection = playerConnection ?: return false
         val metadata = connection.mediaMetadata.value ?: return false
@@ -1013,7 +1015,11 @@ class MainActivity : ComponentActivity() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             themeColor = DefaultThemeColor
                         } else {
-                            themeColor = customThemeColor
+                            val wallpaperColor = extractWallpaperThemeColor(this@MainActivity)
+                            themeColor = wallpaperColor ?: customThemeColor
+                            dataStore.edit { prefs ->
+                                prefs[WallpaperExtractionFailedKey] = wallpaperColor == null
+                            }
                         }
                     }
                 }
@@ -2862,31 +2868,41 @@ modifier =
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    .offset {
-                                                        if (bottomNavigationBarHeight == 0.dp) {
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = navSlideDistance.roundToPx(),
-                                                            )
-                                                        } else {
-                                                            val slideOffset =
-                                                                navSlideDistance *
-                                                                    playerBottomSheetState.progress.coerceIn(
-                                                                        0f,
-                                                                        1f,
-                                                                    )
-                                                            val hideOffset =
-                                                                navSlideDistance *
-                                                                    (
-                                                                        1 -
-                                                                            bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
-                                                                            navVisibleHeight
-                                                                    )
-                                                            IntOffset(
-                                                                x = 0,
-                                                                y = (slideOffset + hideOffset).roundToPx(),
-                                                            )
-                                                        }
+                                                    // Liquid-glass nav lag fix (ported from 4nx3b
+                                                    // batch-8, 2026-08-29): `Modifier.offset` runs in
+                                                    // the LAYOUT phase, so every spring frame (nav
+                                                    // bar height animating when the mini player docks)
+                                                    // and every sheet-drag frame (player progress)
+                                                    // re-laid-out the entire FloatingNavigationToolbar
+                                                    // subtree — cascading to every onGloballyPositioned
+                                                    // callback, re-positioning the kyant drawBackdrop
+                                                    // shaders and invalidating the app-wide
+                                                    // layerBackdrop recording on the NavHost root.
+                                                    // graphicsLayer runs in the DRAW phase only:
+                                                    // layout coordinates stay stable, callbacks don't
+                                                    // fire, the shader chain doesn't recompute per
+                                                    // frame. Visual identical; liquid glass surfaces
+                                                    // are NOT sacrificed.
+                                                    .graphicsLayer {
+                                                        translationY =
+                                                            if (bottomNavigationBarHeight == 0.dp) {
+                                                                navSlideDistance.toPx()
+                                                            } else {
+                                                                val slideOffset =
+                                                                    navSlideDistance.toPx() *
+                                                                        playerBottomSheetState.progress.coerceIn(
+                                                                            0f,
+                                                                            1f,
+                                                                        )
+                                                                val hideOffset =
+                                                                    navSlideDistance.toPx() *
+                                                                        (
+                                                                            1 -
+                                                                                bottomNavigationBarHeight.coerceAtMost(navVisibleHeight) /
+                                                                                    navVisibleHeight
+                                                                        )
+                                                                slideOffset + hideOffset
+                                                            }
                                                     },
                                         ) {
                                             FloatingNavigationToolbar(
@@ -3131,7 +3147,7 @@ modifier =
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen) {
+                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
                             playerBottomSheetState.collapseSoft()
                         }
 
