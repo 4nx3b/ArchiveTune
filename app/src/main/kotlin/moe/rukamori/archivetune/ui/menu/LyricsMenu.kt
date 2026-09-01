@@ -155,6 +155,7 @@ import moe.rukamori.archivetune.viewmodels.LyricsSearchScreenState
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private enum class LyricsTranslationSource {
     AI_TRANSLATION,
@@ -1077,6 +1078,7 @@ private fun LyricsSearchResultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         BoxWithConstraints(
             modifier =
                 Modifier

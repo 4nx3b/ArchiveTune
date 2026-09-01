@@ -99,6 +99,7 @@ import moe.rukamori.archivetune.viewmodels.AboutViewModel
 import moe.rukamori.archivetune.viewmodels.TeamMember
 import moe.rukamori.archivetune.viewmodels.TeamMemberCollection
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -345,6 +346,7 @@ private fun AboutFullScreenDialog(
                 decorFitsSystemWindows = false,
             ),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.surface,

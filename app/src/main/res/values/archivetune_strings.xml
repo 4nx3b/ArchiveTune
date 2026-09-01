@@ -341,16 +341,12 @@
     <string name="liquid_glass_nav_bar_disabled">Turn on Liquid Glass effects in Appearance first</string>
     <string name="liquid_glass_mini_player_unsupported">Liquid Glass mini player requires Android 12 or above</string>
     <string name="player_design_style">Player design style</string>
-    <string name="player_design_v1">Classic</string>
-    <string name="player_design_v2">Modern</string>
-    <string name="player_design_v3">Minimal</string>
     <string name="player_design_v4">Cinematic</string>
     <string name="player_design_v5">Little</string>
-    <string name="player_design_v6">Expressive</string>
     <string name="player_design_v7">Immersive</string>
-    <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="player_design_v10">Editorial</string>
+    <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>

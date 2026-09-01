@@ -147,6 +147,7 @@ import kotlin.math.log2
 import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @Composable
 fun PlayerMenu(
@@ -1529,6 +1530,7 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(
                 onClick = onDismiss,
                 shapes = ButtonDefaults.shapes(),

@@ -81,6 +81,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * A single downloadable song surfaced in the export picker. The [songId] is the
@@ -767,6 +768,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false

@@ -155,12 +155,8 @@
     <string name="follow_theme">시스템 설정 따름</string>
     <string name="gradient">그라데이션</string>
     <string name="player_design_style">플레이어 디자인 스타일</string>
-    <string name="player_design_v1">클래식</string>
-    <string name="player_design_v2">모던</string>
-    <string name="player_design_v3">미니멀</string>
     <string name="player_design_v4">시네마틱</string>
     <string name="player_design_v5">리틀</string>
-    <string name="player_design_v6">익스프레시브</string>
     <string name="player_design_v7">이머시브</string>
     <string name="player_background_blur">블러 처리</string>
     <string name="coloring">색상 적용</string>
@@ -438,7 +434,6 @@
     <string name="aod_customize_title">AOD 맞춤 설정</string>
     <string name="storage_folder_selected_restart">저장 폴더가 선택되었습니다. 적용을 위해 3초 후 앱이 자동으로 재시작됩니다.</string>
     <string name="aod_customize_vertical_spacing">세로 간격</string>
-    <string name="player_design_v8">이머시브 익스텐디드</string>
     <string name="spotify_playlists">Spotify 재생목록</string>
     <string name="aod_shape_sunny">태양</string>
     <string name="import_m3u_format">M3U 오디오 재생목록</string>

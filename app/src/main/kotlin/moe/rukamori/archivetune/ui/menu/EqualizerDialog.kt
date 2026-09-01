@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.viewmodels.EqualizerToneUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerUiModel
 import moe.rukamori.archivetune.viewmodels.EqualizerViewModel
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @Composable
 fun EqualizerDialog(
@@ -144,6 +145,7 @@ fun EqualizerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         EqualizerScreen(
             state = state,
             snackbarHostState = snackbarHostState,
@@ -854,6 +856,7 @@ private fun SaveProfileDialog(
             )
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
@@ -878,7 +881,9 @@ private fun ManageProfilesDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
+        confirmButton = {
+ KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+ TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
     )
 }
 

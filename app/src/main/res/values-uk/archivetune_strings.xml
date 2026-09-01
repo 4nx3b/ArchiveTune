@@ -83,12 +83,8 @@
     <string name="follow_theme">Дотримуватися теми</string>
     <string name="gradient">Градієнт</string>
     <string name="player_design_style">Стиль дизайну програвача</string>
-    <string name="player_design_v1">Класичний</string>
-    <string name="player_design_v2">Сучасний</string>
-    <string name="player_design_v3">Мінімалістичний</string>
     <string name="player_design_v4">Кінематографічний</string>
     <string name="player_design_v5">Маленький</string>
-    <string name="player_design_v6">Експресивний</string>
     <string name="player_background_blur">Розмиття</string>
     <string name="coloring">Розфарбовування</string>
     <string name="blur_gradient">Розмиття градієнту</string>
