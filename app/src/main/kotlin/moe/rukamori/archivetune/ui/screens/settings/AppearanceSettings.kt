@@ -339,6 +339,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
             else -> true
         }
+    // The lyrics background only feeds the standalone lyrics page's backdrop.
+    // The BitChord and Apple Music styles own their lyrics surfaces outright —
+    // Bitchord's panel sits on its mesh-gradient backdrop and Apple Music's
+    // inline pane on its artwork-tinted gradient — so the setting does nothing
+    // for them and reads as broken. Disabled (with a note) rather than hidden so
+    // the row keeps its search anchor and its position in the list (user request
+    // 2026-09-01).
+    val isLyricsBackgroundStyleAvailable =
+        playerDesignStyle != PlayerDesignStyle.BITCHORD &&
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
     val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
@@ -836,11 +846,19 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         ListPreference(
                             modifier = positions.modifierFor("lyrics_background_style"),
                             title = { Text(stringResource(R.string.lyrics_background_style)) },
+                            description =
+                                if (isLyricsBackgroundStyleAvailable) {
+                                    null
+                                } else {
+                                    stringResource(R.string.lyrics_background_style_own_player_desc)
+                                },
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
                             selectedValue = lyricsBackground,
                             values = availableLyricsBackgroundStyles,
                             onValueSelected = onLyricsBackgroundChange,
-                            isEnabled = playerBackground != PlayerBackgroundStyle.CUSTOM,
+                            isEnabled =
+                                playerBackground != PlayerBackgroundStyle.CUSTOM &&
+                                    isLyricsBackgroundStyleAvailable,
                             valueText = {
                                 when (it) {
                                     LyricsBackgroundStyle.DEFAULT -> stringResource(R.string.lyrics_background_default)
