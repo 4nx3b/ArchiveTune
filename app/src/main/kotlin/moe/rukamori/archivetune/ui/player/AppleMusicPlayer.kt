@@ -808,6 +808,17 @@ fun AppleMusicPlayerContent(
     var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
 
+    // Root-space origin of the full-screen tap-anywhere areas (the landscape Row /
+    // portrait Column that carry the pokePlayerControlsVisibility pointerInput).
+    // Needed so a DOWN event's local position can be mapped into root space and
+    // tested against `moreIconBounds` (also root space) — see the pointerInput
+    // handlers: taps that land on the lyrics overflow (more) chip must NOT
+    // reveal the auto-hidden controls (user report 2026-09-01: "When I click on
+    // the overflow menu icon in lyrics screen in apple music style, the bottom
+    // controls show up, it shouldn't"). That tap opens the anchored popup and the
+    // controls are supposed to stay hidden behind it.
+    var tapAreaRootOrigin by remember { mutableStateOf(Offset.Zero) }
+
     // Local backdrop that captures the player content behind the popup. The
     // popup samples this backdrop with a 20dp blur to produce a real
     // frosted-glass effect (see `AnchoredLyricsOverflowMenu`). The backdrop
@@ -1239,6 +1250,10 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        // Root-space origin of this tap area, kept live: used by the
+                        // pointerInput below to map a DOWN's local position into root
+                        // space for the more-chip hit test.
+                        .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
                         // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
                         // lyrics behaviour). A parent-level handler observes every tap in the
                         // subtree regardless of which child consumes the gesture, so the whole
@@ -1246,8 +1261,13 @@ fun AppleMusicPlayerContent(
                         .pointerInput(lyricsOpen, queueOpen) {
                             if (!lyricsOpen && !queueOpen) return@pointerInput
                             awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                pokePlayerControlsVisibility()
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                // Suppress the reveal when the tap lands on the lyrics
+                                // overflow (more) chip — that tap opens the anchored
+                                // popup and the controls must stay hidden.
+                                if (!moreIconBounds.contains(down.position + tapAreaRootOrigin)) {
+                                    pokePlayerControlsVisibility()
+                                }
                             }
                         },
             ) {
@@ -1338,6 +1358,10 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        // Root-space origin of this tap area, kept live: used by the
+                        // pointerInput below to map a DOWN's local position into root
+                        // space for the more-chip hit test.
+                        .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
                         // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
                         // lyrics behaviour). A parent-level handler observes every tap in the
                         // subtree regardless of which child consumes the gesture, so the whole
@@ -1347,8 +1371,13 @@ fun AppleMusicPlayerContent(
                         .pointerInput(lyricsOpen, queueOpen) {
                             if (!lyricsOpen && !queueOpen) return@pointerInput
                             awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                pokePlayerControlsVisibility()
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                // Suppress the reveal when the tap lands on the lyrics
+                                // overflow (more) chip — that tap opens the anchored
+                                // popup and the controls must stay hidden.
+                                if (!moreIconBounds.contains(down.position + tapAreaRootOrigin)) {
+                                    pokePlayerControlsVisibility()
+                                }
                             }
                         },
             ) {
