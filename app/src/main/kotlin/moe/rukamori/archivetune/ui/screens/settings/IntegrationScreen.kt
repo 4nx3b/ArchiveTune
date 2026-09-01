@@ -176,15 +176,20 @@ fun IntegrationScreen(
             }
 
             // "Music Sources" groups every external streaming source together:
-            // Tidal, Qobuz, Deezer, and Telegram. Tidal/Qobuz/Deezer are
-            // gated behind the "Manual source sign-in" experimental toggle
-            // because their instance/token flows aren't useful for most users
-            // (the app auto-uses the community source pool by default).
-            // Telegram is NOT gated — its TDLib client is self-contained and
-            // doesn't share the manual-token flow.
+            // Apple Music, Tidal, Qobuz, Deezer, and Telegram. Apple Music used
+            // to sit in its own group above (2026-09-01 moved it under Music
+            // Sources per user request — it feeds the player exactly like the
+            // rest of them). Tidal/Qobuz/Deezer are gated behind the
+            // "Manual source sign-in" experimental toggle because their
+            // instance/token flows aren't useful for most users (the app
+            // auto-uses the community source pool by default). Apple Music and
+            // Telegram are NOT gated — their flows are self-contained.
             PreferenceGroup(
-                modifier = positions.modifierFor("apple_music"),
-                title = stringResource(R.string.applemusic_settings),
+                modifier =
+                    positions
+                        .modifierFor("apple_music")
+                        .then(positions.modifierFor("music_sources")),
+                title = stringResource(R.string.music_sources),
             ) {
                 item {
                     PreferenceEntry(
@@ -195,12 +200,7 @@ fun IntegrationScreen(
                         onClick = { navController.navigate("settings/applemusic") },
                     )
                 }
-            }
 
-            PreferenceGroup(
-                modifier = positions.modifierFor("music_sources"),
-                title = stringResource(R.string.music_sources),
-            ) {
                 item(visible = showTidalRow) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("tidal"),

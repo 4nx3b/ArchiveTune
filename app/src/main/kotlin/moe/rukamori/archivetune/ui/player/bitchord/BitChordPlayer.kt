@@ -121,6 +121,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -170,6 +171,7 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.LocalAnimationsDisabled
@@ -499,6 +501,16 @@ fun BitChordPlayerContent(
     var lyricsOpen by remember { mutableStateOf(false) }
     LaunchedEffect(mediaMetadata.id) { lyricsOpen = false }
 
+    // Sync offset for the lyrics, held per track exactly as the standalone lyrics
+    // screen holds it (Player.kt). The lyrics options bottom sheet (LyricsMenu)
+    // edits it, and the panel + the current-lyric strip both read it so a nudge
+    // moves the highlight the way it does everywhere else in the app.
+    var lyricsSyncOffset by rememberSaveable(mediaMetadata.id) {
+        mutableIntStateOf(0)
+    }
+    // The position the lyrics follow: the player's own, nudged by the offset.
+    val lyricsPosition = (position + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
+
     // Back out of the lyrics panel to the player, and only from the player
     // itself out to the mini player. The sheet the player is drawn in keeps
     // its own back handling while no panel is open (predictive-back shrink).
@@ -718,7 +730,19 @@ fun BitChordPlayerContent(
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .height(heroHeight)
-                        .graphicsLayer { alpha = heroVisible }
+                        .graphicsLayer {
+                            alpha = heroVisible
+                            // The DstIn mask below erases part of what this layer
+                            // drew; without an offscreen buffer of its own it
+                            // instead erases everything already on screen in its
+                            // rect — the mesh backdrop included — which is what
+                            // drew the black band and the hard cut at the banner's
+                            // bottom edge (user report 2026-09-01: the artwork
+                            // "doesn't blend with the bottom controls"). With
+                            // Offscreen, the fade only fades the artwork, and the
+                            // mesh gradient stays behind it exactly as in BitChord.
+                            compositingStrategy = CompositingStrategy.Offscreen
+                        }
                         .drawWithContent {
                             drawContent()
                             drawRect(
@@ -1201,7 +1225,7 @@ fun BitChordPlayerContent(
                 if (lyricsOpen) {
                     LyricsPanel(
                         lines = lyrics.orEmpty(),
-                        positionMs = position,
+                        positionMs = lyricsPosition,
                         isPlaying = isPlaying,
                         onSeekToLine = { player.seekTo(it) },
                         modifier = Modifier
@@ -1279,7 +1303,7 @@ fun BitChordPlayerContent(
                     CurrentLyricLine(
                         lines = lyrics,
                         trackKey = mediaMetadata.id,
-                        positionMs = position,
+                        positionMs = lyricsPosition,
                         isPlaying = isPlaying,
                         durationMs = duration,
                         // Still visible over the queue, so still a valid way
@@ -1358,6 +1382,16 @@ fun BitChordPlayerContent(
                 // The credit, and beside it the way out. Tapping the sleeve
                 // above also closes the panel, but that is an invisible target
                 // you have to be told about; the button says so.
+                //
+                // The ellipsis button beside the close button is the way into
+                // the lyrics options bottom sheet — the same slide-up LyricsMenu
+                // (edit / refetch / translate / AI romanise / search / sync
+                // offset) the standalone lyrics page opens for the other player
+                // styles, so the Bitchord style's lyrics page has it too (user
+                // request 2026-09-01). The menu writes straight into the lyrics
+                // table and the sync-offset state, both of which this panel
+                // already follows, so refetching or editing updates the panel
+                // live.
                 Row(
                     modifier = Modifier.height(IntrinsicSize.Min),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1376,6 +1410,43 @@ fun BitChordPlayerContent(
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White.copy(alpha = 0.7f),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            // Height from the row, width from the height: a
+                            // circle, not an oval, whatever the pill measures.
+                            .fillMaxHeight()
+                            .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.10f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                haptics.play(Haptic.Tap)
+                                menuState.show {
+                                    LyricsMenu(
+                                        lyricsProvider = { lyricsEntity },
+                                        mediaMetadataProvider = { mediaMetadata },
+                                        lyricsSyncOffset = lyricsSyncOffset,
+                                        onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                                        showPlayerControlsState = null,
+                                        onShowPlayerControlsChange = null,
+                                        onAutoHidePlayerControlsChange = {},
+                                        onDismiss = menuState::dismiss,
+                                        showControlsToggles = false,
+                                    )
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreHoriz,
+                            contentDescription = "Lyrics options",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                     Spacer(Modifier.width(8.dp))
