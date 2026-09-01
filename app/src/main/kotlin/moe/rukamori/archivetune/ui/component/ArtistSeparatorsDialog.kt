@@ -86,6 +86,7 @@ fun ArtistSeparatorsDialog(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 Button(
                     onClick = {
                         if (newSymbolInput.isNotEmpty() && !separatorsList.contains(newSymbolInput)) {
@@ -115,6 +116,7 @@ fun ArtistSeparatorsDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         Surface(
             modifier =
                 Modifier

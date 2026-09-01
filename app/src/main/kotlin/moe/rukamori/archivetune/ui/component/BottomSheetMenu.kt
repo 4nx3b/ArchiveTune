@@ -96,6 +96,13 @@ fun BottomSheetMenu(
             },
             modifier = modifier.fillMaxHeight(),
         ) {
+            // Status bar must NEVER be visible — even while this bottom popup
+            // is showing (2026-09-01). The sheet creates its own OS window; when
+            // it takes focus, the system re-shows the status bar that the app
+            // window had hidden, and the inset change shifts the app behind it.
+            // Mirroring the hidden state onto the sheet's own window fixes both.
+            KeepStatusBarHiddenInDialog()
+
             Column(
                 modifier =
                     Modifier

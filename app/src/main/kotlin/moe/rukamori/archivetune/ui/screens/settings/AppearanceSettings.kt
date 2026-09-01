@@ -331,17 +331,15 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val isPlayerStyleCustomizationEnabled =
         when (playerDesignStyle) {
             PlayerDesignStyle.V7,
-            PlayerDesignStyle.V8,
             PlayerDesignStyle.V9,
             PlayerDesignStyle.APPLE_MUSIC,
             PlayerDesignStyle.V10,
+            PlayerDesignStyle.BITCHORD,
             -> false
 
             else -> true
         }
-    val isVolumeBarSupported =
-        playerDesignStyle == PlayerDesignStyle.V7 ||
-            playerDesignStyle == PlayerDesignStyle.V8
+    val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
         remember(darkMode, isSystemInDarkTheme) {
@@ -759,19 +757,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             onValueSelected = onPlayerDesignStyleChange,
                             valueText = {
                                 when (it) {
-                                    PlayerDesignStyle.V1 -> stringResource(R.string.player_design_v1)
-                                    PlayerDesignStyle.V2 -> stringResource(R.string.player_design_v2)
-                                    PlayerDesignStyle.V3 -> stringResource(R.string.player_design_v3)
                                     PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
                                     PlayerDesignStyle.V5 -> stringResource(R.string.player_design_v5)
-                                    PlayerDesignStyle.V6 -> stringResource(R.string.player_design_v6)
                                     PlayerDesignStyle.V7 -> stringResource(R.string.player_design_v7)
-                                    PlayerDesignStyle.V8 -> stringResource(R.string.player_design_v8)
                                     PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
                                     PlayerDesignStyle.APPLE_MUSIC ->
                                         stringResource(R.string.player_design_apple_music)
                                     PlayerDesignStyle.V10 ->
                                         stringResource(R.string.player_design_v10)
+                                    PlayerDesignStyle.BITCHORD ->
+                                        stringResource(R.string.player_design_bitchord)
                                 }
                             },
                         )

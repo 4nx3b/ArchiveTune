@@ -76,6 +76,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import org.drinkless.tdlib.TdApi
 import java.util.UUID
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 const val TELEGRAM_BOTS_ROUTE = "telegram/bots"
 const val TELEGRAM_BOT_CHAT_ROUTE_BASE = "telegram/bot"
@@ -162,6 +163,7 @@ fun TelegramBotsScreen(navController: NavController) {
                 Text(stringResource(R.string.telegram_bots_remove_confirm, removing.username))
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(onClick = {
                     persistBots(botsState.filter { it.id != removing.id })
                     pendingRemove = null

@@ -236,6 +236,7 @@ import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -244,6 +245,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private const val SeekbarSettleToleranceMs = 1_500L
 private const val V7BackdropMinArtworkSizePx = 1_024
@@ -414,9 +416,9 @@ fun BottomSheetPlayer(
         defaultValue = PlayerBackgroundStyle.DEFAULT,
     )
     val playerUsesFixedBackground =
-        playerDesignStyle == PlayerDesignStyle.V8 ||
-            playerDesignStyle == PlayerDesignStyle.V9 ||
-            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC
+        playerDesignStyle == PlayerDesignStyle.V9 ||
+            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+            playerDesignStyle == PlayerDesignStyle.BITCHORD
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -789,7 +791,7 @@ fun BottomSheetPlayer(
     val TextBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicTextColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle == PlayerDesignStyle.V7) {
             Color.White
         } else {
             when (playerBackground) {
@@ -807,7 +809,7 @@ fun BottomSheetPlayer(
     val icBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicBgColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle == PlayerDesignStyle.V7) {
             Color.Black
         } else {
             when (playerBackground) {
@@ -835,7 +837,7 @@ fun BottomSheetPlayer(
                 )
             }
         }.let { (tb, ib) ->
-            if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            if (playerDesignStyle == PlayerDesignStyle.V7) {
                 Pair(Color.White, Color.Black)
             } else if (playerDesignStyle == PlayerDesignStyle.V9) {
                 Pair(dynamicAccentColor, dynamicIconButtonColor)
@@ -893,6 +895,7 @@ fun BottomSheetPlayer(
             },
             title = { Text(stringResource(R.string.sleep_timer)) },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showSleepTimerDialog = false
@@ -1005,7 +1008,11 @@ fun BottomSheetPlayer(
     }
 
     val dynamicQueuePeekHeight =
-        if (playerDesignStyle == PlayerDesignStyle.V5 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+        if (
+            playerDesignStyle == PlayerDesignStyle.V5 ||
+            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+            playerDesignStyle == PlayerDesignStyle.BITCHORD
+        ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
             88.dp +
@@ -1276,7 +1283,7 @@ fun BottomSheetPlayer(
                         0f
                     }
                 dynamicBgColor.copy(alpha = 1f - fadeProgress)
-            } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            } else if (playerDesignStyle == PlayerDesignStyle.V7) {
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
@@ -1639,9 +1646,9 @@ fun BottomSheetPlayer(
             !aodModeEnabled &&
             playerDesignStyle != PlayerDesignStyle.V5 &&
             playerDesignStyle != PlayerDesignStyle.V7 &&
-            playerDesignStyle != PlayerDesignStyle.V8 &&
             playerDesignStyle != PlayerDesignStyle.V9 &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+            playerDesignStyle != PlayerDesignStyle.BITCHORD
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -1658,7 +1665,35 @@ fun BottomSheetPlayer(
 
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
-                if (playerDesignStyle == PlayerDesignStyle.V5) {
+                if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
+                    // The Bitchord style: a fully self-contained port of
+                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
+                    // hairline scrubber, inline queue + lyrics). It renders the
+                    // same portrait-first layout in either orientation - its
+                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
+                    // degrades gracefully on wide screens instead of stretching.
+                    enrichedMetadata?.let { metadata ->
+                        BitChordPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
                     val littleTextColor = MaterialTheme.colorScheme.onPrimaryContainer
                     val displayPositionMs = sliderPosition ?: position
@@ -1837,78 +1872,7 @@ fun BottomSheetPlayer(
                             Spacer(Modifier.height(16.dp))
                         }
                     }
-                } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        val v8SwapState =
-                            rememberThumbnailSwapState(
-                                videoId = mediaMetadata?.id,
-                                ytmUrl = mediaMetadata?.thumbnailUrl,
-                                lowDataMode = lowDataModeActive,
-                                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-                            )
-                        val v8VideoMetadata = mediaMetadata
-                        val v8VideoShowing =
-                            videoState != null &&
-                                v8VideoMetadata?.isMusicVideo == true &&
-                                !v8VideoMetadata.id.isLocalMediaId() &&
-                                !aodModeEnabled &&
-                                !isLyricsScreenVisible &&
-                                !videoPlaybackFailed
-                        if (v8VideoShowing) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black),
-                            )
-                        } else {
-                            V8PlayerBackdrop(
-                                thumbnailUrl = v8SwapState.displayUrl,
-                                backdropBlurAmount = backdropBlurAmount,
-                            )
-                        }
-
-                        enrichedMetadata?.let { metadata ->
-                            V8PlayerContent(
-                                mediaMetadata = metadata,
-                                queueTitle = queueTitle,
-                                playbackState = playbackState,
-                                isPlaying = isPlaying,
-                                isLoading = isLoading,
-                                canSkipPrevious = canSkipPrevious,
-                                canSkipNext = canSkipNext,
-                                currentSongLiked = currentSongLiked,
-                                sliderPosition = sliderPosition,
-                                position = position,
-                                duration = duration,
-                                volume = deviceMusicVolumeController.volumeFraction,
-                                showVolumeBar = showPlayerVolumeBar,
-                                playerConnection = playerConnection,
-                                navController = navController,
-                                state = state,
-                                menuState = menuState,
-                                bottomSheetPageState = bottomSheetPageState,
-                                currentFormat = currentFormat,
-                                canvasPrimaryUrl = artworkCanvas?.animated,
-                                canvasFallbackUrl = artworkCanvas?.videoUrl,
-                                onSliderValueChange = onSliderValueChange,
-                                onSliderValueChangeFinished = onSliderValueChangeFinished,
-                                onVolumeChange = onPlayerVolumeChange,
-                                landscape = true,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .padding(bottom = queueSheetState.collapsedBound)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
-                                        ).nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            )
-                        }
-                    }
-                } else if (playerDesignStyle == PlayerDesignStyle.V9) {
+} else if (playerDesignStyle == PlayerDesignStyle.V9) {
                     enrichedMetadata?.let { metadata ->
                         V9PlayerContent(
                             mediaMetadata = metadata,
@@ -2082,7 +2046,35 @@ fun BottomSheetPlayer(
             }
 
             else -> {
-                if (playerDesignStyle == PlayerDesignStyle.V5) {
+                if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
+                    // The Bitchord style: a fully self-contained port of
+                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
+                    // hairline scrubber, inline queue + lyrics). It renders the
+                    // same portrait-first layout in either orientation - its
+                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
+                    // degrades gracefully on wide screens instead of stretching.
+                    enrichedMetadata?.let { metadata ->
+                        BitChordPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
                     val littleTextColor = MaterialTheme.colorScheme.onPrimaryContainer
                     val displayPositionMs = sliderPosition ?: position
@@ -2260,77 +2252,7 @@ fun BottomSheetPlayer(
                             Spacer(Modifier.height(24.dp))
                         }
                     }
-                } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        val v8SwapState =
-                            rememberThumbnailSwapState(
-                                videoId = mediaMetadata?.id,
-                                ytmUrl = mediaMetadata?.thumbnailUrl,
-                                lowDataMode = lowDataModeActive,
-                                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-                            )
-                        val v8VideoMetadata = mediaMetadata
-                        val v8VideoShowing =
-                            videoState != null &&
-                                v8VideoMetadata?.isMusicVideo == true &&
-                                !v8VideoMetadata.id.isLocalMediaId() &&
-                                !aodModeEnabled &&
-                                !isLyricsScreenVisible &&
-                                !videoPlaybackFailed
-                        if (v8VideoShowing) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black),
-                            )
-                        } else {
-                            V8PlayerBackdrop(
-                                thumbnailUrl = v8SwapState.displayUrl,
-                                backdropBlurAmount = backdropBlurAmount,
-                            )
-                        }
-
-                        enrichedMetadata?.let { metadata ->
-                            V8PlayerContent(
-                                mediaMetadata = metadata,
-                                queueTitle = queueTitle,
-                                playbackState = playbackState,
-                                isPlaying = isPlaying,
-                                isLoading = isLoading,
-                                canSkipPrevious = canSkipPrevious,
-                                canSkipNext = canSkipNext,
-                                currentSongLiked = currentSongLiked,
-                                sliderPosition = sliderPosition,
-                                position = position,
-                                duration = duration,
-                                volume = deviceMusicVolumeController.volumeFraction,
-                                showVolumeBar = showPlayerVolumeBar,
-                                playerConnection = playerConnection,
-                                navController = navController,
-                                state = state,
-                                menuState = menuState,
-                                bottomSheetPageState = bottomSheetPageState,
-                                currentFormat = currentFormat,
-                                canvasPrimaryUrl = artworkCanvas?.animated,
-                                canvasFallbackUrl = artworkCanvas?.videoUrl,
-                                onSliderValueChange = onSliderValueChange,
-                                onSliderValueChangeFinished = onSliderValueChangeFinished,
-                                onVolumeChange = onPlayerVolumeChange,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .padding(bottom = queueSheetState.collapsedBound)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-                                        ).nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            )
-                        }
-                    }
-                } else if (playerDesignStyle == PlayerDesignStyle.V9) {
+} else if (playerDesignStyle == PlayerDesignStyle.V9) {
                     enrichedMetadata?.let { metadata ->
                         V9PlayerContent(
                             mediaMetadata = metadata,
@@ -2469,6 +2391,15 @@ fun BottomSheetPlayer(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier =
                             Modifier
+                                // Notch fix (2026-09-01): with "Hide status bar" on,
+                                // WindowInsets.statusBars reports 0, so the artwork block
+                                // started at y=0 and collided with the display cutout.
+                                // Floor the top inset with the cached status-bar top
+                                // (LocalStableSystemBarsTopPadding, which also floors
+                                // with displayCutout) — the same pattern V9/V10 use.
+                                .windowInsetsPadding(
+                                    WindowInsets(top = LocalStableSystemBarsTopPadding.current),
+                                )
                                 .windowInsetsPadding(
                                     WindowInsets.systemBars.only(
                                         WindowInsetsSides.Horizontal,
@@ -2870,101 +2801,6 @@ private fun MikoLyricsTransition(
         }
     }
 }
-
-@Composable
-private fun V8PlayerBackdrop(
-    thumbnailUrl: String?,
-    backdropBlurAmount: Int,
-    modifier: Modifier = Modifier,
-) {
-    var currentUrl by remember(thumbnailUrl) {
-        mutableStateOf(
-            thumbnailUrl?.resize(
-                width = V8BackdropArtworkSizePx,
-                height = V8BackdropArtworkSizePx,
-                maxresAllowed = true,
-                ytimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
-            ),
-        )
-    }
-    val backdropRequest = rememberOfflineArtworkImageRequest(currentUrl)
-    val blurRadiusDp = 44.dp * (backdropBlurAmount.toFloat() / 100f)
-
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(Color.Black),
-    ) {
-        if (currentUrl != null) {
-            val backdropHasBlur = backdropBlurAmount > 0
-            if (backdropHasBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                AsyncImage(
-                    model = backdropRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .then(if (blurRadiusDp > 0.dp) Modifier.blur(blurRadiusDp) else Modifier)
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onState = { state ->
-                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
-                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
-                        }
-                    },
-                )
-            } else if (backdropHasBlur) {
-                BackdropBlurApi30(
-                    model = currentUrl,
-                    blurAmount = backdropBlurAmount,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onError = { failedUrl ->
-                        getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
-                    },
-                )
-            } else {
-                AsyncImage(
-                    model = backdropRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onState = { state ->
-                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
-                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
-                        }
-                    },
-                )
-            }
-        }
-
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.52f)),
-        )
-    }
-}
-
 @Composable
 private fun BackdropBlurApi30(
     model: String?,

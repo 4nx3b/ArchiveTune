@@ -1038,17 +1038,24 @@ enum class HomeScreenStyle {
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
 
 enum class PlayerDesignStyle {
-    V1,
-    V2,
-    V3,
+    /**
+     * Cinematic (V4) — the default legacy style. Classic (V1), Modern (V2),
+     * Minimal (V3), Expressive (V6) and Immersive Extended (V8) were removed
+     * (2026-09-01); stored preference values that no longer resolve fall back
+     * to the default via [moe.rukamori.archivetune.extensions.toEnum].
+     *
+     * BITCHORD is a fully self-contained style — its layout, icons, slider,
+     * lyrics panel, queue panel and mesh backdrop live exclusively in
+     * [moe.rukamori.archivetune.ui.player.bitchord] and share no components
+     * with the other styles.
+     */
     V4,
     V5,
-    V6,
     V7,
-    V8,
     V9,
     APPLE_MUSIC,
     V10,
+    BITCHORD,
 }
 
 enum class PlayerBackgroundStyle {

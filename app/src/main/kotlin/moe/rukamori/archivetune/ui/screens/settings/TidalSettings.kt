@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * Process-lived cache of the last instance health-check results so the checked status (and ping)
@@ -297,6 +298,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
             onDismissRequest = { detailInstance = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()

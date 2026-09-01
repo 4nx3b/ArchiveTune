@@ -51,6 +51,7 @@ import moe.rukamori.archivetune.ui.player.CanvasSourceResult
 import moe.rukamori.archivetune.ui.player.fetchAllCanvasSourcesForSong
 import moe.rukamori.archivetune.utils.CanvasSaver
 import moe.rukamori.archivetune.utils.CanvasSaveResult
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * Dialog that lists every available canvas source for a song and lets the
@@ -217,6 +218,7 @@ fun SaveCanvasDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(onClick = onDismiss) {
                 Text(text = stringResource(android.R.string.cancel))
             }

@@ -70,6 +70,7 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /** JWT-ish shape check: three base64url segments. Good enough to catch paste errors. */
 private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
@@ -224,6 +225,7 @@ private fun TokenSheet(
     val canSave = mediaValid && devValid && mediaToken.trim().isNotBlank()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             // Scrollable: two long credential fields push the save row below the sheet fold
             // otherwise, which reads as "the submit button disappeared".

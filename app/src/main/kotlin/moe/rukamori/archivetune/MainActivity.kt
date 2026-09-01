@@ -296,6 +296,7 @@ import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
+import moe.rukamori.archivetune.ui.component.LocalImmersiveStatusBarsHidden
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -368,6 +369,7 @@ import javax.inject.Inject
 import kotlin.math.roundToInt
 
 import kotlin.time.Duration.Companion.days
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @Suppress("DEPRECATION", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
 @AndroidEntryPoint
@@ -395,7 +397,12 @@ class MainActivity : ComponentActivity() {
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
-    private var immersiveStatusBarsHidden = false
+
+    /** Whether the activity window currently keeps the status bar hidden. Exposed as Compose
+     *  state (and via [LocalImmersiveStatusBarsHidden]) so dialog-window popups — Material3
+     *  bottom sheets and Compose Dialogs — can mirror the hidden status bar on their own
+     *  window. Without it, opening a popup re-shows the status bar while it is focused. */
+    private var immersiveStatusBarsHidden by mutableStateOf(false)
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -2051,6 +2058,7 @@ class MainActivity : ComponentActivity() {
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         LocalMiniPlayerVisible provides !playerBottomSheetState.isDismissed,
                         LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
+                        LocalImmersiveStatusBarsHidden provides immersiveStatusBarsHidden,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
@@ -2477,14 +2485,8 @@ modifier =
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
                                                             items = listOf(
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.history,
-                                                                    label = stringResource(R.string.history),
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("history")
-                                                                    },
-                                                                ),
+                                                                // History entry removed — it already lives in the
+                                                                // Library tab, so duplicating it here was redundant.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.newspaper,
                                                                     label = stringResource(R.string.news),
@@ -3167,6 +3169,7 @@ modifier =
                                     onDismissRequest = { sharedSong = null },
                                     properties = DialogProperties(usePlatformDefaultWidth = false),
                                 ) {
+                                    KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                                     Surface(
                                         modifier = Modifier.padding(24.dp),
                                         shape = RoundedCornerShape(16.dp),
@@ -3626,6 +3629,7 @@ modifier =
                 }
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         val uri = pendingBackupRestoreUri ?: return@TextButton

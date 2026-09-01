@@ -233,14 +233,9 @@
     <string name="follow_theme">Ikuti tema</string>
     <string name="gradient">Gradien</string>
     <string name="player_design_style">Gaya desain pemutar</string>
-    <string name="player_design_v1">Klasik</string>
-    <string name="player_design_v2">Modern</string>
-    <string name="player_design_v3">Minimal</string>
     <string name="player_design_v4">Sinematik</string>
     <string name="player_design_v5">Mungil</string>
-    <string name="player_design_v6">Ekspresif</string>
     <string name="player_design_v7">Immersive</string>
-    <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Warnai</string>

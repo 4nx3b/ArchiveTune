@@ -90,9 +90,6 @@
     <string name="lyrics_text_size">Laulusõnade teksti suurus</string>
     <string name="discord">Discord</string>
     <string name="player_design_style">Pleieri kujundus</string>
-    <string name="player_design_v1">Klassikaline</string>
-    <string name="player_design_v2">Moodne</string>
-    <string name="player_design_v3">Napp</string>
     <string name="player_design_v4">Kinolaadne</string>
     <string name="player_background_blur">Hägustamine</string>
     <string name="player_buttons_style">Pleieri nuppude värvid</string>

@@ -64,9 +64,6 @@
     <string name="follow_theme">Suivre le thème</string>
     <string name="gradient">Dégradé</string>
     <string name="player_design_style">Style de conception du lecteur</string>
-    <string name="player_design_v1">Classique</string>
-    <string name="player_design_v2">Moderne</string>
-    <string name="player_design_v3">Élégant</string>
     <string name="player_background_blur">Brouillé</string>
     <string name="coloring">Coloration</string>
     <string name="blur_gradient">Dégradé de flou</string>
@@ -205,7 +202,6 @@
     <string name="audio_crossfade_dialog_title">Durée du fondu enchaîné</string>
     <string name="show_home_category_chips_desc">Afficher les icônes de filtrage par catégorie sur l\'écran d\'accueil</string>
     <string name="show_home_category_chips">Afficher les icônes de catégorie d\'accueil</string>
-    <string name="player_design_v6">Expressif</string>
     <string name="album_not_found">Album introuvable</string>
     <string name="album_not_found_desc">L\'album demandé n\'a pas pu être chargé</string>
     <string name="empty_album">Album vide</string>
@@ -399,7 +395,6 @@
     <string name="aod_customize_title">Personnalisation de l\'AOD</string>
     <string name="storage_folder_selected_restart">Le dossier de stockage a été enregistré. L\'application redémarrera dans 3 secondes.</string>
     <string name="aod_customize_vertical_spacing">Espacement vertical</string>
-    <string name="player_design_v8">Immersion prolongée</string>
     <string name="news_tooltip_body">Vous avez des annonces non lues de la part des développeurs.</string>
     <string name="spotify_playlists">Playlist Spotify</string>
     <string name="aod_shape_sunny">Ensoleillé</string>

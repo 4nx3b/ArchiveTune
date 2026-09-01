@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import timber.log.Timber
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 enum class ActivitySource { ARTIST, ALBUM, SONG, APP }
 
@@ -738,6 +739,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 title = { Text(stringResource(R.string.logout_confirm_title)) },
                 text = { Text(stringResource(R.string.logout_confirm_message)) },
                 confirmButton = {
+                    KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                     TextButton(
                         onClick = {
                             coroutineScope.launch {
@@ -1222,6 +1224,7 @@ fun EditablePreference(
         AlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(onClick = {
                     onValueChange(if (text.isBlank()) "" else text)
                     showDialog = false
