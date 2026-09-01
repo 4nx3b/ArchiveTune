@@ -20,6 +20,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +55,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -62,8 +64,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.State
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
+import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +80,7 @@ import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
@@ -307,17 +313,27 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "title",
             ) { title ->
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    color = colors.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val titleViewport = remember { mutableStateOf(0) }
+                val titleShouldFade =
+                    titleViewport.value > 0 &&
+                        (titleLayout.value?.size?.width ?: 0) > titleViewport.value
+                Box(
                     modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee(),
-                )
+                        (if (titleShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth())
+                            .clipToBounds()
+                            .onSizeChanged { titleViewport.value = it.width },
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        color = colors.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { titleLayout.value = it },
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
 
             AnimatedContent(
@@ -325,17 +341,28 @@ fun RowScope.MiniPlayerInfo(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 label = "artist",
             ) { artists ->
-                Text(
-                    text = artists.joinToString { it.name },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.secondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                val artistText = artists.joinToString { it.name }
+                val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                val artistViewport = remember { mutableStateOf(0) }
+                val artistShouldFade =
+                    artistViewport.value > 0 &&
+                        (artistLayout.value?.size?.width ?: 0) > artistViewport.value
+                Box(
                     modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee(),
-                )
+                        (if (artistShouldFade) Modifier.fillMaxWidth().viewportEdgeFade(PlayerFadeConfig.miniPlayer.fadeWidth) else Modifier.fillMaxWidth())
+                            .clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width },
+                ) {
+                    Text(
+                        text = artistText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { artistLayout.value = it },
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
         }
     }

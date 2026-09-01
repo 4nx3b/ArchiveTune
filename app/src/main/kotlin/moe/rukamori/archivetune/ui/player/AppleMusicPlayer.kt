@@ -116,6 +116,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -2200,40 +2201,54 @@ private fun AppleMusicControlsColumn(
                 modifier = Modifier.weight(1f),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = mediaMetadata.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .basicMarquee()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = titleActions.onTitleClick,
-                                ),
-                    )
-                    Text(
-                        text = mediaMetadata.artists.joinToString { it.name },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.64f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .basicMarquee()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) {
-                                    mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                                },
-                    )
+                    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val titleViewport = remember { mutableStateOf(0) }
+                    val artistViewport = remember { mutableStateOf(0) }
+                    val hasTitleOverflow =
+                        titleViewport.value > 0 &&
+                            (titleLayout.value?.size?.width ?: 0) > titleViewport.value
+                    val hasArtistOverflow =
+                        artistViewport.value > 0 &&
+                            (artistLayout.value?.size?.width ?: 0) > artistViewport.value
+                    androidx.compose.foundation.layout.Box(
+                        modifier = (if (hasTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { titleViewport.value = it.width }.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = titleActions.onTitleClick,
+                        ),
+                    ) {
+                        Text(
+                            text = mediaMetadata.title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { titleLayout.value = it },
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                        )
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        modifier = (if (hasArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width }.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                        },
+                    ) {
+                        Text(
+                            text = mediaMetadata.artists.joinToString { it.name },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.64f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { artistLayout.value = it },
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -2600,7 +2615,25 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             textColor = Color.White,
             modifier = Modifier.weight(1f),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniArtistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniTitleViewport = remember { mutableStateOf(0) }
+            val miniArtistViewport = remember { mutableStateOf(0) }
+            val hasMiniTitleOverflow =
+                miniTitleViewport.value > 0 &&
+                    (miniTitleLayout.value?.size?.width ?: 0) > miniTitleViewport.value
+            val hasMiniArtistOverflow =
+                miniArtistViewport.value > 0 &&
+                    (miniArtistLayout.value?.size?.width ?: 0) > miniArtistViewport.value
+            androidx.compose.foundation.layout.Box(
+                modifier = (if (hasMiniTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                    .onSizeChanged { miniTitleViewport.value = it.width }.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = titleActions.onTitleClick,
+                ),
+            ) {
                 Text(
                     text = mediaMetadata.title,
                     style = MaterialTheme.typography.titleMedium,
@@ -2608,33 +2641,29 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = titleActions.onTitleClick,
-                            ),
+                    onTextLayout = { miniTitleLayout.value = it },
+                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                 )
-                Text(
-                    text = mediaMetadata.artists.joinToString { it.name },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                            },
-                )
+            }
+                androidx.compose.foundation.layout.Box(
+                    modifier = (if (hasMiniArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                        .onSizeChanged { miniArtistViewport.value = it.width }.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                    },
+                ) {
+                    Text(
+                        text = mediaMetadata.artists.joinToString { it.name },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { miniArtistLayout.value = it },
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
         }
         AppleMusicChip(

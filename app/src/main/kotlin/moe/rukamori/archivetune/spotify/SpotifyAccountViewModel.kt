@@ -46,22 +46,14 @@ class SpotifyAccountViewModel
                                 isLoading = false,
                             )
                         }
-                        // Per user report (2026-08-29): "Opening Spotify Playlists
-                        // takes time. The loading indicator spins for 4-5 seconds or
-                        // even more and then loads it. Fix this." Previously this
-                        // auto-called `reloadPlaylists()` whenever the Integrations
-                        // screen opened (which instantiates this VM). Because
-                        // `SpotifyLibraryRepository` is @Singleton, that auto-refresh
-                        // flipped `_isRefreshing = true` app-wide and the Spotify
-                        // Playlists Library page (which observes the same flow) showed
-                        // the spinner for the entire 4-5s fetch duration. The
-                        // parallelization in `fetchAllPlaylists` cuts the fetch time
-                        // itself, but the auto-refresh on Integrations screen open
-                        // wasn't needed in the first place — the user can pull-to-
-                        // refresh from the Spotify Playlists Library page or tap the
-                        // refresh button there. Cached playlists are restored silently
-                        // by `SpotifyLibraryViewModel.init` → `restoreCachedPlaylists`
-                        // so the Library page renders instantly on cold launch.
+                        // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): do NOT
+                        // auto-reloadPlaylists() here. This VM is instantiated whenever the
+                        // Integrations screen opens, and the repository is a @Singleton — so the
+                        // auto-refresh flipped `_isRefreshing = true` app-wide and the Spotify
+                        // Playlists Library page (observing the same flow) showed its spinner
+                        // for the entire multi-second fetch. The user can pull-to-refresh or tap
+                        // the refresh button on that page; the cached playlist list still renders
+                        // instantly on cold launch.
                     }.onFailure { error ->
                         if (error is CancellationException) throw error
                         reportException(error)

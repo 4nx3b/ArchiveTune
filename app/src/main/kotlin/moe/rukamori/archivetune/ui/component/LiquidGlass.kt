@@ -27,10 +27,7 @@ import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -165,15 +162,14 @@ fun Modifier.liquidGlass(
     baseColor: Color = Color.Unspecified,
 ): Modifier {
     val isDark = isSystemInDarkTheme()
-    // Memoize the entire drawBackdrop modifier chain so it isn't rebuilt on
-    // every recomposition. The chain depends only on (backdrop, shape,
-    // interactive, baseColor, isDark) — all of which are stable across
-    // scroll-driven recompositions of the host screen. Without this memo,
-    // every recomposition rebuilt the kyant effect stack and re-installed
-    // the RuntimeShader on the GraphicsLayer, which was the dominant cause
-    // of the "lag when switching pages" symptom (the new page's first few
-    // frames all paid that setup cost while the user was already trying to
-    // scroll).
+    // Liquid-glass perf fix (ported from 4nx3b, 2026-08-28): memoize the entire
+    // drawBackdrop modifier chain so it isn't rebuilt on every recomposition. The
+    // chain depends only on (backdrop, shape, interactive, baseColor, isDark) — all
+    // stable across scroll-driven recompositions of the host screen. Without this
+    // memo, every recomposition rebuilt the kyant effect stack and re-installed the
+    // RuntimeShader on the GraphicsLayer, which was the dominant cause of the "lag
+    // when switching pages" symptom (the new page's first frames all paid that GPU
+    // setup cost while the user was already trying to scroll).
     return remember(backdrop, shape, interactive, baseColor, isDark) {
         this.drawBackdrop(
             backdrop = backdrop,
