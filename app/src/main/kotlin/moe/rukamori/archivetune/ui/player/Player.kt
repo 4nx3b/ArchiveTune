@@ -1704,6 +1704,7 @@ fun BottomSheetPlayer(
                             bottomSheetPageState = bottomSheetPageState,
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2120,6 +2121,7 @@ fun BottomSheetPlayer(
                             bottomSheetPageState = bottomSheetPageState,
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
