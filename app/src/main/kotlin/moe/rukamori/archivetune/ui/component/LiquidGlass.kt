@@ -13,7 +13,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -24,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -161,7 +162,15 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
 ): Modifier {
-    val isDark = isSystemInDarkTheme()
+    // Theme-aware dark/light surface overlay (part of the 2026-09-03 light-mode
+    // black-pills fix). This used to read isSystemInDarkTheme(), which follows
+    // the SYSTEM dark mode — but the app carries its own light/dark preference
+    // (AppearanceSettings), so "light mode turned on in the app" with a dark
+    // system produced a BLACK 27% tint over an otherwise correctly-lit glass
+    // surface. Reading the actual MaterialTheme surface luminance follows the
+    // APP's palette in every combination (app-light + system-dark included;
+    // pure-black dark mode has surface luminance 0 and stays dark).
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     // Liquid-glass perf fix (ported from 4nx3b, 2026-08-28): memoize the entire
     // drawBackdrop modifier chain so it isn't rebuilt on every recomposition. The
     // chain depends only on (backdrop, shape, interactive, baseColor, isDark) — all

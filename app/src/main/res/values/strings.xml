@@ -1272,6 +1272,11 @@
     <string name="update_notification_channel_desc">Notifications for new app updates</string>
     <string name="update_notification_title">Update Available</string>
     <string name="update_notification_text">ArchiveTune %s is now available</string>
+    <string name="new_release_notification_channel_name">New Releases</string>
+    <string name="new_release_notification_channel_desc">Notifications when an artist you subscribed to releases new music</string>
+    <string name="new_release_notification_title">New release from %s</string>
+    <string name="new_release_notification_more_title">More new releases</string>
+    <string name="new_release_notification_more_text">And %d more from your subscribed artists</string>
     <string name="download">Download</string>
     <string name="download_complete">Download complete</string>
     <string name="downloads">Downloads</string>
