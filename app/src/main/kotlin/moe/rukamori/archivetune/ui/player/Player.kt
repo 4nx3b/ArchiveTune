@@ -1683,7 +1683,10 @@ fun BottomSheetPlayer(
                     // hero artwork sizes itself to the middle zone, so it is
                     // width-limited in portrait and height-limited here, and
                     // the pager + the sheet's nested-scroll connection divide
-                    // vertical drags between paging and collapsing.
+                    // vertical drags between paging and collapsing. The feed
+                    // scrubs via the app's standard seek callbacks, so its
+                    // progress row behaves exactly like every other style's
+                    // slider.
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -1691,6 +1694,7 @@ fun BottomSheetPlayer(
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
                             position = position,
                             duration = duration,
                             playerConnection = playerConnection,
@@ -1698,12 +1702,15 @@ fun BottomSheetPlayer(
                             state = state,
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
-                            currentFormat = currentFormat,
+                            lyricsVisible = isLyricsScreenVisible,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                             onOpenLyrics = { isLyricsScreenVisible = true },
+                            onOpenQueue = openQueue,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -2091,9 +2098,11 @@ fun BottomSheetPlayer(
                     // The TikTok style: a full-screen vertical feed over the
                     // real queue — swipe up for the next song, down for the
                     // previous. Each queue entry is one page (hero artwork,
-                    // right action rail, bottom info + transport); playback
-                    // switches only when a page settles, and the feed follows
-                    // song changes made from anywhere else in the app.
+                    // right action rail, bottom info); playback switches only
+                    // when a page settles, and the feed follows song changes
+                    // made from anywhere else in the app. The feed scrubs via
+                    // the app's standard seek callbacks, so its progress row
+                    // behaves exactly like every other style's slider.
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -2101,6 +2110,7 @@ fun BottomSheetPlayer(
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
                             position = position,
                             duration = duration,
                             playerConnection = playerConnection,
@@ -2108,12 +2118,15 @@ fun BottomSheetPlayer(
                             state = state,
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
-                            currentFormat = currentFormat,
+                            lyricsVisible = isLyricsScreenVisible,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                             onOpenLyrics = { isLyricsScreenVisible = true },
+                            onOpenQueue = openQueue,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V5) {

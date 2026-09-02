@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Solar "Home" bold: filled house with a door notch cut out -->
+    <path
+        android:pathData="M11 4.3 C11.6 3.8 12.4 3.8 13 4.3 L20.5 10.7 L18.2 10.7 V18.4 C18.2 19.5 17.3 20.4 16.2 20.4 H14.3 V14.8 C14.3 14 13.6 13.3 12.8 13.3 H11.2 C10.4 13.3 9.7 14 9.7 14.8 V20.4 H7.8 C6.7 20.4 5.8 19.5 5.8 18.4 V10.7 L3.5 10.7 Z"
+        android:fillColor="#FF000000"
+    />
+</vector>

@@ -10,40 +10,68 @@
  *
  * A page is the full-bleed treatment TikTok gives a post: the artwork's own
  * blurred self as the backdrop under a dark gradient, the sharp artwork as
- * the hero in the middle, the action rail riding the right edge over it, and
- * the track's identity + transport pinned along the bottom. Everything is
- * edge-to-edge; legibility comes from the scrim, not from panels.
+ * the hero in the middle (tapping it toggles playback, TikTok's
+ * tap-to-pause), the action rail riding the right edge over it, the
+ * "Full screen" pill under it, and the track's identity pinned along the
+ * bottom. Everything is edge-to-edge; legibility comes from the scrim, not
+ * from panels.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -51,28 +79,42 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.utils.resize
 
+/** The inactive gray the reference uses for everything unselected/secondary. */
+internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
+
 /**
  * One page of the feed. Sizing is derived from the page's own constraints, so
  * the layout adapts to any screen ratio without hardcoded coordinates: the
  * artwork is the largest square that fits the middle zone (width-limited on
- * tall screens, height-limited on wide ones), and the rail and bottom zone
- * overlay it the same way everywhere.
+ * tall screens, height-limited on wide ones), and the rail and info block
+ * overlay or stack around it the same way everywhere.
  */
 @Composable
 internal fun TikTokSongPage(
     pageMetadata: MediaMetadata,
     isCurrentPage: Boolean,
     isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
     playerConnection: PlayerConnection,
+    queueTitle: String?,
+    immersive: Boolean,
+    topChromeHeight: Dp,
+    bottomChromeHeight: Dp,
     sheetState: BottomSheetState,
     onOpenLyrics: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onFullscreen: () -> Unit,
+    onQueueClick: () -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
 ) {
+    val haptics = LocalHapticFeedback.current
+    // In immersive mode the page keeps only the status-bar inset at the top
+    // (the chrome is hidden), so the artwork grows but never underlaps the
+    // clock in a way that hurts.
+    val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
     // One URL for the page's artwork, pre-sized so the sharp hero decodes at
     // full resolution; the blurred backdrop reuses the same URL at a much
     // smaller decode size (it is about to be smeared anyway). Coil keeps the
@@ -89,12 +131,13 @@ internal fun TikTokSongPage(
         }
     val context = LocalContext.current
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
         // ── Backdrop: the artwork's own blurred self + dark gradient ──
         TikTokBackdrop(artUrl = artUrl)
 
-        // ── Content: hero artwork, rail, bottom info ──
         Column(modifier = Modifier.fillMaxSize()) {
+            Spacer(Modifier.height(if (immersive) statusBarInset else topChromeHeight))
+
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
@@ -109,57 +152,107 @@ internal fun TikTokSongPage(
                 ) {
                     val artSize = minOf(maxWidth, maxHeight)
                     val cornerRadius = if (artSize < maxWidth) 16.dp else 10.dp
-                    AsyncImage(
-                        model =
-                            ImageRequest
-                                .Builder(context)
-                                .data(artUrl)
-                                .size(TIKTOK_ART_PX)
-                                .crossfade(true)
-                                .build(),
-                        contentDescription = pageMetadata.title,
-                        contentScale = ContentScale.Crop,
+                    val artworkScale by animateFloatAsState(
+                        targetValue = if (immersive) 1.04f else 1f,
+                        animationSpec = tween(250),
+                        label = "tiktokArtworkScale",
+                    )
+                    Box(
                         modifier =
                             Modifier
                                 .size(artSize)
-                                .shadow(
-                                    elevation = 18.dp,
-                                    shape = RoundedCornerShape(cornerRadius),
-                                    clip = true,
-                                ),
-                    )
-                }
+                                .graphicsLayer {
+                                    scaleX = artworkScale
+                                    scaleY = artworkScale
+                                }.let { m ->
+                                    // Tap on the hero = play/pause, TikTok's
+                                    // tap-the-video gesture; only the page that
+                                    // is actually playing responds.
+                                    if (isCurrentPage) {
+                                        m.pointerInput(pageMetadata.id) {
+                                            detectTapGestures(
+                                                onTap = {
+                                                    haptics.performHapticFeedback(
+                                                        HapticFeedbackType.TextHandleMove,
+                                                    )
+                                                    onTogglePlayPause()
+                                                },
+                                            )
+                                        }
+                                    } else {
+                                        m
+                                    }
+                                },
+                    ) {
+                        AsyncImage(
+                            model =
+                                ImageRequest
+                                    .Builder(context)
+                                    .data(artUrl)
+                                    .size(TIKTOK_ART_PX)
+                                    .crossfade(true)
+                                    .build(),
+                            contentDescription = pageMetadata.title,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .shadow(
+                                        elevation = 18.dp,
+                                        shape = RoundedCornerShape(cornerRadius),
+                                        clip = true,
+                                    ),
+                        )
 
-                // The action rail rides the right edge of the media zone.
-                TikTokRail(
+                        // Paused affordance (current page only) — TikTok's
+                        // translucent play glyph while a video is paused.
+                        TikTokPausedOverlay(visible = isCurrentPage && !isPlaying)
+                    }
+
+                    // ── "Full screen" pill (reference: lower-left of the media) ─
+                    if (!immersive) {
+                        TikTokFullscreenPill(
+                            onClick = onFullscreen,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 16.dp, bottom = 12.dp),
+                        )
+                    }
+
+                    // The action rail rides the right edge of the media zone.
+                    if (!immersive) {
+                        TikTokRail(
+                            pageMetadata = pageMetadata,
+                            isCurrentPage = isCurrentPage,
+                            playerConnection = playerConnection,
+                            sheetState = sheetState,
+                            onOpenLyrics = onOpenLyrics,
+                            onAddToPlaylist = onAddToPlaylist,
+                            navController = navController,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            modifier = Modifier.align(Alignment.CenterEnd),
+                        )
+                    }
+                }
+            }
+
+            // ── Bottom-left: the page's identity ──
+            if (!immersive) {
+                TikTokSongInfo(
                     pageMetadata = pageMetadata,
-                    isCurrentPage = isCurrentPage,
-                    playerConnection = playerConnection,
-                    sheetState = sheetState,
-                    onOpenLyrics = onOpenLyrics,
-                    onAddToPlaylist = onAddToPlaylist,
-                    navController = navController,
-                    menuState = menuState,
-                    bottomSheetPageState = bottomSheetPageState,
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                    queueTitle = queueTitle,
+                    onQueueClick = onQueueClick,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp),
                 )
             }
 
-            // ── Bottom: identity, meta, progress, transport ──
-            TikTokBottomZone(
-                pageMetadata = pageMetadata,
-                isCurrentPage = isCurrentPage,
-                isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                playerConnection = playerConnection,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 10.dp),
-            )
+            Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
         }
     }
 }
@@ -198,13 +291,140 @@ private fun TikTokBackdrop(artUrl: String?) {
     }
 }
 
+/** TikTok's paused-video affordance: a soft scrim with a play glyph. */
+@Composable
+private fun TikTokPausedOverlay(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(150)),
+        exit = fadeOut(tween(150)),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.22f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.solar_play_linear),
+                contentDescription = stringResource(R.string.play),
+                tint = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.size(64.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The track identity pinned at the bottom-left of the page: the queue it
+ * comes from as a small chip (tap opens the queue sheet), then the big bold
+ * title and the "artist • album" secondary line — the reference's username +
+ * caption treatment.
+ */
+@Composable
+private fun TikTokSongInfo(
+    pageMetadata: MediaMetadata,
+    queueTitle: String?,
+    onQueueClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        if (!queueTitle.isNullOrBlank()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.14f))
+                        .tiktokNoRippleClickable(onClick = onQueueClick)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_music_note_2_linear),
+                    contentDescription = null,
+                    tint = TIKTOK_INACTIVE_GRAY,
+                    modifier = Modifier.size(12.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = queueTitle,
+                    color = TIKTOK_INACTIVE_GRAY,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Text(
+            text = pageMetadata.title,
+            color = Color.White,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(3.dp))
+        val artistName = pageMetadata.artists.joinToString(", ") { it.name }
+        val secondary =
+            if (pageMetadata.album?.title.isNullOrBlank() || artistName.isBlank()) {
+                artistName.ifBlank { pageMetadata.album?.title.orEmpty() }
+            } else {
+                "$artistName • ${pageMetadata.album?.title}"
+            }
+        if (secondary.isNotBlank()) {
+            Text(
+                text = secondary,
+                color = TIKTOK_INACTIVE_GRAY,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * The "Full screen" capsule from the reference: a semi-transparent dark
+ * rounded pill with an icon and a label, sitting under the main visual.
+ */
+@Composable
+private fun TikTokFullscreenPill(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = 0.45f))
+                .tiktokNoRippleClickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.solar_fullscreen_linear),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = stringResource(R.string.tiktok_feed_fullscreen),
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
 /**
  * TikTok's legibility scrim: dark at both edges (where the header and the
  * info zone live) and clear through the middle (where the artwork carries
  * itself). One static gradient, drawn in the draw phase.
  */
-internal fun Modifier.tiktokScrim(): Modifier =
-    drawBehind { drawRect(TIKTOK_SCRIM) }
+internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCRIM) }
 
 /** Decode size for the hero artwork, in pixels. */
 internal const val TIKTOK_ART_PX = 1080

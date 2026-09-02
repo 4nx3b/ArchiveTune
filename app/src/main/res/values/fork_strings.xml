@@ -159,4 +159,8 @@
     <string name="paxsenix_check_result_ok">%1$s: available</string>
     <string name="paxsenix_check_result_retired">%1$s: retired upstream (403)</string>
     <string name="paxsenix_check_result_failed">%1$s: unreachable</string>
+
+    <!-- TikTok-style feed player -->
+    <string name="tiktok_feed_fullscreen">Full screen</string>
+    <string name="tiktok_feed_exit_fullscreen">Exit full screen</string>
 </resources>
