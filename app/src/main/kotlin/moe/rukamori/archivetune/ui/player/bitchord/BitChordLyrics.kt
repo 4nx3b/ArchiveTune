@@ -62,9 +62,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableLongState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -100,10 +102,32 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
+import moe.rukamori.archivetune.db.entities.LyricsEntity
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
+import moe.rukamori.archivetune.lyrics.LyricsUtils.normalizeLyricsText
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
+import moe.rukamori.archivetune.lyrics.LyricsUtils.providedTranslationTextForEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeLyricsLine
+import moe.rukamori.archivetune.lyrics.LyricsUtils.shouldRomanizeLyricsLine
+import moe.rukamori.archivetune.lyrics.LyricsUtils.shouldUseProvidedRomanization
+import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeHindiKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
+import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
+import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
+import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.abs
 
 // ── Model (verbatim from BitChord's data/lyrics/LyricLine.kt) ─────────────────
@@ -138,6 +162,13 @@ data class LyricLine(
     val words: List<LyricWord> = emptyList(),
     val sungUntilMs: Long? = null,
     val background: LyricLine? = null,
+    // ArchiveTune additions (not in BitChord): the translation a provider or the
+    // AI translator attached to this line, and the provider's own romanisation
+    // of it. Drawn as small dim voices under the lead, mirroring how the other
+    // lyrics surfaces in the app show them. Null for pure BitChord-style lyrics.
+    val translation: String? = null,
+    val providerRomanizedText: String? = null,
+    val providerRomanizedLanguage: String? = null,
 ) {
     val isGap: Boolean get() = text.isEmpty()
 
@@ -252,6 +283,10 @@ private const val GLOW_RELEASE = 0.38f
  * seconds) into BitChord's [LyricLine] list (everything in ms), splitting the
  * background-vocal words out into their own answering line the way BitChord's
  * TTML parser does.
+ *
+ * Provider translations and romanisations are carried through unchanged —
+ * the panel applies the romanisation preference check at draw time and the
+ * translation is always shown when present.
  */
 internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
     map { entry ->
@@ -284,8 +319,69 @@ internal fun List<LyricsEntry>.toBitChordLyrics(): List<LyricLine> =
                             words = words,
                         )
                     },
+            translation = providedTranslationTextForEntry(entry),
+            providerRomanizedText = entry.providerRomanizedText,
+            providerRomanizedLanguage = entry.providerRomanizedLanguage,
         )
     }
+
+// ── Full-format parsing (ArchiveTune addition) ────────────────────────────────
+
+/**
+ * The parsed lyrics for one track: BitChord's [LyricLine]s plus whether the
+ * source carried any timing at all.
+ *
+ * BitChord itself only ever consumed word-synced TTML, so its panel assumed
+ * every line knows when it starts. ArchiveTune's lyrics store can hold line-synced
+ * LRC, QRC, TTML (word- or line-synced) *or* plain untimestamped text — e.g. a
+ * plain-text result picked from the lyrics search sheet. [isSynced] is false for
+ * that last case, and the panel then drops the sweep / highlight / follow and
+ * simply shows the words.
+ */
+internal class BitChordParsedLyrics(
+    val lines: List<LyricLine>,
+    val isSynced: Boolean,
+)
+
+/**
+ * Parses whatever lyrics string the lyrics table holds into [BitChordParsedLyrics].
+ *
+ * Same routing as the other lyrics surfaces in the app (`Lyrics.kt` /
+ * `LyricsEnhanced.kt`): LRC/QRC through [parseLyrics], TTML through [parseTtml],
+ * and anything else falls back to a plain-text reading. This is what makes
+ * lyrics picked from a different provider in the search sheet actually appear —
+ * previously only LRC-shaped text parsed and everything else drew as
+ * "No lyrics for this track" while the credit row still named the provider.
+ *
+ * Returns null for a blank / not-found marker, exactly like the old inline
+ * `raw == LyricsEntityNotFound` check did.
+ */
+internal fun parseBitChordLyrics(raw: String, durationSeconds: Int?): BitChordParsedLyrics? {
+    val normalized = normalizeLyricsText(raw)
+    if (normalized.isEmpty() || normalized == LyricsEntity.LYRICS_NOT_FOUND) return null
+
+    val syncedEntries =
+        when {
+            isLineSyncedLrc(normalized) -> parseLyrics(normalized).takeIf { it.isNotEmpty() }
+            isTtml(normalized) -> parseTtml(normalized, durationSeconds).takeIf { it.isNotEmpty() }
+            else -> null
+        }
+    if (syncedEntries != null) return BitChordParsedLyrics(syncedEntries.toBitChordLyrics(), isSynced = true)
+
+    // Plain, untimestamped text. Kept verbatim (blank lines dropped so the list
+    // doesn't render a run of music-note gaps) with timeMs pinned at 0 — the
+    // panel keys every timed behaviour off [isSynced] instead.
+    val plainLines =
+        normalized
+            .lines()
+            .map { line -> line.replace(WHITESPACE, " ").trim() }
+            .filter { it.isNotEmpty() }
+            .map { line -> LyricLine(timeMs = 0L, text = line) }
+    if (plainLines.isEmpty()) return null
+    return BitChordParsedLyrics(plainLines, isSynced = false)
+}
+
+private val WHITESPACE = Regex("\\s+")
 
 // ── The lyric clock (verbatim from BitChord's NowPlayingScreen.kt) ────────────
 
@@ -567,6 +663,15 @@ private fun ContentDrawScope.sweepTo(layout: TextLayoutResult, revealedChars: Fl
  *
  * Scrolling by hand clears the blur and suspends the auto-follow, so you can
  * read ahead; a couple of seconds after you stop it snaps back to the song.
+ *
+ * [synced] false (plain untimestamped lyrics) drops every timed behaviour —
+ * no highlight to track, nothing to sweep, nowhere to seek — and shows the
+ * words at a flat readable brightness instead.
+ *
+ * [mediaId]/[rawLyrics] feed the romanisation engines the same way the other
+ * lyrics surfaces feed them: the built-in transliterators run per line, the
+ * AI romaniser runs once per track when its settings are on, and a provider
+ * that embedded its own romanisation is honoured first.
  */
 @Composable
 internal fun LyricsPanel(
@@ -575,6 +680,9 @@ internal fun LyricsPanel(
     isPlaying: Boolean,
     onSeekToLine: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    synced: Boolean = true,
+    mediaId: String? = null,
+    rawLyrics: String? = null,
 ) {
     val clock = rememberLyricClock(positionMs, isPlaying)
 
@@ -588,8 +696,10 @@ internal fun LyricsPanel(
     // started. derivedStateOf keeps the cost of the finer clock off
     // composition; it only notifies when the index actually changes, not on
     // every frame that feeds it.
-    val activeLine by remember(lines) {
-        derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
+    val activeLine by remember(lines, synced) {
+        derivedStateOf {
+            if (!synced) -1 else lines.indexOfLast { it.timeMs <= clock.longValue }
+        }
     }
     // A background vocal routinely holds past the *next* line's own stamp —
     // that's the whole reason it's carried apart. Taken on [activeLine] alone,
@@ -599,8 +709,9 @@ internal fun LyricsPanel(
     // behind [activeLine] kept active alongside it for as long as its own
     // end — background included — hasn't arrived yet, so the two rows animate
     // together instead of the first being cut off under the second.
-    val alsoActive by remember(lines) {
+    val alsoActive by remember(lines, synced) {
         derivedStateOf {
+            if (!synced) return@derivedStateOf -1
             val previous = activeLine - 1
             val line = lines.getOrNull(previous)
             if (line != null && line.hasKnownEnd && clock.longValue < line.endMs) previous else -1
@@ -610,6 +721,88 @@ internal fun LyricsPanel(
     val keepScroll = remember(listState) { keepScrollInList(listState) }
     var browsing by remember { mutableStateOf(false) }
     val reduceAnimation = LocalAnimationsDisabled.current
+
+    // ── Romanisation (ArchiveTune addition) ──
+    // Same engines and preference keys the other lyrics surfaces use: the
+    // provider's own romanisation (from TTML/QRC metadata) wins, then the AI
+    // romaniser (manual "AI Romanise Now" lands in the same cache the menu
+    // writes to, auto runs when its setting is on), then the built-in
+    // transliterators per line. `aiHandled` follows LyricsEnhanced.kt: when
+    // the AI romaniser is active it is the *only* engine — running the
+    // built-in transliterators alongside it would mix Hepburn from Kuromoji
+    // with whatever scheme the model chose inside a single song.
+    val romanizeChinese by rememberPreference(LyricsRomanizeChineseKey, true)
+    val romanizeHindi by rememberPreference(LyricsRomanizeHindiKey, true)
+    val romanizeJapanese by rememberPreference(LyricsRomanizeJapaneseKey, true)
+    val romanizeKorean by rememberPreference(LyricsRomanizeKoreanKey, true)
+    val romanizeOther by rememberPreference(LyricsRomanizeOtherLanguagesKey, true)
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+    val romanizationPreferences =
+        remember(
+            romanizeJapanese,
+            romanizeKorean,
+            romanizeChinese,
+            romanizeHindi,
+            romanizeOther,
+            aiRomanizationSettings.active,
+        ) {
+            LyricsRomanizationPreferences(
+                romanizeJapanese = romanizeJapanese,
+                romanizeKorean = romanizeKorean,
+                romanizeChinese = romanizeChinese,
+                romanizeHindi = romanizeHindi,
+                romanizeOther = romanizeOther,
+                aiHandled = aiRomanizationSettings.active,
+            )
+        }
+
+    val aiRomanizationSessionKey =
+        remember(mediaId, rawLyrics) { AiLyricsRomanization.sessionKey(mediaId, rawLyrics) }
+    val aiRomanizationResult by AiLyricsRomanization.results.collectAsState()
+    val aiRomanizedLines: List<String?> =
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, lines) {
+            if (!aiRomanizationSettings.active || rawLyrics == null) {
+                emptyList()
+            } else {
+                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, lines.map { it.text })
+            }
+        }
+    LaunchedEffect(aiRomanizationSessionKey, lines, aiRomanizationSettings) {
+        if (!aiRomanizationSettings.active || !aiRomanizationSettings.auto) return@LaunchedEffect
+        if (lines.isEmpty()) return@LaunchedEffect
+        AiLyricsRomanization.request(
+            sessionKey = aiRomanizationSessionKey,
+            lines = lines.map { it.text },
+            settings = aiRomanizationSettings,
+        )
+    }
+
+    val builtinRomanized = remember { mutableStateMapOf<Int, String>() }
+    LaunchedEffect(lines, romanizationPreferences) {
+        builtinRomanized.clear()
+        if (!romanizationPreferences.isEnabled || lines.isEmpty()) return@LaunchedEffect
+        withContext(Dispatchers.Default) {
+            lines.mapIndexedNotNull { index, line ->
+                if (line.isGap || line.text.isBlank()) {
+                    null
+                } else if (shouldRomanizeLyricsLine(line.text, romanizationPreferences)) {
+                    index to line
+                } else {
+                    null
+                }
+            }.map { (index, line) ->
+                async {
+                    val romanized =
+                        try {
+                            romanizeLyricsLine(line.text, romanizationPreferences)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    if (!romanized.isNullOrBlank()) builtinRomanized[index] = romanized
+                }
+            }.awaitAll()
+        }
+    }
 
     // The bloom is a blurred copy of the line, so it is off wherever blur is:
     // below API 31 Modifier.blur does nothing and the "glow" would land as a
@@ -665,7 +858,8 @@ internal fun LyricsPanel(
     // stutter on opening came from. Later moves, which are one line at a time,
     // still animate.
     var placed by remember(lines) { mutableStateOf(false) }
-    LaunchedEffect(activeLine, browsing) {
+    LaunchedEffect(activeLine, browsing, synced) {
+        if (!synced) return@LaunchedEffect
         if (!browsing && !listState.isScrollInProgress &&
             activeLine >= 0 && activeLine in lines.indices
         ) {
@@ -725,6 +919,7 @@ internal fun LyricsPanel(
             // of equally-weighted text.
             val lineAlpha by animateFloatAsState(
                 targetValue = when {
+                    !synced -> 0.85f
                     browsing -> 1f
                     isActive -> 1f
                     offset < 0 -> (0.55f - distance * 0.05f).coerceAtLeast(0.30f)
@@ -743,7 +938,7 @@ internal fun LyricsPanel(
                     tint = Color.White.copy(alpha = lineAlpha),
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSeekToLine(line.timeMs) }
+                        .clickable(enabled = synced) { onSeekToLine(line.timeMs) }
                         // Matches the inset every sung line carries, so the
                         // rhythm of the list doesn't break at a break.
                         .padding(GLOW_ROOM)
@@ -769,6 +964,24 @@ internal fun LyricsPanel(
                     animationSpec = tween(durationMillis = 420),
                     label = "lyricGlow",
                 )
+                // This line's romanisation, if any engine produced one. The
+                // provider's own is honoured first (it is timed to the words
+                // and ships with the lyrics), then the AI romaniser's result,
+                // then the built-in transliterators'. Never alongside a
+                // translation of the same line unless both were produced —
+                // each is a separate small voice under the lead.
+                val romanized = line.providerRomanizedText
+                    ?.takeIf {
+                        shouldUseProvidedRomanization(
+                            originalText = line.text,
+                            providerRomanizedText = it,
+                            providerRomanizedLanguage = line.providerRomanizedLanguage,
+                            preferences = romanizationPreferences,
+                        )
+                    }
+                    ?: aiRomanizedLines.getOrNull(index)
+                        ?.takeIf { it.isNotBlank() && it != line.text }
+                    ?: builtinRomanized[index]
                 val shape = Modifier
                     .fillMaxWidth()
                     .graphicsLayer {
@@ -778,7 +991,7 @@ internal fun LyricsPanel(
                         alpha = lineAlpha
                     }
                     .clip(RoundedCornerShape(10.dp))
-                    .clickable { onSeekToLine(line.timeMs) }
+                    .clickable(enabled = synced) { onSeekToLine(line.timeMs) }
                 // Lead and answering vocal are one row: they are one line of
                 // the song, they scale and dim together, and tapping either
                 // seeks to the same place.
@@ -816,6 +1029,42 @@ internal fun LyricsPanel(
                                 // to each other than to the rows either side.
                                 .padding(start = GLOW_ROOM, end = GLOW_ROOM, bottom = GLOW_ROOM)
                                 .graphicsLayer { alpha = BACKING_ALPHA },
+                        )
+                    }
+                    // ── Romanisation + translation (ArchiveTune addition) ──
+                    // Small dim voices under the lead, the same slots the
+                    // other lyrics surfaces give them: romanisation first
+                    // (it is the pronunciation of the words above it), then
+                    // the translation. Plain Text rows — no sweep, no clock —
+                    // so they can't fight the lead's own reveal.
+                    if (romanized != null) {
+                        Text(
+                            text = romanized,
+                            style = style.copy(
+                                fontSize = AUX_FONT_SIZE,
+                                lineHeight = AUX_LINE_HEIGHT,
+                            ),
+                            color = Color.White.copy(alpha = AUX_ALPHA),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = GLOW_ROOM, end = GLOW_ROOM, top = 2.dp),
+                        )
+                    }
+                    line.translation?.let { translation ->
+                        Text(
+                            text = translation,
+                            style = style.copy(
+                                fontSize = AUX_FONT_SIZE,
+                                lineHeight = AUX_LINE_HEIGHT,
+                            ),
+                            color = Color.White.copy(alpha = AUX_ALPHA),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = GLOW_ROOM, end = GLOW_ROOM, top = 2.dp),
                         )
                     }
                 }
@@ -908,6 +1157,10 @@ private fun String.stripParens(): String = replace("(", "").replace(")", "").tri
  * The fade is a fraction of the line's own length, so rapid-fire lines snap and
  * long held ones ebb out.
  *
+ * [synced] false (plain untimestamped lyrics) pins the strip to the first line
+ * at a steady brightness — there is no "current" line to track, but the strip
+ * is still the tap-target that opens the full panel.
+ *
  * Position is interpolated between the player's twice-a-second reports,
  * otherwise the fade would step. The alpha is applied in a graphicsLayer so
  * only the draw phase runs each frame; the text itself recomposes just once
@@ -922,15 +1175,18 @@ internal fun CurrentLyricLine(
     durationMs: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    synced: Boolean = true,
 ) {
     val clock = rememberLyricClock(positionMs, isPlaying)
 
-    val index by remember(lines) {
-        derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
+    val index by remember(lines, synced) {
+        derivedStateOf {
+            if (!synced) 0 else lines.indexOfLast { it.timeMs <= clock.longValue }
+        }
     }
     val current = lines.getOrNull(index)
     // Before the first line, and through instrumental breaks, show the note.
-    val instrumental = current == null || current.isGap
+    val instrumental = synced && (current == null || current.isGap)
     // Everything ahead of the first sung line is the intro — LRC files open on a
     // bare [00:00.00] gap, so that stretch is gap lines rather than nothing.
     val firstSung = remember(lines) { lines.indexOfFirst { !it.isGap } }
@@ -956,8 +1212,9 @@ internal fun CurrentLyricLine(
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp)
             .graphicsLayer {
-                if (instrumental) {
-                    // Nothing is being sung; hold it steady rather than fading.
+                if (!synced || instrumental) {
+                    // Nothing is being sung (or nothing is timed); hold it
+                    // steady rather than fading.
                     alpha = 0.5f
                     return@graphicsLayer
                 }
@@ -1016,9 +1273,20 @@ internal fun CurrentLyricLine(
  * Stands in for [CurrentLyricLine] once a lookup has come back empty — shown
  * for a few seconds so it registers, then left to fade rather than snapping
  * out or lingering for the rest of the track.
+ *
+ * [onClick] (ArchiveTune addition, user request 2026-09-02) keeps the strip a
+ * way into the lyrics page even when this track has no lyrics: without it
+ * there was no route in, and the only way to reach the lyrics options (search /
+ * refetch) was to first get lyrics from somewhere else. The strip stays tappable
+ * after the text itself has faded, matching the hit area the loaded strip
+ * offers.
  */
 @Composable
-internal fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier) {
+internal fun LyricsUnavailableLine(
+    trackKey: Any,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
     var visible by remember(trackKey) { mutableStateOf(true) }
     LaunchedEffect(trackKey) {
         delay(LYRICS_UNAVAILABLE_HOLD_MS)
@@ -1029,30 +1297,78 @@ internal fun LyricsUnavailableLine(trackKey: Any, modifier: Modifier = Modifier)
         animationSpec = tween(durationMillis = LYRICS_UNAVAILABLE_FADE_MS),
         label = "lyricsUnavailableAlpha",
     )
-    Text(
-        text = "Lyrics not available",
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .padding(vertical = 4.dp)
-            .graphicsLayer { this.alpha = alpha },
-    )
+            .clip(RoundedCornerShape(8.dp))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(vertical = 4.dp),
+    ) {
+        Text(
+            text = "Lyrics not available",
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .graphicsLayer { this.alpha = alpha },
+        )
+        if (onClick != null) {
+            Spacer(Modifier.width(6.dp))
+            // Same disclosure hint the loaded strip carries.
+            Icon(
+                imageVector = BitChordIcons.ChevronRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
 }
 
-/** Stands in for [CurrentLyricLine] while a lookup is still in flight. */
+/**
+ * Stands in for [CurrentLyricLine] while a lookup is still in flight.
+ *
+ * [onClick] (ArchiveTune addition, user request 2026-09-02): "if I click on the
+ * loading text above the slider I should be able to enter lyrics screen because
+ * right now if there's no lyrics I can't enter the lyrics page". The whole row
+ * is the target — the text is small and mid-load the exact words are arbitrary,
+ * so the hit area can't ride on reading it.
+ */
 @Composable
-internal fun LyricsLoadingLine(trackKey: Any, modifier: Modifier = Modifier) {
+internal fun LyricsLoadingLine(
+    trackKey: Any,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
     val text = remember(trackKey) { LYRICS_LOADING_LINES.random() }
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White.copy(alpha = 0.55f),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier.padding(vertical = 4.dp),
-    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(vertical = 4.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White.copy(alpha = 0.55f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (onClick != null) {
+            Spacer(Modifier.width(6.dp))
+            // Same disclosure hint the loaded strip carries.
+            Icon(
+                imageVector = BitChordIcons.ChevronRight,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.5f),
+                modifier = Modifier.size(14.dp),
+            )
+        }
+    }
 }
 
 // ── List plumbing (verbatim) ──────────────────────────────────────────────────
