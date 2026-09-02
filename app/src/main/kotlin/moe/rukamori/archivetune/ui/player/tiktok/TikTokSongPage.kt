@@ -12,10 +12,10 @@
  * blurred self as the backdrop under a dark gradient, the sharp artwork as
  * the hero in the middle (tapping it toggles playback, TikTok's
  * tap-to-pause; its edges dissolve into the backdrop so the two renderings
- * of the same image never meet in a hard line), the action rail riding the
- * right edge over it, the fullscreen affordance under it, and the track's
- * identity pinned along the bottom. Everything is edge-to-edge; legibility
- * comes from the scrim, not from panels.
+ * of the same image never meet in a hard line), the action rail pinned to
+ * the lower right of it, and the track's identity pinned along the bottom.
+ * Everything is edge-to-edge; legibility comes from the scrim, not from
+ * panels.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
@@ -62,7 +62,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -114,6 +113,11 @@ internal fun TikTokSongPage(
     pageMetadata: MediaMetadata,
     isCurrentPage: Boolean,
     isPlaying: Boolean,
+    // While the stream is loading or the feed is playing an engine-initiated
+    // swipe, the current page is not "paused" — buffering and auto-advance
+    // must not flash the play glyph (user report 2026-09-02: "when the song
+    // ends it pauses").
+    suppressPauseOverlay: Boolean,
     playerConnection: PlayerConnection,
     queueTitle: String?,
     immersive: Boolean,
@@ -126,10 +130,8 @@ internal fun TikTokSongPage(
     onAddToPlaylist: () -> Unit,
     onToggleLyrics: () -> Unit,
     onTogglePlayPause: () -> Unit,
-    onFullscreen: () -> Unit,
     onQueueClick: () -> Unit,
     onOpenLyricsMenu: () -> Unit,
-    onMoreIconPositioned: (Rect) -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
@@ -300,7 +302,9 @@ internal fun TikTokSongPage(
 
                                 // Paused affordance (current page only) — TikTok's
                                 // translucent play glyph while a video is paused.
-                                TikTokPausedOverlay(visible = isCurrentPage && !isPlaying)
+                                TikTokPausedOverlay(
+                                    visible = isCurrentPage && !isPlaying && !suppressPauseOverlay,
+                                )
 
                                 // Double-tap hearts, spawned at the tap point.
                                 heartBursts.forEach { burst ->
@@ -351,19 +355,15 @@ internal fun TikTokSongPage(
                         )
                     }
 
-                    // ── "Full screen" pill (reference: lower-left of the media) ─
-                    // A cover affordance — hidden while the lyrics pane owns the zone.
-                    if (!immersive && !showInlineLyrics) {
-                        TikTokFullscreenPill(
-                            onClick = onFullscreen,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 16.dp, bottom = 12.dp),
-                        )
-                    }
-
-                    // The action rail rides the right edge of the media zone.
+                    // The action rail is pinned to the media zone's bottom-right
+                    // — TikTok's own rail hangs its last action just above the
+                    // caption block rather than centring the stack (user request
+                    // 2026-09-02: "shift the player controls buttons like share,
+                    // like, lyrics and other icons down"). The lower-left full
+                    // screen pill that used to sit here was removed per the same
+                    // report ("remove the full screen icon above the recently
+                    // played text") — the top navigation's fullscreen toggle
+                    // remains the labelled path.
                     if (!immersive) {
                         TikTokRail(
                             pageMetadata = pageMetadata,
@@ -374,11 +374,10 @@ internal fun TikTokSongPage(
                             onToggleLyrics = onToggleLyrics,
                             onAddToPlaylist = onAddToPlaylist,
                             onOpenLyricsMenu = onOpenLyricsMenu,
-                            onMoreIconPositioned = onMoreIconPositioned,
                             navController = navController,
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
-                            modifier = Modifier.align(Alignment.CenterEnd),
+                            modifier = Modifier.align(Alignment.BottomEnd),
                         )
                     }
                 }
@@ -567,36 +566,6 @@ private fun TikTokSongInfo(
     }
 }
 
-/**
- * The fullscreen affordance from the reference, lower-left of the media: a
- * compact icon-only pill. The label was removed per user request (2026-09-02:
- * "remove the full screen text on the bottom") — the glyph plus its content
- * description carry the action, and the top navigation's fullscreen toggle
- * remains the labelled path.
- */
-@Composable
-private fun TikTokFullscreenPill(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color.Black.copy(alpha = 0.45f))
-                .tiktokNoRippleClickable(onClick = onClick)
-                .padding(horizontal = 9.dp, vertical = 7.dp),
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.solar_fullscreen_linear),
-            contentDescription = stringResource(R.string.tiktok_feed_fullscreen),
-            tint = Color.White,
-            modifier = Modifier.size(15.dp),
-        )
-    }
-}
-
 /** One live double-tap heart, at the tap point (artwork-box coordinates). */
 private data class TikTokHeartBurst(
     val id: Long,
@@ -676,17 +645,18 @@ private val TIKTOK_RAIL_WASH =
     )
 
 /**
- * The wash's vertical mask: fully present through the middle (where the
- * rail's buttons live), fading to clear over the top and bottom fifths so
- * the wash never begins or ends in a visible straight line. Applied with
- * BlendMode.DstIn inside an offscreen layer, in the same place the wash is
- * drawn.
+ * The wash's vertical mask: strongest through the lower two thirds (where
+ * the rail's buttons live now that the rail is pinned to the zone's
+ * bottom), fading to clear over the top third and the last sliver at the
+ * bottom so the wash never begins or ends in a visible straight line.
+ * Applied with BlendMode.DstIn inside an offscreen layer, in the same place
+ * the wash is drawn.
  */
 private val TIKTOK_RAIL_WASH_VERTICAL_FADE =
     Brush.verticalGradient(
         0.00f to Color.Transparent,
-        0.20f to Color.Black,
-        0.80f to Color.Black,
+        0.28f to Color.Black,
+        0.90f to Color.Black,
         1.00f to Color.Transparent,
     )
 
