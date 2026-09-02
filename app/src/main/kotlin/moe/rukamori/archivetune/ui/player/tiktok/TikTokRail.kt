@@ -11,7 +11,7 @@
  * The vertical stack of circular actions riding the right edge of the media,
  * in TikTok's order: the artist's avatar (with the small follow button the
  * app's existing subscribe feature backs), like, comment (here: lyrics),
- * bookmark (here: add to playlist), download, share, more. Every action
+ * bookmark (here: add to playlist), share, more. Every action
  * operates on THIS page's song — the feed's pages are real queue entries, so
  * the rail acts straight on the same Room rows, download manager and menus
  * the rest of the app uses.
@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,14 +49,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -65,23 +61,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.exoplayer.offline.Download
-import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
-import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.models.MediaMetadata
-import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -103,7 +93,6 @@ internal fun TikTokRail(
     onToggleLyrics: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onOpenLyricsMenu: () -> Unit,
-    onMoreIconPositioned: (Rect) -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
@@ -112,16 +101,12 @@ internal fun TikTokRail(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val database = LocalDatabase.current
-    val downloadUtil = LocalDownloadUtil.current
-    val scope = rememberCoroutineScope()
 
     // This page's song row — liked state and format come from the same Room
     // row the rest of the app reads; there is no separate feed-side state.
     val librarySong by database.song(pageMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
     val isLocal = librarySong?.song?.isLocal == true
-    val download by downloadUtil.getDownload(pageMetadata.id)
-        .collectAsStateWithLifecycle(initialValue = null)
 
     // The page's one like action, shared with the artwork's double-tap —
     // see rememberTikTokLikeAction below.
@@ -190,83 +175,11 @@ internal fun TikTokRail(
             onAddToPlaylist()
         }
 
-        // ── Download / offline ──
-        // Hidden for local files: they are already on the device. The icon
-        // carries the state TikTok's bookmark does — a spinner while the
-        // download runs, the check mark once the song is fully downloaded
-        // (tap then removes it, same as the player menu's row).
-        if (!isLocal) {
-            when (download?.state) {
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                    val downloadingLabel = stringResource(R.string.action_download)
-                    TikTokRailActionButton(
-                        onClick = {
-                            // A tap while a download is in flight cancels it,
-                            // the same removal the player menu's row performs.
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                pageMetadata.id,
-                                false,
-                            )
-                        },
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.5.dp,
-                            modifier =
-                                Modifier
-                                    .size(26.dp)
-                                    .semantics { contentDescription = downloadingLabel },
-                        )
-                    }
-                }
-
-                Download.STATE_COMPLETED -> {
-                    TikTokRailButton(
-                        iconRes = R.drawable.solar_check_circle_linear,
-                        contentDescription = stringResource(R.string.filter_downloaded),
-                    ) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        DownloadService.sendRemoveDownload(
-                            context,
-                            ExoDownloadService::class.java,
-                            pageMetadata.id,
-                            false,
-                        )
-                    }
-                }
-
-                else -> {
-                    TikTokRailButton(
-                        iconRes = R.drawable.solar_download_linear,
-                        contentDescription = stringResource(R.string.action_download),
-                    ) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        // Same cache-first flow as the player menu: register the
-                        // song, prewarm the resolved stream into the player cache,
-                        // then hand the request to the download service.
-                        database.transaction { insert(pageMetadata) }
-                        scope.launch {
-                            runCatching { downloadUtil.prewarmSongForDownload(pageMetadata.id) }
-                            val request =
-                                DownloadRequest
-                                    .Builder(pageMetadata.id, pageMetadata.id.toUri())
-                                    .setCustomCacheKey(pageMetadata.id)
-                                    .setData(pageMetadata.title.toByteArray())
-                                    .build()
-                            DownloadService.sendAddDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                request,
-                                false,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // ── Download ──
+        // Removed from the rail per user request (2026-09-02: "remove the
+        // download icon"). The song menu — the rail's more button, the queue
+        // sheet, the library — still carries the full download/remove action
+        // for whoever needs it.
 
         // ── Share ──
         TikTokRailButton(
@@ -291,16 +204,16 @@ internal fun TikTokRail(
 
         // ── More ──
         // While the inline lyrics pane owns the page, this opens the LYRICS
-        // overflow menu (the anchored popup the Apple Music style shows from
-        // its own lyrics view — same Edit / Refetch / Translate / Search list)
-        // instead of the song menu; the pane's provider, offset and song are
-        // hoisted to the player level, which also renders the popup, while
-        // this rail reports the icon's root-space bounds so the popup grows
-        // out of the button the user tapped (user request 2026-09-02).
+        // overflow menu — the same anchored, frosted-blur popup the Apple
+        // Music style shows from its own lyrics view, opening from the
+        // top-right below the top navigation (user reports 2026-09-02: "the
+        // exact same popup for lyrics overflow menu from Apple music style;
+        // also it opens on the downside. Fix it") — instead of the song menu.
+        // The pane's provider, offset and song are hoisted to the player
+        // level, which also renders the popup.
         TikTokRailButton(
             iconRes = R.drawable.solar_more_vert_linear,
             contentDescription = stringResource(R.string.more),
-            onPositioned = onMoreIconPositioned,
         ) {
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             if (lyricsActive) {
@@ -562,10 +475,9 @@ private fun TikTokRailButton(
     iconRes: Int,
     contentDescription: String,
     tint: Color = Color.White,
-    onPositioned: ((Rect) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    TikTokRailActionButton(onClick = onClick, onPositioned = onPositioned) {
+    TikTokRailActionButton(onClick = onClick) {
         TikTokRailGlyph(
             iconRes = iconRes,
             contentDescription = contentDescription,
@@ -610,24 +522,16 @@ private fun TikTokRailGlyph(
     }
 }
 
-/** A rail action with arbitrary content (the download spinner). */
+/** A rail action with arbitrary content (the like heart's animated glyph). */
 @Composable
 private fun TikTokRailActionButton(
     onClick: () -> Unit,
-    onPositioned: ((Rect) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
                 .size(48.dp)
-                .let { m ->
-                    if (onPositioned != null) {
-                        m.onGloballyPositioned { onPositioned(it.boundsInRoot()) }
-                    } else {
-                        m
-                    }
-                }
                 .tiktokNoRippleClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
