@@ -11,10 +11,11 @@
  * A page is the full-bleed treatment TikTok gives a post: the artwork's own
  * blurred self as the backdrop under a dark gradient, the sharp artwork as
  * the hero in the middle (tapping it toggles playback, TikTok's
- * tap-to-pause), the action rail riding the right edge over it, the
- * "Full screen" pill under it, and the track's identity pinned along the
- * bottom. Everything is edge-to-edge; legibility comes from the scrim, not
- * from panels.
+ * tap-to-pause; its edges dissolve into the backdrop so the two renderings
+ * of the same image never meet in a hard line), the action rail riding the
+ * right edge over it, the fullscreen affordance under it, and the track's
+ * identity pinned along the bottom. Everything is edge-to-edge; legibility
+ * comes from the scrim, not from panels.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
@@ -59,9 +60,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -123,6 +128,8 @@ internal fun TikTokSongPage(
     onTogglePlayPause: () -> Unit,
     onFullscreen: () -> Unit,
     onQueueClick: () -> Unit,
+    onOpenLyricsMenu: () -> Unit,
+    onMoreIconPositioned: (Rect) -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
@@ -216,6 +223,24 @@ internal fun TikTokSongPage(
                                         .graphicsLayer {
                                             scaleX = artworkScale
                                             scaleY = artworkScale
+                                        }
+                                        // Blend the artwork's top and bottom edges into
+                                        // the blurred backdrop behind it. The sharp art
+                                        // and the backdrop are the same image, so an
+                                        // alpha ramp at each edge reads as focus falling
+                                        // off — without it the two renderings meet in a
+                                        // hard straight line (user report 2026-09-02:
+                                        // "straight lines / color inconsistency").
+                                        .graphicsLayer {
+                                            compositingStrategy =
+                                                CompositingStrategy.Offscreen
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            drawRect(
+                                                brush = TIKTOK_ART_EDGE_FADE,
+                                                blendMode = BlendMode.DstIn,
+                                            )
                                         }.let { m ->
                                             // Tap on the hero = play/pause, TikTok's
                                             // tap-the-video gesture; a double-tap
@@ -296,15 +321,33 @@ internal fun TikTokSongPage(
                     // The soft dark wash the reference keeps behind its action
                     // rail: over light artwork the rail's white glyphs would
                     // otherwise wash out. It fades to clear well inside the
-                    // media so it reads as part of the cover, never as a panel.
-                    if (!immersive) {
+                    // media so it reads as part of the cover, never as a panel —
+                    // and it fades to clear at its own top and bottom too, so it
+                    // never starts or ends in a straight line (the wash used to
+                    // span the full zone height, drawing two hard horizontal
+                    // edges behind the top tabs and above the song info).
+                    // Hidden while the lyrics pane owns the zone: a dark wash
+                    // over the karaoke text is exactly the "black layer over the
+                    // lyrics" the user reported, and the glyphs' own drop
+                    // shadows carry their legibility without it.
+                    if (!immersive && !showInlineLyrics) {
                         Box(
                             modifier =
                                 Modifier
                                     .align(Alignment.CenterEnd)
                                     .fillMaxHeight()
                                     .width(TIKTOK_RAIL_WASH_WIDTH)
-                                    .background(TIKTOK_RAIL_WASH),
+                                    .graphicsLayer {
+                                        compositingStrategy =
+                                            CompositingStrategy.Offscreen
+                                    }
+                                    .drawWithContent {
+                                        drawRect(brush = TIKTOK_RAIL_WASH)
+                                        drawRect(
+                                            brush = TIKTOK_RAIL_WASH_VERTICAL_FADE,
+                                            blendMode = BlendMode.DstIn,
+                                        )
+                                    },
                         )
                     }
 
@@ -330,6 +373,8 @@ internal fun TikTokSongPage(
                             lyricsActive = showInlineLyrics,
                             onToggleLyrics = onToggleLyrics,
                             onAddToPlaylist = onAddToPlaylist,
+                            onOpenLyricsMenu = onOpenLyricsMenu,
+                            onMoreIconPositioned = onMoreIconPositioned,
                             navController = navController,
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
@@ -420,12 +465,13 @@ private fun TikTokPausedOverlay(visible: Boolean) {
 /**
  * The Apple Music inline lyrics pane, component and behaviour verbatim: the
  * karaoke view in place of the artwork, following the playing song, with its
- * own tap-a-line-to-seek and per-line sync. The pane rides over the page's
- * blurred backdrop with only a light scrim for legibility — the page's own
- * gradient already darkens top and bottom — so the artwork's colour stays
- * visible behind the lyrics, the Apple Music treatment rather than a black
- * slab; its end padding clears the action rail so no line ever runs
- * underneath it.
+ * own tap-a-line-to-seek and per-line sync. The pane rides directly on the
+ * page's blurred backdrop — no background of its own, the Apple Music
+ * treatment: the artwork's colour reads through the lyrics, darkened only by
+ * the page gradient that already covers the top and bottom edges. (A previous
+ * revision added a scrim here; that was the "black layer over the lyrics" the
+ * user reported twice, so the pane now owns no background at all.) Its end
+ * padding clears the action rail so no line ever runs underneath it.
  */
 @Composable
 private fun TikTokInlineLyricsPane(
@@ -435,9 +481,7 @@ private fun TikTokInlineLyricsPane(
 ) {
     Box(
         modifier =
-            modifier
-                .fillMaxSize()
-                .background(TIKTOK_LYRICS_PANE_SCRIM),
+            modifier.fillMaxSize(),
     ) {
         LyricsEnhanced(
             sliderPositionProvider = sliderPositionProvider,
@@ -524,35 +568,31 @@ private fun TikTokSongInfo(
 }
 
 /**
- * The "Full screen" capsule from the reference: a semi-transparent dark
- * rounded pill with an icon and a label, sitting under the main visual.
+ * The fullscreen affordance from the reference, lower-left of the media: a
+ * compact icon-only pill. The label was removed per user request (2026-09-02:
+ * "remove the full screen text on the bottom") — the glyph plus its content
+ * description carry the action, and the top navigation's fullscreen toggle
+ * remains the labelled path.
  */
 @Composable
 private fun TikTokFullscreenPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        contentAlignment = Alignment.Center,
         modifier =
             modifier
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(Color.Black.copy(alpha = 0.45f))
                 .tiktokNoRippleClickable(onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 5.dp),
+                .padding(horizontal = 9.dp, vertical = 7.dp),
     ) {
         Icon(
             painter = painterResource(R.drawable.solar_fullscreen_linear),
-            contentDescription = null,
+            contentDescription = stringResource(R.string.tiktok_feed_fullscreen),
             tint = Color.White,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.width(5.dp))
-        Text(
-            text = stringResource(R.string.tiktok_feed_fullscreen),
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            modifier = Modifier.size(15.dp),
         )
     }
 }
@@ -621,13 +661,6 @@ private val TIKTOK_HEART_BURST_SIZE = 88.dp
 /** How long a double-tap heart lives, start to fade-out end. */
 private const val TIKTOK_HEART_BURST_MS = 650
 
-/**
- * The single scrim the inline lyrics pane sits its karaoke view on — light
- * enough that the blurred backdrop's own colour reads through it (the Apple
- * Music treatment), backed up by the page gradient's darker top and bottom.
- */
-private val TIKTOK_LYRICS_PANE_SCRIM = Color.Black.copy(alpha = 0.22f)
-
 /** Width of the rail's right-edge legibility wash. */
 private val TIKTOK_RAIL_WASH_WIDTH = 120.dp
 
@@ -640,6 +673,37 @@ private val TIKTOK_RAIL_WASH_WIDTH = 120.dp
 private val TIKTOK_RAIL_WASH =
     Brush.horizontalGradient(
         listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+    )
+
+/**
+ * The wash's vertical mask: fully present through the middle (where the
+ * rail's buttons live), fading to clear over the top and bottom fifths so
+ * the wash never begins or ends in a visible straight line. Applied with
+ * BlendMode.DstIn inside an offscreen layer, in the same place the wash is
+ * drawn.
+ */
+private val TIKTOK_RAIL_WASH_VERTICAL_FADE =
+    Brush.verticalGradient(
+        0.00f to Color.Transparent,
+        0.20f to Color.Black,
+        0.80f to Color.Black,
+        1.00f to Color.Transparent,
+    )
+
+/**
+ * The artwork's edge blend, applied with BlendMode.DstIn in an offscreen
+ * layer: opaque through the art, clear at the very top and bottom so the
+ * sharp rendering dissolves into the blurred backdrop of the same image
+ * instead of meeting it in a hard straight edge. The fade band is ~6% of
+ * the artwork's height per edge — enough to hide the seam, little enough
+ * that the card still reads as a card.
+ */
+private val TIKTOK_ART_EDGE_FADE =
+    Brush.verticalGradient(
+        0.00f to Color.Transparent,
+        0.06f to Color.Black,
+        0.94f to Color.Black,
+        1.00f to Color.Transparent,
     )
 
 /** TikTok's legibility scrim: dark at both edges (where the header and the

@@ -11,12 +11,15 @@
  * A full-screen, vertically swiped music player: every queue entry is one page,
  * swiping up lands on the next song, swiping down on the previous, and an
  * abandoned swipe springs back — playback itself is never interrupted by the
- * gesture, the switch only happens when a page settles.
+ * gesture, the switch only happens when a page settles. When the engine
+ * itself advances a single step — the song ends, a skip lands from the
+ * notification or the queue sheet — the feed plays the same swipe as an
+ * animated scroll, so the page change always looks like the reference's.
  *
  * Around the feed sits the reference's chrome: the top navigation (the
- * fullscreen toggle on the left, the app's real section tabs in the middle,
- * search on the right), the persistent bottom navigation over the app's real
- * destinations, and the progress row between them.
+ * fullscreen toggle on the left, the app's real section tabs plus the Queue
+ * action in the middle, search on the right) and the progress row pinned
+ * to the bottom over the app's real destinations.
  *
  * Belongs exclusively to the TikTok player style; not shared with any other
  * player style, per the self-containment rule for player styles. What it does
@@ -71,6 +74,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -96,6 +100,7 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
 
@@ -126,6 +131,7 @@ fun TikTokPlayerContent(
     bottomSheetPageState: BottomSheetPageState,
     lyricsVisible: Boolean,
     lyricsSyncOffset: Int = 0,
+    onLyricsSyncOffsetChange: (Int) -> Unit = {},
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
     onSeekFinished: () -> Unit = {},
@@ -191,10 +197,15 @@ fun TikTokPlayerContent(
 
     // ── Engine → feed ──
     // When the song changes from *anywhere* — mini player, queue sheet,
-    // notification, another screen — the feed follows. Snapping (not
-    // animating) keeps the page and the audio from ever visibly disagreeing
-    // for more than a frame; when the change came from the feed itself the
-    // indices already match and this is a no-op.
+    // notification, another screen, or the song simply ENDING — the feed
+    // follows. A single-step move plays the feed's own swipe (the animated
+    // scroll the user sees when they flick the page themselves), so a song
+    // that ends on its own advances exactly like a hand-swiped one (user
+    // request 2026-09-02: "when the song ends the song should swipe
+    // automatically and the swipe animation should also play"); multi-page
+    // jumps snap — the queue sheet's far taps should land, not tour the pages.
+    // When the change came from the feed itself the indices already match and
+    // this is a no-op.
     LaunchedEffect(currentWindowIndex, queueWindows.size) {
         if (queueWindows.isEmpty()) return@LaunchedEffect
         val pending = pendingSeekTarget
@@ -209,7 +220,12 @@ fun TikTokPlayerContent(
             pagerState.currentPage != currentWindowIndex &&
             !pagerState.isScrollInProgress
         ) {
-            pagerState.scrollToPage(currentWindowIndex)
+            val delta = currentWindowIndex - pagerState.currentPage
+            if (delta == 1 || delta == -1) {
+                pagerState.animateScrollToPage(currentWindowIndex)
+            } else {
+                pagerState.scrollToPage(currentWindowIndex)
+            }
         }
     }
 
@@ -248,6 +264,20 @@ fun TikTokPlayerContent(
     // behaviour, the same tap-a-line-to-seek — instead of leaving the feed
     // for the separate lyrics page.
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
+
+    // ── Lyrics overflow (the Apple Music anchored popup) ──
+    // While the inline pane is open, the rail's more button opens the LYRICS
+    // overflow menu — the same anchored, icon-growing popup the Apple Music
+    // style shows from its own lyrics view, with the same Edit / Refetch /
+    // Translate / Search actions — instead of the song menu. The rail reports
+    // the more button's root-space bounds so the popup grows out of the exact
+    // button that was tapped.
+    val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+    var showLyricsMenu by remember { mutableStateOf(false) }
+    var lyricsMenuAnchor by remember { mutableStateOf(Rect.Zero) }
+    LaunchedEffect(lyricsOpen) {
+        if (!lyricsOpen) showLyricsMenu = false
+    }
 
     // ── Full screen (the reference's pill) ──
     // With a playable video for the current song this is the app's existing
@@ -289,8 +319,7 @@ fun TikTokPlayerContent(
     val stableTopInset = LocalStableSystemBarsTopPadding.current
     val navigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val topChromeHeight = stableTopInset + TIKTOK_TOP_NAV_HEIGHT + 4.dp
-    val bottomChromeHeight =
-        TIKTOK_PROGRESS_ROW_HEIGHT + TIKTOK_BOTTOM_NAV_HEIGHT + navigationBarInset
+    val bottomChromeHeight = TIKTOK_PROGRESS_ROW_HEIGHT + navigationBarInset
 
     // "Add to playlist" lives at the content level (not per page) because the
     // dialog is one composable; the rail's bookmark button just tells it which
@@ -365,13 +394,20 @@ fun TikTokPlayerContent(
                 onTogglePlayPause = { player.togglePlayPause() },
                 onFullscreen = onFullscreenAction,
                 onQueueClick = onOpenQueue,
+                onOpenLyricsMenu = { showLyricsMenu = true },
+                onMoreIconPositioned = { bounds ->
+                    // Only the current page's rail is the anchor: neighbouring
+                    // pages pre-compose their rails too, and their bounds are
+                    // where the popup must never appear.
+                    if (page == currentWindowIndex) lyricsMenuAnchor = bounds
+                },
                 navController = navController,
                 menuState = menuState,
                 bottomSheetPageState = bottomSheetPageState,
             )
         }
 
-        // ── Top navigation: [fullscreen] [section tabs] [search] ──
+        // ── Top navigation: [fullscreen] [section tabs + Queue] [search] ──
         AnimatedVisibility(
             visible = !immersive,
             enter = fadeIn(tween(200)),
@@ -382,10 +418,11 @@ fun TikTokPlayerContent(
                 state = state,
                 isLoading = isLoading,
                 onFullscreen = onFullscreenAction,
+                onOpenQueue = onOpenQueue,
             )
         }
 
-        // ── Bottom chrome: playback progress + persistent navigation ──
+        // ── Bottom chrome: playback progress ──
         AnimatedVisibility(
             visible = !immersive,
             enter = fadeIn(tween(200)),
@@ -410,8 +447,6 @@ fun TikTokPlayerContent(
                 durationMs = duration,
                 onSeek = onSeek,
                 onSeekFinished = onSeekFinished,
-                navController = navController,
-                sheetState = state,
             )
         }
 
@@ -436,6 +471,28 @@ fun TikTokPlayerContent(
                 )
             }
         }
+
+        // ── Lyrics overflow (the anchored Apple Music popup) ──
+        // Rendered as a sibling of the feed at the player's root so its
+        // root-space anchor math positions it against the whole screen. Only
+        // while the inline lyrics pane is open; the rail's more button routes
+        // here instead of the song menu (user request 2026-09-02). No backdrop
+        // sampler is passed, so the popup renders its plain dark-glass card —
+        // the same fallback pre-S devices see in the Apple Music style.
+        if (lyricsOpen && showLyricsMenu) {
+            AnchoredLyricsOverflowMenu(
+                iconBoundsInRoot = lyricsMenuAnchor,
+                lyricsProvider = { currentLyrics },
+                mediaMetadataProvider = { mediaMetadata },
+                lyricsSyncOffset = lyricsSyncOffset,
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                showPlayerControlsState = null,
+                onShowPlayerControlsChange = null,
+                onAutoHidePlayerControlsChange = {},
+                onDismiss = { showLyricsMenu = false },
+                showControlsToggles = false,
+            )
+        }
     }
 
     // The one dialog the style needs: the playlist picker for the rail's
@@ -452,9 +509,12 @@ fun TikTokPlayerContent(
 /**
  * The top chrome, the reference's structure: the fullscreen toggle on the
  * left, the app's real section tabs in the middle (selected = bold white
- * with the short underline), and search on the right. Tapping a tab or the
- * search icon folds the player back into the mini player and navigates —
- * the same destinations, the same semantics, as the main navigation.
+ * with the short underline) followed by the Queue action, and search on the
+ * right. Tapping a tab or the search icon folds the player back into the
+ * mini player and navigates — the same destinations, the same semantics, as
+ * the main navigation; tapping Queue opens the queue sheet over the feed
+ * (user request 2026-09-02: "add a Queue text on the right side of library
+ * text on the top").
  *
  * The row's own padding is the notch-safe stable inset (not
  * statusBarsPadding): the status bar can be hidden — the app's hide-status-
@@ -467,6 +527,7 @@ private fun TikTokTopNavigation(
     state: BottomSheetState,
     isLoading: Boolean,
     onFullscreen: () -> Unit,
+    onOpenQueue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -519,7 +580,10 @@ private fun TikTokTopNavigation(
 
         Spacer(Modifier.weight(1f))
 
-        // Center: the section tabs (selected = bold white + short underline).
+        // Center: the section tabs (selected = bold white + short underline)
+        // with the Queue action riding to their right — same typographic
+        // weight as a selected tab, no underline because it is an action on
+        // the feed (opens the queue sheet), not a destination.
         Row(verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { tab ->
                 val isSelected = tab.route in selectedRoutes
@@ -564,6 +628,21 @@ private fun TikTokTopNavigation(
                     )
                 }
             }
+
+            Spacer(Modifier.width(16.dp))
+
+            Text(
+                text = stringResource(R.string.queue),
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .tiktokNoRippleClickable(onClick = onOpenQueue)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+            )
         }
 
         Spacer(Modifier.weight(1f))

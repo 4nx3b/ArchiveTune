@@ -10,10 +10,10 @@
  *
  * What the reference pins under the feed: the track's own progress with its
  * time labels (driven by the app's EXISTING seek callbacks — no side timer,
- * no drift), and the persistent bottom navigation bar over the app's REAL
- * destinations. Tapping a tab collapses the player and navigates with the
- * same popUpTo/saveState/restoreState semantics the main bottom bar uses;
- * the selected tab mirrors the current back-stack hierarchy.
+ * no drift). The persistent bottom navigation that used to sit under it was
+ * removed per user request (2026-09-02: "remove the home, search and library
+ * buttons on the bottom") — the top navigation's section tabs cover the
+ * destinations, and the feed keeps its full-bleed height.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
@@ -21,18 +21,14 @@ package moe.rukamori.archivetune.ui.player.tiktok
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,21 +44,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
-import androidx.navigation.NavController
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.compose.currentBackStackEntryAsState
-import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.utils.makeTimeString
-
-/** Height of the persistent navigation bar row (icons + labels). */
-internal val TIKTOK_BOTTOM_NAV_HEIGHT = 56.dp
 
 /** Height of the progress row (time labels + bar). */
 internal val TIKTOK_PROGRESS_ROW_HEIGHT = 44.dp
@@ -73,14 +58,12 @@ internal fun TikTokBottomChrome(
     durationMs: Long,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
-    navController: NavController,
-    sheetState: BottomSheetState,
     modifier: Modifier = Modifier,
 ) {
     Column(
         // The gradient behind this chrome bleeds to the very bottom edge; the
         // CONTENT sits above the gesture nav bar, matching the space the pages
-        // reserve for the chrome (TIKTOK_PROGRESS_ROW + NAV + nav-bar inset).
+        // reserve for the chrome (TIKTOK_PROGRESS_ROW + nav-bar inset).
         modifier = modifier.fillMaxWidth().navigationBarsPadding(),
     ) {
         TikTokProgressRow(
@@ -88,10 +71,6 @@ internal fun TikTokBottomChrome(
             durationMs = durationMs,
             onSeek = onSeek,
             onSeekFinished = onSeekFinished,
-        )
-        TikTokBottomNavigation(
-            navController = navController,
-            sheetState = sheetState,
         )
     }
 }
@@ -253,116 +232,6 @@ private fun TikTokProgressSlider(
                 )
             }
         }
-    }
-}
-
-/**
- * The persistent bottom navigation over the app's REAL destinations —
- * Home / Search / Library, the same routes and the same navigation
- * semantics (popUpTo + saveState + restoreState) as the main bottom bar.
- * Tapping a tab folds the player back into the mini player and lands on
- * the tab, exactly like tapping a feed-external link in the reference.
- */
-@Composable
-internal fun TikTokBottomNavigation(
-    navController: NavController,
-    sheetState: BottomSheetState,
-    modifier: Modifier = Modifier,
-) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val selectedRoutes =
-        remember(navBackStackEntry) {
-            navBackStackEntry?.destination?.hierarchy?.map { it.route }?.toSet()
-                ?: emptySet<String>()
-        }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(TIKTOK_BOTTOM_NAV_HEIGHT),
-    ) {
-        TikTokBottomNavItem(
-            label = stringResource(R.string.home),
-            iconActive = R.drawable.solar_home_bold,
-            iconInactive = R.drawable.solar_home_linear,
-            selected = "home" in selectedRoutes,
-            route = "home",
-            navController = navController,
-            sheetState = sheetState,
-            modifier = Modifier.weight(1f),
-        )
-        TikTokBottomNavItem(
-            label = stringResource(R.string.search),
-            iconActive = R.drawable.solar_magnifer_bold,
-            iconInactive = R.drawable.solar_magnifer_linear,
-            selected = "search" in selectedRoutes,
-            route = "search",
-            navController = navController,
-            sheetState = sheetState,
-            modifier = Modifier.weight(1f),
-        )
-        TikTokBottomNavItem(
-            label = stringResource(R.string.filter_library),
-            iconActive = R.drawable.solar_library_bold,
-            iconInactive = R.drawable.solar_library_linear,
-            selected = "library" in selectedRoutes,
-            route = "library",
-            navController = navController,
-            sheetState = sheetState,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun TikTokBottomNavItem(
-    label: String,
-    iconActive: Int,
-    iconInactive: Int,
-    selected: Boolean,
-    route: String,
-    navController: NavController,
-    sheetState: BottomSheetState,
-    modifier: Modifier = Modifier,
-) {
-    val onClick =
-        remember(navController, sheetState, route) {
-            {
-                sheetState.collapseSoft()
-                navController.navigate(route) {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
-                    }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier =
-            modifier
-                .fillMaxHeight()
-                .tiktokNoRippleClickable(onClick = onClick)
-                .padding(vertical = 6.dp),
-    ) {
-        Icon(
-            painter = painterResource(if (selected) iconActive else iconInactive),
-            contentDescription = label,
-            tint = if (selected) Color.White else TIKTOK_INACTIVE_GRAY,
-            modifier = Modifier.size(24.dp),
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = label,
-            color = if (selected) Color.White else TIKTOK_INACTIVE_GRAY,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1,
-        )
     }
 }
 

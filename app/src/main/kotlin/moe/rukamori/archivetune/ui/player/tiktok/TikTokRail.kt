@@ -50,11 +50,13 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -99,6 +101,8 @@ internal fun TikTokRail(
     lyricsActive: Boolean,
     onToggleLyrics: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onOpenLyricsMenu: () -> Unit,
+    onMoreIconPositioned: (Rect) -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
@@ -285,21 +289,33 @@ internal fun TikTokRail(
         }
 
         // ── More ──
+        // While the inline lyrics pane owns the page, this opens the LYRICS
+        // overflow menu (the anchored popup the Apple Music style shows from
+        // its own lyrics view — same Edit / Refetch / Translate / Search list)
+        // instead of the song menu; the pane's provider, offset and song are
+        // hoisted to the player level, which also renders the popup, while
+        // this rail reports the icon's root-space bounds so the popup grows
+        // out of the button the user tapped (user request 2026-09-02).
         TikTokRailButton(
             iconRes = R.drawable.solar_more_vert_linear,
             contentDescription = stringResource(R.string.more),
+            onPositioned = onMoreIconPositioned,
         ) {
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            menuState.show {
-                PlayerMenu(
-                    mediaMetadata = pageMetadata,
-                    navController = navController,
-                    playerBottomSheetState = sheetState,
-                    onShowDetailsDialog = {
-                        bottomSheetPageState.show { ShowMediaInfo(pageMetadata.id) }
-                    },
-                    onDismiss = menuState::dismiss,
-                )
+            if (lyricsActive) {
+                onOpenLyricsMenu()
+            } else {
+                menuState.show {
+                    PlayerMenu(
+                        mediaMetadata = pageMetadata,
+                        navController = navController,
+                        playerBottomSheetState = sheetState,
+                        onShowDetailsDialog = {
+                            bottomSheetPageState.show { ShowMediaInfo(pageMetadata.id) }
+                        },
+                        onDismiss = menuState::dismiss,
+                    )
+                }
             }
         }
     }
@@ -545,9 +561,10 @@ private fun TikTokRailButton(
     iconRes: Int,
     contentDescription: String,
     tint: Color = Color.White,
+    onPositioned: ((Rect) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    TikTokRailActionButton(onClick = onClick) {
+    TikTokRailActionButton(onClick = onClick, onPositioned = onPositioned) {
         TikTokRailGlyph(
             iconRes = iconRes,
             contentDescription = contentDescription,
@@ -596,12 +613,20 @@ private fun TikTokRailGlyph(
 @Composable
 private fun TikTokRailActionButton(
     onClick: () -> Unit,
+    onPositioned: ((Rect) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
                 .size(48.dp)
+                .let { m ->
+                    if (onPositioned != null) {
+                        m.onGloballyPositioned { onPositioned(it.boundsInRoot()) }
+                    } else {
+                        m
+                    }
+                }
                 .tiktokNoRippleClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
