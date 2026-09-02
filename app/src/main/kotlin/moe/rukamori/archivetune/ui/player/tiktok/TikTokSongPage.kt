@@ -594,7 +594,7 @@ private fun TikTokHeartBurstView(
         else -> 1f
     }
     val alpha = if (p < 0.55f) 1f else 1f - ((p - 0.55f) / 0.45f)
-    val rise = (p * p) * 160.dp
+    val rise = 160.dp * (p * p)
     val rotation = ((burst.id % 5) - 2) * 6f
     Icon(
         painter = painterResource(R.drawable.solar_heart_bold),
