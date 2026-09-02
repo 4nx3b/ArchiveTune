@@ -148,6 +148,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
@@ -162,9 +163,13 @@ import kotlin.math.roundToInt
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
@@ -174,6 +179,7 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Headphones
@@ -301,6 +307,15 @@ internal val GLOW_ROOM = 10.dp
 internal val BACKING_FONT_SIZE = 19.sp
 internal val BACKING_LINE_HEIGHT = 24.sp
 internal const val BACKING_ALPHA = 0.72f
+
+/**
+ * How the romanisation and translation voices are drawn (ArchiveTune
+ * addition): a step below the answering vocal — smaller and dimmer still — so
+ * the three tiers of a row read as lead, echo, gloss.
+ */
+internal val AUX_FONT_SIZE = 16.sp
+internal val AUX_LINE_HEIGHT = 20.sp
+internal const val AUX_ALPHA = 0.6f
 
 /** Stands in for an instrumental stretch on the strip. */
 internal const val INSTRUMENTAL_MARK = "Instrumental"
@@ -462,17 +477,75 @@ fun BitChordPlayerContent(
     // ── Lyrics, out of ArchiveTune's database ──
     // The music service stores (and backfills) fetched lyrics with their
     // provider name; LYRICS_NOT_FOUND marks a lookup that came back empty.
+    // Parsing routes through every format the lyrics table can hold — LRC,
+    // QRC, TTML and plain text — the same way the other lyrics surfaces route,
+    // so a plain-text or TTML result picked from the lyrics search sheet
+    // actually renders here too (user report 2026-09-02: "if I choose a
+    // different lyrics from a provider nothing shows up").
     val lyricsEntity by database.lyrics(mediaMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
-    val lyrics = remember(lyricsEntity?.lyrics) {
+    val parsedLyrics = remember(lyricsEntity?.lyrics, mediaMetadata.duration) {
         val raw = lyricsEntity?.lyrics
-        if (raw == null || raw == LyricsEntityNotFound) null else {
-            val parsed = LyricsUtils.parseLyrics(raw)
-            parsed.ifEmpty { null }?.toBitChordLyrics()
+        if (raw == null || raw == LyricsEntityNotFound) {
+            null
+        } else {
+            parseBitChordLyrics(raw, mediaMetadata.duration)
         }
     }
+    val lyrics = parsedLyrics?.lines
+    val lyricsSynced = parsedLyrics?.isSynced ?: true
     val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
     val lyricsUnavailable = lyricsEntity?.lyrics == LyricsEntityNotFound
+
+    // ── Auto translation (ArchiveTune addition, user request 2026-09-02) ──
+    // The same gate the standalone lyrics screen (LyricsScreen.kt) runs: when
+    // "Auto translate lyrics" is on, and this track's lyrics are in a language
+    // the user hasn't excluded, hand them to the AI translator and write the
+    // result back into the lyrics table this player already observes. The
+    // manual Translate action in the lyrics options menu shares the ViewModel,
+    // so an undo here suppresses auto-translate exactly as it does there.
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(
+        mediaMetadata.id,
+        lyricsEntity?.lyrics,
+        lyricsEntity?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+        autoTranslateExcludedLanguages,
+        translationDismissedMediaIds,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = lyricsEntity ?: return@LaunchedEffect
+        val text = snapshot.lyrics
+        if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
+        // Already AI-translated with real translation content — don't re-bill.
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) {
+            return@LaunchedEffect
+        }
+        // The user undid a translation for this song — respect it.
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
 
     // ── The queue, out of the ExoPlayer timeline ──
     val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
@@ -1240,6 +1313,11 @@ fun BitChordPlayerContent(
                                 alpha = ((p - 0.45f) / 0.55f).coerceIn(0f, 1f)
                                 translationY = (1f - p) * 26.dp.toPx()
                             },
+                        // Plain untimestamped lyrics: no sweep / follow / seek.
+                        synced = lyricsSynced,
+                        // Romanisation + translation engines key off these.
+                        mediaId = mediaMetadata.id,
+                        rawLyrics = lyricsEntity?.lyrics,
                     )
                 }
 
@@ -1314,16 +1392,26 @@ fun BitChordPlayerContent(
                             lyricsOpen = true
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        synced = lyricsSynced,
                     )
                 } else if (lyricsUnavailable) {
                     LyricsUnavailableLine(
                         trackKey = mediaMetadata.id,
                         modifier = Modifier.fillMaxWidth(),
+                        // The strip is the way into the lyrics page when this
+                        // track has no lyrics at all — the panel's ellipsis
+                        // button is where refetch / search live (user request
+                        // 2026-09-02).
+                        onClick = { lyricsOpen = true },
                     )
                 } else {
                     LyricsLoadingLine(
                         trackKey = mediaMetadata.id,
                         modifier = Modifier.fillMaxWidth(),
+                        // Same: the loading line is tappable so the lyrics
+                        // page is reachable mid-lookup (user request
+                        // 2026-09-02).
+                        onClick = { lyricsOpen = true },
                     )
                 }
             }
