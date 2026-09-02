@@ -335,20 +335,24 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyle.APPLE_MUSIC,
             PlayerDesignStyle.V10,
             PlayerDesignStyle.BITCHORD,
+            PlayerDesignStyle.TIKTOK,
             -> false
 
             else -> true
         }
     // The lyrics background only feeds the standalone lyrics page's backdrop.
-    // The BitChord and Apple Music styles own their lyrics surfaces outright —
-    // Bitchord's panel sits on its mesh-gradient backdrop and Apple Music's
-    // inline pane on its artwork-tinted gradient — so the setting does nothing
-    // for them and reads as broken. Disabled (with a note) rather than hidden so
-    // the row keeps its search anchor and its position in the list (user request
-    // 2026-09-01).
+    // The BitChord, Apple Music and TikTok styles own their lyrics surfaces
+    // outright — Bitchord's panel sits on its mesh-gradient backdrop, Apple
+    // Music's inline pane on its artwork-tinted gradient, and TikTok opens the
+    // shared full-screen lyrics page from its comment-bubble action without
+    // drawing a lyrics backdrop of its own — so the setting does nothing for
+    // them and reads as broken. Disabled (with a note) rather than hidden so
+    // the row keeps its search anchor and its position in the list (user
+    // request 2026-09-01).
     val isLyricsBackgroundStyleAvailable =
         playerDesignStyle != PlayerDesignStyle.BITCHORD &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+            playerDesignStyle != PlayerDesignStyle.TIKTOK
     val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
@@ -777,6 +781,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                         stringResource(R.string.player_design_v10)
                                     PlayerDesignStyle.BITCHORD ->
                                         stringResource(R.string.player_design_bitchord)
+                                    PlayerDesignStyle.TIKTOK ->
+                                        stringResource(R.string.player_design_tiktok)
                                 }
                             },
                         )

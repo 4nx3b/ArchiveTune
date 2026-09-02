@@ -567,6 +567,12 @@ fun Queue(
                     // like BitChord upstream. Its collapsed peek height is 0dp,
                     // so this sheet never visibly collapses for that style either.
                 }
+
+                PlayerDesignStyle.TIKTOK -> {
+                    // The TikTok style owns its queue surface too: the feed IS
+                    // the queue (every page a queue entry), and its collapsed
+                    // peek height is 0dp, so this sheet never visibly collapses.
+                }
             }
 
             if (showSleepTimerDialog) {
