@@ -2355,7 +2355,8 @@ fun AnchoredLyricsOverflowMenu(
                                 // below) lands right on the icon.
                                 (iconBoundsInRoot.top - verticalOffsetPx -
                                     (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
-                                    .coerceAtLeast(0)
+                                    .coerceAtLeast(0f)
+                                    .toInt()
                             } else {
                                 iconBottom + verticalOffsetPx
                             }
