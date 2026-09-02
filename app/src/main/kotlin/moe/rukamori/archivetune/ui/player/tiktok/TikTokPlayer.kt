@@ -58,6 +58,7 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -211,7 +212,9 @@ fun TikTokPlayerContent(
             // rendered before it slides in; nothing beyond that is composed,
             // ever, no matter how long the queue is. Compose disposes pages the
             // moment they leave this window — the "three pages, no more" rule.
-            beyondBoundsPageCount = 1,
+            // (Named beyondViewportPageCount in this Compose version — the
+            // older beyondBoundsPageCount name was removed.)
+            beyondViewportPageCount = 1,
             pageSpacing = 0.dp,
         ) { page ->
             val window = queueWindows.getOrNull(page)
