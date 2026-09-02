@@ -237,6 +237,7 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
+import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -418,7 +419,8 @@ fun BottomSheetPlayer(
     val playerUsesFixedBackground =
         playerDesignStyle == PlayerDesignStyle.V9 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-            playerDesignStyle == PlayerDesignStyle.BITCHORD
+            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+            playerDesignStyle == PlayerDesignStyle.TIKTOK
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -990,7 +992,8 @@ fun BottomSheetPlayer(
         if (
             playerDesignStyle == PlayerDesignStyle.V5 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-            playerDesignStyle == PlayerDesignStyle.BITCHORD
+            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+            playerDesignStyle == PlayerDesignStyle.TIKTOK
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1627,7 +1630,8 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.V7 &&
             playerDesignStyle != PlayerDesignStyle.V9 &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
-            playerDesignStyle != PlayerDesignStyle.BITCHORD
+            playerDesignStyle != PlayerDesignStyle.BITCHORD &&
+            playerDesignStyle != PlayerDesignStyle.TIKTOK
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -1670,6 +1674,36 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    // The TikTok style: a full-screen vertical feed over the
+                    // real queue — swipe up for the next song, down for the
+                    // previous. Same layout in either orientation: the page's
+                    // hero artwork sizes itself to the middle zone, so it is
+                    // width-limited in portrait and height-limited here, and
+                    // the pager + the sheet's nested-scroll connection divide
+                    // vertical drags between paging and collapsing.
+                    enrichedMetadata?.let { metadata ->
+                        TikTokPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                            onOpenLyrics = { isLyricsScreenVisible = true },
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -2051,6 +2085,35 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    // The TikTok style: a full-screen vertical feed over the
+                    // real queue — swipe up for the next song, down for the
+                    // previous. Each queue entry is one page (hero artwork,
+                    // right action rail, bottom info + transport); playback
+                    // switches only when a page settles, and the feed follows
+                    // song changes made from anywhere else in the app.
+                    enrichedMetadata?.let { metadata ->
+                        TikTokPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                            onOpenLyrics = { isLyricsScreenVisible = true },
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V5) {

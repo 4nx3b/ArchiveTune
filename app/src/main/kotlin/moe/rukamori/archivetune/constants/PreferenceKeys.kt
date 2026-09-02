@@ -1048,6 +1048,13 @@ enum class PlayerDesignStyle {
      * lyrics panel, queue panel and mesh backdrop live exclusively in
      * [moe.rukamori.archivetune.ui.player.bitchord] and share no components
      * with the other styles.
+     *
+     * TIKTOK is likewise self-contained in
+     * [moe.rukamori.archivetune.ui.player.tiktok]: a full-screen vertical feed
+     * where each queue entry is one page — swipe up for the next song, down for
+     * the previous, and the feed settles or springs back without interrupting
+     * playback. It reuses the app's playback engine, queue and lyrics screen
+     * but owns its layout outright.
      */
     V4,
     V5,
@@ -1056,6 +1063,7 @@ enum class PlayerDesignStyle {
     APPLE_MUSIC,
     V10,
     BITCHORD,
+    TIKTOK,
 }
 
 enum class PlayerBackgroundStyle {
