@@ -88,7 +88,8 @@ internal fun TikTokRail(
     isCurrentPage: Boolean,
     playerConnection: PlayerConnection,
     sheetState: BottomSheetState,
-    onOpenLyrics: () -> Unit,
+    lyricsActive: Boolean,
+    onToggleLyrics: () -> Unit,
     onAddToPlaylist: () -> Unit,
     navController: NavController,
     menuState: MenuState,
@@ -120,14 +121,16 @@ internal fun TikTokRail(
         // ── The artist's avatar (TikTok's profile picture) ──
         // Tap opens the artist page (the app's real destination, the player
         // collapsing first exactly like other in-player links); the small
-        // badge on its rim is the app's existing subscribe feature.
+        // badge on its rim is the app's existing subscribe feature. Sized
+        // at ~1.3x the rail icons — the reference's avatar:icon ratio — not
+        // the oversized 1.7x it used to be.
         TikTokArtistAvatar(
             pageMetadata = pageMetadata,
             sheetState = sheetState,
             navController = navController,
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
 
         // ── Like ──
         // The heart acts on THIS page's song, not on whatever is playing:
@@ -166,12 +169,17 @@ internal fun TikTokRail(
         }
 
         // ── Lyrics (TikTok's comment bubble) ──
+        // Toggles the Apple Music inline lyrics pane in place of the
+        // artwork; the red accent while open is the rail's own active colour
+        // (the same one the liked heart uses), so "tap again to close" reads
+        // at a glance.
         TikTokRailButton(
             iconRes = R.drawable.solar_chat_round_linear,
             contentDescription = stringResource(R.string.lyrics),
+            tint = if (lyricsActive) TIKTOK_RED else Color.White,
         ) {
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onOpenLyrics()
+            onToggleLyrics()
         }
 
         // ── Add to playlist (TikTok's bookmark) ──
@@ -341,7 +349,7 @@ private fun TikTokArtistAvatar(
     Box(
         modifier =
             modifier
-                .size(50.dp)
+                .size(40.dp)
                 .tiktokNoRippleClickable(
                     enabled = artistId != null,
                 ) {
@@ -376,7 +384,7 @@ private fun TikTokArtistAvatar(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .offset(x = 2.dp, y = 2.dp)
-                        .size(20.dp)
+                        .size(18.dp)
                         .shadow(elevation = 3.dp, shape = CircleShape, clip = false)
                         .clip(CircleShape)
                         .background(TIKTOK_RED)
@@ -402,8 +410,8 @@ private fun TikTokArtistAvatar(
             ) {
                 // The white plus, drawn rather than tinted so the badge reads
                 // as one solid TikTok-red dot.
-                Canvas(modifier = Modifier.size(10.dp)) {
-                    val stroke = 1.8.dp.toPx()
+                Canvas(modifier = Modifier.size(9.dp)) {
+                    val stroke = 1.6.dp.toPx()
                     val half = stroke / 2f
                     drawLine(
                         color = Color.White,

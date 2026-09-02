@@ -1703,11 +1703,11 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             lyricsVisible = isLyricsScreenVisible,
+                            lyricsSyncOffset = lyricsSyncOffset,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenLyrics = { isLyricsScreenVisible = true },
                             onOpenQueue = openQueue,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
@@ -2119,11 +2119,11 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             lyricsVisible = isLyricsScreenVisible,
+                            lyricsSyncOffset = lyricsSyncOffset,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenLyrics = { isLyricsScreenVisible = true },
                             onOpenQueue = openQueue,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
