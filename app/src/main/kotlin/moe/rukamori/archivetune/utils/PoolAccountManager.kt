@@ -76,6 +76,20 @@ object PoolAccountManager {
     @Volatile
     private var appContext: Context? = null
 
+    /**
+     * Why the last pool fetch failed, or null when it succeeded (or no pool URL is configured).
+     *
+     * [refresh] returns `hasAccounts()`, which is true whenever *anything* is in the persisted
+     * cache — so a pool that 404s on every request still reported "success" to the settings
+     * screen as long as one stale account survived from an earlier session. That made a broken
+     * pool indistinguishable from a working one in the UI, and the real HTTP status was only
+     * ever visible in logcat. Callers surface this alongside the result so the reason reaches
+     * the user instead of just the log.
+     */
+    @Volatile
+    var lastFeedError: String? = null
+        private set
+
     /** Report deduplication: "$service:$id:$type" → timestamp. Suppresses duplicate reports within ~10 minutes. */
     private val reportDedupe = ConcurrentHashMap<String, Long>()
 
@@ -227,7 +241,11 @@ object PoolAccountManager {
                 if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
                     return@withLock true
                 }
-                val url = sourcesUrl ?: return@withLock false
+                val url = sourcesUrl ?: run {
+                    // No Source Pool URL baked in — there is no pool failure to report.
+                    lastFeedError = null
+                    return@withLock false
+                }
                 runCatching {
                     val builder = Request.Builder().url(url).header("User-Agent", "ArchiveTune-Android")
                     if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
@@ -249,6 +267,18 @@ object PoolAccountManager {
                             } else {
                                 Timber.tag(TAG).w("Pool /api/sources returned HTTP %d", response.code)
                             }
+                            // Record why the fetch failed so the settings screen can show the
+                            // reason rather than a generic "failed". A 404 is not an "old pool
+                            // deployment" — nothing at this host serves the pool API at all
+                            // (wrong SOURCE_PROVIDER_URL). A missing or invalid read key is a
+                            // 401, never a 404.
+                            lastFeedError =
+                                when (response.code) {
+                                    404 -> "No pool API at $url (HTTP 404) — that URL is not an ArchivePool deployment."
+                                    401 -> "Pool rejected the API key (HTTP 401) — SOURCE_PROVIDER_KEY is missing, revoked, " +
+                                        "or issued by a different deployment."
+                                    else -> "Pool feed returned HTTP ${response.code}."
+                                }
                             return@withLock hasAccounts()
                         }
                         val root = JSONObject(response.body?.string().orEmpty())
@@ -280,8 +310,17 @@ object PoolAccountManager {
                             qobuz.size,
                             deezer.size,
                         )
+                        // The feed fetch itself succeeded — clear any stale error from a previous
+                        // refresh so the settings screen shows a healthy pool again.
+                        lastFeedError = null
                     }
-                }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
+                }.onFailure {
+                    // Record why the fetch failed so the settings screen can show the reason
+                    // rather than a generic "failed". refresh()'s own Boolean cannot carry this:
+                    // it reports whether anything is cached, not whether the call worked.
+                    lastFeedError = "Could not reach $url — network error."
+                    Timber.tag(TAG).w(it, "Pool account refresh failed")
+                }
                 hasAccounts()
             }
         }
