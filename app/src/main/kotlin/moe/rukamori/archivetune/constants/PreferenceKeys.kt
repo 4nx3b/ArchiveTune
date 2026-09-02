@@ -1687,6 +1687,13 @@ val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val YtDlpManualUpdateHistoryKey = stringSetPreferencesKey("ytDlpManualUpdateHistory")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 
+// New-release notifications (2026-09-03): release IDs (CSV, newest first,
+// bounded) already surfaced to the user for their subscribed artists, so a
+// release is only ever notified once. Empty/absent = first run, where the
+// current catalogue is baselined silently without notifying (otherwise the
+// first check would fire dozens of notifications at once).
+val SeenNewReleaseIdsKey = stringPreferencesKey("seenNewReleaseIds")
+
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
 val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")

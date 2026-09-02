@@ -367,7 +367,13 @@ fun OnlinePlaylistScreen(
     // the LazyColumn (not nested inside its first item) so they sample the backdrop
     // without being recorded into it — and, critically, their click handlers are not
     // competing with any LazyColumn-item pointer-input stack.
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    // Surface-coloured base, NOT black (user report 2026-09-03: light-mode
+    // Liquid Glass pills render solid black over white pages). The recorded
+    // LazyColumn layer is transparent wherever light-theme item backgrounds
+    // don't fill, and the pill's backdrop sample then shows this base rect —
+    // black under a light theme reads as a solid black pill. The surface
+    // colour blends with the page (LocalPlaylistScreen pattern).
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,

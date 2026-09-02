@@ -388,7 +388,13 @@ fun ArtistScreen(
     // handle). The actual content recording only happens when
     // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
     // which is gated on `liquidGlassHeaderActive`.
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    // Surface-coloured base, NOT black (user report 2026-09-03: light-mode
+    // Liquid Glass pills render solid black over white pages). The recorded
+    // LazyColumn layer is transparent wherever light-theme item backgrounds
+    // don't fill, and the pill's backdrop sample then shows this base rect —
+    // black under a light theme reads as a solid black pill. The surface
+    // colour blends with the page (LocalPlaylistScreen pattern).
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     // Per user report (2026-08-29): "Whenever I open artist page there's
     // always a refresh indicator who Refreshes automatically. it should

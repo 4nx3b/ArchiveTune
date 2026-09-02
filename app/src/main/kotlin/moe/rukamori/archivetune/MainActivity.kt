@@ -756,6 +756,13 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
+                // Subscribed-artist new-release notifications (2026-09-03):
+                // a unique periodic WorkManager job — network + battery
+                // constrained, 12h cadence. Scheduling is unconditional; the
+                // worker itself no-ops in one Room read when the user has no
+                // subscribed artists, so there is no setting to gate on.
+                moe.rukamori.archivetune.utils.NewReleaseNotificationManager
+                    .schedulePeriodicCheck(this@MainActivity)
             }
 
             // Use remembered instances so the same state object is used everywhere

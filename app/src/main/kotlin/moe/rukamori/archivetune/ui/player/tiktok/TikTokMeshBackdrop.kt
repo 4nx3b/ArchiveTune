@@ -178,7 +178,11 @@ internal fun TikTokMeshBackdrop(
             val radius = size.maxDimension * 0.62f
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(color.copy(alpha = 0.85f), color.copy(alpha = 0f)),
+                    // 0.78 (was 0.85, the Bitchord value): lets more of the
+                    // dimmed base (lightness 0.12) breathe between blobs so
+                    // the mesh reads as a colour wash rather than a full
+                    // saturation fill — the "too full" half of the report.
+                    colors = listOf(color.copy(alpha = 0.78f), color.copy(alpha = 0f)),
                     center = center,
                     radius = radius,
                 ),
@@ -298,12 +302,28 @@ private fun Color.shifted(hue: Float, lightness: Float): Color {
 private fun Color.hsl(): FloatArray =
     FloatArray(3).also { ColorUtils.colorToHSL(toArgb(), it) }
 
-/** Boost saturation and clamp lightness so any artwork yields a rich, non-muddy mesh. */
+/**
+ * Balance the palette colour for the mesh so the blend reads rich but never
+ * garish (user report 2026-09-03: "Sometimes the artwork blend color is too
+ * vibrant or too full which makes it look bad. the blend color's vibrance
+ * should be balanced").
+ *
+ * The Bitchord-original boost (saturation * 1.35, capped at 1.0) overdrives
+ * sleeves that already carry saturated colour: everything lands at full
+ * neon saturation and the mesh reads as "too vibrant / too full". The
+ * balanced tune keeps a mild lift for muted artwork (which genuinely needs
+ * it) while TEMPERING already-saturated artwork below maximum — the
+ * saturation ceiling is the balance point, not the multiplier:
+ *  - muted colour (s=0.30) -> 0.35, still visibly lifted;
+ *  - saturated colour (s=0.90) -> capped at 0.78, deliberately dimmed.
+ * Lightness is likewise kept inside a slightly narrower band so bright
+ * artwork cannot push the blobs toward white glare.
+ */
 private fun Color.tuned(): Color {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(toArgb(), hsl)
-    hsl[1] = (hsl[1] * 1.35f).coerceAtMost(1f)
-    hsl[2] = hsl[2].coerceIn(0.28f, 0.58f)
+    hsl[1] = (hsl[1] * 1.15f).coerceAtMost(0.78f)
+    hsl[2] = hsl[2].coerceIn(0.28f, 0.56f)
     return Color(ColorUtils.HSLToColor(hsl))
 }
 

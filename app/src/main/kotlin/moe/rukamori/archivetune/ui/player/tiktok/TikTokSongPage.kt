@@ -101,6 +101,22 @@ import moe.rukamori.archivetune.ui.utils.resize
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
 
 /**
+ * Fixed height of the caption row (the queue chip / lyrics X + dots row) —
+ * constant across every state so the info block never resizes when the
+ * lyrics controls appear or disappear (which used to visibly shift the
+ * artwork). See TikTokSongInfo.
+ */
+internal val TIKTOK_CAPTION_ROW_HEIGHT = 40.dp
+
+/**
+ * End padding for the title / secondary text so neither ever runs under the
+ * action rail, which now hangs down alongside the caption block (see the
+ * page-level TikTokRail in TikTokSongPage). Matches the reference's
+ * constrained caption width.
+ */
+internal val TIKTOK_CAPTION_TEXT_CLEARANCE = 56.dp
+
+/**
  * One page of the feed. Sizing is derived from the page's own constraints, so
  * the layout adapts to any screen ratio without hardcoded coordinates: the
  * artwork is the largest square that fits the middle zone (width-limited on
@@ -337,7 +353,6 @@ internal fun TikTokSongPage(
                         }
                     }
 
-                    // ── Right-edge legibility wash ──
                     // The soft dark wash the reference keeps behind its action
                     // rail: over light artwork the rail's white glyphs would
                     // otherwise wash out. It fades to clear well inside the
@@ -350,6 +365,11 @@ internal fun TikTokSongPage(
                     // over the karaoke text is exactly the "black layer over the
                     // lyrics" the user reported, and the glyphs' own drop
                     // shadows carry their legibility without it.
+                    //
+                    // The rail itself no longer lives in the zone (it hangs down
+                    // alongside the song info at the page level below, so its
+                    // bottom aligns with the artist/album line) — but its upper
+                    // buttons still ride this edge, so the wash stays.
                     if (!immersive && !showInlineLyrics) {
                         Box(
                             modifier =
@@ -368,32 +388,6 @@ internal fun TikTokSongPage(
                                             blendMode = BlendMode.DstIn,
                                         )
                                     },
-                        )
-                    }
-
-                    // The action rail is pinned to the media zone's bottom-right
-                    // — TikTok's own rail hangs its last action just above the
-                    // caption block rather than centring the stack (user request
-                    // 2026-09-02: "shift the player controls buttons like share,
-                    // like, lyrics and other icons down"). The lower-left full
-                    // screen pill that used to sit here was removed per the same
-                    // report ("remove the full screen icon above the recently
-                    // played text") — the top navigation's fullscreen toggle
-                    // remains the labelled path.
-                    if (!immersive) {
-                        TikTokRail(
-                            pageMetadata = pageMetadata,
-                            isCurrentPage = isCurrentPage,
-                            playerConnection = playerConnection,
-                            sheetState = sheetState,
-                            lyricsActive = showInlineLyrics,
-                            onToggleLyrics = onToggleLyrics,
-                            onAddToPlaylist = onAddToPlaylist,
-                            onOpenLyricsMenu = onOpenLyricsMenu,
-                            navController = navController,
-                            menuState = menuState,
-                            bottomSheetPageState = bottomSheetPageState,
-                            modifier = Modifier.align(Alignment.BottomEnd),
                         )
                     }
                 }
@@ -422,6 +416,47 @@ internal fun TikTokSongPage(
             }
 
             Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
+        }
+
+        // ── The action rail, hanging down alongside the song info ──
+        // A SIBLING of the whole Column (page level) rather than a child of
+        // the media zone, so the rail's BOTTOM sits level with the caption
+        // block's last line — the artist • album text (user request
+        // 2026-09-03: "Shift the like button, profile and the other control
+        // icons down and align it with the name of the album of the song and
+        // the name of the artist which is just below the name of the song").
+        // The rail's bottom edge is anchored to the same reference the info
+        // block ends on (the bottom chrome) plus the info block's own 8dp
+        // bottom padding, so the last rail button (more) straddles the
+        // title/secondary boundary exactly like the reference's rail hangs
+        // its spinning record beside the caption. The upper buttons still
+        // ride over the artwork's right edge as before — the zone-level
+        // right-edge wash above keeps their legibility.
+        //
+        // Overlap is safe by construction: the rail's horizontal footprint
+        // (48dp buttons + 10dp end padding) is cleared from the title and
+        // secondary text by their dedicated end padding (see TikTokSongInfo),
+        // and every caption-row control (queue chip, lyrics X/dots) only
+        // exists while the lyrics pane is open — exactly when the rail is
+        // fully hidden.
+        if (!immersive) {
+            TikTokRail(
+                pageMetadata = pageMetadata,
+                isCurrentPage = isCurrentPage,
+                playerConnection = playerConnection,
+                sheetState = sheetState,
+                lyricsActive = isCurrentPage && lyricsOpen,
+                onToggleLyrics = onToggleLyrics,
+                onAddToPlaylist = onAddToPlaylist,
+                onOpenLyricsMenu = onOpenLyricsMenu,
+                navController = navController,
+                menuState = menuState,
+                bottomSheetPageState = bottomSheetPageState,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = bottomChromeHeight + 8.dp),
+            )
         }
     }
 }
@@ -517,8 +552,21 @@ private fun TikTokSongInfo(
     Column(modifier = modifier) {
         val showChipRow = lyricsControlsVisible || !queueTitle.isNullOrBlank()
         if (showChipRow) {
+            // FIXED-HEIGHT caption row (user report 2026-09-03: "When I open
+            // lyrics in tiktok style and then close it I see artwork shifting
+            // it's position a bit for a split second"). The row used to size
+            // itself to its tallest child: the queue chip alone (~24dp), or
+            // the lyrics X/dots (40dp) while the pane was open. Their exit
+            // animation held the space for 200ms and then COLLAPSED it — the
+            // info block shrank, the media zone above grew, and the artwork
+            // (re-appearing through the very same crossfade) visibly jumped
+            // down. A fixed 40dp height makes the row's height identical in
+            // every state, so the layout below (and above) never moves:
+            // the chip centers vertically when the controls are gone, and
+            // the X/dots fit exactly when they are present.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.height(TIKTOK_CAPTION_ROW_HEIGHT),
             ) {
                 if (!queueTitle.isNullOrBlank()) {
                     Row(
@@ -601,6 +649,12 @@ private fun TikTokSongInfo(
             }
             Spacer(Modifier.height(8.dp))
         }
+        // The title and secondary line keep their right edge clear of the
+        // action rail, which now hangs down alongside this block (see the
+        // page-level TikTokRail in TikTokSongPage): 56dp of end padding
+        // clears the rail's 48dp buttons + 10dp end padding with room to
+        // spare, exactly like the reference constrains its caption text —
+        // a constant inset so the text never reflows when the rail hides.
         Text(
             text = pageMetadata.title,
             color = Color.White,
@@ -608,6 +662,7 @@ private fun TikTokSongInfo(
             fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(end = TIKTOK_CAPTION_TEXT_CLEARANCE),
         )
         Spacer(Modifier.height(3.dp))
         val artistName = pageMetadata.artists.joinToString(", ") { it.name }
@@ -624,6 +679,7 @@ private fun TikTokSongInfo(
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = TIKTOK_CAPTION_TEXT_CLEARANCE),
             )
         }
     }

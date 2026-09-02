@@ -73,6 +73,16 @@ fun CreatePlaylistDialog(
 
     when (val state = screenState) {
         CreatePlaylistScreenState.Loading -> {
+            // Render with SUCCESS-IDENTICAL visuals (isLoading = false, i.e.
+            // enabled controls) — the Loading state now lives for at most one
+            // frame before ViewModel.open() publishes the optimistic Success
+            // state (see CreatePlaylistViewModel), and that frame must look
+            // exactly like what replaces it. Passing isLoading = true here
+            // used to dim the whole dialog (disabled text field, disabled
+            // switch, disabled OK) for a frame and then pop it back to
+            // enabled — the visible "popup flicker" the user reported
+            // (2026-09-03). Submission during this transient frame is safe:
+            // the optimistic state open() installs carries the same defaults.
             CreatePlaylistDialogContent(
                 data =
                     CreatePlaylistUiData(
@@ -83,7 +93,7 @@ fun CreatePlaylistDialog(
                         syncRequested = false,
                         isSubmitting = false,
                     ),
-                isLoading = true,
+                isLoading = false,
                 errorMessageResId = null,
                 onNameChange = updateName,
                 onSyncRequestedChange = updateSyncRequested,
