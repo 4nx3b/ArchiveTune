@@ -311,10 +311,14 @@ fun TikTokPlayerContent(
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
 
     // ── Lyrics overflow (the Apple Music anchored popup) ──
-    // While the inline pane is open, the rail's more button opens the LYRICS
-    // overflow menu — the same anchored popup the Apple Music style shows
-    // from its own lyrics view, with the same Edit / Refetch / Translate /
-    // Search actions — instead of the song menu. The popup carries the same
+    // While the inline pane is open, the lyrics-overflow chip (the compact
+    // more button at the top-right below the navigation, rendered in the
+    // root Box below) opens the LYRICS overflow menu — the same anchored
+    // popup the Apple Music style shows from its own lyrics view, with the
+    // same Edit / Refetch / Translate / Search actions — instead of the
+    // song menu. (The rail's more button hid with the rest of the song
+    // actions while the pane is open, per the user request 2026-09-02, so
+    // the chip is the popup's entry point now.) The popup carries the same
     // frosted-glass blur (it samples the feed through the layer backdrop
     // below) and opens from the top-right below the top navigation, the
     // spot the Apple Music style's own popup opens from.
@@ -580,10 +584,49 @@ fun TikTokPlayerContent(
             }
         }
 
+        // ── Lyrics overflow chip (only while the inline pane owns the page) ──
+        // The rail's song actions — its more button included — hide while
+        // the lyrics pane is open (user request 2026-09-02: "when I open
+        // lyrics the like button, share, profile, overflow icon etc only
+        // should hide"), so the lyrics overflow popup needs its own
+        // affordance: this compact more chip below the top navigation, at
+        // the top-right — the same spot the Apple Music style's mini-header
+        // more chip occupies, and the exact spot [lyricsPopupAnchor] grows
+        // the popup out of. It appears only while the pane is open and
+        // disappears with it; everything else on the page stays untouched.
+        if (!immersive) {
+            AnimatedVisibility(
+                visible = lyricsOpen,
+                enter = fadeIn(tween(200)),
+                exit = fadeOut(tween(200)),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(
+                                top = stableTopInset + TIKTOK_TOP_NAV_HEIGHT + 4.dp,
+                                end = 12.dp,
+                            )
+                            .size(40.dp)
+                            .tiktokNoRippleClickable(onClick = { showLyricsMenu = true }),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.solar_more_vert_linear),
+                        contentDescription = stringResource(R.string.more),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
         // ── Lyrics overflow (the anchored Apple Music popup) ──
         // Rendered as a SIBLING of the pager (the backdrop-capturing layer)
         // at the player's root. While the inline lyrics pane is open, the
-        // rail's more button routes here instead of the song menu. The popup
+        // lyrics-overflow chip above routes here instead of the song menu
+        // (the rail's own more button hides with the rest of the song
+        // actions while the pane is open). The popup
         // samples the feed through [popupBackdrop] — the same frosted-glass
         // blur the Apple Music style's popup has — and its anchor puts it at
         // the top-right below the top navigation, where the Apple Music
