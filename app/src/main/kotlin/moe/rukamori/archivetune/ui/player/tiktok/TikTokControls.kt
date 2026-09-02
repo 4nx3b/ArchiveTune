@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import androidx.navigation.NavController
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.currentBackStackEntryAsState
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -75,7 +77,12 @@ internal fun TikTokBottomChrome(
     sheetState: BottomSheetState,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        // The gradient behind this chrome bleeds to the very bottom edge; the
+        // CONTENT sits above the gesture nav bar, matching the space the pages
+        // reserve for the chrome (TIKTOK_PROGRESS_ROW + NAV + nav-bar inset).
+        modifier = modifier.fillMaxWidth().navigationBarsPadding(),
+    ) {
         TikTokProgressRow(
             positionMs = displayPositionMs,
             durationMs = durationMs,
