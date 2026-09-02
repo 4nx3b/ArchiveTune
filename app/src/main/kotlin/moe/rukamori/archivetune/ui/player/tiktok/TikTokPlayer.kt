@@ -30,10 +30,12 @@
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -49,9 +51,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -64,6 +63,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -86,6 +86,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.currentBackStackEntryAsState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -102,10 +103,10 @@ internal val TIKTOK_TOP_NAV_HEIGHT = 44.dp
 
 /**
  * The feed player. Parameters mirror the other self-contained styles so
- * Player.kt dispatches every style the same way, plus [onOpenLyrics] for the
- * one shared surface this style deliberately reuses instead of owning — the
- * full-screen lyrics page — and the app's standard seek callbacks so the
- * feed's progress row scrubs exactly like every other style's slider.
+ * Player.kt dispatches every style the same way, plus [lyricsSyncOffset] for
+ * the one shared surface this style deliberately reuses instead of owning —
+ * the Apple Music inline lyrics pane — and the app's standard seek callbacks
+ * so the feed's progress row scrubs exactly like every other style's slider.
  */
 @Composable
 fun TikTokPlayerContent(
@@ -123,7 +124,7 @@ fun TikTokPlayerContent(
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
     lyricsVisible: Boolean,
-    onOpenLyrics: () -> Unit = {},
+    lyricsSyncOffset: Int = 0,
     onOpenQueue: () -> Unit = {},
     onSeek: (Long) -> Unit = {},
     onSeekFinished: () -> Unit = {},
@@ -240,6 +241,13 @@ fun TikTokPlayerContent(
         }
     }
 
+    // ── Inline lyrics (the Apple Music treatment) ──
+    // The rail's lyrics action toggles the karaoke pane in place of the
+    // artwork — the same LyricsEnhanced component, the same follow-the-song
+    // behaviour, the same tap-a-line-to-seek — instead of leaving the feed
+    // for the separate lyrics page.
+    var lyricsOpen by rememberSaveable { mutableStateOf(false) }
+
     // ── Full screen (the reference's pill) ──
     // With a playable video for the current song this is the app's existing
     // fullscreen video overlay, verbatim; without one it is the feed's own
@@ -247,13 +255,17 @@ fun TikTokPlayerContent(
     val videoFullscreenHolder = LocalVideoFullscreenState.current
     val videoState = LocalVideoArtworkState.current
     var immersive by rememberSaveable { mutableStateOf(false) }
-    // Back exits immersive mode before anything else; lyrics (which is its
-    // own full-screen surface) keeps its own back handling.
+    // Back exits inline lyrics first, immersive mode next; the separate
+    // lyrics page (if something else opened it) keeps its own back handling.
+    BackHandler(enabled = lyricsOpen && !lyricsVisible) { lyricsOpen = false }
     BackHandler(enabled = immersive && !lyricsVisible) { immersive = false }
-    // Reset immersive when the player sheet collapses so re-expanding always
+    // Reset both when the player sheet collapses so re-expanding always
     // shows the full feed chrome, and when the lyrics page opens.
     LaunchedEffect(state.isExpanded, lyricsVisible) {
-        if ((!state.isExpanded || lyricsVisible) && immersive) immersive = false
+        if (!state.isExpanded || lyricsVisible) {
+            if (immersive) immersive = false
+            if (lyricsOpen) lyricsOpen = false
+        }
     }
     val onFullscreenAction =
         remember(videoState, videoFullscreenHolder) {
@@ -262,14 +274,20 @@ fun TikTokPlayerContent(
                     videoFullscreenHolder.isFullscreen = true
                 } else {
                     immersive = !immersive
+                    if (immersive) lyricsOpen = false
                 }
             }
         }
 
     // ── Reserved chrome heights shared by pages and the global overlays ──
-    val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // The top inset is the app's notch-safe value (it floors against the
+    // display cutout): when the status bar is hidden — the hide-status-bar
+    // preference, a lyrics page, a menu — WindowInsets.statusBars reports 0
+    // and a plain statusBarsPadding would let the nav collide with the
+    // physical notch. The cutout is reported regardless of bar visibility.
+    val stableTopInset = LocalStableSystemBarsTopPadding.current
     val navigationBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val topChromeHeight = statusBarInset + TIKTOK_TOP_NAV_HEIGHT + 4.dp
+    val topChromeHeight = stableTopInset + TIKTOK_TOP_NAV_HEIGHT + 4.dp
     val bottomChromeHeight =
         TIKTOK_PROGRESS_ROW_HEIGHT + TIKTOK_BOTTOM_NAV_HEIGHT + navigationBarInset
 
@@ -279,6 +297,13 @@ fun TikTokPlayerContent(
     var addToPlaylistSong by remember { mutableStateOf<MediaMetadata?>(null) }
 
     val displayPositionMs = sliderPosition ?: position
+
+    // The lyrics pane reads the scrub position the way the Apple Music style
+    // feeds it: null unless the user is actively scrubbing, so the pane's own
+    // frame loop drives the karaoke sweep (never the 100ms-polled position —
+    // that steps). Hoisted above the pager so a scrub tick recomposes no page.
+    val sliderPositionState = rememberUpdatedState(sliderPosition)
+    val lyricsPosProvider = remember { { sliderPositionState.value } }
 
     Box(modifier = modifier.fillMaxSize()) {
         VerticalPager(
@@ -328,11 +353,14 @@ fun TikTokPlayerContent(
                 playerConnection = playerConnection,
                 queueTitle = queueTitle,
                 immersive = immersive,
+                lyricsOpen = lyricsOpen,
+                sliderPositionProvider = lyricsPosProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
                 topChromeHeight = topChromeHeight,
                 bottomChromeHeight = bottomChromeHeight,
                 sheetState = state,
-                onOpenLyrics = onOpenLyrics,
                 onAddToPlaylist = { addToPlaylistSong = pageMetadata },
+                onToggleLyrics = { lyricsOpen = !lyricsOpen },
                 onTogglePlayPause = { player.togglePlayPause() },
                 onFullscreen = onFullscreenAction,
                 onQueueClick = onOpenQueue,
@@ -393,8 +421,7 @@ fun TikTokPlayerContent(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .statusBarsPadding()
-                        .padding(top = 6.dp, end = 12.dp)
+                        .padding(top = stableTopInset + 6.dp, end = 12.dp)
                         .size(40.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.45f))
@@ -427,6 +454,11 @@ fun TikTokPlayerContent(
  * with the short underline), and search on the right. Tapping a tab or the
  * search icon folds the player back into the mini player and navigates —
  * the same destinations, the same semantics, as the main navigation.
+ *
+ * The row's own padding is the notch-safe stable inset (not
+ * statusBarsPadding): the status bar can be hidden — the app's hide-status-
+ * bar preference, or a lyrics page — at which point WindowInsets.statusBars
+ * reports 0 and the tabs would slide straight under the physical notch.
  */
 @Composable
 private fun TikTokTopNavigation(
@@ -437,6 +469,7 @@ private fun TikTokTopNavigation(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val stableTopInset = LocalStableSystemBarsTopPadding.current
     val tabs =
         remember(context) {
             listOf(
@@ -462,7 +495,7 @@ private fun TikTokTopNavigation(
         modifier =
             modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
+                .padding(top = stableTopInset)
                 .height(TIKTOK_TOP_NAV_HEIGHT)
                 .padding(horizontal = 6.dp),
     ) {
@@ -534,18 +567,11 @@ private fun TikTokTopNavigation(
 
         Spacer(Modifier.weight(1f))
 
-        // While the stream resolves, a small spinner keeps a stalled load
-        // from reading as a dead screen.
-        if (isLoading) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 2.2.dp,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-        }
-
-        // Right: search.
+        // Right: search — and, while the stream resolves, the loading
+        // indicator. The spinner swaps IN PLACE inside the search slot
+        // (AnimatedContent) instead of being inserted into the row: nothing
+        // to the left of it ever moves, loading or not, so the tabs and every
+        // hit target keep absolutely constant positions.
         Box(
             contentAlignment = Alignment.Center,
             modifier =
@@ -568,12 +594,29 @@ private fun TikTokTopNavigation(
                             },
                     ),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.solar_magnifer_linear),
-                contentDescription = stringResource(R.string.search),
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
-            )
+            AnimatedContent(
+                targetState = isLoading,
+                transitionSpec = {
+                    fadeIn(tween(160)) togetherWith fadeOut(tween(160))
+                },
+                contentAlignment = Alignment.Center,
+                label = "tiktokSearchLoadingSlot",
+            ) { loading ->
+                if (loading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.2.dp,
+                        modifier = Modifier.size(20.dp),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.solar_magnifer_linear),
+                        contentDescription = stringResource(R.string.search),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
         }
     }
 }
