@@ -20,6 +20,9 @@
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,16 +38,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -100,7 +108,6 @@ internal fun TikTokRail(
     val haptics = LocalHapticFeedback.current
     val database = LocalDatabase.current
     val downloadUtil = LocalDownloadUtil.current
-    val syncUtils = LocalSyncUtils.current
     val scope = rememberCoroutineScope()
 
     // This page's song row — liked state and format come from the same Room
@@ -110,6 +117,15 @@ internal fun TikTokRail(
     val isLocal = librarySong?.song?.isLocal == true
     val download by downloadUtil.getDownload(pageMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
+
+    // The page's one like action, shared with the artwork's double-tap —
+    // see rememberTikTokLikeAction below.
+    val likeAction =
+        rememberTikTokLikeAction(
+            pageMetadata = pageMetadata,
+            isCurrentPage = isCurrentPage,
+            playerConnection = playerConnection,
+        )
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -133,40 +149,18 @@ internal fun TikTokRail(
         Spacer(Modifier.height(14.dp))
 
         // ── Like ──
-        // The heart acts on THIS page's song, not on whatever is playing:
-        // when the row exists the toggle is the same per-song one the song
-        // menu uses (Room update + sync); a song that isn't in the library
-        // yet falls back to the service's current-song toggle (which also
-        // handles inserting it) when this page is the playing one, and to
-        // register-then-like otherwise.
+        // The heart acts on THIS page's song, not on whatever is playing —
+        // the shared action walks the same Room + sync path the song menu
+        // uses, and pops its glyph whenever the row flips to liked, whether
+        // that came from this button or a double-tap on the media.
         val liked = librarySong?.song?.liked == true
-        TikTokRailButton(
-            iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
-            contentDescription = stringResource(R.string.action_like),
-            tint = if (liked) TIKTOK_RED else Color.White,
-        ) {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            val row = librarySong?.song
-            when {
-                row != null -> {
-                    val s = row.toggleLike()
-                    database.query { update(s) }
-                    syncUtils.likeSong(s)
-                }
-
-                isCurrentPage -> playerConnection.toggleLike()
-
-                else -> {
-                    database.transaction { insert(pageMetadata) }
-                    scope.launch {
-                        val entity = database.song(pageMetadata.id).first()?.song ?: return@launch
-                        val s = entity.toggleLike()
-                        database.query { update(s) }
-                        syncUtils.likeSong(s)
-                    }
-                }
-            }
-        }
+        TikTokLikeRailButton(
+            liked = liked,
+            onLike = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                likeAction(false)
+            },
+        )
 
         // ── Lyrics (TikTok's comment bubble) ──
         // Toggles the Apple Music inline lyrics pane in place of the
@@ -434,9 +428,117 @@ private fun TikTokArtistAvatar(
 }
 
 /**
- * One rail action: a plain white glyph with a soft round shadow — TikTok's
- * rail has no pills, no glass, nothing but the icon and its shadow over the
- * media. The 48dp touch target meets accessibility guidance.
+ * The page's one like action — shared by the rail's heart (a plain toggle)
+ * and the artwork's double-tap (like-only: a double-tap never unlikes, the
+ * reference's rule). It acts on THIS page's song, not on whatever happens to
+ * be playing: when the row exists the toggle is the same per-song one the
+ * song menu uses (Room update + sync); a song that isn't in the library yet
+ * falls back to the service's current-song toggle (which also handles
+ * inserting it) when this page is the playing one, and to register-then-like
+ * otherwise.
+ */
+@Composable
+internal fun rememberTikTokLikeAction(
+    pageMetadata: MediaMetadata,
+    isCurrentPage: Boolean,
+    playerConnection: PlayerConnection,
+): (Boolean) -> Unit {
+    val database = LocalDatabase.current
+    val syncUtils = LocalSyncUtils.current
+    val scope = rememberCoroutineScope()
+    // Observes the same Room row the rail renders from; the delegated read
+    // inside the remembered lambda stays live, so the like-only guard sees
+    // the freshest row at call time without an extra query per tap.
+    val librarySong by database.song(pageMetadata.id)
+        .collectAsStateWithLifecycle(initialValue = null)
+    return remember(database, syncUtils, scope, pageMetadata, isCurrentPage, playerConnection) {
+        { likeOnly: Boolean ->
+            val row = librarySong?.song
+            when {
+                // Already liked and this is a double-tap: stay liked.
+                likeOnly && row?.liked == true -> Unit
+
+                row != null -> {
+                    val s = row.toggleLike()
+                    database.query { update(s) }
+                    syncUtils.likeSong(s)
+                }
+
+                isCurrentPage -> playerConnection.toggleLike()
+
+                else -> {
+                    database.transaction { insert(pageMetadata) }
+                    scope.launch {
+                        val entity = database.song(pageMetadata.id).first()?.song ?: return@launch
+                        val s = entity.toggleLike()
+                        database.query { update(s) }
+                        syncUtils.likeSong(s)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The rail's heart, with the reference's like pop: the glyph springs in
+ * from a small scale whenever the song flips to liked — whether that came
+ * from this button or a double-tap on the media, since both land in the
+ * same Room row this reads — and settles with a small shrink when unliked.
+ */
+@Composable
+private fun TikTokLikeRailButton(
+    liked: Boolean,
+    onLike: () -> Unit,
+) {
+    val likeLabel = stringResource(R.string.action_like)
+    val scale = remember { Animatable(1f) }
+    // Seeded with the row's current state so (re)composing an already-liked
+    // page never replays the pop — only a live false -> true transition does.
+    var wasLiked by remember { mutableStateOf(liked) }
+    LaunchedEffect(liked) {
+        if (liked && !wasLiked) {
+            scale.snapTo(0.2f)
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium,
+                    ),
+            )
+        } else if (!liked && wasLiked) {
+            scale.snapTo(0.85f)
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            )
+        }
+        wasLiked = liked
+    }
+    TikTokRailActionButton(onClick = onLike) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier =
+                Modifier
+                    .size(30.dp)
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                    },
+        ) {
+            TikTokRailGlyph(
+                iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
+                contentDescription = likeLabel,
+                tint = if (liked) TIKTOK_RED else Color.White,
+            )
+        }
+    }
+}
+
+/**
+ * One rail action: a plain glyph, no pills, no glass — the 48dp touch target
+ * meets accessibility guidance.
  */
 @Composable
 private fun TikTokRailButton(
@@ -446,14 +548,46 @@ private fun TikTokRailButton(
     onClick: () -> Unit,
 ) {
     TikTokRailActionButton(onClick = onClick) {
+        TikTokRailGlyph(
+            iconRes = iconRes,
+            contentDescription = contentDescription,
+            tint = tint,
+        )
+    }
+}
+
+/**
+ * One rail glyph with its own drop shadow: a blurred black copy of the icon
+ * offset a hair down, behind the crisp one. The shadow follows the glyph's
+ * shape — the reference's rail reads over any media because its icons carry
+ * a real glyph shadow, not a circle behind them — so the white line icons
+ * stay legible over light artwork too. (Modifier.blur is a no-op below
+ * API 31, where the offset copy reads as a hard shadow instead — still
+ * legible.) Together with the page's right-edge wash this is the rail's
+ * whole visibility story on bright covers.
+ */
+@Composable
+private fun TikTokRailGlyph(
+    iconRes: Int,
+    contentDescription: String,
+    tint: Color,
+) {
+    Box(modifier = Modifier.size(30.dp)) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = Color.Black.copy(alpha = 0.35f),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .offset(y = 1.dp)
+                    .blur(2.dp),
+        )
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = tint,
-            modifier =
-                Modifier
-                    .size(30.dp)
-                    .shadow(elevation = 4.dp, shape = CircleShape, clip = false),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }

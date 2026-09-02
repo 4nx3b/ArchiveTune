@@ -21,22 +21,25 @@ package moe.rukamori.archivetune.ui.player.tiktok
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,8 +47,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -120,6 +128,20 @@ internal fun TikTokSongPage(
     bottomSheetPageState: BottomSheetPageState,
 ) {
     val haptics = LocalHapticFeedback.current
+    // The page's one like action — shared by the rail's heart (a plain
+    // toggle) and the artwork's double-tap (like-only, TikTok's rule that
+    // a double-tap never unlikes). Same Room row + sync path the song
+    // menu uses; see rememberTikTokLikeAction in TikTokRail.kt.
+    val likeAction =
+        rememberTikTokLikeAction(
+            pageMetadata = pageMetadata,
+            isCurrentPage = isCurrentPage,
+            playerConnection = playerConnection,
+        )
+    // Live hearts for double-taps: each burst removes itself when its own
+    // animation finishes, so rapid double-taps stack like the reference's.
+    val heartBursts = remember { mutableStateListOf<TikTokHeartBurst>() }
+    var nextHeartBurstId by remember { mutableStateOf(0L) }
     // In immersive mode the page keeps only the notch-safe top inset (the
     // chrome is hidden), so the artwork grows but never underlaps the notch
     // even while the status bar is hidden. The stable inset floors against
@@ -196,8 +218,13 @@ internal fun TikTokSongPage(
                                             scaleY = artworkScale
                                         }.let { m ->
                                             // Tap on the hero = play/pause, TikTok's
-                                            // tap-the-video gesture; only the page that
-                                            // is actually playing responds.
+                                            // tap-the-video gesture; a double-tap
+                                            // anywhere on it likes the song — the
+                                            // detector disambiguates the two the
+                                            // platform way (the single tap waits
+                                            // out the double-tap timeout first).
+                                            // Only the page that is actually
+                                            // playing responds.
                                             if (isCurrentPage) {
                                                 m.pointerInput(pageMetadata.id) {
                                                     detectTapGestures(
@@ -206,6 +233,18 @@ internal fun TikTokSongPage(
                                                                 HapticFeedbackType.TextHandleMove,
                                                             )
                                                             onTogglePlayPause()
+                                                        },
+                                                        onDoubleTap = { tap ->
+                                                            haptics.performHapticFeedback(
+                                                                HapticFeedbackType.LongPress,
+                                                            )
+                                                            likeAction(true)
+                                                            heartBursts +=
+                                                                TikTokHeartBurst(
+                                                                    id = nextHeartBurstId++,
+                                                                    x = tap.x.toDp(),
+                                                                    y = tap.y.toDp(),
+                                                                )
                                                         },
                                                     )
                                                 }
@@ -237,8 +276,36 @@ internal fun TikTokSongPage(
                                 // Paused affordance (current page only) — TikTok's
                                 // translucent play glyph while a video is paused.
                                 TikTokPausedOverlay(visible = isCurrentPage && !isPlaying)
+
+                                // Double-tap hearts, spawned at the tap point.
+                                heartBursts.forEach { burst ->
+                                    key(burst.id) {
+                                        TikTokHeartBurstView(
+                                            burst = burst,
+                                            onFinished = {
+                                                heartBursts.removeAll { it.id == burst.id }
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    // ── Right-edge legibility wash ──
+                    // The soft dark wash the reference keeps behind its action
+                    // rail: over light artwork the rail's white glyphs would
+                    // otherwise wash out. It fades to clear well inside the
+                    // media so it reads as part of the cover, never as a panel.
+                    if (!immersive) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .width(TIKTOK_RAIL_WASH_WIDTH)
+                                    .background(TIKTOK_RAIL_WASH),
+                        )
                     }
 
                     // ── "Full screen" pill (reference: lower-left of the media) ─
@@ -354,8 +421,11 @@ private fun TikTokPausedOverlay(visible: Boolean) {
  * The Apple Music inline lyrics pane, component and behaviour verbatim: the
  * karaoke view in place of the artwork, following the playing song, with its
  * own tap-a-line-to-seek and per-line sync. The pane rides over the page's
- * blurred backdrop with an extra scrim for legibility; its end padding
- * clears the action rail so no line ever runs underneath it.
+ * blurred backdrop with only a light scrim for legibility — the page's own
+ * gradient already darkens top and bottom — so the artwork's colour stays
+ * visible behind the lyrics, the Apple Music treatment rather than a black
+ * slab; its end padding clears the action rail so no line ever runs
+ * underneath it.
  */
 @Composable
 private fun TikTokInlineLyricsPane(
@@ -367,7 +437,7 @@ private fun TikTokInlineLyricsPane(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.62f)),
+                .background(TIKTOK_LYRICS_PANE_SCRIM),
     ) {
         LyricsEnhanced(
             sliderPositionProvider = sliderPositionProvider,
@@ -399,30 +469,25 @@ private fun TikTokSongInfo(
 ) {
     Column(modifier = modifier) {
         if (!queueTitle.isNullOrBlank()) {
-            // The queue chip carries its own contrast — a dark plate, a hairline
-            // light border and a soft shadow — so it stays findable on even the
-            // darkest artwork, where a bare translucent gray chip disappears.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier =
                     Modifier
-                        .shadow(4.dp, RoundedCornerShape(10.dp))
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.42f))
-                        .border(0.75.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.14f))
                         .tiktokNoRippleClickable(onClick = onQueueClick)
                         .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.88f),
+                    tint = TIKTOK_INACTIVE_GRAY,
                     modifier = Modifier.size(12.dp),
                 )
                 Spacer(Modifier.width(5.dp))
                 Text(
                     text = queueTitle,
-                    color = Color.White.copy(alpha = 0.92f),
+                    color = TIKTOK_INACTIVE_GRAY,
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -449,7 +514,7 @@ private fun TikTokSongInfo(
         if (secondary.isNotBlank()) {
             Text(
                 text = secondary,
-                color = Color.White.copy(alpha = 0.80f),
+                color = TIKTOK_INACTIVE_GRAY,
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -460,9 +525,7 @@ private fun TikTokSongInfo(
 
 /**
  * The "Full screen" capsule from the reference: a semi-transparent dark
- * rounded pill with an icon and a label, sitting under the main visual. The
- * hairline light border + soft shadow keep it legible over dark artwork —
- * a bare dark pill would vanish against it.
+ * rounded pill with an icon and a label, sitting under the main visual.
  */
 @Composable
 private fun TikTokFullscreenPill(
@@ -473,10 +536,8 @@ private fun TikTokFullscreenPill(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             modifier
-                .shadow(6.dp, RoundedCornerShape(14.dp))
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color.Black.copy(alpha = 0.45f))
-                .border(0.75.dp, Color.White.copy(alpha = 0.32f), RoundedCornerShape(14.dp))
                 .tiktokNoRippleClickable(onClick = onClick)
                 .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
@@ -496,8 +557,92 @@ private fun TikTokFullscreenPill(
     }
 }
 
+/** One live double-tap heart, at the tap point (artwork-box coordinates). */
+private data class TikTokHeartBurst(
+    val id: Long,
+    val x: Dp,
+    val y: Dp,
+)
+
 /**
- * TikTok's legibility scrim: dark at both edges (where the header and the
+ * TikTok's double-tap heart: a big red heart pops in at the tap point with a
+ * spring overshoot, then drifts up and fades out. The rotation is derived
+ * from the burst id so rapid double-taps never stack perfectly aligned, and
+ * the whole view removes itself from the burst list once its animation
+ * finishes. The like it celebrates lands through the same Room row the
+ * rail's heart uses, so the rail button pops in sync.
+ */
+@Composable
+private fun TikTokHeartBurstView(
+    burst: TikTokHeartBurst,
+    onFinished: () -> Unit,
+) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(burst.id) {
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(TIKTOK_HEART_BURST_MS, easing = LinearOutSlowInEasing),
+        )
+        onFinished()
+    }
+    val p = progress.value
+    // Pop in fast with overshoot, settle, hold; rise and fade through the
+    // second half — the reference's double-tap beat, in one progress value.
+    val scale = when {
+        p < 0.22f -> 0.2f + (p / 0.22f) * 1.15f
+        p < 0.38f -> 1.35f - ((p - 0.22f) / 0.16f) * 0.35f
+        else -> 1f
+    }
+    val alpha = if (p < 0.55f) 1f else 1f - ((p - 0.55f) / 0.45f)
+    val rise = (p * p) * 160.dp
+    val rotation = ((burst.id % 5) - 2) * 6f
+    Icon(
+        painter = painterResource(R.drawable.solar_heart_bold),
+        contentDescription = null,
+        tint = TIKTOK_RED,
+        modifier =
+            Modifier
+                .offset(
+                    x = burst.x - TIKTOK_HEART_BURST_SIZE / 2f,
+                    y = burst.y - TIKTOK_HEART_BURST_SIZE / 2f - rise,
+                ).size(TIKTOK_HEART_BURST_SIZE)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha.coerceIn(0f, 1f)
+                    rotationZ = rotation
+                },
+    )
+}
+
+/** Size of the double-tap heart glyph. */
+private val TIKTOK_HEART_BURST_SIZE = 88.dp
+
+/** How long a double-tap heart lives, start to fade-out end. */
+private const val TIKTOK_HEART_BURST_MS = 650
+
+/**
+ * The single scrim the inline lyrics pane sits its karaoke view on — light
+ * enough that the blurred backdrop's own colour reads through it (the Apple
+ * Music treatment), backed up by the page gradient's darker top and bottom.
+ */
+private val TIKTOK_LYRICS_PANE_SCRIM = Color.Black.copy(alpha = 0.22f)
+
+/** Width of the rail's right-edge legibility wash. */
+private val TIKTOK_RAIL_WASH_WIDTH = 120.dp
+
+/**
+ * The soft right-edge wash behind the action rail — clear at its left edge
+ * so it blends into the cover: plain black fading in toward the rail, which
+ * is what keeps the white glyphs legible over light artwork without
+ * touching the rest of the media.
+ */
+private val TIKTOK_RAIL_WASH =
+    Brush.horizontalGradient(
+        listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
+    )
+
+/** TikTok's legibility scrim: dark at both edges (where the header and the
  * info zone live) and clear through the middle (where the artwork carries
  * itself). One static gradient, drawn in the draw phase.
  */
