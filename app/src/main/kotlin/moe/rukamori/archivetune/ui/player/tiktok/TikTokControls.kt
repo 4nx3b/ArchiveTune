@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import androidx.navigation.NavController
-import androidx.navigation.currentBackStackEntryAsState
+import androidx.navigation.compose.currentBackStackEntryAsState
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.utils.makeTimeString
