@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -70,6 +71,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -133,6 +136,7 @@ internal fun TikTokSongPage(
     onTogglePlayPause: () -> Unit,
     onQueueClick: () -> Unit,
     onOpenLyricsMenu: () -> Unit,
+    onLyricsOverflowAnchorChange: (Rect) -> Unit,
     navController: NavController,
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
@@ -401,6 +405,14 @@ internal fun TikTokSongPage(
                     pageMetadata = pageMetadata,
                     queueTitle = queueTitle,
                     onQueueClick = onQueueClick,
+                    // The caption row carries the lyrics pane's own controls
+                    // while it owns the page (the rail is fully hidden then):
+                    // X closes the pane, the horizontal dots open the lyrics
+                    // overflow popup anchored to themselves.
+                    lyricsControlsVisible = isCurrentPage && lyricsOpen,
+                    onCloseLyrics = onToggleLyrics,
+                    onOpenLyricsMenu = onOpenLyricsMenu,
+                    onLyricsOverflowAnchorChange = onLyricsOverflowAnchorChange,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -448,11 +460,10 @@ private fun TikTokPausedOverlay(visible: Boolean) {
  * by the page gradient that already covers the top and bottom edges. (A
  * previous revision added a scrim here; that was the "black layer over the
  * lyrics" the user reported twice, so the pane now owns no background at
- * all.) While the pane is open the rail keeps only its lyrics toggle at
- * the zone's bottom-right corner (the other actions hide per the user
- * request 2026-09-02), so the end inset only clears that one button's
- * column — upcoming lines may pass beneath the toggle itself, TikTok's
- * own comment-bubble overlap.
+ * all.) While the pane is open the rail is entirely hidden (every action,
+ * the lyrics toggle included), so the pane's horizontal insets are plain
+ * symmetric breathing room — the pane's controls live in the caption row
+ * below it (X close + horizontal-dots overflow; see TikTokSongInfo).
  */
 @Composable
 private fun TikTokInlineLyricsPane(
@@ -472,9 +483,7 @@ private fun TikTokInlineLyricsPane(
                 Modifier
                     .fillMaxSize()
                     .padding(top = 4.dp, bottom = 4.dp)
-                    // Clear only the remaining lyrics toggle (48dp button +
-                    // its end inset) at the pane's bottom-right corner.
-                    .padding(start = 6.dp, end = 12.dp),
+                    .padding(horizontal = 6.dp),
         )
     }
 }
@@ -484,39 +493,111 @@ private fun TikTokInlineLyricsPane(
  * comes from as a small chip (tap opens the queue sheet), then the big bold
  * title and the "artist • album" secondary line — the reference's username +
  * caption treatment.
+ *
+ * While the inline lyrics pane owns the page, the chip row gains the pane's
+ * own controls (user request 2026-09-02): a close (X) icon right of the
+ * queue chip that dismisses the lyrics, and a horizontal-dots icon that
+ * opens the lyrics overflow popup. The rail's buttons are all hidden while
+ * the pane is open, so this row is the pane's whole control surface. The
+ * dots also REPORT their on-screen rect (root space) — the popup anchors to
+ * it and grows out of it, the same morph the Apple Music style's popup
+ * plays from its own overflow chip.
  */
 @Composable
 private fun TikTokSongInfo(
     pageMetadata: MediaMetadata,
     queueTitle: String?,
     onQueueClick: () -> Unit,
+    lyricsControlsVisible: Boolean,
+    onCloseLyrics: () -> Unit,
+    onOpenLyricsMenu: () -> Unit,
+    onLyricsOverflowAnchorChange: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        if (!queueTitle.isNullOrBlank()) {
+        val showChipRow = lyricsControlsVisible || !queueTitle.isNullOrBlank()
+        if (showChipRow) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.14f))
-                        .tiktokNoRippleClickable(onClick = onQueueClick)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_music_note_2_linear),
-                    contentDescription = null,
-                    tint = TIKTOK_INACTIVE_GRAY,
-                    modifier = Modifier.size(12.dp),
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    text = queueTitle,
-                    color = TIKTOK_INACTIVE_GRAY,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (!queueTitle.isNullOrBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White.copy(alpha = 0.14f))
+                                .tiktokNoRippleClickable(onClick = onQueueClick)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_music_note_2_linear),
+                            contentDescription = null,
+                            tint = TIKTOK_INACTIVE_GRAY,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = queueTitle,
+                            color = TIKTOK_INACTIVE_GRAY,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                // The lyrics pane's controls, in the caption row: X to close
+                // ("a cross icon on the right side of recently played text"),
+                // then the horizontal dots ("one more three dots horizontally
+                // that opens lyrics overflow menu"). They fade in with the
+                // pane and out with it.
+                AnimatedVisibility(
+                    visible = lyricsControlsVisible,
+                    enter = fadeIn(tween(200)),
+                    exit = fadeOut(tween(200)),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!queueTitle.isNullOrBlank()) {
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier =
+                                Modifier
+                                    .size(40.dp)
+                                    .tiktokNoRippleClickable(onClick = onCloseLyrics),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.player_close),
+                                contentDescription = stringResource(R.string.close_dialog),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier =
+                                Modifier
+                                    .size(40.dp)
+                                    .tiktokNoRippleClickable(onClick = onOpenLyricsMenu)
+                                    // The lyrics overflow popup's anchor: report
+                                    // the dots' rect in root space, kept live —
+                                    // the popup positions itself against it and
+                                    // grows out of this exact spot.
+                                    .onGloballyPositioned {
+                                        onLyricsOverflowAnchorChange(it.boundsInRoot())
+                                    },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.more_horiz),
+                                contentDescription = stringResource(R.string.more),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(8.dp))
         }

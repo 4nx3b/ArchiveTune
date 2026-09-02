@@ -82,6 +82,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -96,6 +97,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -2079,7 +2081,12 @@ private fun AppleMusicLyricsMenuRow(
  *   by `Modifier.onGloballyPositioned { coords -> iconBounds =
  *   coords.boundsInRoot() }`). The popup's right edge aligns with
  *   [Rect.right] and the popup's top edge sits [Rect.bottom] + 4dp below
- *   the icon's bottom edge.
+ *   the icon's bottom edge — UNLESS the icon sits so low on screen that
+ *   the popup would not fit below it (an anchor in a bottom caption row,
+ *   as the TikTok style's ⋯ button), in which case the popup opens ABOVE
+ *   the icon instead: its bottom edge at [Rect.top] - 4dp, growing from
+ *   its bottom-right corner — the corner that meets the icon — so the
+ *   "grows out of the icon" morph reads identically either way.
  * @param backdrop Optional kyant [PlatformBackdrop] that captures the
  *   player content behind the popup. When non-null, the popup samples this
  *   backdrop with a 20dp blur to produce a real frosted-glass effect. The
@@ -2203,6 +2210,33 @@ fun AnchoredLyricsOverflowMenu(
     val scale = scaleAnim.value
     val alpha = alphaAnim.value
 
+    // ── Above-anchor flip (2026-09-02) ──
+    // The TikTok style anchors this popup to the horizontal-dots button in
+    // the BOTTOM caption row (user request: "the lyrics animation should
+    // play attached with the three horizontal dots"), where a below-the-
+    // icon popup would run off the bottom of the screen. The scrim's own
+    // measured height is the popup's available space, and the popup's
+    // measured height is what it needs; when the two don't fit below the
+    // anchor, the popup flips to open above it instead (bottom edge at the
+    // icon's top, growth origin switched to the popup's bottom-right
+    // corner). Both reads are draw-phase (offset placement + graphicsLayer),
+    // so measuring settles the placement without recomposing the menu.
+    var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
+    var popupHeightPx by remember { mutableIntStateOf(0) }
+    val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+
+    // Whether the popup opens above its anchor: true when the space below
+    // the icon can't hold the popup. The popup's height is 0 until its
+    // first layout completes — the first frames fall back to a generous
+    // estimate, which only ever makes the flip decision MORE conservative
+    // (and the popup is at alpha 0 then, so the settle is invisible).
+    fun opensAboveAnchor(): Boolean {
+        val neededHeightPx =
+            if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()
+        return anchorSpaceHeightPx > 0 &&
+            iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
+    }
+
     // Memoize the drawBackdrop modifier chain so it isn't rebuilt on every
     // recomposition. The chain depends only on `backdrop` — stable across
     // scroll-driven recompositions of the host screen. Without this,
@@ -2244,6 +2278,7 @@ fun AnchoredLyricsOverflowMenu(
         modifier =
             Modifier
                 .fillMaxSize()
+                .onSizeChanged { anchorSpaceHeightPx = it.height }
                 .background(Color.Black.copy(alpha = 0.45f * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -2306,22 +2341,40 @@ fun AnchoredLyricsOverflowMenu(
                     .offset {
                         val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
-                        val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
                         val iconBottom = iconBoundsInRoot.bottom.toInt()
                         val x =
                             (iconRight - popupWidthPx)
                                 .coerceAtLeast(horizontalMarginPx)
-                        val y = iconBottom + verticalOffsetPx
+                        val y =
+                            if (opensAboveAnchor()) {
+                                // Open ABOVE the anchor: the popup's bottom
+                                // edge sits 4dp above the icon's top edge, so
+                                // the corner the scale animation grows from
+                                // (bottom-right, set in the graphicsLayer
+                                // below) lands right on the icon.
+                                (iconBoundsInRoot.top - verticalOffsetPx -
+                                    (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
+                                    .coerceAtLeast(0)
+                            } else {
+                                iconBottom + verticalOffsetPx
+                            }
                         IntOffset(x = x, y = y)
                     }
                     .widthIn(max = 220.dp)
                     .heightIn(max = 520.dp)
+                    .onSizeChanged { popupHeightPx = it.height }
                     .graphicsLayer {
                         this.alpha = alpha
                         this.scaleX = scale
                         this.scaleY = scale
-                        this.transformOrigin = TransformOrigin(1f, 0f)
+                        // The growth corner is the corner that meets the icon:
+                        // top-right when the popup opens below the anchor,
+                        // bottom-right when it flips above (TikTok's caption-
+                        // row anchor) — either way the popup reads as growing
+                        // straight out of the icon the user tapped.
+                        this.transformOrigin =
+                            TransformOrigin(1f, if (opensAboveAnchor()) 1f else 0f)
                         // Merged from the previous `.shadow(16.dp, RoundedCornerShape(16.dp), clip = false)`
                         // modifier (batch-16, 2026-08-31). Setting these inside the existing
                         // graphicsLayer avoids creating a SECOND internal graphicsLayer — the

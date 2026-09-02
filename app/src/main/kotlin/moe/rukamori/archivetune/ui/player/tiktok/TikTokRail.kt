@@ -16,12 +16,14 @@
  * the rail acts straight on the same Room rows, download manager and menus
  * the rest of the app uses.
  *
- * While the inline lyrics pane owns the page, the rail's song actions —
- * profile, like, bookmark, share, the overflow more — fade out and only the
- * lyrics toggle (comment bubble) remains, as the pane's close affordance
- * (user report 2026-09-02: "when I open lyrics the like button, share,
- * profile, overflow icon etc only should hide" — ONLY those: the top
- * navigation, the song info and the progress row all stay).
+ * While the inline lyrics pane owns the page, EVERY rail action — profile,
+ * like, the lyrics toggle, bookmark, share, the overflow more — fades out
+ * and the rail leaves the page to the lyrics (user reports 2026-09-02:
+ * "when I open lyrics the like button, share, profile, overflow icon etc
+ * only should hide", then "the lyrics icon should disable too"). The
+ * pane's own controls live in the caption row instead: a close (X) chip
+ * and the horizontal-dots overflow button right of the queue chip (see
+ * TikTokSongInfo) — the reference's inline caption actions.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
@@ -188,15 +190,24 @@ internal fun TikTokRail(
         // ── Lyrics (TikTok's comment bubble) ──
         // Toggles the Apple Music inline lyrics pane in place of the
         // artwork; the red accent while open is the rail's own active colour
-        // (the same one the liked heart uses), so "tap again to close" reads
-        // at a glance.
-        TikTokRailButton(
-            iconRes = R.drawable.solar_chat_round_linear,
-            contentDescription = stringResource(R.string.lyrics),
-            tint = if (lyricsActive) TIKTOK_RED else Color.White,
+        // (the same one the liked heart uses). Hides with every other rail
+        // action while the pane is open (user request 2026-09-02: "when I
+        // click on lyrics icon the lyrics icon should disable too") — the
+        // pane closes from the caption row's X instead, and reopens from
+        // this bubble the moment the pane is closed.
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
         ) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onToggleLyrics()
+            TikTokRailButton(
+                iconRes = R.drawable.solar_chat_round_linear,
+                contentDescription = stringResource(R.string.lyrics),
+                tint = if (lyricsActive) TIKTOK_RED else Color.White,
+            ) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onToggleLyrics()
+            }
         }
 
         // ── Add to playlist (TikTok's bookmark) ──

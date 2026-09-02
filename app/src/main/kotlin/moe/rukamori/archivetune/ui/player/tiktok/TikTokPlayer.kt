@@ -82,7 +82,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -311,17 +310,15 @@ fun TikTokPlayerContent(
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
 
     // ── Lyrics overflow (the Apple Music anchored popup) ──
-    // While the inline pane is open, the lyrics-overflow chip (the compact
-    // more button at the top-right below the navigation, rendered in the
-    // root Box below) opens the LYRICS overflow menu — the same anchored
-    // popup the Apple Music style shows from its own lyrics view, with the
-    // same Edit / Refetch / Translate / Search actions — instead of the
-    // song menu. (The rail's more button hid with the rest of the song
-    // actions while the pane is open, per the user request 2026-09-02, so
-    // the chip is the popup's entry point now.) The popup carries the same
-    // frosted-glass blur (it samples the feed through the layer backdrop
-    // below) and opens from the top-right below the top navigation, the
-    // spot the Apple Music style's own popup opens from.
+    // While the inline pane is open, the horizontal-dots button in the
+    // caption row (right of the queue chip; see TikTokSongInfo) opens the
+    // LYRICS overflow menu — the same anchored popup the Apple Music style
+    // shows from its own lyrics view, with the same Edit / Refetch /
+    // Translate / Search actions — instead of the song menu. (The rail is
+    // entirely hidden while the pane is open, so the caption row is the
+    // popup's entry point.) The popup carries the same frosted-glass blur
+    // (it samples the feed through the layer backdrop below) and grows out
+    // of the dots' own on-screen rect (see [lyricsOverflowAnchor] below).
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     var showLyricsMenu by remember { mutableStateOf(false) }
     LaunchedEffect(lyricsOpen) {
@@ -401,31 +398,28 @@ fun TikTokPlayerContent(
             null
         }
 
-    // The feed root's bounds in root space, kept live — the popup's anchor
-    // below is derived from them.
+    // The feed root's bounds in root space, kept live — the popup anchor
+    // below is converted into the popup's parent (root Box) space with them.
     var rootBounds by remember { mutableStateOf(Rect.Zero) }
 
-    // The popup's anchor: the TOP-RIGHT, just below the top navigation —
-    // the position the Apple Music style's lyrics overflow popup opens from
-    // (below its mini header's more chip). It used to grow out of the rail's
-    // more button, which pinned the whole menu to the bottom of the screen
-    // (user report 2026-09-02: "also it opens on the downside. Fix it");
-    // the anchor is synthetic now, so the rail no longer reports bounds.
-    val density = LocalDensity.current
+    // The popup's anchor: the horizontal-dots overflow button in the current
+    // page's caption row (right of the "Recently played" chip), reported live
+    // from that button's own onGloballyPositioned (user request 2026-09-02:
+    // "one more three dots horizontally that opens lyrics overflow menu ...
+    // the lyrics animation should play attached with the three horizontal
+    // dots"). The reported rect is in composition-root space; the popup
+    // renders as a child of THIS root Box, so the rect is translated by the
+    // root Box's own origin into the popup's parent space — correct wherever
+    // the player sheet sits, not just when it fills the window.
+    var lyricsOverflowAnchor by remember { mutableStateOf(Rect.Zero) }
     val lyricsPopupAnchor =
-        remember(rootBounds, stableTopInset, density) {
-            with(density) {
-                val navBottomPx =
-                    rootBounds.top + (stableTopInset + TIKTOK_TOP_NAV_HEIGHT).toPx()
-                val rightPx = rootBounds.right - 12.dp.toPx()
-                val anchorWidthPx = 40.dp.toPx()
-                Rect(
-                    left = rightPx - anchorWidthPx,
-                    top = navBottomPx - 4.dp.toPx(),
-                    right = rightPx,
-                    bottom = navBottomPx,
-                )
-            }
+        remember(lyricsOverflowAnchor, rootBounds) {
+            Rect(
+                left = lyricsOverflowAnchor.left - rootBounds.left,
+                top = lyricsOverflowAnchor.top - rootBounds.top,
+                right = lyricsOverflowAnchor.right - rootBounds.left,
+                bottom = lyricsOverflowAnchor.bottom - rootBounds.top,
+            )
         }
 
     Box(
@@ -514,6 +508,7 @@ fun TikTokPlayerContent(
                 onTogglePlayPause = { player.togglePlayPause() },
                 onQueueClick = onOpenQueue,
                 onOpenLyricsMenu = { showLyricsMenu = true },
+                onLyricsOverflowAnchorChange = { lyricsOverflowAnchor = it },
                 navController = navController,
                 menuState = menuState,
                 bottomSheetPageState = bottomSheetPageState,
@@ -584,55 +579,18 @@ fun TikTokPlayerContent(
             }
         }
 
-        // ── Lyrics overflow chip (only while the inline pane owns the page) ──
-        // The rail's song actions — its more button included — hide while
-        // the lyrics pane is open (user request 2026-09-02: "when I open
-        // lyrics the like button, share, profile, overflow icon etc only
-        // should hide"), so the lyrics overflow popup needs its own
-        // affordance: this compact more chip below the top navigation, at
-        // the top-right — the same spot the Apple Music style's mini-header
-        // more chip occupies, and the exact spot [lyricsPopupAnchor] grows
-        // the popup out of. It appears only while the pane is open and
-        // disappears with it; everything else on the page stays untouched.
-        if (!immersive) {
-            AnimatedVisibility(
-                visible = lyricsOpen,
-                enter = fadeIn(tween(200)),
-                exit = fadeOut(tween(200)),
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(
-                                top = stableTopInset + TIKTOK_TOP_NAV_HEIGHT + 4.dp,
-                                end = 12.dp,
-                            )
-                            .size(40.dp)
-                            .tiktokNoRippleClickable(onClick = { showLyricsMenu = true }),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.solar_more_vert_linear),
-                        contentDescription = stringResource(R.string.more),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-        }
         // ── Lyrics overflow (the anchored Apple Music popup) ──
         // Rendered as a SIBLING of the pager (the backdrop-capturing layer)
         // at the player's root. While the inline lyrics pane is open, the
-        // lyrics-overflow chip above routes here instead of the song menu
-        // (the rail's own more button hides with the rest of the song
-        // actions while the pane is open). The popup
-        // samples the feed through [popupBackdrop] — the same frosted-glass
-        // blur the Apple Music style's popup has — and its anchor puts it at
-        // the top-right below the top navigation, where the Apple Music
-        // style's own popup opens (user reports 2026-09-02: "the exact same
-        // popup for lyrics overflow menu from Apple music style; also it
-        // opens on the downside. Fix it").
+        // horizontal-dots button in the caption row (which reports
+        // [lyricsPopupAnchor] from its own on-screen rect) opens this popup
+        // — the same anchored popup the Apple Music style shows, with the
+        // same Edit / Refetch / Translate / Search actions, growing out of
+        // the dots themselves. The popup samples the feed through
+        // [popupBackdrop] — the same frosted-glass blur the Apple Music
+        // style's popup has (user reports 2026-09-02: "the exact same popup
+        // for lyrics overflow menu from Apple music style", "the lyrics
+        // animation should play attached with the three horizontal dots").
         if (lyricsOpen && showLyricsMenu) {
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = lyricsPopupAnchor,
