@@ -15,14 +15,25 @@
  * operates on THIS page's song — the feed's pages are real queue entries, so
  * the rail acts straight on the same Room rows, download manager and menus
  * the rest of the app uses.
+ *
+ * While the inline lyrics pane owns the page, the rail's song actions —
+ * profile, like, bookmark, share, the overflow more — fade out and only the
+ * lyrics toggle (comment bubble) remains, as the pane's close affordance
+ * (user report 2026-09-02: "when I open lyrics the like button, share,
+ * profile, overflow icon etc only should hide" — ONLY those: the top
+ * navigation, the song info and the progress row all stay).
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -83,6 +94,12 @@ import moe.rukamori.archivetune.utils.shareLocalAudio
 /** TikTok's brand red, the same one the reference feed uses for its active heart. */
 internal val TIKTOK_RED = Color(0xFFFE2C55)
 
+/**
+ * The rail's fade for the lyrics-open hide: quick and unadorned, the
+ * reference's vocabulary for things that leave.
+ */
+private const val TIKTOK_RAIL_FADE_MS = 180
+
 @Composable
 internal fun TikTokRail(
     pageMetadata: MediaMetadata,
@@ -129,28 +146,44 @@ internal fun TikTokRail(
         // collapsing first exactly like other in-player links); the small
         // badge on its rim is the app's existing subscribe feature. Sized
         // at ~1.3x the rail icons — the reference's avatar:icon ratio — not
-        // the oversized 1.7x it used to be.
-        TikTokArtistAvatar(
-            pageMetadata = pageMetadata,
-            sheetState = sheetState,
-            navController = navController,
-        )
-
-        Spacer(Modifier.height(14.dp))
+        // the oversized 1.7x it used to be. Fades out while the lyrics pane
+        // is open ("profile ... should hide"), spacer and all, so no orphan
+        // gap survives it.
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TikTokArtistAvatar(
+                    pageMetadata = pageMetadata,
+                    sheetState = sheetState,
+                    navController = navController,
+                )
+                Spacer(Modifier.height(14.dp))
+            }
+        }
 
         // ── Like ──
         // The heart acts on THIS page's song, not on whatever is playing —
         // the shared action walks the same Room + sync path the song menu
         // uses, and pops its glyph whenever the row flips to liked, whether
-        // that came from this button or a double-tap on the media.
+        // that came from this button or a double-tap on the media. Hides
+        // with the rest of the song actions while the lyrics pane is open.
         val liked = librarySong?.song?.liked == true
-        TikTokLikeRailButton(
-            liked = liked,
-            onLike = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                likeAction(false)
-            },
-        )
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
+        ) {
+            TikTokLikeRailButton(
+                liked = liked,
+                onLike = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    likeAction(false)
+                },
+            )
+        }
 
         // ── Lyrics (TikTok's comment bubble) ──
         // Toggles the Apple Music inline lyrics pane in place of the
@@ -167,12 +200,20 @@ internal fun TikTokRail(
         }
 
         // ── Add to playlist (TikTok's bookmark) ──
-        TikTokRailButton(
-            iconRes = R.drawable.solar_bookmark_linear,
-            contentDescription = stringResource(R.string.add_to_playlist),
+        // Hides with the other song actions while the lyrics pane is open
+        // ("... etc only should hide").
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
         ) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onAddToPlaylist()
+            TikTokRailButton(
+                iconRes = R.drawable.solar_bookmark_linear,
+                contentDescription = stringResource(R.string.add_to_playlist),
+            ) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onAddToPlaylist()
+            }
         }
 
         // ── Download ──
@@ -182,23 +223,31 @@ internal fun TikTokRail(
         // for whoever needs it.
 
         // ── Share ──
-        TikTokRailButton(
-            iconRes = R.drawable.solar_share_linear,
-            contentDescription = stringResource(R.string.share),
+        // Hides with the other song actions while the lyrics pane is open
+        // ("share ... only should hide").
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
         ) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            if (isLocal) {
-                val mimeType = librarySong?.format?.mimeType
-                shareLocalAudio(context, pageMetadata.id, mimeType)
-            } else {
-                val url = "https://music.youtube.com/watch?v=${pageMetadata.id}"
-                val intent =
-                    Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, url)
-                        putExtra(Intent.EXTRA_TITLE, pageMetadata.title)
-                    }
-                context.startActivity(Intent.createChooser(intent, null))
+            TikTokRailButton(
+                iconRes = R.drawable.solar_share_linear,
+                contentDescription = stringResource(R.string.share),
+            ) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                if (isLocal) {
+                    val mimeType = librarySong?.format?.mimeType
+                    shareLocalAudio(context, pageMetadata.id, mimeType)
+                } else {
+                    val url = "https://music.youtube.com/watch?v=${pageMetadata.id}"
+                    val intent =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, url)
+                            putExtra(Intent.EXTRA_TITLE, pageMetadata.title)
+                        }
+                    context.startActivity(Intent.createChooser(intent, null))
+                }
             }
         }
 
@@ -210,25 +259,35 @@ internal fun TikTokRail(
         // exact same popup for lyrics overflow menu from Apple music style;
         // also it opens on the downside. Fix it") — instead of the song menu.
         // The pane's provider, offset and song are hoisted to the player
-        // level, which also renders the popup.
-        TikTokRailButton(
-            iconRes = R.drawable.solar_more_vert_linear,
-            contentDescription = stringResource(R.string.more),
+        // level, which also renders the popup. Hides with the other song
+        // actions while the pane is open ("overflow icon ... should hide");
+        // the lyrics overflow stays reachable through the pane's own row of
+        // actions below the lyrics (the Apple Music pane's built-in
+        // overflow), and the song menu the moment the pane closes.
+        AnimatedVisibility(
+            visible = !lyricsActive,
+            enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
+            exit = fadeOut(tween(TIKTOK_RAIL_FADE_MS)),
         ) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            if (lyricsActive) {
-                onOpenLyricsMenu()
-            } else {
-                menuState.show {
-                    PlayerMenu(
-                        mediaMetadata = pageMetadata,
-                        navController = navController,
-                        playerBottomSheetState = sheetState,
-                        onShowDetailsDialog = {
-                            bottomSheetPageState.show { ShowMediaInfo(pageMetadata.id) }
-                        },
-                        onDismiss = menuState::dismiss,
-                    )
+            TikTokRailButton(
+                iconRes = R.drawable.solar_more_vert_linear,
+                contentDescription = stringResource(R.string.more),
+            ) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                if (lyricsActive) {
+                    onOpenLyricsMenu()
+                } else {
+                    menuState.show {
+                        PlayerMenu(
+                            mediaMetadata = pageMetadata,
+                            navController = navController,
+                            playerBottomSheetState = sheetState,
+                            onShowDetailsDialog = {
+                                bottomSheetPageState.show { ShowMediaInfo(pageMetadata.id) }
+                            },
+                            onDismiss = menuState::dismiss,
+                        )
+                    }
                 }
             }
         }

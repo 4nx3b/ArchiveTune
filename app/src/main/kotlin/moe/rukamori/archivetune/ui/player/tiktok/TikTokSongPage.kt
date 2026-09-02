@@ -8,14 +8,15 @@
 /*
  * TikTok player style — one feed page.
  *
- * A page is the full-bleed treatment TikTok gives a post: the artwork's own
- * blurred self as the backdrop under a dark gradient, the sharp artwork as
+ * A page is the full-bleed treatment TikTok gives a post: a mesh-gradient
+ * backdrop blended from the artwork's own palette (the Bitchord player
+ * style's blend, ported — see TikTokMeshBackdrop.kt), the sharp artwork as
  * the hero in the middle (tapping it toggles playback, TikTok's
- * tap-to-pause; its edges dissolve into the backdrop so the two renderings
- * of the same image never meet in a hard line), the action rail pinned to
- * the lower right of it, and the track's identity pinned along the bottom.
- * Everything is edge-to-edge; legibility comes from the scrim, not from
- * panels.
+ * tap-to-pause; its edges dissolve into the backdrop so the cover never
+ * meets the colours it was sampled from in a hard line), the action rail
+ * pinned to the lower right of it, and the track's identity pinned along
+ * the bottom. Everything is edge-to-edge; legibility comes from the scrim,
+ * not from panels.
  */
 
 package moe.rukamori.archivetune.ui.player.tiktok
@@ -57,7 +58,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -83,6 +83,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -158,11 +159,11 @@ internal fun TikTokSongPage(
     val stableTopInset = LocalStableSystemBarsTopPadding.current
 
     // One URL for the page's artwork, pre-sized so the sharp hero decodes at
-    // full resolution; the blurred backdrop reuses the same URL at a much
-    // smaller decode size (it is about to be smeared anyway). Coil keeps the
-    // two requests as separate cache entries, which is exactly what we want —
-    // the hero stays crisp, the backdrop stays cheap, and pages returning to
-    // the feed hit the cache both ways.
+    // full resolution. The mesh backdrop pulls its palette from the same URL
+    // at a thumbnail decode size (it only ever needs colours), so Coil keeps
+    // the two requests as separate cache entries — the hero stays crisp, the
+    // palette stays cheap, and pages returning to the feed hit the cache
+    // both ways.
     val artUrl =
         remember(pageMetadata.id, pageMetadata.thumbnailUrl) {
             pageMetadata.thumbnailUrl?.resize(
@@ -174,8 +175,19 @@ internal fun TikTokSongPage(
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
-        // ── Backdrop: the artwork's own blurred self + dark gradient ──
-        TikTokBackdrop(artUrl = artUrl)
+        // ── Backdrop: the Bitchord mesh blend + the page's legibility scrim ──
+        // The mesh is built from THIS page's artwork palette, crossfading
+        // over ~1.4s when the page's track changes, and the hero dissolves
+        // into it — the Bitchord player style's artwork-background blend,
+        // ported verbatim per the user request 2026-09-02 ("copy how Bitchord
+        // player style blends the artwork along with the background").
+        val meshColors = rememberTikTokArtworkColors(artUrl)
+        TikTokMeshBackdrop(
+            palette = meshColors,
+            trackKey = pageMetadata.id,
+            reduceAnimation = LocalAnimationsDisabled.current,
+        )
+        Box(modifier = Modifier.fillMaxSize().tiktokScrim())
 
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(Modifier.height(if (immersive) stableTopInset else topChromeHeight))
@@ -402,40 +414,6 @@ internal fun TikTokSongPage(
     }
 }
 
-/**
- * The blurred, darkened backdrop. Decoding at a fraction of the hero's size
- * keeps memory flat, and below API 31 — where Modifier.blur is a no-op — the
- * upscale of a small bitmap is itself soft enough to read as a blur once the
- * scrim sits on it.
- */
-@Composable
-private fun TikTokBackdrop(artUrl: String?) {
-    val context = LocalContext.current
-    Box(modifier = Modifier.fillMaxSize()) {
-        AsyncImage(
-            model =
-                ImageRequest
-                    .Builder(context)
-                    .data(artUrl)
-                    .size(TIKTOK_BACKDROP_PX)
-                    .crossfade(true)
-                    .build(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .blur(TIKTOK_BACKDROP_BLUR),
-        )
-        // Solid near-black while the artwork URL is loading or missing, so the
-        // page never flashes white or shows the page *behind* it.
-        if (artUrl == null) {
-            Box(Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP))
-        }
-        Box(modifier = Modifier.fillMaxSize().tiktokScrim())
-    }
-}
-
 /** TikTok's paused-video affordance: a soft scrim with a play glyph. */
 @Composable
 private fun TikTokPausedOverlay(visible: Boolean) {
@@ -465,12 +443,16 @@ private fun TikTokPausedOverlay(visible: Boolean) {
  * The Apple Music inline lyrics pane, component and behaviour verbatim: the
  * karaoke view in place of the artwork, following the playing song, with its
  * own tap-a-line-to-seek and per-line sync. The pane rides directly on the
- * page's blurred backdrop — no background of its own, the Apple Music
- * treatment: the artwork's colour reads through the lyrics, darkened only by
- * the page gradient that already covers the top and bottom edges. (A previous
- * revision added a scrim here; that was the "black layer over the lyrics" the
- * user reported twice, so the pane now owns no background at all.) Its end
- * padding clears the action rail so no line ever runs underneath it.
+ * page's mesh backdrop — no background of its own, the Apple Music
+ * treatment: the artwork's colours read through the lyrics, darkened only
+ * by the page gradient that already covers the top and bottom edges. (A
+ * previous revision added a scrim here; that was the "black layer over the
+ * lyrics" the user reported twice, so the pane now owns no background at
+ * all.) While the pane is open the rail keeps only its lyrics toggle at
+ * the zone's bottom-right corner (the other actions hide per the user
+ * request 2026-09-02), so the end inset only clears that one button's
+ * column — upcoming lines may pass beneath the toggle itself, TikTok's
+ * own comment-bubble overlap.
  */
 @Composable
 private fun TikTokInlineLyricsPane(
@@ -490,9 +472,9 @@ private fun TikTokInlineLyricsPane(
                 Modifier
                     .fillMaxSize()
                     .padding(top = 4.dp, bottom = 4.dp)
-                    // Clear the action rail (48dp buttons + the rail's own
-                    // end inset) so the lines never slide under it.
-                    .padding(start = 6.dp, end = 62.dp),
+                    // Clear only the remaining lyrics toggle (48dp button +
+                    // its end inset) at the pane's bottom-right corner.
+                    .padding(start = 6.dp, end = 12.dp),
         )
     }
 }
@@ -662,17 +644,20 @@ private val TIKTOK_RAIL_WASH_VERTICAL_FADE =
 
 /**
  * The artwork's edge blend, applied with BlendMode.DstIn in an offscreen
- * layer: opaque through the art, clear at the very top and bottom so the
- * sharp rendering dissolves into the blurred backdrop of the same image
- * instead of meeting it in a hard straight edge. The fade band is ~6% of
- * the artwork's height per edge — enough to hide the seam, little enough
- * that the card still reads as a card.
+ * layer: opaque through the art, clear at the top and bottom so the sharp
+ * rendering dissolves into the mesh backdrop its palette was sampled
+ * from, instead of meeting it in a hard straight edge. The fade band is
+ * ~14% of the artwork's height per edge — Bitchord-generous, because the
+ * mesh behind is NOT a copy of this image (no "same picture" seam to
+ * reveal), so the dissolve can afford to run deep and read as the cover
+ * melting into its own colours (user report 2026-09-02: "the artwork
+ * blend is still imperfect").
  */
 private val TIKTOK_ART_EDGE_FADE =
     Brush.verticalGradient(
         0.00f to Color.Transparent,
-        0.06f to Color.Black,
-        0.94f to Color.Black,
+        0.14f to Color.Black,
+        0.86f to Color.Black,
         1.00f to Color.Transparent,
     )
 
@@ -685,24 +670,28 @@ internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCR
 /** Decode size for the hero artwork, in pixels. */
 internal const val TIKTOK_ART_PX = 1080
 
-/** Decode size for the blurred backdrop — a fraction of the hero's. */
-internal const val TIKTOK_BACKDROP_PX = 256
-
-internal val TIKTOK_BACKDROP_BLUR: Dp = 48.dp
-
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)
 
 /**
  * The single scrim gradient shared by every page — hoisted to a constant so
  * no page ever allocates a new Brush in composition or per draw.
+ *
+ * Lightened for the mesh backdrop (which arrives already dimmed and
+ * scrimmed — its base is the palette's first colour at lightness 0.12, and
+ * it carries Bitchord's own gentle 0.10-0.38 gradient): the old values
+ * (0.50/0.12/0.18/0.72) were tuned against a raw blurred artwork, and
+ * stacked on the mesh they would bury the colour blend this backdrop
+ * exists for. The top and bottom stops stay strong enough to carry the
+ * white top-nav glyphs and the song info; the middle all but clears so
+ * the artwork's dissolve reads as Bitchord's.
  */
 private val TIKTOK_SCRIM =
     Brush.verticalGradient(
         colorStops =
             arrayOf(
-                0.00f to Color.Black.copy(alpha = 0.50f),
-                0.22f to Color.Black.copy(alpha = 0.12f),
-                0.55f to Color.Black.copy(alpha = 0.18f),
-                1.00f to Color.Black.copy(alpha = 0.72f),
+                0.00f to Color.Black.copy(alpha = 0.32f),
+                0.22f to Color.Black.copy(alpha = 0.06f),
+                0.55f to Color.Black.copy(alpha = 0.08f),
+                1.00f to Color.Black.copy(alpha = 0.52f),
             ),
     )
