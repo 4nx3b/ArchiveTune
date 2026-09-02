@@ -1524,11 +1524,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
+                    LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, playerDesignStyle, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
                         val isDarkStatusBar =
                             if (playerBottomSheetState.isExpanded &&
-                                playerBackground != PlayerBackgroundStyle.DEFAULT
+                                (
+                                    playerBackground != PlayerBackgroundStyle.DEFAULT ||
+                                        // The TikTok-style feed player is always a black
+                                        // full-screen surface (like the reference), so its
+                                        // status bar icons must always be light regardless
+                                        // of the app theme.
+                                        playerDesignStyle == PlayerDesignStyle.TIKTOK
+                                )
                             ) {
                                 true
                             } else {
