@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -99,6 +100,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.utils.resize
 
 /** The inactive gray the reference uses for everything unselected/secondary. */
@@ -146,6 +148,11 @@ internal fun TikTokSongPage(
     queueTitle: String?,
     immersive: Boolean,
     lyricsOpen: Boolean,
+    // Looping canvas video (Spotify-style vertical) for THIS page — only the
+    // current page ever receives non-null URLs (see TikTokPlayerContent), so
+    // neighbour pages never spin up an ExoPlayer of their own.
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     topChromeHeight: Dp,
@@ -335,6 +342,33 @@ internal fun TikTokSongPage(
                                                 clip = true,
                                             ),
                                 )
+
+                                // ── Canvas video over the artwork ──
+                                // The current song's looping canvas (Spotify-style
+                                // vertical clip) plays TikTok-video-like over the
+                                // hero: cropped to fill the square, clipped to the
+                                // same rounded corners, paused when the engine
+                                // pauses. The artwork underneath is the loading
+                                // and error fallback — CanvasArtworkPlayer keeps
+                                // its surface at alpha 0 until the first frame
+                                // renders, then fades in over ~300ms, so a canvas
+                                // that is buffering, unavailable or failed simply
+                                // leaves the artwork visible. Tap-to-pause and
+                                // double-tap-like still work: the TextureView is
+                                // not clickable, taps pass straight through to the
+                                // hero Box's gesture detector.
+                                if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
+                                    CanvasArtworkPlayer(
+                                        primaryUrl = canvasPrimaryUrl,
+                                        fallbackUrl = canvasFallbackUrl,
+                                        isPlaying = isPlaying,
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                        modifier =
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(cornerRadius)),
+                                    )
+                                }
 
                                 // Paused affordance (current page only) — TikTok's
                                 // translucent play glyph while a video is paused.

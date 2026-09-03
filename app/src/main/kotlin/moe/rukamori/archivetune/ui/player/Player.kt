@@ -1399,7 +1399,8 @@ fun BottomSheetPlayer(
             }
         val shouldUseV7Canvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                playerDesignStyle == PlayerDesignStyle.V7 &&
+                (playerDesignStyle == PlayerDesignStyle.V7 ||
+                    playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
@@ -1705,6 +1706,10 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            // Vertical canvas (same resolver the V7 style uses): the current
+                            // page's hero artwork becomes the looping canvas video.
+                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2124,6 +2129,10 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            // Vertical canvas (same resolver the V7 style uses): the current
+                            // page's hero artwork becomes the looping canvas video.
+                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()

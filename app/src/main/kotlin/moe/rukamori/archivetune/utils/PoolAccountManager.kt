@@ -407,8 +407,9 @@ object PoolAccountManager {
                                 "No pool API at $poolBaseUrl (HTTP 404) — that URL is not an ArchivePool deployment."
                             }
                             result.code == 401 ->
-                                "Pool rejected the API key (HTTP 401) — SOURCE_PROVIDER_KEY is missing, revoked, " +
-                                    "or issued by a different deployment."
+                                "The pool requires an API key (HTTP 401). Create a free account at " +
+                                    "$poolBaseUrl, press “Request API key” on its dashboard, then paste the key " +
+                                    "into Sources → Pool API key and refresh again."
                             result.code == 0 -> "Could not reach $poolBaseUrl — network error."
                             else -> "Pool feed returned HTTP ${result.code}."
                         }

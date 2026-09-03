@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 
@@ -70,20 +72,45 @@ class MenuState(
 fun BottomSheetMenu(
     modifier: Modifier = Modifier,
     state: MenuState,
-    background: Color = MaterialTheme.colorScheme.surface,
+    background: Color = Color.Unspecified,
 ) {
     val focusManager = LocalFocusManager.current
 
     state.dialogContent?.invoke()
 
     if (state.isVisible) {
+        // ── Muzo sheet material (2026-09-04 redesign) ──
+        // The reference's floating dark-glass sheet: inset from the screen
+        // edges, strongly rounded on ALL corners (it floats above the bottom
+        // edge rather than being docked to it), a dark charcoal translucent
+        // container, and a deeper scrim so the underlying screen survives as
+        // a heavily darkened ghost — the reference's "background visible
+        // through the material" without any per-frame blur cost across the
+        // dialog window boundary. The ModalBottomSheet itself, its gesture
+        // handling and its opening/closing animation are untouched: only the
+        // shape, the colors and the outer padding changed.
+        val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val sheetColor =
+            if (background.isUnspecified) {
+                if (dark) {
+                    // Reference #1C1C1E at ~94% — the scrim beneath supplies
+                    // the darkened-through-glass look.
+                    Color(0xF01C1C1E)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+                }
+            } else {
+                background
+            }
         ModalBottomSheet(
             onDismissRequest = {
                 focusManager.clearFocus()
                 state.isVisible = false
             },
-            containerColor = background,
+            containerColor = sheetColor,
             contentColor = MaterialTheme.colorScheme.onSurface,
+            scrimColor = Color.Black.copy(alpha = 0.60f),
+            shape = RoundedCornerShape(28.dp),
             dragHandle = {
                 Box(
                     modifier =
@@ -94,7 +121,12 @@ fun BottomSheetMenu(
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
                 )
             },
-            modifier = modifier.fillMaxHeight(),
+            modifier =
+                modifier
+                    .fillMaxHeight()
+                    // Floating sheet margins (reference: ~16px sides, visible
+                    // gap above the bottom edge).
+                    .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
         ) {
             // Status bar must NEVER be visible — even while this bottom popup
             // is showing (2026-09-01). The sheet creates its own OS window; when
@@ -107,13 +139,6 @@ fun BottomSheetMenu(
                 modifier =
                     Modifier
                         .fillMaxWidth(),
-                // NOTE: previously had `padding(horizontal = 20.dp)` here, which
-                // left 20dp gutters on both sides of the menu content and made
-                // the bottom sheet look like a narrow centered column. Removed
-                // per user request — the menu now opens full-screen width by
-                // default. The MenuSurfaceSection cards inside still have
-                // their own rounded corners (MaterialTheme.shapes.extraLarge)
-                // and look fine edge-to-edge.
             ) {
                 state.content(this)
             }

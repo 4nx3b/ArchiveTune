@@ -46,7 +46,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
+import android.content.Intent
+import android.net.Uri
+import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -115,6 +119,13 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
+            // Personal Pool API key (from the pool site's dashboard) + a shortcut that opens the
+            // site to request one. The pool's credential feed is key-gated: without a key (baked-in
+            // or personal) "Refresh from pool" fails with HTTP 401, which used to read as a generic
+            // connection error. Surfacing the key field here turns that dead end into a two-minute
+            // fix: account (no email) → Request API key → paste → refresh.
+            PoolApiKeySection(positions)
+
             // Manual "refresh from pool" — pulls the latest shared accounts and instances on demand
             // (the app also does this automatically on startup). Only shown when a source pool is
             // configured at build time.
@@ -129,6 +140,51 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             PlaybackSourceSections(
                 navController = navController,
                 positions = positions,
+            )
+        }
+    }
+}
+
+/**
+ * The pool's credential feed requires an API key. The build may bake one in via CI, but a key
+ * pasted here (pool site account → dashboard → “Request API key”) always wins — so users of
+ * builds without a working baked key can still use the pool after a free, email-less signup.
+ */
+@Composable
+private fun PoolApiKeySection(positions: PreferencePositions) {
+    if (!PoolAccountManager.isEnabled) return
+
+    val context = LocalContext.current
+    val (apiKey, onApiKeyChange) = rememberPreference(PoolApiKeyKey, "")
+
+    PreferenceGroup(
+        modifier = positions.modifierFor("pool_api_key"),
+        title = stringResource(R.string.pool_api_key_title),
+    ) {
+        item {
+            EditTextPreference(
+                modifier = positions.modifierFor("pool_api_key_value"),
+                title = { Text(stringResource(R.string.pool_api_key_label)) },
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                value = apiKey,
+                onValueChange = onApiKeyChange,
+                singleLine = true,
+                isInputValid = { true }, // empty paste removes a saved key (see pool_api_key_help)
+            )
+        }
+        item {
+            PreferenceEntry(
+                modifier = positions.modifierFor("pool_get_api_key"),
+                title = { Text(stringResource(R.string.pool_get_key_title)) },
+                description = stringResource(R.string.pool_get_key_description),
+                icon = { Icon(painterResource(R.drawable.website), null) },
+                onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SOURCE_PROVIDER_URL)),
+                        )
+                    }
+                },
             )
         }
     }
