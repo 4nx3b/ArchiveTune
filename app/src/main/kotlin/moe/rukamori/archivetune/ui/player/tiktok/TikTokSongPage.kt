@@ -241,6 +241,20 @@ internal fun TikTokSongPage(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying && !lyricsOpen,
+                // While the inline lyrics pane owns the current page, the
+                // video SURFACE is removed from composition too (the Apple
+                // Music player's own recipe for its backdrop canvas): the
+                // pane is designed to ride the page's mesh backdrop — the
+                // artwork's colours read through the karaoke text — and a
+                // sharp full-bleed video behind it is exactly the "background
+                // is transparent" the user reported (2026-09-04: "In Tiktok
+                // player style when a canvas is playing and I open lyrics the
+                // background is transparent. Fix it"): the lyrics sat directly
+                // on the bright footage with no legibility layer. Hiding the
+                // TextureView (the player stays alive, paused) restores the
+                // mesh + edge scrim the pane was designed for — and closing
+                // the pane re-attaches instantly with no reload delay.
+                visible = !(isCurrentPage && lyricsOpen),
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 onPlaybackAvailabilityChange = { canvasShowing = it },
                 modifier =

@@ -402,11 +402,28 @@ private fun HomeContent(
                         )
                     }
 
-                    // ── Jump back in (moved to the top, 2026-09-04) ──
-                    // Sits directly below the "Listen to Your Favourite
-                    // Music" headline per the user request ("Shift the jump
-                    // back in section to the top below the listen to your
-                    // favourite music text"). Skipped entirely if the user
+                    // ── Catalogue switch (2026-09-04, revised) ──
+                    // The preference itself is read above the LazyColumn
+                    // (see homeCatalogueSwitchEnabled); this is only the
+                    // placement decision. Only renders once there is a
+                    // Spotify session to switch to; see HomeSourceSwitcher.
+                    // Sits DIRECTLY below the "Listen to Your Favourite
+                    // Music" welcome headline (user request 2026-09-04:
+                    // "when I turn on Catalogue switch the switch pills
+                    // should appear below the listen to your favourite music
+                    // text"), above the Jump Back In hero.
+                    if (homeCatalogueSwitchEnabled) {
+                        item(
+                            key = "home_source_switcher",
+                            contentType = "source_switcher",
+                        ) {
+                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                        }
+                    }
+
+                    // ── Jump back in (moved below the catalogue switch) ──
+                    // Sits directly below the welcome headline / the catalogue
+                    // switch pills (2026-09-04). Skipped entirely if the user
                     // has no listening history yet (e.g. fresh install).
                     // PERSISTENT — renders in both full and minimal modes.
                     if (uiState.heroPicks.isNotEmpty()) {
@@ -424,20 +441,6 @@ private fun HomeContent(
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
                             )
-                        }
-                    }
-
-                    // ── Catalogue switch (2026-09-04) ──
-                    // The preference itself is read above the LazyColumn
-                    // (see homeCatalogueSwitchEnabled); this is only the
-                    // placement decision. Only renders once there is a
-                    // Spotify session to switch to; see HomeSourceSwitcher.
-                    if (homeCatalogueSwitchEnabled) {
-                        item(
-                            key = "home_source_switcher",
-                            contentType = "source_switcher",
-                        ) {
-                            HomeSourceSwitcher(modifier = Modifier.animateItem())
                         }
                     }
 

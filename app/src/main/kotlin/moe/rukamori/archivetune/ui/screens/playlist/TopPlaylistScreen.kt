@@ -300,25 +300,25 @@ fun TopPlaylistScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Header haze (2026-09-04): the home page's blurred top haze, ported to
-    // this screen. See LocalPlaylistScreen for the full note.
+    // Header haze (2026-09-04, revised): the home page's blurred top haze,
+    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
+    // overlay renders ON TOP of it (a later sibling, under the TopAppBar)
+    // — the overlay was previously the FIRST child under the list, so the
+    // list drew straight over it and the haze was never visible (user report
+    // 2026-09-04: "I don't see the haze effect").
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor)
-                .hazeSource(headerHaze),
+                .background(surfaceColor),
     ) {
-        ScreenHeaderHaze(
-            hazeState = headerHaze,
-            systemBarsTopPadding = systemBarsTopPadding,
-        )
         LazyColumn(
             state = lazyListState,
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .hazeSource(headerHaze)
                     .padding(
                         top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
                     ),
@@ -546,6 +546,15 @@ fun TopPlaylistScreen(
                     ).align(Alignment.CenterEnd),
             scrollState = lazyListState,
             headerItems = headerItems,
+        )
+
+        // ── Header haze overlay (2026-09-04, revised) ──
+        // Progressive top-fade blur over the list — declared AFTER the
+        // LazyColumn so it draws on top of it, BEFORE the TopAppBar so the
+        // header chrome stays crisp above the frosted strip.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
         )
 
         TopAppBar(

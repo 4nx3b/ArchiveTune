@@ -669,10 +669,12 @@ fun LocalPlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-    // Header haze (2026-09-04): the home page's blurred top haze, ported to
-    // this screen. The ExpressivePullToRefreshBox below tags its whole
-    // subtree as the haze source; the ScreenHeaderHaze overlay renders the
-    // progressive top-fade blur behind the pinned Liquid Glass pills.
+    // Header haze (2026-09-04, revised): the home page's blurred top haze,
+    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
+    // overlay renders ON TOP of it (a later sibling, beneath the pinned
+    // Liquid Glass pills) — the overlay was previously the FIRST child under
+    // the list, so the list drew straight over it and the haze was never
+    // visible (user report 2026-09-04: "I don't see the haze effect").
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -680,13 +682,8 @@ fun LocalPlaylistScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor)
-                .hazeSource(headerHaze),
+                .background(surfaceColor),
     ) {
-        ScreenHeaderHaze(
-            hazeState = headerHaze,
-            systemBarsTopPadding = systemBarsTopPadding,
-        )
         LazyColumn(
             state = lazyListState,
             modifier =
@@ -698,7 +695,8 @@ fun LocalPlaylistScreen(
                         } else {
                             Modifier
                         },
-                    ),
+                    )
+                    .hazeSource(headerHaze),
             contentPadding =
                 PaddingValues(
                     // When searching, the header item collapses to zero height and the
@@ -1172,6 +1170,15 @@ fun LocalPlaylistScreen(
                     ).align(Alignment.CenterEnd),
             scrollState = lazyListState,
             headerItems = headerItems,
+        )
+
+        // ── Header haze overlay (2026-09-04, revised) ──
+        // Progressive top-fade blur over the list — declared AFTER the
+        // LazyColumn so it draws on top of it, BEFORE the pinned pills so
+        // they stay crisp above the frosted strip.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
         )
 
         // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
