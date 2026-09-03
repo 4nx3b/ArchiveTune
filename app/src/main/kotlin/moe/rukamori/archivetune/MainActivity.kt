@@ -135,6 +135,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.TileMode
@@ -2100,7 +2101,30 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
                     ) {
-                        Row {
+                        // ── Muzo sheet backdrop blur (2026-09-04) ──
+                        // The song-overflow bottom sheet (and every menu that
+                        // shares the BottomSheetMenu container) opens in its
+                        // own dialog window above the app window, so the
+                        // "blurred glass" behind it has to be produced HERE:
+                        // blur the whole app content while the menu is
+                        // visible, and the sheet's translucent charcoal
+                        // surface + scrim read over a real blurred page —
+                        // the reference's background-visible-through-glass.
+                        // Same recipe as the settings dialog blur (see
+                        // SettingsScreen), zero cost while no menu is open
+                        // (the modifier chain is empty then), and a no-op
+                        // below Android 12 where Modifier.blur has no
+                        // RenderEffect (the scrim alone carries the look).
+                        Row(
+                            modifier =
+                                Modifier.then(
+                                    if (menuState.isVisible) {
+                                        Modifier.blur(MenuBackdropBlurRadius)
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
+                        ) {
                             AnimatedVisibility(
                                 visible =
                                     useRail &&
@@ -2447,14 +2471,13 @@ modifier =
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
-                                                // ── Muzo header (2026-09-04) ──
-                                                // The reference's rounded glass "Menu" pill,
-                                                // floating over the same progressive top-fade
-                                                // blur. It opens the app's EXISTING profile /
-                                                // overflow menu (News, New releases, Stats,
-                                                // Music recognition, Listen together, Settings)
-                                                // — the same menu the avatar button opens, so
-                                                // no functionality moves; the pill only exists
+                                                // ── Muzo header (2026-09-04, revised) ──
+                                                // The profile avatar in the rounded glass
+                                                // pill — the same menu the old "Menu" pill
+                                                // and the avatar button open (News, New
+                                                // releases, Stats, Music recognition,
+                                                // Listen together, Settings), so no
+                                                // functionality moves; the pill only exists
                                                 // on the Home route.
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
@@ -2465,19 +2488,32 @@ modifier =
                                                                 onClick = { profileMenuExpanded = true },
                                                                 onLongClick = {},
                                                             ) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.list),
-                                                                    contentDescription = stringResource(R.string.menu),
-                                                                    modifier = Modifier.size(20.dp),
-                                                                )
+                                                                Surface(
+                                                                    modifier = Modifier.size(26.dp),
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                                ) {
+                                                                    if (!accountImageUrl.isNullOrBlank()) {
+                                                                        AsyncImage(
+                                                                            model = accountImageUrl,
+                                                                            contentDescription = stringResource(R.string.account),
+                                                                            modifier = Modifier
+                                                                                .fillMaxSize()
+                                                                                .clip(CircleShape),
+                                                                            contentScale = ContentScale.Crop,
+                                                                        )
+                                                                    } else {
+                                                                        Box(contentAlignment = Alignment.Center) {
+                                                                            Icon(
+                                                                                painter = painterResource(R.drawable.account),
+                                                                                contentDescription = stringResource(R.string.account),
+                                                                                modifier = Modifier.size(18.dp),
+                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
                                                             }
-                                                            Text(
-                                                                text = stringResource(R.string.menu),
-                                                                fontSize = 13.sp,
-                                                                fontWeight = FontWeight.Medium,
-                                                                color = MaterialTheme.colorScheme.onSurface,
-                                                            )
-                                                            Spacer(Modifier.width(4.dp))
                                                         }
                                                     }
                                                 },
@@ -2537,10 +2573,13 @@ modifier =
                                                             // (2026-09-03): the bar's title only
                                                             // exists while scrolled — the big
                                                             // in-list greeting owns the page title
-                                                            // at rest, and the app name fades in
-                                                            // over the blur once the list moves.
+                                                            // at rest, and the page name ("Home")
+                                                            // fades in over the blur once the list
+                                                            // moves (user request 2026-09-04: the
+                                                            // header shows "Home", not the app
+                                                            // name).
                                                             AutoResizeText(
-                                                                text = stringResource(R.string.app_name),
+                                                                text = stringResource(R.string.home),
                                                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                                                 fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
                                                                 maxLines = 1,
@@ -2556,12 +2595,14 @@ modifier =
                                                 },
                                                 actions = {
                                                     if (isHomeRoute) {
-                                                        // ── Muzo header (2026-09-04) ──
-                                                        // The reference's right-hand glass pill:
-                                                        // search opens the app's existing Search
-                                                        // tab, the avatar keeps opening the
-                                                        // existing profile menu. Same glass pill
-                                                        // recipe as the Menu pill on the left.
+                                                        // ── Muzo header (2026-09-04, revised) ──
+                                                        // The right-hand glass pill is now the
+                                                        // search icon ONLY (user request
+                                                        // 2026-09-04: no profile icon on the
+                                                        // right — the avatar lives in the left
+                                                        // pill). Search opens the app's existing
+                                                        // Search tab. Same glass pill recipe as
+                                                        // the avatar pill on the left.
                                                         FrostedHeaderPill(
                                                             modifier = Modifier.padding(end = 6.dp),
                                                         ) {
@@ -2582,37 +2623,6 @@ modifier =
                                                                     contentDescription = stringResource(R.string.search),
                                                                     modifier = Modifier.size(20.dp),
                                                                 )
-                                                            }
-                                                            Spacer(Modifier.width(2.dp))
-                                                            IconButton(
-                                                                onClick = { profileMenuExpanded = true },
-                                                                onLongClick = {},
-                                                            ) {
-                                                                Surface(
-                                                                    modifier = Modifier.size(26.dp),
-                                                                    shape = CircleShape,
-                                                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                                                ) {
-                                                                    if (!accountImageUrl.isNullOrBlank()) {
-                                                                        AsyncImage(
-                                                                            model = accountImageUrl,
-                                                                            contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier
-                                                                                .fillMaxSize()
-                                                                                .clip(CircleShape),
-                                                                            contentScale = ContentScale.Crop,
-                                                                        )
-                                                                    } else {
-                                                                        Box(contentAlignment = Alignment.Center) {
-                                                                            Icon(
-                                                                                painter = painterResource(R.drawable.account),
-                                                                                contentDescription = stringResource(R.string.account),
-                                                                                modifier = Modifier.size(18.dp),
-                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }
                                                             }
                                                         }
                                                     } else {
@@ -3866,6 +3876,14 @@ val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No Downl
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
+
+/**
+ * Blur radius applied to the whole app content while a BottomSheetMenu (the
+ * shared song-overflow / album / artist / playlist menu container) is open,
+ * producing the "blurred behind" glass effect the reference sheet has. Read
+ * in the Row modifier that wraps the app rail + Scaffold content.
+ */
+private val MenuBackdropBlurRadius = 24.dp
 
 @Composable
 private fun OnlineSearchSortMenu(

@@ -143,8 +143,11 @@ import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.removeSongFromRemotePlaylist
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.playlist.PlaylistSuggestionsSection
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -666,14 +669,24 @@ fun LocalPlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
+    // Header haze (2026-09-04): the home page's blurred top haze, ported to
+    // this screen. The ExpressivePullToRefreshBox below tags its whole
+    // subtree as the haze source; the ScreenHeaderHaze overlay renders the
+    // progressive top-fade blur behind the pinned Liquid Glass pills.
+    val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .hazeSource(headerHaze),
     ) {
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         LazyColumn(
             state = lazyListState,
             modifier =

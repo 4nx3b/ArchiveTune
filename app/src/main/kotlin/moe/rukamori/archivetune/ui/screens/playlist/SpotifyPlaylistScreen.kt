@@ -120,6 +120,9 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -425,14 +428,22 @@ fun SpotifyPlaylistScreen(
     // / AutoPlaylistScreen / CachePlaylistScreen fix from stage-6.
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
+    // Header haze (2026-09-04): the home page's blurred top haze, ported to
+    // this screen. See LocalPlaylistScreen for the full note.
+    val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = state.isLoading && tracks.isNotEmpty(),
         onRefresh = viewModel::reload,
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .hazeSource(headerHaze),
     ) {
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         LazyColumn(
             state = lazyListState,
             contentPadding =

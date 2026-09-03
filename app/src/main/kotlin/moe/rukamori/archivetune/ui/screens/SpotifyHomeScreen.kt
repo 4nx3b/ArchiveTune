@@ -78,12 +78,14 @@ import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.SpotifyHomeStyle
 import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
  * The geometry that separates the three [SpotifyHomeStyle] looks. The sections themselves are the
@@ -215,6 +217,13 @@ fun SpotifyHomeScreen(
                 }
             }
             is SpotifyHomeScreenState.Success -> {
+                // Catalogue switch (2026-09-04): hoisted out of the LazyColumn
+                // scope (LazyListScope is not a composable scope). Only rendered
+                // when the user enables "Enable Catalogue switch" in Settings →
+                // Content (default OFF — the switcher was removed from the home
+                // pages by request).
+                val (homeCatalogueSwitchEnabled, _) =
+                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
                 ExpressivePullToRefreshBox(
                     isRefreshing = false,
                     onRefresh = { viewModel.onAction(SpotifyHomeAction.Refresh) },
@@ -224,8 +233,10 @@ fun SpotifyHomeScreen(
                         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        item(key = "home_source_switcher", contentType = "source_switcher") {
-                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                        if (homeCatalogueSwitchEnabled) {
+                            item(key = "home_source_switcher", contentType = "source_switcher") {
+                                HomeSourceSwitcher(modifier = Modifier.animateItem())
+                            }
                         }
 
                         item(key = "spotify_recent_panel", contentType = "recent_panel") {

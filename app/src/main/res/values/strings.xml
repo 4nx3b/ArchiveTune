@@ -815,6 +815,8 @@
     <string name="allow_age_restricted">Allow age-restricted content</string>
     <string name="allow_age_restricted_summary">Play age-restricted songs via YouTube\'s embedded player. Slower, and can fail.</string>
     <string name="hide_video">Hide music videos</string>
+    <string name="enable_catalogue_switch">Enable Catalogue switch</string>
+    <string name="enable_catalogue_switch_summary">Show the YouTube / Spotify catalogue switcher at the top of the Home page</string>
     <string name="ai_content_filter">AI content filter</string>
     <string name="ai_content_filter_hide">Hide AI-generated content</string>
     <string name="ai_content_filter_hide_summary">Hide content from high-confidence AI channels in Home and Search.</string>

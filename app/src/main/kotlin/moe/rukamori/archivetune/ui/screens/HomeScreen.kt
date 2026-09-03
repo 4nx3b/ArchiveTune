@@ -58,16 +58,17 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
 import moe.rukamori.archivetune.home.HomeUiState
 import moe.rukamori.archivetune.innertube.models.AlbumItem
-import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import dev.chrisbanes.haze.hazeSource
 
@@ -316,51 +317,38 @@ private fun HomeContent(
                 // the two `.filter` calls would allocate fresh lists on every
                 // recomposition of HomeContent even when the sections hadn't
                 // changed — a measurable contributor to home-screen jank.
+                //
+                // Sections whose items were all filtered out (Hide Videos,
+                // Hide Explicit, blocked artists/songs, the AI-content filter)
+                // are dropped ENTIRELY here — header included (user request
+                // 2026-09-04: "There's some sections headers that stay on the
+                // home page even when there's nothing in them. If any section
+                // is empty it should get completely hidden").
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
-                        val live = allRemoteSections.filter { section ->
-                            section.title.contains("Live performance", ignoreCase = true)
-                        }
-                        val other = allRemoteSections.filter { section ->
-                            !section.title.contains("Live performance", ignoreCase = true)
-                        }
+                        val live =
+                            allRemoteSections
+                                .filter { section ->
+                                    section.title.contains("Live performance", ignoreCase = true)
+                                }.filter { it.items.isNotEmpty() }
+                        val other =
+                            allRemoteSections
+                                .filter { section ->
+                                    !section.title.contains("Live performance", ignoreCase = true)
+                                }.filter { it.items.isNotEmpty() }
                         live to other
                     }
 
-                // ── Muzo hero-section data (2026-09-04 redesign) ──
-                // The "Trending Playlist" stack and "Popular Albums" shelf
-                // are built from the real YouTube Music home feed: every
-                // playlist/album the current feed carries, de-duplicated. If
-                // the feed carries no playlists at all, the account's own
-                // playlists stand in so the hero never shows mock content.
-                // "See all" routes through the section's own browse endpoint
-                // (the same navigation the section headers already use),
-                // falling back to the app's real catalogue pages.
-                val trendingPlaylists =
-                    remember(allRemoteSections, uiState.accountPlaylists) {
-                        val fromFeed =
-                            allRemoteSections
-                                .flatMap { it.items }
-                                .filterIsInstance<PlaylistItem>()
-                        (fromFeed.ifEmpty { uiState.accountPlaylists.toList() })
-                            .distinctBy { it.id }
-                            .take(10)
-                    }
-                val trendingSeeAllRoute =
-                    remember(allRemoteSections) {
-                        allRemoteSections
-                            .firstOrNull { section -> section.items.any { it is PlaylistItem } }
-                            ?.endpoint
-                            ?.browseId
-                            ?.let { browseId ->
-                                if (browseId == "FEmusic_moods_and_genres") {
-                                    Screens.MoodAndGenres.route
-                                } else {
-                                    "browse/$browseId"
-                                }
-                            }
-                    }
+                // ── Muzo hero-section data (2026-09-04 redesign, revised) ──
+                // The "Popular Albums" shelf is built from the real YouTube
+                // Music home feed: every album the current feed carries,
+                // de-duplicated. "See all" routes through the section's own
+                // browse endpoint (the same navigation the section headers
+                // already use), falling back to the app's real catalogue
+                // pages. The "Trending Playlist" stack was REMOVED per the
+                // user request 2026-09-04 ("Remove the Trending playlist
+                // section from home page"), so its data prep is gone too.
                 val popularAlbums =
                     remember(allRemoteSections) {
                         allRemoteSections
@@ -378,6 +366,17 @@ private fun HomeContent(
                             ?.let { browseId -> "browse/$browseId" }
                             ?: "new_release"
                     }
+
+                // Catalogue switch (2026-09-04): hoisted OUT of the LazyColumn
+                // scope (LazyListScope is not a composable scope, so the
+                // preference read has to happen here). The YouTube ⇄ Spotify
+                // home switcher no longer renders on the page by default
+                // (user request: "remove the switch text between youtube and
+                // Spotify catalogue on the home page"). It comes back only
+                // when the user turns on "Enable Catalogue switch" in
+                // Settings → Content.
+                val (homeCatalogueSwitchEnabled, _) =
+                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
 
                 LazyColumn(
                     state = lazyListState,
@@ -401,6 +400,45 @@ private fun HomeContent(
                             accountName = uiState.accountName,
                             modifier = Modifier.animateItem(),
                         )
+                    }
+
+                    // ── Jump back in (moved to the top, 2026-09-04) ──
+                    // Sits directly below the "Listen to Your Favourite
+                    // Music" headline per the user request ("Shift the jump
+                    // back in section to the top below the listen to your
+                    // favourite music text"). Skipped entirely if the user
+                    // has no listening history yet (e.g. fresh install).
+                    // PERSISTENT — renders in both full and minimal modes.
+                    if (uiState.heroPicks.isNotEmpty()) {
+                        item(
+                            key = "home_jump_back_in",
+                            contentType = "jump_back_in",
+                        ) {
+                            JumpBackInHeroSection(
+                                recentlyPlayed = uiState.heroPicks,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    // ── Catalogue switch (2026-09-04) ──
+                    // The preference itself is read above the LazyColumn
+                    // (see homeCatalogueSwitchEnabled); this is only the
+                    // placement decision. Only renders once there is a
+                    // Spotify session to switch to; see HomeSourceSwitcher.
+                    if (homeCatalogueSwitchEnabled) {
+                        item(
+                            key = "home_source_switcher",
+                            contentType = "source_switcher",
+                        ) {
+                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                        }
                     }
 
                     // Home feed layout policy:
@@ -448,45 +486,15 @@ private fun HomeContent(
                     // Uses `heroPicks` (3 random songs from listening-preference
                     // based quickPicks) instead of the last-played 3, so the hero
                     // rotates fresh picks each visit. Mirrors the Apple Music /
-                    // Only renders once there is a Spotify session to switch to; see
-                    // HomeSourceSwitcher. Above the hero so the two homes agree on where it lives.
-                    item(
-                        key = "home_source_switcher",
-                        contentType = "source_switcher",
-                    ) {
-                        HomeSourceSwitcher(modifier = Modifier.animateItem())
-                    }
-
-                    // ── Trending Playlist (Muzo layered card, 2026-09-04) ──
-                    // The reference's stacked glass card: circular artwork,
-                    // title/owner/count, waveform strip and circular play
-                    // button, with the next real playlists peeking out behind
-                    // it as the depth cue. Swipe pages through the playlist
-                    // collection; play goes through the app's one queue API.
-                    if (trendingPlaylists.isNotEmpty()) {
-                        item(
-                            key = "home_trending_playlists",
-                            contentType = "muzo_trending_playlists",
-                        ) {
-                            TrendingPlaylistSection(
-                                playlists = trendingPlaylists,
-                                seeAllRoute = trendingSeeAllRoute,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
+                    // (Moved to the top of the feed, directly below the welcome
+                    // header — see the item above.)
 
                     // ── Popular Albums (Muzo glass card shelf, 2026-09-04) ──
                     // Tall glass cards with the artwork as the hero and the
                     // circular play button over it; three fit in the viewport
-                    // at the reference's proportions.
+                    // at the reference's proportions. Sits directly below the
+                    // catalogue switch / jump-back-in hero at the top of the
+                    // feed.
                     if (popularAlbums.isNotEmpty()) {
                         item(
                             key = "home_popular_albums",
@@ -495,27 +503,6 @@ private fun HomeContent(
                             PopularAlbumsSection(
                                 albums = popularAlbums,
                                 seeAllRoute = popularAlbumsSeeAllRoute,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    // Muzo home hero. Skipped entirely if the user has no
-                    // listening history yet (e.g. fresh install). PERSISTENT —
-                    // renders in both full and minimal modes.
-                    if (uiState.heroPicks.isNotEmpty()) {
-                        item(
-                            key = "home_jump_back_in",
-                            contentType = "jump_back_in",
-                        ) {
-                            JumpBackInHeroSection(
-                                recentlyPlayed = uiState.heroPicks,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,

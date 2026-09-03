@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.LinearEasing
@@ -895,3 +896,57 @@ fun HomeTopFadeBlur(
                 .background(scrim),
     )
 }
+
+// ============================================================================
+// ScreenHeaderHaze — the home page's header haze, ported to every other
+// list screen (2026-09-04). The user asked for "the blurred haze around
+// the header in home page" to be enabled on History, playlists, online
+// playlists, cached and the other screens with pinned header pills too.
+// ============================================================================
+
+/**
+ * Creates the [HazeState] a screen tags its scrolling content with (via
+ * `Modifier.hazeSource(...)`) so [ScreenHeaderHaze] can blur over it.
+ */
+@Composable
+fun rememberScreenHeaderHaze(): HazeState = remember { HazeState() }
+
+/**
+ * The pinned progressive top-fade blur for the pill-header screens — the
+ * exact material the Home route's top bar uses ([HomeTopFadeBlur]), sized to
+ * the zone those screens' pinned header pills occupy (status bar + a 64dp
+ * pill row, plus the fade run beneath).
+ *
+ * Usage per screen:
+ * ```
+ * val headerHaze = rememberScreenHeaderHaze()
+ * Box(Modifier.fillMaxSize().hazeSource(headerHaze)) {   // content root
+ *     ScreenHeaderHaze(headerHaze, systemBarsTopPadding) // FIRST child
+ *     LazyColumn(...)                                     // scrolling content
+ *     LiquidGlassActionPill(...)                          // pinned pills above the haze
+ * }
+ * ```
+ *
+ * The overlay is skipped below Android 12 (haze's RenderEffect path) and
+ * while the player sheet is expanded (the screen is covered anyway — pass
+ * `enabled` accordingly if a cheap gate is available).
+ */
+@Composable
+fun ScreenHeaderHaze(
+    hazeState: HazeState,
+    systemBarsTopPadding: Dp,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    if (!enabled) return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    HomeTopFadeBlur(
+        hazeState = hazeState,
+        pageColor = MaterialTheme.colorScheme.surface,
+        barHeight = systemBarsTopPadding + ScreenHeaderHazeBarZone,
+        modifier = modifier,
+    )
+}
+
+/** The pill row the haze's solid zone covers: the 48dp pills + their 12dp top offset + a little slack. */
+private val ScreenHeaderHazeBarZone = 64.dp

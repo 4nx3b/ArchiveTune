@@ -270,6 +270,13 @@ val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+// When ON, the YouTube ⇄ Spotify home switcher (HomeSourceSwitcher) renders at
+// the top of the Home page. Default OFF: the switcher was removed from the home
+// page per the user request 2026-09-04 ("remove the switch text between
+// youtube and Spotify catalogue on the home page. Instead give an option for
+// that in Content named Enable Catalogue switch") — the option lives in
+// Settings → Content → "Enable Catalogue switch".
+val HomeCatalogueSwitchKey = booleanPreferencesKey("homeCatalogueSwitch")
 // When ON, music videos render an inline video surface in the player. Default OFF so songs
 // play as plain audio (album artwork shown, no video stream is loaded) unless the user opts in.
 // Distinct from HideVideoKey which filters videos out of the library/queue entirely.
