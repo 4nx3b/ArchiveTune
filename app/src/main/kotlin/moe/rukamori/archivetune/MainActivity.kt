@@ -41,6 +41,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
@@ -143,6 +145,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
+import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -779,6 +784,11 @@ class MainActivity : ComponentActivity() {
                     moe.rukamori.archivetune.ui.component
                         .MenuState()
                 }
+            // BitChord home redesign (2026-09-03): shared Haze state for the Home
+            // route's progressive top-fade blur. HomeScreen tags its root Box as
+            // the haze source; the top bar renders the blurred strip (see the
+            // topBar slot). Provided to the tree via LocalHomeHazeState.
+            val homeHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -2076,6 +2086,10 @@ class MainActivity : ComponentActivity() {
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
+                        // BitChord home redesign (2026-09-03): the haze state shared
+                        // between HomeScreen's hazeSource and the top bar's progressive
+                        // fade blur over the Home route.
+                        moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
@@ -2314,6 +2328,21 @@ class MainActivity : ComponentActivity() {
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
+                                        // BitChord home redesign (2026-09-03): the Home route's bar is
+                                        // pinned — content scrolls under it into a progressive blur —
+                                        // while its bar title fades in only once the list is scrolled
+                                        // (the big in-list greeting owns the title at rest).
+                                        val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
+                                        val homeBarScrolled by remember(isHomeRoute) {
+                                            derivedStateOf {
+                                                homeScrollBehavior.state.collapsedFraction > 0.05f
+                                            }
+                                        }
+                                        val homeBarTitleAlpha by animateFloatAsState(
+                                            targetValue = if (isHomeRoute && homeBarScrolled) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "homeBarTitleAlpha",
+                                        )
 
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
@@ -2343,7 +2372,10 @@ class MainActivity : ComponentActivity() {
                                                     // cached while the user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
-                                                            if (isLibraryRoute) {
+                                                            if (isLibraryRoute || isHomeRoute) {
+                                                                // Library and Home both keep the bar
+                                                                // pinned: Home's content scrolls under
+                                                                // it into the progressive blur.
                                                                 0f
                                                             } else {
                                                                 currentScrollBehavior.state.heightOffset
@@ -2351,6 +2383,23 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
+                                                if (isHomeRoute &&
+                                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                                                    !playerBottomSheetState.isExpandedOrExpanding
+                                                ) {
+                                                    // ── BitChord TopFadeBlur (2026-09-03) ──────────────────
+                                                    // Full blur along the top edge ramping to nothing on the
+                                                    // way down (progressive vertical gradient, EaseOutCubic,
+                                                    // peak 0.75), over the HazeState HomeScreen tags its
+                                                    // content with. A modest readability scrim sits over
+                                                    // the blur so the bar's glyphs keep a floor whatever
+                                                    // scrolls beneath them.
+                                                    HomeTopFadeBlur(
+                                                        hazeState = homeHazeState,
+                                                        pageColor = surfaceColor,
+                                                        barHeight = AppBarHeight + effectiveStatusBarTop,
+                                                    )
+                                                } else {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
                                                 Box(
 modifier =
@@ -2362,7 +2411,7 @@ modifier =
                                                                 // blur background overlay under
                                                                 // the top app bar.
                                                                 .graphicsLayer {
-                                                                    if (!isLibraryRoute) {
+                                                                    if (!isLibraryRoute && !isHomeRoute) {
                                                                         val raw = currentScrollBehavior.state.heightOffset
                                                                         val clamped = raw.coerceAtLeast(-appBarHeightPx)
                                                                         translationY = clamped - raw
@@ -2382,6 +2431,7 @@ modifier =
                                                                     ),
                                                                 ),
                                                 )
+                                                }
                                             }
 
                                             TopAppBar(
@@ -2431,7 +2481,8 @@ modifier =
                                                                 overflow = TextOverflow.Ellipsis,
                                                             )
                                                         } else {
-                                                            // app icon
+                                                            // app icon — always visible, BitChord's
+                                                            // logo equivalent.
                                                             Icon(
                                                                 painter = painterResource(R.drawable.about_appbar),
                                                                 contentDescription = null,
@@ -2440,6 +2491,12 @@ modifier =
                                                                         .size(35.dp)
                                                                         .padding(end = 3.dp),
                                                             )
+                                                            // BitChord behaviour on the Home route
+                                                            // (2026-09-03): the bar's title only
+                                                            // exists while scrolled — the big
+                                                            // in-list greeting owns the page title
+                                                            // at rest, and the app name fades in
+                                                            // over the blur once the list moves.
                                                             AutoResizeText(
                                                                 text = stringResource(R.string.app_name),
                                                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
@@ -2447,7 +2504,10 @@ modifier =
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Visible,
                                                                 softWrap = true,
-                                                                modifier = Modifier.weight(1f, fill = false),
+                                                                modifier =
+                                                                    Modifier
+                                                                        .weight(1f, fill = false)
+                                                                        .graphicsLayer { alpha = homeBarTitleAlpha },
                                                             )
                                                         }
                                                     }
