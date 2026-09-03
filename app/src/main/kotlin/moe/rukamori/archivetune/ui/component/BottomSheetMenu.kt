@@ -60,7 +60,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
-import kotlin.math.maxOf
 
 val LocalMenuState = compositionLocalOf { MenuState() }
 
