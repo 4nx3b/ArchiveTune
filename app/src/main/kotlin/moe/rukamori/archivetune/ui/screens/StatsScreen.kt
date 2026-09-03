@@ -122,6 +122,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import android.graphics.Color as AndroidColor
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -943,6 +944,7 @@ private fun StatsYearPickerDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(onClick = onDismiss) {
                 Text(text = stringResource(R.string.dismiss))
             }

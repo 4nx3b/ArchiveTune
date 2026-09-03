@@ -27,7 +27,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.chaquopy)
 }
 
 val localProperties = Properties()
@@ -93,16 +92,6 @@ tasks.configureEach {
 // keeps the signature stable across builds so debug APKs install over one another. Uses the
 // standard Android debug credentials.
 val debugKeystoreFile = file("persistent-debug.keystore")
-
-chaquopy {
-    defaultConfig {
-        version = "3.11"
-        pip {
-            install("yt-dlp==2026.8.19")
-            install("yt-dlp-ejs==0.8.0")
-        }
-    }
-}
 
 android {
     namespace = "moe.rukamori.archivetune"
@@ -179,9 +168,11 @@ android {
                 ).trim()
         buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
 
-        // End-to-end decryption key for sensitive Source Pool credentials (base64 32-byte AES-256
-        // key, matching the site's POOL_CLIENT_KEY). When the pool returns encrypted account tokens
-        // the app decrypts them locally with this. Optional: blank means the pool is unencrypted.
+        // LEGACY end-to-end decryption key for sensitive Source Pool credentials (base64 32-byte
+        // AES-256 key, matching the site's POOL_CLIENT_KEY). Current builds request the v2 feed
+        // protocol (X-Pool-Client: v2), where the encryption key is derived from the read key
+        // above and this value is only a fallback for older pool deployments. Optional: blank is
+        // fine when every configured pool speaks v2.
         val poolClientKey =
             (
                 localProperties.getProperty("POOL_CLIENT_KEY")
@@ -240,8 +231,8 @@ android {
         }
         create("universal") {
             dimension = "abi"
-            // Restrict to arm64-v8a + x86_64 — Chaquopy Python 3.11 has no
-            // wheels for armeabi-v7a or x86. This keeps universal APK smaller.
+            // Keep the universal APK lean: TDLib's libtdjni.so dominates per-ABI
+            // size, so packaging only the two 64-bit ABIs halves the download.
             ndk {
                 abiFilters += listOf("arm64-v8a", "x86_64")
             }
@@ -422,6 +413,8 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
 
     implementation(libs.material3)
+    implementation(libs.androidx.graphics.shapes)
+    
     implementation(libs.palette)
     implementation(libs.androidsvg)
     implementation(libs.aboutlibraries.core)
@@ -496,6 +489,7 @@ dependencies {
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.client.websockets)
     implementation(libs.ktor.server.core)

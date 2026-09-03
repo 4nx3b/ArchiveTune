@@ -159,16 +159,30 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-// LRC_LEAD_MS and LYRIC_VISUAL_TUNING_OFFSET_MS were both non-zero (300 + 150 = 450ms total),
-// which advanced the active line index 450ms BEFORE the next line's actual audio start. For
-// line-synced (LRC) Enhanced lyrics this caused the highlight + auto-scroll to switch to the
-// next line while the current line's audio was still 450ms from finishing — perceived as
-// "lyrics scroll before they're even finished". This matches the same fix already applied to
-// LyricsV2.kt in commit df8249408 ("fix(lyrics,ui): romanisation below lyric, V2 sync, iOS-style
-// hero redesign") but it was never ported to Enhanced. Both constants are now 0 so the line
-// switch happens exactly at the next line's start.
-private const val LRC_LEAD_MS = 0L
-private const val TTML_LEAD_MS = 0L
+// ── Sync lead calibration history (2026-09-02) ──
+//
+// 450ms lead (LRC_LEAD_MS 300 + LYRIC_VISUAL_TUNING_OFFSET_MS 150): the active line
+// advanced 450ms BEFORE the next line's audio — "lyrics scroll before they're even
+// finished" (see commit history and the same fix in LyricsV2.kt, df8249408).
+//
+// 0ms lead: the line index and the word fill flip exactly at the provider
+// timestamps, but everything the user SEES settles after them — the line's
+// emphasis transition (~300ms tween), the karaoke renderer's per-word
+// bounce (its own easing over hundreds of ms), one frame of state-to-draw
+// propagation — so the perception landed consistently LATE (user report
+// 2026-09-02: "the enhanced lyrics both word synced and line synced are
+// not in perfect sync. They're delayed").
+//
+// 120ms: the calibration midpoint between the two observed bounds — early
+// at 450, late at 0 — sized to move each visual transition's perceived
+// ONSET back onto the audio instead of trailing it, without re-crossing
+// into "scrolls before it's finished" territory. Applied uniformly (LRC
+// and TTML, line index and word fill) so the whole karaoke shifts as one;
+// the per-track fine nudge remains the user-facing sync-offset editor in
+// the lyrics overflow menu.
+private const val LYRIC_SYNC_LEAD_MS = 120L
+private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
+private const val TTML_LEAD_MS = LYRIC_SYNC_LEAD_MS
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 0L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
@@ -902,7 +916,13 @@ fun LyricsEnhanced(
                         latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
                         .coerceIn(0L, Int.MAX_VALUE.toLong())
                 if (sliderPosition == null) {
-                    delay(100L)
+                    // Paused: nothing is moving, 100ms refresh is plenty.
+                    // Playing with animations disabled (the reduce-animations
+                    // preference): the frame interpolation above is skipped,
+                    // so this poll is the fill's only clock — 100ms steps
+                    // read as both stutter and lag (average half the
+                    // interval), so tighten it to 50ms while playing.
+                    delay(if (player.isPlaying) 50L else 100L)
                 } else {
                     withFrameNanos { }
                 }
@@ -1824,6 +1844,7 @@ private fun LyricsSelectionBottomSheet(
         contentColor = MaterialTheme.colorScheme.onSurface,
         dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             modifier =
                 Modifier

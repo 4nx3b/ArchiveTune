@@ -83,35 +83,51 @@ class CreatePlaylistViewModel
         ) {
             if (createJob?.isActive == true) return
             loadJob?.cancel()
-            mutableScreenState.value = CreatePlaylistScreenState.Loading
+            // Open OPTIMISTICALLY with the last-known sync options so the
+            // dialog's first settled frame already shows the final UI (user
+            // report 2026-09-03: "When I click on + icon which is create a new
+            // playlist i see the playlist popup flicker"). The previous flow
+            // entered a visible Loading state (disabled text field, disabled
+            // sync switch, "not logged in" description) and swapped it for
+            // the real state once the async options read landed ~1-2 frames
+            // later — that whole-dialog enable/disable + text swap is the
+            // flicker. Restoring the previous state's sync options (the
+            // ViewModel survives dialog close, being scoped to the screen)
+            // makes every open after the first settle in ONE frame; the
+            // options are re-verified in the background and only write state
+            // back when something actually changed.
+            val cached = (mutableScreenState.value as? CreatePlaylistScreenState.Success)?.data
+            val optimistic =
+                CreatePlaylistUiData(
+                    name = initialName,
+                    allowSyncing = allowSyncing,
+                    isSignedIn = cached?.isSignedIn ?: false,
+                    isSyncEnabled = cached?.isSyncEnabled ?: false,
+                    syncRequested = false,
+                    isSubmitting = false,
+                )
+            mutableScreenState.value = CreatePlaylistScreenState.Success(optimistic)
             loadJob =
                 viewModelScope.launch {
-                    val initialData =
-                        CreatePlaylistUiData(
-                            name = initialName,
-                            allowSyncing = allowSyncing,
-                            isSignedIn = false,
-                            isSyncEnabled = false,
-                            syncRequested = false,
-                            isSubmitting = false,
-                        )
                     try {
                         val options = getOptions()
-                        mutableScreenState.value =
-                            CreatePlaylistScreenState.Success(
-                                initialData.copy(
+                        if (options.isSignedIn != optimistic.isSignedIn ||
+                            options.isSyncEnabled != optimistic.isSyncEnabled
+                        ) {
+                            // Preserve whatever the user has typed so far — the
+                            // refresh can land mid-typing.
+                            updateData {
+                                it.copy(
                                     isSignedIn = options.isSignedIn,
                                     isSyncEnabled = options.isSyncEnabled,
-                                ),
-                            )
+                                )
+                            }
+                        }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
-                        mutableScreenState.value =
-                            CreatePlaylistScreenState.Error(
-                                data = initialData,
-                                messageResId = R.string.error_unknown,
-                            )
+                        // Keep the optimistic state — creating a local playlist
+                        // never needed the options anyway.
                     }
                 }
         }

@@ -124,6 +124,7 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlaylistThumbnail
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
@@ -737,12 +738,12 @@ fun LibraryPlaylistsScreen(
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),
                         contentDescription = stringResource(R.string.back_button_desc),
-                        tint = Color.White,
+                        tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
                     text = stringResource(R.string.playlists),
-                    color = Color.White,
+                    color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -813,7 +814,7 @@ fun LibraryPlaylistsScreen(
                             Icon(
                                 painter = painterResource(if (locked) R.drawable.lock else R.drawable.lock_open),
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = liquidGlassContentColor(),
                             )
                         }
                     }
@@ -828,7 +829,7 @@ fun LibraryPlaylistsScreen(
                         Icon(
                             painter = painterResource(id = R.drawable.add),
                             contentDescription = stringResource(R.string.create_playlist),
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }

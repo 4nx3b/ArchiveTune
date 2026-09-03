@@ -140,6 +140,7 @@ import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TopSearch
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.SelectionMediaMetadataMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
@@ -808,12 +809,12 @@ fun HistoryScreen(
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = stringResource(R.string.library),
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                     Text(
                         text = stringResource(R.string.library),
-                        color = Color.White,
+                        color = liquidGlassContentColor(),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -847,7 +848,7 @@ fun HistoryScreen(
                             Icon(
                                 painter = painterResource(R.drawable.search),
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = liquidGlassContentColor(),
                             )
                         }
                     }

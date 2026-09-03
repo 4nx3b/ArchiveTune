@@ -98,6 +98,7 @@ import moe.rukamori.archivetune.ui.component.PlaylistListItem
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.time.LocalDateTime
 import java.util.Locale
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private fun preferredAddTargetPlaylist(
     current: Playlist,
@@ -299,6 +300,7 @@ fun AddToPlaylistDialog(
             onDismissRequest = onDismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             BoxWithConstraints(
                 modifier =
                     Modifier

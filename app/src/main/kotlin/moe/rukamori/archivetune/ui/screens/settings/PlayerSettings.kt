@@ -70,6 +70,7 @@ import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
+import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -151,6 +152,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (enableVideoPlayback, onEnableVideoPlaybackChange) =
         rememberPreference(
             EnableVideoPlaybackKey,
+            defaultValue = false,
+        )
+    val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
+        rememberPreference(
+            ShowLyricsOnPlayerKey,
             defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
@@ -384,6 +390,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 title = stringResource(R.string.video_playback),
             ) {
                 item {
+                    Column(modifier = positions.modifierFor("show_lyrics_on_player")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.show_lyrics_on_player)) },
+                            description = stringResource(R.string.show_lyrics_on_player_desc),
+                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                            checked = showLyricsOnPlayer,
+                            onCheckedChange = onShowLyricsOnPlayerChange,
+                        )
+                    }
+                }
+
+                item {
                     Column(modifier = positions.modifierFor("enable_video_playback")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.enable_video_playback)) },
@@ -585,6 +603,12 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
             }
+
+            // Per-source audio quality pickers were removed from this page
+            // (2026-09-01, user request): they duplicated Settings → Sources and
+            // cluttered the playback page. The pickers live on in the full
+            // Sources page (PlaybackSourceSections) and each source's own
+            // settings screen; nothing was removed from the data layer.
 
             PreferenceGroup(
                 modifier = positions.modifierFor("archive_tune_canvas"),

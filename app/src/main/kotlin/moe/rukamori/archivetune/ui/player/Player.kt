@@ -31,6 +31,8 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import com.materialkolor.ktx.toHct
+import com.materialkolor.ktx.toColor
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
@@ -234,6 +236,8 @@ import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.ui.player.bitchord.BitChordPlayerContent
+import moe.rukamori.archivetune.ui.player.tiktok.TikTokPlayerContent
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -242,6 +246,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private const val SeekbarSettleToleranceMs = 1_500L
 private const val V7BackdropMinArtworkSizePx = 1_024
@@ -412,9 +417,10 @@ fun BottomSheetPlayer(
         defaultValue = PlayerBackgroundStyle.DEFAULT,
     )
     val playerUsesFixedBackground =
-        playerDesignStyle == PlayerDesignStyle.V8 ||
-            playerDesignStyle == PlayerDesignStyle.V9 ||
-            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC
+        playerDesignStyle == PlayerDesignStyle.V9 ||
+            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+            playerDesignStyle == PlayerDesignStyle.TIKTOK
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -430,7 +436,7 @@ fun BottomSheetPlayer(
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showCodecOnPlayer) = rememberPreference(booleanPreferencesKey("show_codec_on_player"), false)
     val (incrementalSeekSkipEnabled) = rememberPreference(moe.rukamori.archivetune.constants.SeekExtraSeconds, defaultValue = false)
-    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = true)
+    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = false)
     var keyboardSkipMultiplier by remember { mutableStateOf(1) }
     var lastKeyboardTapTime by remember { mutableLongStateOf(0L) }
 
@@ -581,7 +587,7 @@ fun BottomSheetPlayer(
                 playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
                 playerBackground == PlayerBackgroundStyle.GLOW ||
                 playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
-                playerDesignStyle == PlayerDesignStyle.V9
+                playerDesignStyle == PlayerDesignStyle.V9 || playerDesignStyle == PlayerDesignStyle.V10
         if (!wantsPalette) {
             gradientColors = emptyList()
             hasValidGradientPalette = false
@@ -674,6 +680,39 @@ fun BottomSheetPlayer(
     // palette color and animates between songs so the controls blend smoothly with
     // the artwork (no blur behind the controls — pure color gradient instead).
     val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
+
+    // ── V10 "Editorial" dominant-artwork control theme ──
+    // Both halves of the two-tone contract (field + accent) are derived from the
+    // artwork's DOMINANT palette color — gradientColors.first(), the highest-
+    // weighted swatch of the cover — HCT-toned per theme so they always keep
+    // proper contrast (dark: light accent over dark field; light: dark accent
+    // over light field). Previously these came from the *vibrant* seed, which
+    // only existed on the fresh-extraction path: a PlayerPaletteCache hit left
+    // the seeds null and collapsed both tones onto the same dominant color —
+    // pill text invisible against the pill. Deriving from dominantColor fixes
+    // that and matches the user request (2026-09-01): "button and control theme
+    // based on the dominant color from the album art". dominantColor falls back
+    // to the theme primary only when no palette has ever resolved.
+    val targetV10FieldColor =
+        remember(dominantColor, useDarkTheme) {
+            val hct = dominantColor.toHct()
+            if (useDarkTheme) hct.withTone(30.0).toColor() else hct.withTone(90.0).toColor()
+        }
+    val dynamicV10FieldColor by animateColorAsState(
+        targetValue = targetV10FieldColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicV10FieldColor",
+    )
+    val targetV10AccentColor =
+        remember(dominantColor, useDarkTheme) {
+            val hct = dominantColor.toHct()
+            if (useDarkTheme) hct.withTone(90.0).toColor() else hct.withTone(10.0).toColor()
+        }
+    val dynamicV10AccentColor by animateColorAsState(
+        targetValue = targetV10AccentColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicV10AccentColor",
+    )
     val targetBgColor = remember(dominantColor, useDarkTheme) {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(dominantColor.toArgb(), hsv)
@@ -733,7 +772,7 @@ fun BottomSheetPlayer(
     val TextBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicTextColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle == PlayerDesignStyle.V7) {
             Color.White
         } else {
             when (playerBackground) {
@@ -751,7 +790,7 @@ fun BottomSheetPlayer(
     val icBackgroundColor =
         if (playerDesignStyle == PlayerDesignStyle.V9) {
             dynamicBgColor
-        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        } else if (playerDesignStyle == PlayerDesignStyle.V7) {
             Color.Black
         } else {
             when (playerBackground) {
@@ -779,7 +818,7 @@ fun BottomSheetPlayer(
                 )
             }
         }.let { (tb, ib) ->
-            if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            if (playerDesignStyle == PlayerDesignStyle.V7) {
                 Pair(Color.White, Color.Black)
             } else if (playerDesignStyle == PlayerDesignStyle.V9) {
                 Pair(dynamicAccentColor, dynamicIconButtonColor)
@@ -837,6 +876,7 @@ fun BottomSheetPlayer(
             },
             title = { Text(stringResource(R.string.sleep_timer)) },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showSleepTimerDialog = false
@@ -949,7 +989,12 @@ fun BottomSheetPlayer(
     }
 
     val dynamicQueuePeekHeight =
-        if (playerDesignStyle == PlayerDesignStyle.V5 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+        if (
+            playerDesignStyle == PlayerDesignStyle.V5 ||
+            playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+            playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+            playerDesignStyle == PlayerDesignStyle.TIKTOK
+        ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
             88.dp +
@@ -1220,7 +1265,7 @@ fun BottomSheetPlayer(
                         0f
                     }
                 dynamicBgColor.copy(alpha = 1f - fadeProgress)
-            } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            } else if (playerDesignStyle == PlayerDesignStyle.V7) {
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
@@ -1583,9 +1628,10 @@ fun BottomSheetPlayer(
             !aodModeEnabled &&
             playerDesignStyle != PlayerDesignStyle.V5 &&
             playerDesignStyle != PlayerDesignStyle.V7 &&
-            playerDesignStyle != PlayerDesignStyle.V8 &&
             playerDesignStyle != PlayerDesignStyle.V9 &&
-            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+            playerDesignStyle != PlayerDesignStyle.BITCHORD &&
+            playerDesignStyle != PlayerDesignStyle.TIKTOK
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -1602,7 +1648,73 @@ fun BottomSheetPlayer(
 
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
-                if (playerDesignStyle == PlayerDesignStyle.V5) {
+                if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
+                    // The Bitchord style: a fully self-contained port of
+                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
+                    // hairline scrubber, inline queue + lyrics). It renders the
+                    // same portrait-first layout in either orientation - its
+                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
+                    // degrades gracefully on wide screens instead of stretching.
+                    enrichedMetadata?.let { metadata ->
+                        BitChordPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    // The TikTok style: a full-screen vertical feed over the
+                    // real queue — swipe up for the next song, down for the
+                    // previous. Same layout in either orientation: the page's
+                    // hero artwork sizes itself to the middle zone, so it is
+                    // width-limited in portrait and height-limited here, and
+                    // the pager + the sheet's nested-scroll connection divide
+                    // vertical drags between paging and collapsing. The feed
+                    // scrubs via the app's standard seek callbacks, so its
+                    // progress row behaves exactly like every other style's
+                    // slider.
+                    enrichedMetadata?.let { metadata ->
+                        TikTokPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            lyricsVisible = isLyricsScreenVisible,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                            onOpenQueue = openQueue,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
                     val littleTextColor = MaterialTheme.colorScheme.onPrimaryContainer
                     val displayPositionMs = sliderPosition ?: position
@@ -1781,78 +1893,7 @@ fun BottomSheetPlayer(
                             Spacer(Modifier.height(16.dp))
                         }
                     }
-                } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        val v8SwapState =
-                            rememberThumbnailSwapState(
-                                videoId = mediaMetadata?.id,
-                                ytmUrl = mediaMetadata?.thumbnailUrl,
-                                lowDataMode = lowDataModeActive,
-                                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-                            )
-                        val v8VideoMetadata = mediaMetadata
-                        val v8VideoShowing =
-                            videoState != null &&
-                                v8VideoMetadata?.isMusicVideo == true &&
-                                !v8VideoMetadata.id.isLocalMediaId() &&
-                                !aodModeEnabled &&
-                                !isLyricsScreenVisible &&
-                                !videoPlaybackFailed
-                        if (v8VideoShowing) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black),
-                            )
-                        } else {
-                            V8PlayerBackdrop(
-                                thumbnailUrl = v8SwapState.displayUrl,
-                                backdropBlurAmount = backdropBlurAmount,
-                            )
-                        }
-
-                        enrichedMetadata?.let { metadata ->
-                            V8PlayerContent(
-                                mediaMetadata = metadata,
-                                queueTitle = queueTitle,
-                                playbackState = playbackState,
-                                isPlaying = isPlaying,
-                                isLoading = isLoading,
-                                canSkipPrevious = canSkipPrevious,
-                                canSkipNext = canSkipNext,
-                                currentSongLiked = currentSongLiked,
-                                sliderPosition = sliderPosition,
-                                position = position,
-                                duration = duration,
-                                volume = deviceMusicVolumeController.volumeFraction,
-                                showVolumeBar = showPlayerVolumeBar,
-                                playerConnection = playerConnection,
-                                navController = navController,
-                                state = state,
-                                menuState = menuState,
-                                bottomSheetPageState = bottomSheetPageState,
-                                currentFormat = currentFormat,
-                                canvasPrimaryUrl = artworkCanvas?.animated,
-                                canvasFallbackUrl = artworkCanvas?.videoUrl,
-                                onSliderValueChange = onSliderValueChange,
-                                onSliderValueChangeFinished = onSliderValueChangeFinished,
-                                onVolumeChange = onPlayerVolumeChange,
-                                landscape = true,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .padding(bottom = queueSheetState.collapsedBound)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
-                                        ).nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            )
-                        }
-                    }
-                } else if (playerDesignStyle == PlayerDesignStyle.V9) {
+} else if (playerDesignStyle == PlayerDesignStyle.V9) {
                     enrichedMetadata?.let { metadata ->
                         V9PlayerContent(
                             mediaMetadata = metadata,
@@ -1877,6 +1918,67 @@ fun BottomSheetPlayer(
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            landscape = true,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = queueSheetState.collapsedBound)
+                                    .windowInsetsPadding(
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                    enrichedMetadata?.let { metadata ->
+                        V10PlayerContent(
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            textBackgroundColor = dynamicV10AccentColor,
+                            textButtonColor = dynamicV10FieldColor,
+                            iconButtonColor = iconButtonColor,
+                            onCollapseClick = { state.collapseSoft() },
+                            onQueueClick = openQueue,
+                            onLyricsClick = { isLyricsScreenVisible = true },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            onSleepTimerClick = {
+                                if (sleepTimerTimeLeft > 0L) {
+                                    playerConnection.service.sleepTimer.clear()
+                                } else {
+                                    showSleepTimerDialog = true
+                                }
+                            },
+                            sleepTimerEnabled = sleepTimerTimeLeft > 0L,
+                            sleepTimerTimeLeft = sleepTimerTimeLeft,
+                            onMenuClick = {
+                                menuState.show {
+                                    PlayerMenu(
+                                        mediaMetadata = metadata,
+                                        navController = navController,
+                                        playerBottomSheetState = state,
+                                        onShowDetailsDialog = {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(metadata.id)
+                                            }
+                                        },
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                            onAddToPlaylistClick = {
+                                showChoosePlaylistDialog = true
+                            },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -1925,7 +2027,7 @@ fun BottomSheetPlayer(
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
-                } else {
+            } else {
                     Row(
                         modifier =
                             Modifier
@@ -1942,6 +2044,7 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.size(thumbnailSize),
                                 isPlayerExpanded = state.isExpanded,
+                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
                         Column(
@@ -1964,7 +2067,71 @@ fun BottomSheetPlayer(
             }
 
             else -> {
-                if (playerDesignStyle == PlayerDesignStyle.V5) {
+                if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
+                    // The Bitchord style: a fully self-contained port of
+                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
+                    // hairline scrubber, inline queue + lyrics). It renders the
+                    // same portrait-first layout in either orientation - its
+                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
+                    // degrades gracefully on wide screens instead of stretching.
+                    enrichedMetadata?.let { metadata ->
+                        BitChordPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
+                    // The TikTok style: a full-screen vertical feed over the
+                    // real queue — swipe up for the next song, down for the
+                    // previous. Each queue entry is one page (hero artwork,
+                    // right action rail, bottom info); playback switches only
+                    // when a page settles, and the feed follows song changes
+                    // made from anywhere else in the app. The feed scrubs via
+                    // the app's standard seek callbacks, so its progress row
+                    // behaves exactly like every other style's slider.
+                    enrichedMetadata?.let { metadata ->
+                        TikTokPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            lyricsVisible = isLyricsScreenVisible,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                            onOpenQueue = openQueue,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
                     val littleTextColor = MaterialTheme.colorScheme.onPrimaryContainer
                     val displayPositionMs = sliderPosition ?: position
@@ -2142,77 +2309,7 @@ fun BottomSheetPlayer(
                             Spacer(Modifier.height(24.dp))
                         }
                     }
-                } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        val v8SwapState =
-                            rememberThumbnailSwapState(
-                                videoId = mediaMetadata?.id,
-                                ytmUrl = mediaMetadata?.thumbnailUrl,
-                                lowDataMode = lowDataModeActive,
-                                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-                            )
-                        val v8VideoMetadata = mediaMetadata
-                        val v8VideoShowing =
-                            videoState != null &&
-                                v8VideoMetadata?.isMusicVideo == true &&
-                                !v8VideoMetadata.id.isLocalMediaId() &&
-                                !aodModeEnabled &&
-                                !isLyricsScreenVisible &&
-                                !videoPlaybackFailed
-                        if (v8VideoShowing) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black),
-                            )
-                        } else {
-                            V8PlayerBackdrop(
-                                thumbnailUrl = v8SwapState.displayUrl,
-                                backdropBlurAmount = backdropBlurAmount,
-                            )
-                        }
-
-                        enrichedMetadata?.let { metadata ->
-                            V8PlayerContent(
-                                mediaMetadata = metadata,
-                                queueTitle = queueTitle,
-                                playbackState = playbackState,
-                                isPlaying = isPlaying,
-                                isLoading = isLoading,
-                                canSkipPrevious = canSkipPrevious,
-                                canSkipNext = canSkipNext,
-                                currentSongLiked = currentSongLiked,
-                                sliderPosition = sliderPosition,
-                                position = position,
-                                duration = duration,
-                                volume = deviceMusicVolumeController.volumeFraction,
-                                showVolumeBar = showPlayerVolumeBar,
-                                playerConnection = playerConnection,
-                                navController = navController,
-                                state = state,
-                                menuState = menuState,
-                                bottomSheetPageState = bottomSheetPageState,
-                                currentFormat = currentFormat,
-                                canvasPrimaryUrl = artworkCanvas?.animated,
-                                canvasFallbackUrl = artworkCanvas?.videoUrl,
-                                onSliderValueChange = onSliderValueChange,
-                                onSliderValueChangeFinished = onSliderValueChangeFinished,
-                                onVolumeChange = onPlayerVolumeChange,
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .padding(bottom = queueSheetState.collapsedBound)
-                                        .windowInsetsPadding(
-                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
-                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
-                                        ).nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            )
-                        }
-                    }
-                } else if (playerDesignStyle == PlayerDesignStyle.V9) {
+} else if (playerDesignStyle == PlayerDesignStyle.V9) {
                     enrichedMetadata?.let { metadata ->
                         V9PlayerContent(
                             mediaMetadata = metadata,
@@ -2247,6 +2344,67 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+                } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                    enrichedMetadata?.let { metadata ->
+                        V10PlayerContent(
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            textBackgroundColor = dynamicV10AccentColor,
+                            textButtonColor = dynamicV10FieldColor,
+                            iconButtonColor = iconButtonColor,
+                            onCollapseClick = { state.collapseSoft() },
+                            onQueueClick = openQueue,
+                            onLyricsClick = { isLyricsScreenVisible = true },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            onSleepTimerClick = {
+                                if (sleepTimerTimeLeft > 0L) {
+                                    playerConnection.service.sleepTimer.clear()
+                                } else {
+                                    showSleepTimerDialog = true
+                                }
+                            },
+                            sleepTimerEnabled = sleepTimerTimeLeft > 0L,
+                            sleepTimerTimeLeft = sleepTimerTimeLeft,
+                            onMenuClick = {
+                                menuState.show {
+                                    PlayerMenu(
+                                        mediaMetadata = metadata,
+                                        navController = navController,
+                                        playerBottomSheetState = state,
+                                        onShowDetailsDialog = {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(metadata.id)
+                                            }
+                                        },
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                            onAddToPlaylistClick = {
+                                showChoosePlaylistDialog = true
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = queueSheetState.collapsedBound)
+                                    .windowInsetsPadding(
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
@@ -2285,11 +2443,20 @@ fun BottomSheetPlayer(
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
-                } else {
+            } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier =
                             Modifier
+                                // Notch fix (2026-09-01): with "Hide status bar" on,
+                                // WindowInsets.statusBars reports 0, so the artwork block
+                                // started at y=0 and collided with the display cutout.
+                                // Floor the top inset with the cached status-bar top
+                                // (LocalStableSystemBarsTopPadding, which also floors
+                                // with displayCutout) — the same pattern V9/V10 use.
+                                .windowInsetsPadding(
+                                    WindowInsets(top = LocalStableSystemBarsTopPadding.current),
+                                )
                                 .windowInsetsPadding(
                                     WindowInsets.systemBars.only(
                                         WindowInsetsSides.Horizontal,
@@ -2304,6 +2471,7 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection),
                                 isPlayerExpanded = state.isExpanded,
+                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
 
@@ -2690,101 +2858,6 @@ private fun MikoLyricsTransition(
         }
     }
 }
-
-@Composable
-private fun V8PlayerBackdrop(
-    thumbnailUrl: String?,
-    backdropBlurAmount: Int,
-    modifier: Modifier = Modifier,
-) {
-    var currentUrl by remember(thumbnailUrl) {
-        mutableStateOf(
-            thumbnailUrl?.resize(
-                width = V8BackdropArtworkSizePx,
-                height = V8BackdropArtworkSizePx,
-                maxresAllowed = true,
-                ytimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
-            ),
-        )
-    }
-    val backdropRequest = rememberOfflineArtworkImageRequest(currentUrl)
-    val blurRadiusDp = 44.dp * (backdropBlurAmount.toFloat() / 100f)
-
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(Color.Black),
-    ) {
-        if (currentUrl != null) {
-            val backdropHasBlur = backdropBlurAmount > 0
-            if (backdropHasBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                AsyncImage(
-                    model = backdropRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .then(if (blurRadiusDp > 0.dp) Modifier.blur(blurRadiusDp) else Modifier)
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onState = { state ->
-                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
-                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
-                        }
-                    },
-                )
-            } else if (backdropHasBlur) {
-                BackdropBlurApi30(
-                    model = currentUrl,
-                    blurAmount = backdropBlurAmount,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onError = { failedUrl ->
-                        getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
-                    },
-                )
-            } else {
-                AsyncImage(
-                    model = backdropRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = 1.16f
-                                scaleY = 1.16f
-                                alpha = 0.66f
-                            },
-                    onState = { state ->
-                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
-                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
-                        }
-                    },
-                )
-            }
-        }
-
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.52f)),
-        )
-    }
-}
-
 @Composable
 private fun BackdropBlurApi30(
     model: String?,

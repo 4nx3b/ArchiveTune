@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.viewmodels.PoTokenEvent
 import moe.rukamori.archivetune.viewmodels.PoTokenState
 import moe.rukamori.archivetune.viewmodels.PoTokenViewModel
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 const val PO_TOKEN_ROUTE = "settings/po_token"
 
@@ -493,6 +494,7 @@ private fun RegenerateTokenSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             modifier =
                 Modifier

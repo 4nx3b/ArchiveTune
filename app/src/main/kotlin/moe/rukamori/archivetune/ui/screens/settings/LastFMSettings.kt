@@ -80,6 +80,7 @@ import moe.rukamori.archivetune.viewmodels.LastFmTimingEditorUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmTimingSetting
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -538,6 +539,7 @@ private fun LastFmLoginDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(
                 onClick = onLogin,
                 enabled =
@@ -653,6 +655,7 @@ private fun LastFmServiceEditorDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(
                 onClick = onSave,
                 enabled = !editor.isSaving,
@@ -742,6 +745,7 @@ private fun LastFmTimingEditorDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(onClick = onSave, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(android.R.string.ok))
             }
@@ -843,6 +847,7 @@ private fun LastFmCustomEndpointDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             TextButton(
                 onClick = {
                     // Validate the endpoint is a well-formed HTTP(S) URL —

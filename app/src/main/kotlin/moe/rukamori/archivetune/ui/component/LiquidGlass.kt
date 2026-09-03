@@ -13,7 +13,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -24,17 +23,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -123,6 +121,46 @@ fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBac
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Light-mode ink color for content (icons / labels) drawn on top of a Liquid
+ * Glass surface.
+ *
+ * Liquid Glass surfaces sample the content behind them and then add a light
+ * luminance overlay (see [liquidGlass]'s `onDrawSurface`). In dark mode the
+ * sampled content is dark, so the surface reads as dark frosted glass and
+ * `Color.White` content is perfectly legible. In LIGHT mode, however, the
+ * sampled content is bright and the surface renders as a bright frosted
+ * white — so `Color.White` icons/labels become nearly invisible (user report
+ * 2026-09-03 with Playlists/Library screenshots: header pill text, back
+ * arrow, and top-end action icons all "almost invisible").
+ *
+ * This near-black ink restores legibility on light glass. Dark mode keeps
+ * `Color.White` unchanged.
+ */
+private val LiquidGlassLightContentColor = Color(0xFF1C1B1F)
+
+/**
+ * Theme-aware content color (icon tint / label color) for elements rendered
+ * inside a Liquid Glass surface that samples page content.
+ *
+ * - Dark mode: [Color.White] (unchanged — matches the original look).
+ * - Light mode: [LiquidGlassLightContentColor] near-black ink, because the
+ *   glass surface renders bright in light mode.
+ *
+ * Dark/light is detected the same way [liquidGlass]'s surface overlay does it
+ * (see the "black-pills fix" note there): the APP's MaterialTheme surface
+ * luminance, not the system dark mode — so "light mode turned on in the app"
+ * with a dark system gets the light-mode ink too.
+ *
+ * Only use this for glass that samples PAGE CONTENT (header pills, nav bar,
+ * mini player). Glass that sits on top of dark artwork (player surfaces,
+ * scrims over images) should keep `Color.White` — the artwork keeps the
+ * surface dark in both themes.
+ */
+@Composable
+fun liquidGlassContentColor(): Color =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else LiquidGlassLightContentColor
+
+/**
  * Applies the SimpMusic liquid-glass effect to any element.
  *
  * Encapsulates the per-surface [GraphicsLayer], the Kyant `drawBackdrop`
@@ -164,16 +202,23 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
 ): Modifier {
-    val isDark = isSystemInDarkTheme()
-    // Memoize the entire drawBackdrop modifier chain so it isn't rebuilt on
-    // every recomposition. The chain depends only on (backdrop, shape,
-    // interactive, baseColor, isDark) — all of which are stable across
-    // scroll-driven recompositions of the host screen. Without this memo,
-    // every recomposition rebuilt the kyant effect stack and re-installed
-    // the RuntimeShader on the GraphicsLayer, which was the dominant cause
-    // of the "lag when switching pages" symptom (the new page's first few
-    // frames all paid that setup cost while the user was already trying to
-    // scroll).
+    // Theme-aware dark/light surface overlay (part of the 2026-09-03 light-mode
+    // black-pills fix). This used to read isSystemInDarkTheme(), which follows
+    // the SYSTEM dark mode — but the app carries its own light/dark preference
+    // (AppearanceSettings), so "light mode turned on in the app" with a dark
+    // system produced a BLACK 27% tint over an otherwise correctly-lit glass
+    // surface. Reading the actual MaterialTheme surface luminance follows the
+    // APP's palette in every combination (app-light + system-dark included;
+    // pure-black dark mode has surface luminance 0 and stays dark).
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    // Liquid-glass perf fix (ported from 4nx3b, 2026-08-28): memoize the entire
+    // drawBackdrop modifier chain so it isn't rebuilt on every recomposition. The
+    // chain depends only on (backdrop, shape, interactive, baseColor, isDark) — all
+    // stable across scroll-driven recompositions of the host screen. Without this
+    // memo, every recomposition rebuilt the kyant effect stack and re-installed the
+    // RuntimeShader on the GraphicsLayer, which was the dominant cause of the "lag
+    // when switching pages" symptom (the new page's first frames all paid that GPU
+    // setup cost while the user was already trying to scroll).
     return remember(backdrop, shape, interactive, baseColor, isDark) {
         this.drawBackdrop(
             backdrop = backdrop,
@@ -292,11 +337,15 @@ fun LiquidGlassIconButton(
     painter: Painter,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
-    tint: Color = Color.White,
+    // Default is Color.Unspecified so the resolved tint can be theme-aware
+    // (white in dark mode, dark ink in light mode) — see
+    // [liquidGlassContentColor]. Passing an explicit color still wins.
+    tint: Color = Color.Unspecified,
     contentDescription: String? = null,
     interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
@@ -310,7 +359,7 @@ fun LiquidGlassIconButton(
             Icon(
                 painter = painter,
                 contentDescription = contentDescription,
-                tint = tint,
+                tint = resolvedTint,
             )
         }
     }
@@ -325,11 +374,15 @@ fun LiquidGlassIconButton(
     imageVector: ImageVector,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
-    tint: Color = Color.White,
+    // Default is Color.Unspecified so the resolved tint can be theme-aware
+    // (white in dark mode, dark ink in light mode) — see
+    // [liquidGlassContentColor]. Passing an explicit color still wins.
+    tint: Color = Color.Unspecified,
     contentDescription: String? = null,
     interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
@@ -343,7 +396,7 @@ fun LiquidGlassIconButton(
             Icon(
                 imageVector = imageVector,
                 contentDescription = contentDescription,
-                tint = tint,
+                tint = resolvedTint,
             )
         }
     }

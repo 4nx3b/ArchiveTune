@@ -133,6 +133,7 @@ import moe.rukamori.archivetune.utils.TranslatorLanguages
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AiIntegrationSettingsViewModel
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private enum class TestApiVisualState { Idle, Testing, Success, Failed }
 
@@ -982,6 +983,7 @@ private fun ModelPickerPreference(
             shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
             Text(
                 text = stringResource(R.string.ai_model),
                 style = MaterialTheme.typography.headlineMedium,

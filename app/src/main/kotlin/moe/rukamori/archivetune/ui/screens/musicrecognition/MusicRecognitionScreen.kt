@@ -120,6 +120,7 @@ import moe.rukamori.archivetune.viewmodels.RecognitionHistoryUiModel
 import moe.rukamori.archivetune.viewmodels.RecognitionPhaseUi
 import moe.rukamori.archivetune.viewmodels.RecognizedTrackUiModel
 import moe.rukamori.archivetune.musicrecognition.navigateToMusicRecognitionDetails
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -953,6 +954,7 @@ private fun MusicRecognitionSettingsBottomSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             modifier =
                 Modifier
@@ -1022,6 +1024,7 @@ private fun RecognitionHistoryBottomSheet(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Box(
             modifier =
                 Modifier

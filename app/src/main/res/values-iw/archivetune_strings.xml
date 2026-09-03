@@ -260,14 +260,9 @@
     <string name="follow_theme">עקוב אחר ערכת הנושא</string>
     <string name="gradient">מעבר צבע</string>
     <string name="player_design_style">סגנון עיצוב הנגן</string>
-    <string name="player_design_v1">קלאסי</string>
-    <string name="player_design_v2">מודרני</string>
-    <string name="player_design_v3">מינימלי</string>
     <string name="player_design_v4">קולנועי</string>
     <string name="player_design_v5">קטנטן</string>
-    <string name="player_design_v6">אקספרסיבי</string>
     <string name="player_design_v7">סוחף</string>
-    <string name="player_design_v8">סוחף (מורחב)</string>
     <string name="player_design_v9">Material (חומר)</string>
     <string name="player_background_blur">טשטוש</string>
     <string name="coloring">מלא צבעים</string>
