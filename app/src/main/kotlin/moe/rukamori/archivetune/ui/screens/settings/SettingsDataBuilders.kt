@@ -113,7 +113,7 @@ fun buildSettingsGroups(
     val account =
         SettingsItem(
             key = "account",
-            icon = painterResource(R.drawable.account),
+            icon = painterResource(R.drawable.ic_account),
             title = stringResource(R.string.account),
             subtitle = stringResource(R.string.settings_account_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
@@ -140,7 +140,7 @@ fun buildSettingsGroups(
     val appearance =
         SettingsItem(
             key = "appearance",
-            icon = painterResource(R.drawable.palette),
+            icon = painterResource(R.drawable.ic_palette),
             title = stringResource(R.string.appearance),
             subtitle = stringResource(R.string.settings_appearance_subtitle),
             accentColor = MaterialTheme.colorScheme.secondary,
@@ -399,7 +399,7 @@ fun buildSettingsGroups(
     val sources =
         SettingsItem(
             key = "sources",
-            icon = painterResource(R.drawable.provider_tidal),
+            icon = painterResource(R.drawable.ic_music),
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -419,7 +419,7 @@ fun buildSettingsGroups(
     val lyrics =
         SettingsItem(
             key = "lyrics",
-            icon = painterResource(R.drawable.lyrics),
+            icon = painterResource(R.drawable.ic_lyrics),
             title = stringResource(R.string.lyrics),
             subtitle = stringResource(R.string.settings_lyrics_subtitle),
             accentColor = MaterialTheme.colorScheme.secondary,
@@ -719,7 +719,7 @@ fun buildSettingsGroups(
     val telegramDetail =
         SettingsItem(
             key = "telegram",
-            icon = painterResource(R.drawable.provider_tidal),
+            icon = painterResource(R.drawable.ic_telegram),
             title = "Telegram",
             subtitle = "Telegram account and channels",
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -816,7 +816,7 @@ fun buildSettingsGroups(
     val musicTogether =
         SettingsItem(
             key = "music_together",
-            icon = painterResource(R.drawable.auto_awesome),
+            icon = painterResource(R.drawable.ic_share),
             title = stringResource(R.string.music_together),
             subtitle = "Listen in sync with friends",
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -975,7 +975,7 @@ fun buildSettingsGroups(
         if (BuildConfig.UPDATER_AVAILABLE) {
             SettingsItem(
                 key = "updates",
-                icon = painterResource(R.drawable.update),
+                icon = painterResource(R.drawable.ic_refresh),
                 title = stringResource(R.string.updates),
                 keywords = listOf("update", "upgrade", "version", "new version", "release", "canary", "stable"),
                 subtitle =
@@ -1000,7 +1000,7 @@ fun buildSettingsGroups(
     val about =
         SettingsItem(
             key = "about",
-            icon = painterResource(R.drawable.info),
+            icon = painterResource(R.drawable.ic_about),
             title = stringResource(R.string.about),
             subtitle = stringResource(R.string.settings_about_subtitle),
             accentColor = MaterialTheme.colorScheme.secondary,
