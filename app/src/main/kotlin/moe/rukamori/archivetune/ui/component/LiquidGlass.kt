@@ -146,6 +146,11 @@ private val LiquidGlassLightContentColor = Color(0xFF1C1B1F)
  * - Light mode: [LiquidGlassLightContentColor] near-black ink, because the
  *   glass surface renders bright in light mode.
  *
+ * Dark/light is detected the same way [liquidGlass]'s surface overlay does it
+ * (see the "black-pills fix" note there): the APP's MaterialTheme surface
+ * luminance, not the system dark mode — so "light mode turned on in the app"
+ * with a dark system gets the light-mode ink too.
+ *
  * Only use this for glass that samples PAGE CONTENT (header pills, nav bar,
  * mini player). Glass that sits on top of dark artwork (player surfaces,
  * scrims over images) should keep `Color.White` — the artwork keeps the
@@ -153,7 +158,7 @@ private val LiquidGlassLightContentColor = Color(0xFF1C1B1F)
  */
 @Composable
 fun liquidGlassContentColor(): Color =
-    if (isSystemInDarkTheme()) Color.White else LiquidGlassLightContentColor
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White else LiquidGlassLightContentColor
 
 /**
  * Applies the SimpMusic liquid-glass effect to any element.
