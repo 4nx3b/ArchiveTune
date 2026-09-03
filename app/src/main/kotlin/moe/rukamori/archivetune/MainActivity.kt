@@ -298,6 +298,7 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
@@ -2445,6 +2446,40 @@ modifier =
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
+                                                // ── Muzo header (2026-09-04) ──
+                                                // The reference's rounded glass "Menu" pill,
+                                                // floating over the same progressive top-fade
+                                                // blur. It opens the app's EXISTING profile /
+                                                // overflow menu (News, New releases, Stats,
+                                                // Music recognition, Listen together, Settings)
+                                                // — the same menu the avatar button opens, so
+                                                // no functionality moves; the pill only exists
+                                                // on the Home route.
+                                                navigationIcon = {
+                                                    if (isHomeRoute) {
+                                                        FrostedHeaderPill(
+                                                            modifier = Modifier.padding(start = 6.dp),
+                                                        ) {
+                                                            IconButton(
+                                                                onClick = { profileMenuExpanded = true },
+                                                                onLongClick = {},
+                                                            ) {
+                                                                Icon(
+                                                                    painter = painterResource(R.drawable.list),
+                                                                    contentDescription = stringResource(R.string.menu),
+                                                                    modifier = Modifier.size(20.dp),
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = stringResource(R.string.menu),
+                                                                fontSize = 13.sp,
+                                                                fontWeight = FontWeight.Medium,
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                            )
+                                                            Spacer(Modifier.width(4.dp))
+                                                        }
+                                                    }
+                                                },
                                                 title = {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         if (isLibraryRoute) {
@@ -2481,15 +2516,21 @@ modifier =
                                                                 overflow = TextOverflow.Ellipsis,
                                                             )
                                                         } else {
-                                                            // app icon — always visible, BitChord's
-                                                            // logo equivalent.
+                                                            // app icon — visible on every route except
+                                                            // Home at rest: the Muzo redesign (2026-09-04)
+                                                            // fades it in with the app name once the
+                                                            // list scrolls, so at rest the bar carries
+                                                            // only the reference's two glass pills.
                                                             Icon(
                                                                 painter = painterResource(R.drawable.about_appbar),
                                                                 contentDescription = null,
                                                                 modifier =
                                                                     Modifier
                                                                         .size(35.dp)
-                                                                        .padding(end = 3.dp),
+                                                                        .padding(end = 3.dp)
+                                                                        .graphicsLayer {
+                                                                            alpha = if (isHomeRoute) homeBarTitleAlpha else 1f
+                                                                        },
                                                             )
                                                             // BitChord behaviour on the Home route
                                                             // (2026-09-03): the bar's title only
@@ -2513,39 +2554,101 @@ modifier =
                                                     }
                                                 },
                                                 actions = {
-                                                    Box(
-                                                        modifier = Modifier.padding(end = 4.dp),
-                                                    ) {
-                                                        IconButton(
-                                                            onClick = { profileMenuExpanded = true },
-                                                            colors = IconButtonDefaults.iconButtonColors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                                    .copy(alpha = TopAppBarIconButtonContainerAlpha),
-                                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            ),
+                                                    if (isHomeRoute) {
+                                                        // ── Muzo header (2026-09-04) ──
+                                                        // The reference's right-hand glass pill:
+                                                        // search opens the app's existing Search
+                                                        // tab, the avatar keeps opening the
+                                                        // existing profile menu. Same glass pill
+                                                        // recipe as the Menu pill on the left.
+                                                        FrostedHeaderPill(
+                                                            modifier = Modifier.padding(end = 6.dp),
                                                         ) {
-                                                            Surface(
-                                                                modifier = Modifier.size(28.dp),
-                                                                shape = CircleShape,
-                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                            IconButton(
+                                                                onClick = {
+                                                                    navController.navigate("search") {
+                                                                        popUpTo(navController.graph.startDestinationId) {
+                                                                            saveState = true
+                                                                        }
+                                                                        launchSingleTop = true
+                                                                        restoreState = true
+                                                                    }
+                                                                },
+                                                                onLongClick = {},
                                                             ) {
-                                                                if (!accountImageUrl.isNullOrBlank()) {
-                                                                    AsyncImage(
-                                                                        model = accountImageUrl,
-                                                                        contentDescription = stringResource(R.string.account),
-                                                                        modifier = Modifier
-                                                                            .fillMaxSize()
-                                                                            .clip(CircleShape),
-                                                                        contentScale = ContentScale.Crop,
-                                                                    )
-                                                                } else {
-                                                                    Box(contentAlignment = Alignment.Center) {
-                                                                        Icon(
-                                                                            painter = painterResource(R.drawable.account),
+                                                                Icon(
+                                                                    painter = painterResource(R.drawable.search),
+                                                                    contentDescription = stringResource(R.string.search),
+                                                                    modifier = Modifier.size(20.dp),
+                                                                )
+                                                            }
+                                                            Spacer(Modifier.width(2.dp))
+                                                            IconButton(
+                                                                onClick = { profileMenuExpanded = true },
+                                                                onLongClick = {},
+                                                            ) {
+                                                                Surface(
+                                                                    modifier = Modifier.size(26.dp),
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                                ) {
+                                                                    if (!accountImageUrl.isNullOrBlank()) {
+                                                                        AsyncImage(
+                                                                            model = accountImageUrl,
                                                                             contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier.size(20.dp),
-                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            modifier = Modifier
+                                                                                .fillMaxSize()
+                                                                                .clip(CircleShape),
+                                                                            contentScale = ContentScale.Crop,
                                                                         )
+                                                                    } else {
+                                                                        Box(contentAlignment = Alignment.Center) {
+                                                                            Icon(
+                                                                                painter = painterResource(R.drawable.account),
+                                                                                contentDescription = stringResource(R.string.account),
+                                                                                modifier = Modifier.size(18.dp),
+                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Box(
+                                                            modifier = Modifier.padding(end = 4.dp),
+                                                        ) {
+                                                            IconButton(
+                                                                onClick = { profileMenuExpanded = true },
+                                                                colors = IconButtonDefaults.iconButtonColors(
+                                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                                        .copy(alpha = TopAppBarIconButtonContainerAlpha),
+                                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                ),
+                                                            ) {
+                                                                Surface(
+                                                                    modifier = Modifier.size(28.dp),
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                                ) {
+                                                                    if (!accountImageUrl.isNullOrBlank()) {
+                                                                        AsyncImage(
+                                                                            model = accountImageUrl,
+                                                                            contentDescription = stringResource(R.string.account),
+                                                                            modifier = Modifier
+                                                                                .fillMaxSize()
+                                                                                .clip(CircleShape),
+                                                                            contentScale = ContentScale.Crop,
+                                                                        )
+                                                                    } else {
+                                                                        Box(contentAlignment = Alignment.Center) {
+                                                                            Icon(
+                                                                                painter = painterResource(R.drawable.account),
+                                                                                contentDescription = stringResource(R.string.account),
+                                                                                modifier = Modifier.size(20.dp),
+                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            )
+                                                                        }
                                                                     }
                                                                 }
                                                             }

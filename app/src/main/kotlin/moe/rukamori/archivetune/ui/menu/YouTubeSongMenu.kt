@@ -93,13 +93,12 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
-import moe.rukamori.archivetune.ui.component.NewAction
-import moe.rukamori.archivetune.ui.component.NewActionGrid
+import moe.rukamori.archivetune.ui.component.MuzoQuickAction
+import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
+import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
-import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
@@ -241,49 +240,72 @@ fun YouTubeSongMenu(
         }
     }
 
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        ListItem(
-            headlineContent = {
-                Text(
-                    text = song.title,
-                    modifier = Modifier.basicMarquee(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            supportingContent = {
-                Text(
-                    text =
-                        joinByBullet(
-                            song.artists.joinToString { it.name },
-                            song.duration?.let { makeTimeString(it * 1000L) },
-                        ),
-                )
-            },
-            leadingContent = {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier =
-                        Modifier
-                            .size(ListThumbnailSize)
-                            .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                ) {
-                    AsyncImage(
-                        model = song.thumbnail,
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                    )
-                }
-            },
-            trailingContent = {
-                IconButton(
+    // ── Muzo song header (2026-09-04) ──
+    // The reference's header block: square rounded artwork, bold title,
+    // muted artist. The like action that used to live in this header's
+    // trailing slot now leads the quick-action tile row below — same Room
+    // row, same sync path, only the affordance moved.
+    MuzoSongMenuHeader(
+        artworkUrl = song.thumbnail,
+        title = song.title,
+        artist = song.artists.joinToString { it.name },
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+    val dividerModifier = Modifier.padding(start = 56.dp)
+    val startRadioText = stringResource(R.string.start_radio)
+    val playNextText = stringResource(R.string.play_next)
+    val addToQueueText = stringResource(R.string.add_to_queue)
+    val addToPlaylistText = stringResource(R.string.add_to_playlist)
+    val shareText = stringResource(R.string.share)
+    val likedLabel = stringResource(R.string.liked_label)
+    val downloadLabel = stringResource(R.string.action_download)
+    val downloadingLabel = stringResource(R.string.downloading)
+    val downloadedLabel = stringResource(R.string.downloaded_label)
+    val addToDotsLabel = stringResource(R.string.add_to_dots)
+
+    // ── Muzo quick-action tiles (2026-09-04) ──
+    // The reference's four tiles: Liked (cyan when active), Download
+    // (state-aware, with the remote-song cache-first prewarm), Add to… and
+    // Play Next. Every tile runs the exact code path the action already used
+    // elsewhere in this menu. Only the presentation changed.
+    val quickActions =
+        remember(
+            song,
+            // The full entity (not just the liked flag): the like tile's
+            // onClick captures librarySong, so any library change must
+            // re-capture it — keying only on `liked` would leave a stale
+            // entity behind an Add-to-library tap.
+            librarySong,
+            download?.state,
+            likedLabel,
+            downloadLabel,
+            downloadingLabel,
+            downloadedLabel,
+            addToDotsLabel,
+            playNextText,
+            onDismiss,
+            playerConnection,
+        ) {
+            listOf(
+                MuzoQuickAction(
+                    icon = {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (librarySong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border,
+                                ),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    },
+                    label = likedLabel,
+                    active = librarySong?.song?.liked == true,
                     onClick = {
                         database.transaction {
                             librarySong.let { librarySong ->
@@ -299,122 +321,99 @@ fun YouTubeSongMenu(
                             }
                         }
                     },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (librarySong?.song?.liked ==
-                                    true
-                                ) {
-                                    R.drawable.favorite
-                                } else {
-                                    R.drawable.favorite_border
-                                },
-                            ),
-                        tint = if (librarySong?.song?.liked == true) MaterialTheme.colorScheme.error else LocalContentColor.current,
-                        contentDescription = null,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
-    }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
-    val bottomSheetPageState = LocalBottomSheetPageState.current
-    val dividerModifier = Modifier.padding(start = 56.dp)
-    val startRadioText = stringResource(R.string.start_radio)
-    val playNextText = stringResource(R.string.play_next)
-    val addToQueueText = stringResource(R.string.add_to_queue)
-    val addToPlaylistText = stringResource(R.string.add_to_playlist)
-    val shareText = stringResource(R.string.share)
-
-    val primaryActions =
-        remember(
-            song,
-            startRadioText,
-            playNextText,
-            addToQueueText,
-            addToPlaylistText,
-            shareText,
-            onDismiss,
-            playerConnection,
-            navController,
-        ) {
-            listOf(
-                NewAction(
+                ),
+                MuzoQuickAction(
                     icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.radio),
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        when (download?.state) {
+                            Download.STATE_COMPLETED ->
+                                Icon(
+                                    painter = painterResource(R.drawable.offline),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                )
+
+                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING ->
+                                CircularWavyProgressIndicator(
+                                    modifier = Modifier.size(22.dp),
+                                )
+
+                            else ->
+                                Icon(
+                                    painter = painterResource(R.drawable.download),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                        }
                     },
-                    text = startRadioText,
+                    label =
+                        when (download?.state) {
+                            Download.STATE_COMPLETED -> downloadedLabel
+                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> downloadingLabel
+                            else -> downloadLabel
+                        },
+                    active = download?.state == Download.STATE_COMPLETED,
                     onClick = {
-                        onDismiss()
-                        playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                        when (download?.state) {
+                            Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
+                                DownloadService.sendRemoveDownload(
+                                    context,
+                                    ExoDownloadService::class.java,
+                                    song.id,
+                                    false,
+                                )
+                            }
+
+                            else -> {
+                                // The exact cache-first start-download branch
+                                // this menu's download row uses: insert the song,
+                                // prewarm the player cache, then enqueue.
+                                database.transaction {
+                                    insert(song.toMediaMetadata())
+                                }
+                                coroutineScope.launch {
+                                    runCatching {
+                                        downloadUtil.prewarmSongForDownload(song.id)
+                                    }
+                                    val downloadRequest =
+                                        DownloadRequest
+                                            .Builder(song.id, song.id.toUri())
+                                            .setCustomCacheKey(song.id)
+                                            .setData(song.title.toByteArray())
+                                            .build()
+                                    DownloadService.sendAddDownload(
+                                        context,
+                                        ExoDownloadService::class.java,
+                                        downloadRequest,
+                                        false,
+                                    )
+                                }
+                            }
+                        }
                     },
                 ),
-                NewAction(
+                MuzoQuickAction(
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.playlist_add),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    },
+                    label = addToDotsLabel,
+                    onClick = { showChoosePlaylistDialog = true },
+                ),
+                MuzoQuickAction(
                     icon = {
                         Icon(
                             painter = painterResource(R.drawable.playlist_play),
                             contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
                         )
                     },
-                    text = playNextText,
+                    label = playNextText,
                     onClick = {
                         onDismiss()
                         playerConnection.playNext(song.toMediaItem())
-                    },
-                ),
-                NewAction(
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.queue_music),
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    text = addToQueueText,
-                    onClick = {
-                        onDismiss()
-                        playerConnection.addToQueue(song.toMediaItem())
-                    },
-                ),
-                // "Add to playlist" used to be a box-pill chip here.
-                // Moved to list-item form below — it now appears as a
-                // ListItem in the same MenuSurfaceSection as
-                // "Pin to speed dial", per user request.
-                NewAction(
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.share),
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    text = shareText,
-                    onClick = {
-                        val intent =
-                            Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, song.shareLink)
-                            }
-                        context.startActivity(Intent.createChooser(intent, null))
-                        onDismiss()
                     },
                 ),
             )
@@ -434,17 +433,92 @@ fun YouTubeSongMenu(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
+        // ── Muzo quick-action tile row (2026-09-04) ──
+        // The reference's four tiles, straight under the song header.
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                NewActionGrid(
-                    actions = primaryActions,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-                )
-            }
+            MuzoQuickActionRow(
+                actions = quickActions,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+
+        // ── The actions the reference doesn't show as tiles ──
+        // Start Radio, Add to Queue and Share used to live in the old action
+        // grid; they now lead the secondary list so the action set is
+        // unchanged. One unified surface, thin dividers — the reference's
+        // grouped-action list.
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text(text = startRadioText) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.radio),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                onDismiss()
+                                playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = dividerModifier,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    )
+
+                    ListItem(
+                        headlineContent = { Text(text = addToQueueText) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.queue_music),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                onDismiss()
+                                playerConnection.addToQueue(song.toMediaItem())
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = dividerModifier,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    )
+
+                    ListItem(
+                        headlineContent = { Text(text = shareText) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.share),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                val intent =
+                                    Intent().apply {
+                                        action = Intent.ACTION_SEND
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, song.shareLink)
+                                    }
+                                context.startActivity(Intent.createChooser(intent, null))
+                                onDismiss()
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
         }
 
         item {

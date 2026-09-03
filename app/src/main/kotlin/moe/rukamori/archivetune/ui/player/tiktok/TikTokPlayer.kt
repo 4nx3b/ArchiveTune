@@ -154,6 +154,11 @@ fun TikTokPlayerContent(
     lyricsVisible: Boolean,
     lyricsSyncOffset: Int = 0,
     onLyricsSyncOffsetChange: (Int) -> Unit = {},
+    // Vertical canvas for the CURRENT song (resolved by Player.kt through the same
+    // V7 vertical-canvas resolver). Only the settled page gets it — neighbour
+    // pages keep their static artwork, exactly like TikTok's idle neighbours.
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
     onSeek: (Long) -> Unit = {},
     onSeekFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -563,6 +568,11 @@ fun TikTokPlayerContent(
                 queueTitle = queueTitle,
                 immersive = immersive,
                 lyricsOpen = lyricsOpen,
+                // The canvas is the current song's: only the page that is
+                // actually playing renders the video (neighbours would
+                // each spin up their own muted ExoPlayer otherwise).
+                canvasPrimaryUrl = if (isCurrentPage) canvasPrimaryUrl else null,
+                canvasFallbackUrl = if (isCurrentPage) canvasFallbackUrl else null,
                 sliderPositionProvider = lyricsPosProvider,
                 lyricsSyncOffset = lyricsSyncOffset,
                 topChromeHeight = topChromeHeight,

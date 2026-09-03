@@ -62,6 +62,8 @@ import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
 import moe.rukamori.archivetune.home.HomeUiState
+import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -157,6 +159,13 @@ fun HomeScreen(
                     },
                 ),
     ) {
+        // ── Muzo atmospheric backdrop (2026-09-04 redesign) ──
+        // The deep, softly-lit background the reference's glass cards float
+        // on: a near-black base with violet/teal/blue radial glows, drawn in
+        // a single cached pass. Sits behind every home state (skeleton,
+        // panes, feed) and inside the haze source so the pinned top bar's
+        // progressive blur samples it too.
+        HomeAtmosphereBackground()
         when (val state = screenState) {
             HomeScreenState.Loading -> {
                 // BitChord behaviour (2026-09-03 redesign): the first page of shelves
@@ -319,6 +328,57 @@ private fun HomeContent(
                         live to other
                     }
 
+                // ── Muzo hero-section data (2026-09-04 redesign) ──
+                // The "Trending Playlist" stack and "Popular Albums" shelf
+                // are built from the real YouTube Music home feed: every
+                // playlist/album the current feed carries, de-duplicated. If
+                // the feed carries no playlists at all, the account's own
+                // playlists stand in so the hero never shows mock content.
+                // "See all" routes through the section's own browse endpoint
+                // (the same navigation the section headers already use),
+                // falling back to the app's real catalogue pages.
+                val trendingPlaylists =
+                    remember(allRemoteSections, uiState.accountPlaylists) {
+                        val fromFeed =
+                            allRemoteSections
+                                .flatMap { it.items }
+                                .filterIsInstance<PlaylistItem>()
+                        (fromFeed.ifEmpty { uiState.accountPlaylists.toList() })
+                            .distinctBy { it.id }
+                            .take(10)
+                    }
+                val trendingSeeAllRoute =
+                    remember(allRemoteSections) {
+                        allRemoteSections
+                            .firstOrNull { section -> section.items.any { it is PlaylistItem } }
+                            ?.endpoint
+                            ?.browseId
+                            ?.let { browseId ->
+                                if (browseId == "FEmusic_moods_and_genres") {
+                                    Screens.MoodAndGenres.route
+                                } else {
+                                    "browse/$browseId"
+                                }
+                            }
+                    }
+                val popularAlbums =
+                    remember(allRemoteSections) {
+                        allRemoteSections
+                            .flatMap { it.items }
+                            .filterIsInstance<AlbumItem>()
+                            .distinctBy { it.id }
+                            .take(12)
+                    }
+                val popularAlbumsSeeAllRoute =
+                    remember(allRemoteSections) {
+                        allRemoteSections
+                            .firstOrNull { section -> section.items.any { it is AlbumItem } }
+                            ?.endpoint
+                            ?.browseId
+                            ?.let { browseId -> "browse/$browseId" }
+                            ?: "new_release"
+                    }
+
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -337,7 +397,7 @@ private fun HomeContent(
                         key = "home_greeting_title",
                         contentType = "greeting_title",
                     ) {
-                        HomeGreetingHeader(
+                        HomeWelcomeHeader(
                             accountName = uiState.accountName,
                             modifier = Modifier.animateItem(),
                         )
@@ -395,6 +455,55 @@ private fun HomeContent(
                         contentType = "source_switcher",
                     ) {
                         HomeSourceSwitcher(modifier = Modifier.animateItem())
+                    }
+
+                    // ── Trending Playlist (Muzo layered card, 2026-09-04) ──
+                    // The reference's stacked glass card: circular artwork,
+                    // title/owner/count, waveform strip and circular play
+                    // button, with the next real playlists peeking out behind
+                    // it as the depth cue. Swipe pages through the playlist
+                    // collection; play goes through the app's one queue API.
+                    if (trendingPlaylists.isNotEmpty()) {
+                        item(
+                            key = "home_trending_playlists",
+                            contentType = "muzo_trending_playlists",
+                        ) {
+                            TrendingPlaylistSection(
+                                playlists = trendingPlaylists,
+                                seeAllRoute = trendingSeeAllRoute,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    // ── Popular Albums (Muzo glass card shelf, 2026-09-04) ──
+                    // Tall glass cards with the artwork as the hero and the
+                    // circular play button over it; three fit in the viewport
+                    // at the reference's proportions.
+                    if (popularAlbums.isNotEmpty()) {
+                        item(
+                            key = "home_popular_albums",
+                            contentType = "muzo_popular_albums",
+                        ) {
+                            PopularAlbumsSection(
+                                albums = popularAlbums,
+                                seeAllRoute = popularAlbumsSeeAllRoute,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
                     }
 
                     // Muzo home hero. Skipped entirely if the user has no
