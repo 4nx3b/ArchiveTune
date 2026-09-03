@@ -116,6 +116,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -807,6 +808,17 @@ fun AppleMusicPlayerContent(
     var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(Rect.Zero) }
 
+    // Root-space origin of the full-screen tap-anywhere areas (the landscape Row /
+    // portrait Column that carry the pokePlayerControlsVisibility pointerInput).
+    // Needed so a DOWN event's local position can be mapped into root space and
+    // tested against `moreIconBounds` (also root space) — see the pointerInput
+    // handlers: taps that land on the lyrics overflow (more) chip must NOT
+    // reveal the auto-hidden controls (user report 2026-09-01: "When I click on
+    // the overflow menu icon in lyrics screen in apple music style, the bottom
+    // controls show up, it shouldn't"). That tap opens the anchored popup and the
+    // controls are supposed to stay hidden behind it.
+    var tapAreaRootOrigin by remember { mutableStateOf(Offset.Zero) }
+
     // Local backdrop that captures the player content behind the popup. The
     // popup samples this backdrop with a 20dp blur to produce a real
     // frosted-glass effect (see `AnchoredLyricsOverflowMenu`). The backdrop
@@ -1238,6 +1250,10 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        // Root-space origin of this tap area, kept live: used by the
+                        // pointerInput below to map a DOWN's local position into root
+                        // space for the more-chip hit test.
+                        .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
                         // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
                         // lyrics behaviour). A parent-level handler observes every tap in the
                         // subtree regardless of which child consumes the gesture, so the whole
@@ -1245,8 +1261,13 @@ fun AppleMusicPlayerContent(
                         .pointerInput(lyricsOpen, queueOpen) {
                             if (!lyricsOpen && !queueOpen) return@pointerInput
                             awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                pokePlayerControlsVisibility()
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                // Suppress the reveal when the tap lands on the lyrics
+                                // overflow (more) chip — that tap opens the anchored
+                                // popup and the controls must stay hidden.
+                                if (!moreIconBounds.contains(down.position + tapAreaRootOrigin)) {
+                                    pokePlayerControlsVisibility()
+                                }
                             }
                         },
             ) {
@@ -1337,6 +1358,10 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        // Root-space origin of this tap area, kept live: used by the
+                        // pointerInput below to map a DOWN's local position into root
+                        // space for the more-chip hit test.
+                        .onGloballyPositioned { tapAreaRootOrigin = it.boundsInRoot().topLeft }
                         // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
                         // lyrics behaviour). A parent-level handler observes every tap in the
                         // subtree regardless of which child consumes the gesture, so the whole
@@ -1346,8 +1371,13 @@ fun AppleMusicPlayerContent(
                         .pointerInput(lyricsOpen, queueOpen) {
                             if (!lyricsOpen && !queueOpen) return@pointerInput
                             awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                pokePlayerControlsVisibility()
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                // Suppress the reveal when the tap lands on the lyrics
+                                // overflow (more) chip — that tap opens the anchored
+                                // popup and the controls must stay hidden.
+                                if (!moreIconBounds.contains(down.position + tapAreaRootOrigin)) {
+                                    pokePlayerControlsVisibility()
+                                }
                             }
                         },
             ) {
@@ -2200,40 +2230,54 @@ private fun AppleMusicControlsColumn(
                 modifier = Modifier.weight(1f),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = mediaMetadata.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .basicMarquee()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = titleActions.onTitleClick,
-                                ),
-                    )
-                    Text(
-                        text = mediaMetadata.artists.joinToString { it.name },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.64f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .basicMarquee()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                ) {
-                                    mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                                },
-                    )
+                    val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val artistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+                    val titleViewport = remember { mutableStateOf(0) }
+                    val artistViewport = remember { mutableStateOf(0) }
+                    val hasTitleOverflow =
+                        titleViewport.value > 0 &&
+                            (titleLayout.value?.size?.width ?: 0) > titleViewport.value
+                    val hasArtistOverflow =
+                        artistViewport.value > 0 &&
+                            (artistLayout.value?.size?.width ?: 0) > artistViewport.value
+                    androidx.compose.foundation.layout.Box(
+                        modifier = (if (hasTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { titleViewport.value = it.width }.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = titleActions.onTitleClick,
+                        ),
+                    ) {
+                        Text(
+                            text = mediaMetadata.title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { titleLayout.value = it },
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                        )
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        modifier = (if (hasArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                            .onSizeChanged { artistViewport.value = it.width }.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                        },
+                    ) {
+                        Text(
+                            text = mediaMetadata.artists.joinToString { it.name },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White.copy(alpha = 0.64f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { artistLayout.value = it },
+                            modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(12.dp))
@@ -2600,7 +2644,25 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             textColor = Color.White,
             modifier = Modifier.weight(1f),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            val miniTitleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniArtistLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
+            val miniTitleViewport = remember { mutableStateOf(0) }
+            val miniArtistViewport = remember { mutableStateOf(0) }
+            val hasMiniTitleOverflow =
+                miniTitleViewport.value > 0 &&
+                    (miniTitleLayout.value?.size?.width ?: 0) > miniTitleViewport.value
+            val hasMiniArtistOverflow =
+                miniArtistViewport.value > 0 &&
+                    (miniArtistLayout.value?.size?.width ?: 0) > miniArtistViewport.value
+            androidx.compose.foundation.layout.Box(
+                modifier = (if (hasMiniTitleOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                    .onSizeChanged { miniTitleViewport.value = it.width }.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = titleActions.onTitleClick,
+                ),
+            ) {
                 Text(
                     text = mediaMetadata.title,
                     style = MaterialTheme.typography.titleMedium,
@@ -2608,33 +2670,29 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = titleActions.onTitleClick,
-                            ),
+                    onTextLayout = { miniTitleLayout.value = it },
+                    modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
                 )
-                Text(
-                    text = mediaMetadata.artists.joinToString { it.name },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                            },
-                )
+            }
+                androidx.compose.foundation.layout.Box(
+                    modifier = (if (hasMiniArtistOverflow) Modifier.fillMaxWidth().viewportEdgeFade() else Modifier.fillMaxWidth()).clipToBounds()
+                        .onSizeChanged { miniArtistViewport.value = it.width }.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                    },
+                ) {
+                    Text(
+                        text = mediaMetadata.artists.joinToString { it.name },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { miniArtistLayout.value = it },
+                        modifier = Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE),
+                    )
+                }
             }
         }
         AppleMusicChip(

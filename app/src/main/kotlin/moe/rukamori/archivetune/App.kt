@@ -47,9 +47,6 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
-import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
-import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
-import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.spotify.Spotify
 import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
@@ -93,8 +90,6 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
-    @Inject
-    lateinit var ytDlpRuntime: YtDlpRuntime
 
     /**
      * Injected only so the canvas provider can mint a Spotify token on demand — see
@@ -117,6 +112,11 @@ class App :
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
+
+    // Latest Apple Music account tokens (see collector wired to AppleMusicProvider below).
+    @Volatile private var appleMusicDevTokenCache: String = ""
+    @Volatile private var appleMusicMediaUserTokenCache: String = ""
+
     private val didRunImageCacheTrim = AtomicBoolean(false)
 
     private fun currentProcessName(): String? =
@@ -196,6 +196,36 @@ class App :
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
         }
 
+        // Feed the user's own Apple Music account tokens (pasted on the Apple
+        // Music settings page) into the canvas module's AMP requests: their
+        // dev JWT replaces the scraped web token, their media-user-token rides
+        // along as the Media-User-Token header. DataStore lives in the app
+        // layer; a collector keeps cached values current and the providers
+        // hand back the latest without ever blocking the caller's thread.
+        applicationScope.launch(Dispatchers.IO) {
+            var lastMedia = ""
+            dataStore.data.collect { prefs ->
+                val newDev = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
+                val newMedia = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
+                if (newMedia != lastMedia) {
+                    lastMedia = newMedia
+                    AppleMusicProvider.clearStorefrontCache()
+                }
+                appleMusicDevTokenCache = newDev
+                appleMusicMediaUserTokenCache = newMedia
+            }
+        }
+        AppleMusicProvider.devTokenProvider = {
+            appleMusicDevTokenCache.ifBlank { null }
+        }
+        AppleMusicProvider.mediaUserTokenProvider = {
+            appleMusicMediaUserTokenCache.ifBlank { null }
+                // Fall back to shared Apple Music accounts contributed to the Source Pool when
+                // the user hasn't signed in personally — enables lyrics/canvas/playback for
+                // pool users without their own login.
+                ?: PoolAccountManager.appleMusicAccounts().firstOrNull()?.mediaUserToken
+        }
+
         // Spotify Canvas. The canvas module deliberately has no dependency on the
         // app's Spotify code, so it takes the access token and the song → Spotify
         // track mapping as injected callbacks. Both yield null when the user has
@@ -254,10 +284,6 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
-        applicationScope.launch(Dispatchers.IO) {
-            ytDlpRuntime.preWarm()
-        }
-
         // Per user request (2026-08-30): "The search tab takes time to load. it
         // should preload when i open the app." Kick off the discovery load
         // immediately at app start so the in-memory TTL cache is warm by the

@@ -78,9 +78,6 @@
     <string name="follow_theme">Segui tema</string>
     <string name="gradient">Gradiente</string>
     <string name="player_design_style">Stile design del player</string>
-    <string name="player_design_v1">Classico</string>
-    <string name="player_design_v2">Moderno</string>
-    <string name="player_design_v3">Minimal</string>
     <string name="player_design_v4">Cinematografico</string>
     <string name="player_design_v5">Piccolo</string>
     <string name="player_background_blur">Sfoca</string>
@@ -247,7 +244,6 @@
     <string name="crop_thumbnail_to_square_desc">Mostra le thumbnails di YouTube in formato quadrato invece di 16:9</string>
     <string name="show_home_category_chips">Mostra chip categorie nella home</string>
     <string name="show_home_category_chips_desc">Mostra i chip delle categorie nella schermata principale</string>
-    <string name="player_design_v6">Espressivo</string>
     <string name="player_design_v7">Immersivo</string>
     <string name="lyrics_sync_offset">Offset sincronizzazione testo</string>
     <string name="lyrics_romanize_chinese">Converti in alfabeto latino i testi cinesi</string>

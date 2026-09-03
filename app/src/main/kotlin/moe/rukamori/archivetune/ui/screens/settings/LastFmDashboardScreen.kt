@@ -139,6 +139,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
 
@@ -2189,6 +2190,7 @@ private fun TrackOverflowSheet(
         containerColor = theme.cardBackground,
         contentColor = theme.textPrimary,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         // ── 1. Start Mix banner ─────────────────────────────────────────
         // The banner is intentionally a clickable Surface (not a ListItem)
         // so it reads as a primary CTA — same visual hierarchy as

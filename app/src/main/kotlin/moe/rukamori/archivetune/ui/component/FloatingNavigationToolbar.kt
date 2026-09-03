@@ -309,6 +309,13 @@ fun FloatingNavigationToolbar(
     val indicatorWidth = if (isFloating) FloatingNavigationIndicatorWidth else NavigationIndicatorWidth
     val indicatorHeight = if (isFloating) FloatingNavigationIndicatorHeight else NavigationIndicatorHeight
 
+    // Liquid Glass: the bar surface samples page content, so in LIGHT mode
+    // it renders as bright frosted glass — white icons/labels would be nearly
+    // invisible (user report 2026-09-03, Library screenshot). Use the
+    // theme-aware glass ink instead: near-black in light mode, Color.White in
+    // dark mode (dark mode is unchanged).
+    val liquidGlassInk = liquidGlassContentColor()
+
     // The built-in per-item indicator just fades in place; hide it so our single pill can slide
     // between items instead. On pure-black we also pin the icon/label colors for contrast.
     // For the tint-frosted variant, the bar surface is the primary color, so icons/labels use
@@ -318,10 +325,10 @@ fun FloatingNavigationToolbar(
             canLiquidGlass ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color.White,
-                    unselectedTextColor = Color.White,
+                    selectedIconColor = liquidGlassInk,
+                    selectedTextColor = liquidGlassInk,
+                    unselectedIconColor = liquidGlassInk,
+                    unselectedTextColor = liquidGlassInk,
                 )
             isFloating ->
                 ShortNavigationBarItemDefaults.colors(
@@ -1016,7 +1023,8 @@ fun FloatingNavigationToolbar(
                         Icon(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
-                            tint = Color.White,
+                            // Theme-aware glass ink — see liquidGlassInk above.
+                            tint = liquidGlassInk,
                             modifier =
                                 Modifier.graphicsLayer {
                                     // SukiSU LocalFloatingBottomBarTabScale: the
@@ -1029,7 +1037,8 @@ fun FloatingNavigationToolbar(
                         if (!hideNavigationLabels) {
                             Text(
                                 text = stringResource(displayScreen.titleId),
-                                color = Color.White,
+                                // Theme-aware glass ink — see liquidGlassInk above.
+                                color = liquidGlassInk,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,

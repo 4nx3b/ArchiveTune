@@ -103,6 +103,7 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private val CSV_MIME_TYPES =
     arrayOf(
@@ -525,6 +526,7 @@ fun BackupAndRestore(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showGDriveFolderPickerHelp = false
@@ -569,6 +571,7 @@ fun BackupAndRestore(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         val uri = pendingGDriveFolderUri

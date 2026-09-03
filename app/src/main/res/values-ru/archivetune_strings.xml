@@ -76,9 +76,6 @@
     <string name="follow_theme">Следовать теме</string>
     <string name="gradient">Градиент</string>
     <string name="player_design_style">Стиль дизайна плеера</string>
-    <string name="player_design_v1">Классический</string>
-    <string name="player_design_v2">Современный</string>
-    <string name="player_design_v3">Минимальный</string>
     <string name="player_design_v4">Кинематографичный</string>
     <string name="player_background_blur">Размытие</string>
     <string name="coloring">Раскраска</string>
@@ -208,7 +205,6 @@
     <string name="restore_step_restarting">Перезапуск приложения</string>
     <string name="show_home_category_chips">Показать вкладки домашней категории</string>
     <string name="show_home_category_chips_desc">Показать вкладки фильтров категорий на главной вкладке</string>
-    <string name="player_design_v6">Выразительный</string>
     <string name="album_not_found">Альбом не найден</string>
     <string name="album_not_found_desc">Запрашиваемый альбом не может быть загружен</string>
     <string name="empty_album">Пустой альбом</string>

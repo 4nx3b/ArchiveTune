@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -121,12 +122,24 @@ fun CurrentSongHeader(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
+    // Notch-safe top inset (user report 2026-09-03: "The bottomsheet queue
+    // collides with notch"). `WindowInsets.systemBars.only(Top)` collapses to
+    // 0 whenever the status bar is HIDDEN — the hide-status-bar preference,
+    // an immersive/edge-to-edge player (every modern player style) — while the
+    // physical display cutout stays put, so an expanded queue sheet slid its
+    // drag handle and current-song header straight under the notch.
+    // `LocalStableSystemBarsTopPadding` floors against the display cutout
+    // (which is reported regardless of bar visibility) and against a cached
+    // status-bar height, so the header always clears the hardware notch.
+    val stableTopInset = LocalStableSystemBarsTopPadding.current
+
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .background(backgroundColor)
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
+                .padding(top = stableTopInset)
                 .bottomSheetDraggable(sheetState)
                 .padding(horizontal = 16.dp)
                 .padding(top = 20.dp, bottom = 8.dp),

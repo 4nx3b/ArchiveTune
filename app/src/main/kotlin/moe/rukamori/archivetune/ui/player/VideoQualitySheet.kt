@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.VideoAspectRatio
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * Row/title spacing for the sheets in this file.
@@ -157,6 +158,7 @@ internal fun VideoQualitySheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         VideoQualitySheetContent(
             preferredHeight = preferredHeight,
             availableHeights = availableHeights,
@@ -393,6 +395,7 @@ internal fun VideoAspectRatioSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             modifier =
                 Modifier

@@ -185,6 +185,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "playback" -> "settings/player"
             "ytdlp" -> "settings/player/ytdlp"
             "sources" -> "settings/sources"
+            "applemusic" -> "settings/applemusic"
             "jiosaavn" -> "settings/jiosaavn"
             "deezer" -> "settings/deezer"
             "lyrics" -> "settings/lyrics"

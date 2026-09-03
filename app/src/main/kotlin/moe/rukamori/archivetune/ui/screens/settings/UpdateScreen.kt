@@ -124,6 +124,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -407,6 +408,7 @@ fun UpdateScreen(
                 }
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showEnableUpdateNotificationConfirmDialog = false
@@ -440,6 +442,7 @@ fun UpdateScreen(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showCanaryChannelConfirmDialog = false
@@ -665,7 +668,9 @@ fun UpdateScreen(
                     style = MaterialTheme.typography.headlineSmall,
                 )
             },
-            confirmButton = {},
+            confirmButton = {
+KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+},
         )
     }
 
@@ -742,6 +747,7 @@ fun UpdateScreen(
                 }
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         updateDownloadJob?.cancel()
@@ -793,6 +799,7 @@ fun UpdateScreen(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(onClick = { showUpdateUpToDateDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -825,6 +832,7 @@ fun UpdateScreen(
                 )
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(onClick = { showUpdateErrorDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }

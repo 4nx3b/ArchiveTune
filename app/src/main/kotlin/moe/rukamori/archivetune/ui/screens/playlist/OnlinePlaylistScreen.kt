@@ -122,6 +122,7 @@ import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
@@ -367,7 +368,13 @@ fun OnlinePlaylistScreen(
     // the LazyColumn (not nested inside its first item) so they sample the backdrop
     // without being recorded into it — and, critically, their click handlers are not
     // competing with any LazyColumn-item pointer-input stack.
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    // Surface-coloured base, NOT black (user report 2026-09-03: light-mode
+    // Liquid Glass pills render solid black over white pages). The recorded
+    // LazyColumn layer is transparent wherever light-theme item backgrounds
+    // don't fill, and the pill's backdrop sample then shows this base rect —
+    // black under a light theme reads as a solid black pill. The surface
+    // colour blends with the page (LocalPlaylistScreen pattern).
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -858,12 +865,12 @@ fun OnlinePlaylistScreen(
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),
                         contentDescription = stringResource(R.string.back_button_desc),
-                        tint = Color.White,
+                        tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
                     text = currentPlaylistForGlass.title,
-                    color = Color.White,
+                    color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -886,7 +893,7 @@ fun OnlinePlaylistScreen(
                         Icon(
                             painter = painterResource(R.drawable.search),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
@@ -911,7 +918,7 @@ fun OnlinePlaylistScreen(
                         Icon(
                             painter = painterResource(R.drawable.more_horiz),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }

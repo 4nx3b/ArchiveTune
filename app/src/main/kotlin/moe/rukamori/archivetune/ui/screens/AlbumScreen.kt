@@ -107,6 +107,7 @@ import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
@@ -280,7 +281,17 @@ fun AlbumScreen(
     // which is gated on `liquidGlassHeaderActive`. The Liquid Glass header pills
     // sample this backdrop to render the frosted-glass effect over the scrolling
     // content (artwork when at the top, songs list when scrolled).
-    val artworkBackdrop = rememberBackdrop(Color.Black)
+    // The backdrop's base rect must be the page's SURFACE colour, not black
+    // (user report 2026-09-03: "When I've light mode turned on ... the Liquid
+    // Glass header pills have a completely white background the liquid glass
+    // pills become black"). The LazyColumn itself is transparent in light
+    // mode — item backgrounds are transparent and gaps between items carry
+    // no fill — so wherever the recorded layer is see-through, the pill's
+    // sample picks up the base rect drawn underneath. A black base reads
+    // correctly in dark mode and renders the pills SOLID BLACK in light
+    // mode. The surface colour blends with the page exactly like the
+    // LocalPlaylistScreen / HistoryScreen pattern already does.
+    val artworkBackdrop = rememberBackdrop(surfaceColor)
 
     Box(
         modifier =
@@ -809,7 +820,7 @@ fun AlbumScreen(
                                     },
                                 ),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
@@ -834,7 +845,7 @@ fun AlbumScreen(
                         Icon(
                             painter = painterResource(R.drawable.more_horiz),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
