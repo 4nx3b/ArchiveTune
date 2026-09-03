@@ -95,6 +95,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @Composable
 fun ViewNewsScreen(
@@ -404,6 +405,7 @@ private fun ViewNewsFullImageDialog(
                 decorFitsSystemWindows = false,
             ),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         val context = LocalContext.current
         val model =
             remember(context, imageUrl) {

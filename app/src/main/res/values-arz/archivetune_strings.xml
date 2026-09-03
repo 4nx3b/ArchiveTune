@@ -260,14 +260,9 @@
     <string name="follow_theme">اتباع السمة</string>
     <string name="gradient">تدرج ألوان</string>
     <string name="player_design_style">تصميم المشغل</string>
-    <string name="player_design_v1">كلاسيكي</string>
-    <string name="player_design_v2">حديث</string>
-    <string name="player_design_v3">بسيط</string>
     <string name="player_design_v4">سينمائي</string>
     <string name="player_design_v5">صغير</string>
-    <string name="player_design_v6">تعبيري</string>
     <string name="player_design_v7">غامر</string>
-    <string name="player_design_v8">غامر ممتد</string>
     <string name="player_design_v9">ماتريال ممتد</string>
     <string name="player_background_blur">ضبابية</string>
     <string name="coloring">تلوين</string>

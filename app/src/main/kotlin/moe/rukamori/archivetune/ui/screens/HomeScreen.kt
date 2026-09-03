@@ -397,6 +397,7 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -410,6 +411,7 @@ private fun HomeContent(
                                 chips = uiState.homePage?.chips.orEmpty(),
                                 selectedChip = uiState.selectedChip,
                                 onChipSelected = { onAction(HomeAction.SelectChip(it)) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -426,6 +428,7 @@ private fun HomeContent(
                                     leadingIcon = {
                                         HomeSectionLeadingIcon(iconRes = R.drawable.discover_tune)
                                     },
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -441,6 +444,7 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }
@@ -469,6 +473,7 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.history)
                                 },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -483,6 +488,7 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -504,6 +510,7 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -519,6 +526,7 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -535,6 +543,7 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.listening)
                                 },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -550,6 +559,7 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -569,6 +579,7 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
                                 },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -584,6 +595,7 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -603,6 +615,7 @@ private fun HomeContent(
                             HomePageSectionTitle(
                                 section = section,
                                 navController = navController,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -618,6 +631,7 @@ private fun HomeContent(
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -628,7 +642,7 @@ private fun HomeContent(
                             key = "home_account_playlists",
                             contentType = "media_shelf",
                         ) {
-                            Column {
+                            Column(modifier = Modifier.animateItem()) {
                                 AccountPlaylistsTitle(
                                     accountName = uiState.accountName,
                                     accountImageUrl = uiState.accountImageUrl,
@@ -659,6 +673,7 @@ private fun HomeContent(
                                 leadingIcon = {
                                     HomeSectionLeadingIcon(iconRes = R.drawable.cached)
                                 },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                         item(
@@ -676,6 +691,7 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -690,6 +706,7 @@ private fun HomeContent(
                                 SimilarRecommendationsTitle(
                                     recommendation = recommendation,
                                     navController = navController,
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -705,6 +722,7 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }
@@ -731,6 +749,7 @@ private fun HomeContent(
                                 HomePageSectionTitle(
                                     section = section,
                                     navController = navController,
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                             item(
@@ -746,6 +765,7 @@ private fun HomeContent(
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
+                                    modifier = Modifier.animateItem(),
                                 )
                             }
                         }

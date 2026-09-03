@@ -101,6 +101,13 @@ fun DefaultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Status bar must NEVER be visible — even while a dialog is showing
+        // (2026-09-01). Compose dialogs create their own OS window; when it
+        // takes focus, the system re-shows the status bar the app window had
+        // hidden, and the inset change shifts the app behind the dialog.
+        // Mirroring the hidden state onto the dialog's own window fixes both.
+        KeepStatusBarHiddenInDialog()
+
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -211,6 +218,13 @@ fun ActionPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Status bar must NEVER be visible — even while a dialog is showing
+        // (2026-09-01). Compose dialogs create their own OS window; when it
+        // takes focus, the system re-shows the status bar the app window had
+        // hidden, and the inset change shifts the app behind the dialog.
+        // Mirroring the hidden state onto the dialog's own window fixes both.
+        KeepStatusBarHiddenInDialog()
+
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -308,6 +322,13 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Status bar must NEVER be visible — even while a dialog is showing
+        // (2026-09-01). Compose dialogs create their own OS window; when it
+        // takes focus, the system re-shows the status bar the app window had
+        // hidden, and the inset change shifts the app behind the dialog.
+        // Mirroring the hidden state onto the dialog's own window fixes both.
+        KeepStatusBarHiddenInDialog()
+
         BoxWithConstraints(
             modifier =
                 Modifier

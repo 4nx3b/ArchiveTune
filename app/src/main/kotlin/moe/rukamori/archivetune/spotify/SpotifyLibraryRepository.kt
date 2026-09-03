@@ -580,32 +580,18 @@ class SpotifyLibraryRepository
                         Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
                     }
                 if (page.items.isEmpty()) break
-                // Per user report (2026-08-29): "Opening Spotify Playlists takes
-                // time. The loading indicator spins for 4-5 seconds or even more
-                // and then loads it. Fix this." The Spotify libraryV3 GraphQL
-                // response often omits `tracks.totalCount` for each leaf playlist
-                // in the list — only the per-playlist `fetchPlaylist` query
-                // reliably returns it. The previous implementation fetched the
-                // count sequentially per playlist with a missing count (one
-                // extra HTTP call each), so a user with N such playlists paid
-                // N sequential GraphQL round-trips on top of the page calls —
-                // easily 4-5s for 100 playlists (more if Spotify rate-limits
-                // the burst with 429 Retry-After backoff).
-                //
-                // Parallelize the count lookups with a bounded concurrency
-                // (8 in flight) so the total wall time is roughly
-                // ceil(N / 8) * (single GraphQL round-trip) instead of
-                // N * (single GraphQL round-trip). Also drop playlists that
-                // have a count already present from the parallelization pool —
-                // no extra fetch for those.
+                // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): the libraryV3
+                // GraphQL response often omits `tracks.totalCount` for leaf playlists, and the
+                // previous implementation fetched each missing count SEQUENTIALLY — one extra
+                // HTTP round-trip per playlist, so N playlists meant N serial calls plus 429
+                // Retry-After backoffs (easily 4-5s for 100 playlists). Parallelize the count
+                // lookups with a bounded concurrency so the wall time is roughly
+                // ceil(N / 8) round-trips instead of N. The semaphore matters: without it
+                // Spotify 429s the burst and the backoff compounds the wall time.
                 val pageItems = page.items
                 val enriched =
                     coroutineScope {
-                        // Semaphore caps in-flight count-fetch HTTP calls. Without
-                        // it Spotify tends to 429 the burst, which then triggers
-                        // Retry-After backoff that compounds the wall time rather
-                        // than reducing it.
-                        val semaphore = kotlinx.coroutines.sync.Semaphore(COUNT_FETCH_CONCURRENCY)
+                        val semaphore = Semaphore(COUNT_FETCH_CONCURRENCY)
                         pageItems
                             .map { playlist ->
                                 async(Dispatchers.IO) {
@@ -670,11 +656,11 @@ class SpotifyLibraryRepository
             private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
             private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
             private const val METADATA_MATCH_THRESHOLD = 0.58
-            // Bounded concurrency for parallel playlist-track-count fetches
-            // in `fetchAllPlaylists`. 8 in flight keeps Spotify's burst 429
-            // protection from triggering Retry-After backoff (which would
-            // compound the wall time rather than reduce it) while still
-            // cutting the N sequential round-trips down to ~N/8.
+
+            /**
+             * In-flight parallel track-count fetches in [fetchAllPlaylists]. 8 keeps the burst
+             * under Spotify's 429 threshold while cutting the wall time ~8x vs sequential.
+             */
             private const val COUNT_FETCH_CONCURRENCY = 8
             private val spotifyCacheJson =
                 Json {

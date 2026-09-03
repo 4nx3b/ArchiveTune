@@ -73,6 +73,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroupScope
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private val SpotifyAccountIconSize = 44.dp
 private const val SpotifyLoginUserAgent =
@@ -272,6 +273,7 @@ internal fun SpotifyLoginSheet(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             modifier =
                 Modifier

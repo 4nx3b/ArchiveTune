@@ -525,6 +525,9 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
         // SIMPMUSIC and BINI_LYRICS cases removed per user request (2026-08-30).
         PreferredLyricsProvider.UNISON -> "Unison"
+        // Ported from upstream 2026-08-31 window: Apple Music account lyrics
+        // (via the logged-in Apple Music/pool account).
+        PreferredLyricsProvider.APPLE_MUSIC -> "Apple Music (account)"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
 

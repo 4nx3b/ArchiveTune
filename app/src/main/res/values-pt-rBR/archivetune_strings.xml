@@ -261,14 +261,9 @@
     <string name="follow_theme">Seguir tema</string>
     <string name="gradient">Gradiente</string>
     <string name="player_design_style">Estilo de design do player</string>
-    <string name="player_design_v1">Clássico</string>
-    <string name="player_design_v2">Moderno</string>
-    <string name="player_design_v3">Minimalista</string>
     <string name="player_design_v4">Cinematográfico</string>
     <string name="player_design_v5">Pequeno</string>
-    <string name="player_design_v6">Expressivo</string>
     <string name="player_design_v7">Imersivo</string>
-    <string name="player_design_v8">Imersivo estendido</string>
     <string name="player_design_v9">Material estendido</string>
     <string name="player_background_blur">Desfoque</string>
     <string name="coloring">Coloração</string>

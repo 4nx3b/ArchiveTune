@@ -313,6 +313,7 @@ private fun LyricsShareStudioDialog(
                 usePlatformDefaultWidth = false,
             ),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         BoxWithConstraints(
             modifier =
                 Modifier

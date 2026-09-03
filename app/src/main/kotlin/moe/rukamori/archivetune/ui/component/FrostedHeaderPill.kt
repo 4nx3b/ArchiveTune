@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -108,12 +109,24 @@ fun FrostedHeaderPill(
         // as a circular "pill" behind the back arrow, which the user
         // explicitly reported seeing ("still frosted header pills in
         // settings and it's submenus").
+        // Provide Material3 titleLarge typography (22sp) to all Text() children
+        // in plain mode. Per user report (2026-08-31): "The header in settings
+        // page and its submenus are extremely small. Revert it to how they were
+        // before." Previously these titles lived in `TopAppBar(title = { Text(...) })`
+        // which auto-applies titleLarge typography; the single-pill migration moved
+        // the title into the navigationIcon slot's FrostedHeaderPill, losing the
+        // implicit typography (default body size ~16sp). This wrap restores
+        // titleLarge (22sp) for ALL 42 settings screens/submenus without requiring
+        // per-file edits. The IconButton's Icon() is unaffected — icons use their
+        // own size, not text style.
         CompositionLocalProvider(LocalPlainHeaderPill provides true) {
-            Row(
-                modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                content()
+            ProvideTextStyle(MaterialTheme.typography.titleLarge) {
+                Row(
+                    modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    content()
+                }
             }
         }
     } else if (backdrop != null) {

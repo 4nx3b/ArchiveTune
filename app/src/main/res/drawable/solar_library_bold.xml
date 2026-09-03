@@ -1,0 +1,17 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Solar "Library" bold: filled library stack matching solar_library_linear,
+         with the track slot cut out of the filled body. -->
+    <path
+        android:pathData="M2.384 13.793c-0.447 -3.164 -0.67 -4.745 0.278 -5.77C3.61 7 5.298 7 8.672 7h6.656c3.374 0 5.062 0 6.01 1.024 0.947 1.024 0.724 2.605 0.278 5.769l-0.422 3c-0.35 2.48 -0.525 3.721 -1.422 4.464 -0.897 0.743 -2.22 0.743 -4.867 0.743h-5.81c-2.646 0 -3.97 0 -4.867 -0.743 -0.897 -0.743 -1.072 -1.983 -1.422 -4.464l-0.422 -3Z M9.25 17.25 h5.5 v1.5 h-5.5 Z"
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+    />
+    <path
+        android:pathData="M19.562 7a2.132 2.132 0 0 0 -2.1 -2.5H6.538a2.132 2.132 0 0 0 -2.1 2.5H19.562Z"
+        android:fillColor="#FF000000"
+    />
+</vector>

@@ -66,7 +66,6 @@ import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
-import moe.rukamori.archivetune.ui.screens.settings.YtDlpSettings
 import moe.rukamori.archivetune.ui.screens.settings.ContentSettings
 import moe.rukamori.archivetune.ui.screens.settings.CustomizeBackground
 import moe.rukamori.archivetune.ui.screens.settings.DebugSettings
@@ -85,6 +84,9 @@ import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.APPLE_MUSIC_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.AppleMusicSettings
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
@@ -566,12 +568,6 @@ fun NavGraphBuilder.navigationBuilder(
         ExportDownloadedSongsScreen(navController)
     }
     composable(
-        route = "settings/player/ytdlp?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        YtDlpSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
-    }
-    composable(
         route = "settings/downloads?scrollTo={scrollTo}",
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
@@ -633,6 +629,14 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(APPLE_MUSIC_LOGIN_ROUTE) {
+        AppleMusicLoginScreen(navController)
+    }
+    composable(
+        route = "settings/applemusic",
+    ) {
+        AppleMusicSettings(navController)
     }
     composable(LASTFM_LOGIN_ROUTE) {
         LastFmLoginScreen(navController)

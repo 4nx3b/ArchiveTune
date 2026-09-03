@@ -47,6 +47,7 @@ import moe.rukamori.archivetune.extensions.getQueueWindows
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.MusicService.MusicBinder
 import moe.rukamori.archivetune.playback.queues.Queue
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.player.refetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.TelegramMediaId
@@ -349,6 +350,19 @@ class PlayerConnection(
 
     fun startRadioSeamlessly() {
         service.startRadioSeamlessly()
+    }
+
+    /**
+     * Start radio from [seed]: seamless hand-off when it is already the playing
+     * song, a fresh radio queue otherwise (from rukamori PR #1164 — the player
+     * menu's "Start radio" used to always re-seed from the current song).
+     */
+    fun startRadio(seed: MediaMetadata) {
+        if (mediaMetadata.value?.id == seed.id) {
+            startRadioSeamlessly()
+        } else {
+            playQueue(YouTubeQueue.radio(seed))
+        }
     }
 
     fun playNext(item: MediaItem) = playNext(listOf(item))

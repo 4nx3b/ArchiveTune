@@ -417,6 +417,8 @@
     <string name="app_icon_change_failed">Couldn\'t change the app icon</string>
     <string name="theme">Theme</string>
     <string name="enable_dynamic_theme">Enable dynamic theme</string>
+    <string name="wallpaper_permission">Wallpaper color permission</string>
+    <string name="wallpaper_permission_desc">Grant storage permission to extract colors from your wallpaper on older devices</string>
     <string name="random_theme_on_startup">Random theme on startup</string>
     <string name="random_theme_on_startup_desc">Apply a random color palette every time the app starts</string>
     <string name="font_preference">Font</string>
@@ -528,7 +530,8 @@
     <string name="custom_value">Custom value</string>
     <string name="archivetune_canvas">ArchiveTune Canvas</string>
     <string name="archivetune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
-    <string name="player_background_style_v8_v9_desc">Unavailable with V8 and V9 player styles</string>
+    <string name="player_background_style_v8_v9_desc">Unavailable with V8, V9, and V10 player styles</string>
+    <string name="lyrics_background_style_own_player_desc">Unavailable with BitChord and Apple Music player styles</string>
     <string name="show_button1_description">Toggle visibility of button 1 in Discord Rich Presence</string>
     <string name="show_button2_description">Toggle visibility of button 2 in Discord Rich Presence</string>
     <string name="discord_activity_type">Activity type</string>
@@ -569,7 +572,9 @@
     <string name="frosted_mini_player_unsupported">Frosted mini player is not supported on Android versions below 12</string>
     <string name="moving_blur_static_disclaimer">Blur will be static for Android versions below 12</string>
     <!-- Lyrics mode + animation style strings removed — the V2 Legacy / Enhanced picker and the
-         lyrics animation style page are gone; Enhanced is the sole renderer now. -->
+         lyrics animation style page are gone; Enhanced is the sole renderer now.
+         (Upstream's lyrics_mode_spotify "Spotify (word sync)" entry is likewise not ported:
+         it requires LyricsV2.kt which this fork removed.) -->
     <string name="lyrics_line_spacing">Lyrics line spacing</string>
     <string name="content">Content</string>
     <string name="action_logout">Log out</string>
@@ -840,6 +845,7 @@
     <string name="audio_source_disabled">Disabled — enable it in its section below</string>
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
+    <string name="source_apple_music">Apple Music</string>
     <string name="source_youtube">YouTube</string>
     <string name="play_from">Play from</string>
     <string name="play_from_automatic">Automatic (preferred order)</string>
@@ -1145,6 +1151,38 @@
     <string name="description_display_codec_on_player">Show current audio codec information on the player</string>
     <string name="source_settings">Sources</string>
     <string name="source_settings_subtitle">Streaming sources, priority and quality</string>
+    <string name="applemusic_settings">Apple Music</string>
+    <string name="applemusic_enable">Enable Apple Music as a source</string>
+    <string name="applemusic_enable_description">Play full tracks via your Apple Music subscription (Media-User-Token). Needs both tokens signed in; shared pool accounts work too.</string>
+    <string name="applemusic_quality">Streaming quality</string>
+    <string name="applemusic_quality_desc">Preferred quality for Apple Music playback</string>
+    <string name="applemusic_quality_aac">AAC 256 kbps</string>
+    <string name="applemusic_quality_lossless">Lossless (ALAC 24/48)</string>
+    <string name="applemusic_quality_hires">Hi-Res Lossless (up to 24/192)</string>
+    <string name="applemusic_login">Sign in to Apple Music</string>
+    <string name="applemusic_login_subtitle">Sign in with your Apple ID to get your Music User Token.</string>
+    <string name="applemusic_helper">Your Apple Music account — no pool. Works with your ES token.</string>
+    <string name="applemusic_helper_short">ES account • uses your Music User Token</string>
+    <string name="applemusic_sign_in_web">Sign in with Apple Music (web)</string>
+    <string name="applemusic_sign_in_web_desc">Opens Apple\'s sign-in in a private web view</string>
+    <string name="applemusic_tokens_title">Tokens</string>
+    <string name="applemusic_tokens_ready">Token present — playback can engage</string>
+    <string name="applemusic_tokens_missing">Music User Token needed (Media User Token)</string>
+    <string name="applemusic_media_token">Music User Token (0.Ap…)</string>
+    <string name="applemusic_dev_token">Developer token (optional)</string>
+    <string name="applemusic_token_invalid">Doesn\'t look like a token (JWT expected)</string>
+    <string name="applemusic_tokens_help">Paste the Media User Token (starts with 0.Ap). Developer token is optional — the app uses its own if blank.</string>
+    <string name="applemusic_disconnect">Sign out</string>
+    <string name="youtube_session_save">Save session</string>
+    <string name="sources_paste_token">Paste token instead</string>
+    <string name="sources_tidal_token_title">Tidal token sign-in</string>
+    <string name="sources_tidal_token_label">Refresh token</string>
+    <string name="sources_tidal_token_help">Paste a Tidal o2_refresh token (the long JWT with \"type\":\"o2_refresh\" in its middle segment). The app exchanges it for fresh access tokens automatically. User ID is read from the token itself — no extra fields needed.</string>
+    <string name="sources_tidal_token_verified">Tidal token verified — account connected.</string>
+    <string name="sources_tidal_token_failed">Tidal could not refresh that token — it may be expired or revoked.</string>
+    <string name="pool_api_key_title">Pool API key</string>
+    <string name="pool_api_key_label">API key</string>
+    <string name="pool_api_key_help">Optional. Create a free account on the Source Pool site and copy your key from the dashboard — the app then uses YOUR key to fetch pooled accounts, instead of the key baked into this build. Leave empty to keep using the built-in key. Paste an empty field to remove a saved key.</string>
     <string name="pool_refresh_title">Refresh from pool</string>
     <string name="pool_refresh_description">Pull the latest shared accounts and instances from the community source pool</string>
     <string name="pool_refreshing">Refreshing from pool…</string>
@@ -1234,6 +1272,11 @@
     <string name="update_notification_channel_desc">Notifications for new app updates</string>
     <string name="update_notification_title">Update Available</string>
     <string name="update_notification_text">ArchiveTune %s is now available</string>
+    <string name="new_release_notification_channel_name">New Releases</string>
+    <string name="new_release_notification_channel_desc">Notifications when an artist you subscribed to releases new music</string>
+    <string name="new_release_notification_title">New release from %s</string>
+    <string name="new_release_notification_more_title">More new releases</string>
+    <string name="new_release_notification_more_text">And %d more from your subscribed artists</string>
     <string name="download">Download</string>
     <string name="download_complete">Download complete</string>
     <string name="downloads">Downloads</string>

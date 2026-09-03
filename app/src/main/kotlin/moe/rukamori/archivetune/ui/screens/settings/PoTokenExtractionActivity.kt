@@ -56,6 +56,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 class PoTokenExtractionActivity : ComponentActivity() {
     companion object {
@@ -372,6 +373,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
                         }
                     },
                     confirmButton = {
+                        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                         TextButton(
                             onClick = {
                                 showAccountDialog = false

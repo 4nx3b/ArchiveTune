@@ -17,8 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.guava.future
-import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
-import moe.rukamori.archivetune.utils.YTPlayerUtils
 import timber.log.Timber
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
@@ -32,18 +30,17 @@ import javax.inject.Singleton
 class ResolveAudioStreamUseCase
     @Inject
     constructor(
-        private val ytDlpRepository: YtDlpStreamRepository,
         private val nativeRepository: NativeStreamRepository,
+        private val ytdlnisRepository: YtdlnisStreamRepository,
     ) {
-        private data class CacheKey(
-            val mediaId: String,
-            val quality: String,
-            val networkMetered: Boolean,
-            val purpose: StreamPurpose,
-            val authFingerprint: String,
-            val pinnedFormatId: Int?,
-            val runtimeRevision: String,
-        )
+    private data class CacheKey(
+        val mediaId: String,
+        val quality: String,
+        val networkMetered: Boolean,
+        val purpose: StreamPurpose,
+        val authFingerprint: String,
+        val pinnedFormatId: Int?,
+    )
 
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val cache = ConcurrentHashMap<CacheKey, ResolvedAudioStream>()
@@ -123,57 +120,30 @@ class ResolveAudioStreamUseCase
             inFlight.clear()
         }
 
-        private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
-            val ytDlpFailure =
-                try {
-                    val resolvedAuthState =
-                        if (request.authState.hasLoginCookie) {
-                            YTPlayerUtils.ensureYtDlpPoTokensForPlayback(
-                                videoId = request.mediaId,
-                                authState = request.authState,
-                            )
-                        } else {
-                            request.authState
-                        }
-                    return ytDlpRepository.resolve(request.copy(authState = resolvedAuthState))
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (loginRequired: YTPlayerUtils.LoginRequiredForPlaybackException) {
-                    // An age-gated track fails here with "Sign in to confirm your age". That is
-                    // only a dead end when the user has NOT opted in: with Content Settings →
-                    // "Allow age-restricted content" on, the native resolver's client order ends
-                    // with the embedded players YouTube does serve age-gated streams to, so let it
-                    // try rather than surfacing a sign-in prompt the user cannot satisfy.
-                    if (!YTPlayerUtils.isAgeRestrictedPlaybackFallbackAllowed(loginRequired)) {
-                        throw loginRequired
-                    }
-                    Timber.tag(TAG).i(
-                        "yt-dlp hit the age gate for %s; trying the native embedded-player path",
-                        request.mediaId,
-                    )
-                    loginRequired
-                } catch (invalidLogin: YTPlayerUtils.InvalidPlaybackLoginContextException) {
-                    throw invalidLogin
-                } catch (ytDlpFailure: YtDlpExtractionException) {
-                    throw ytDlpFailure
-                } catch (throwable: Throwable) {
-                    Timber.tag(TAG).w(
-                        throwable,
-                        "Local yt-dlp resolution failed for %s; using native fallback",
-                        request.mediaId,
-                    )
-                    throwable
-                }
-
-            return try {
-                nativeRepository.resolve(request)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (nativeFailure: Throwable) {
-                nativeFailure.addSuppressed(ytDlpFailure)
-                throw nativeFailure
-            }
+    // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python.
+    // Only on failure (403, age-gate, signature, timeout) does it fall back to Ytdlnis
+    // (NewPipe → external yt-dlp via CompactYtDlp plugin APK, as YTDLnis does). This mirrors
+    // YTDLnis's own switch (NewPipe ↔ yt-dlp) but keeps the hot path native. History can be
+    // returned by both: InnerTube via YouTube.history() (browse), YTDLnis via yt-dlp watch
+    // history with cookies (ytdlp_watch_history), but ArchiveTune's History uses InnerTube.
+    private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
+        val nativeFailure = try {
+            return nativeRepository.resolve(request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Timber.tag(TAG).w(t, "Native InnerTube failed for %s, trying Ytdlnis fallback", request.mediaId)
+            t
         }
+        return try {
+            ytdlnisRepository.resolve(request)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (ytdlnisFailure: Throwable) {
+            ytdlnisFailure.addSuppressed(nativeFailure)
+            throw ytdlnisFailure
+        }
+    }
 
         private fun AudioStreamRequest.cacheKey(): CacheKey =
             CacheKey(
@@ -183,49 +153,27 @@ class ResolveAudioStreamUseCase
                 purpose = purpose,
                 authFingerprint = authState.streamCacheFingerprint,
                 pinnedFormatId = pinnedFormatId,
-                runtimeRevision = YtDlpRuntimeStore.revision,
             )
 
         private fun storeResolvedStream(
             key: CacheKey,
             resolved: ResolvedAudioStream,
         ) {
-            putResolvedStream(key, resolved)
-            if (resolved.source == StreamSource.YT_DLP) {
-                val alternatePurpose =
-                    when (key.purpose) {
-                        StreamPurpose.PLAYBACK -> StreamPurpose.DOWNLOAD
-                        StreamPurpose.DOWNLOAD -> StreamPurpose.PLAYBACK
-                    }
-                putResolvedStream(key.copy(purpose = alternatePurpose), resolved)
-            }
+            cache[key] = resolved
             Timber.tag(TAG).d(
-                "Resolved %s via %s (%s)",
+                "Resolved %s via %s",
                 key.mediaId,
                 resolved.source,
-                resolved.runtimeVersion ?: "native",
             )
             if (cache.size <= MAX_CACHE_ENTRIES) return
             cache.entries.removeIf { !isFresh(it.value) }
             val excess = cache.size - MAX_CACHE_ENTRIES
-            if (excess <= 0) return
-            cache.entries
-                .sortedBy { it.value.expiresAtMs }
-                .take(excess)
-                .forEach { entry -> cache.remove(entry.key, entry.value) }
-        }
-
-        private fun putResolvedStream(
-            key: CacheKey,
-            resolved: ResolvedAudioStream,
-        ) {
-            cache[key] = resolved
-            cache[
-                key.copy(
-                    authFingerprint = resolved.authFingerprint,
-                    runtimeRevision = YtDlpRuntimeStore.revision,
-                ),
-            ] = resolved
+            if (excess > 0) {
+                cache.entries
+                    .sortedBy { it.value.expiresAtMs }
+                    .take(excess)
+                    .forEach { entry -> cache.remove(entry.key, entry.value) }
+            }
         }
 
         private fun isFresh(stream: ResolvedAudioStream): Boolean =

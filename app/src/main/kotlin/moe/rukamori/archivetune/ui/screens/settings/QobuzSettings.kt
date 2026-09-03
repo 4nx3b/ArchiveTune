@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * Process-lived cache of the last on-demand health-check results so that the checked status (and
@@ -424,6 +425,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             onDismissRequest = { detailInstance = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()

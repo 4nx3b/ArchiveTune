@@ -116,6 +116,7 @@ import moe.rukamori.archivetune.viewmodels.MusicTogetherUiModel
 import moe.rukamori.archivetune.viewmodels.MusicTogetherViewModel
 import moe.rukamori.archivetune.ui.component.IconButton as AtIconButton
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1428,6 +1429,7 @@ private fun WelcomeDialog(
             }
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             Button(
                 onClick = onGotIt,
                 shapes = ButtonDefaults.shapes(),
@@ -1494,6 +1496,7 @@ private fun ConfirmParticipantDialog(
             )
         },
         confirmButton = {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
             Button(
                 onClick = onConfirm,
                 colors =

@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.rememberLayerBackdropSettled
 import moe.rukamori.archivetune.ui.menu.SpotifyPlaylistMenu
@@ -498,12 +499,12 @@ fun LibrarySpotifyPlaylistsScreen(
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),
                         contentDescription = stringResource(R.string.back_button_desc),
-                        tint = Color.White,
+                        tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
                     text = stringResource(R.string.spotify),
-                    color = Color.White,
+                    color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -579,7 +580,7 @@ fun LibrarySpotifyPlaylistsScreen(
                         Icon(
                             painter = painterResource(if (showSearchField) R.drawable.close else R.drawable.search),
                             contentDescription = stringResource(R.string.search),
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
@@ -594,7 +595,7 @@ fun LibrarySpotifyPlaylistsScreen(
                         Icon(
                             painter = painterResource(R.drawable.sync),
                             contentDescription = stringResource(R.string.refresh),
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
