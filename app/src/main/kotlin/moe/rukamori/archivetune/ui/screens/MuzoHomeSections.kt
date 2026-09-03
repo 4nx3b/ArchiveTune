@@ -375,7 +375,7 @@ fun TrendingPlaylistSection(
             onSeeAll = seeAllRoute?.let { route -> { navController.navigate(route) } },
         )
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val pageWidth = maxWidth - MuzoGutter * 2
+            val pageWidth = maxWidth - MuzoGutter * 2f
             val cardHeight = muzoPlaylistCardHeight(hasNowPlaying = mediaMetadata != null)
             val pagerState = rememberPagerState(initialPage = 0) { playlists.size }
             HorizontalPager(
@@ -383,7 +383,7 @@ fun TrendingPlaylistSection(
                 pageSize = PageSize.Fixed(pageWidth),
                 pageSpacing = 16.dp,
                 contentPadding = PaddingValues(horizontal = MuzoGutter),
-                modifier = Modifier.height(cardHeight + MuzoStackOffset * 2),
+                modifier = Modifier.height(cardHeight + MuzoStackOffset * 2f),
             ) { page ->
                 // The real playlist collection supplies the stacked layers:
                 // the next two playlists peek out below the front card, the
@@ -397,7 +397,7 @@ fun TrendingPlaylistSection(
                             playlist = ghost2,
                             cardWidth = pageWidth,
                             cardHeight = cardHeight,
-                            offset = MuzoStackOffset * 2,
+                            offset = MuzoStackOffset * 2f,
                             alpha = 0.35f,
                         )
                     }
@@ -447,7 +447,7 @@ private fun muzoPlaylistCardHeight(hasNowPlaying: Boolean): Dp {
     val gapAfterHeader = 16.dp
     val waveRow = MuzoPlayButtonSize
     val footer = if (hasNowPlaying) 22.dp + 6.dp else 0.dp
-    return padding * 2 + headerRow + gapAfterHeader + waveRow + footer
+    return padding * 2f + headerRow + gapAfterHeader + waveRow + footer
 }
 
 /** A simplified stacked layer: the same glass treatment + circular artwork, nothing else. */
