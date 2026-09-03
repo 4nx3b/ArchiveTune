@@ -25,10 +25,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -461,13 +465,32 @@ internal fun TikTokSongPage(
     }
 }
 
-/** TikTok's paused-video affordance: a soft scrim with a play glyph. */
+/**
+ * TikTok's paused-video affordance: a soft scrim with a play glyph.
+ *
+ * The glyph ANIMATES on every play/pause flip (user request 2026-09-03:
+ * "the play pause button should animate when I play or pause the song"):
+ * it springs up from a small scale with a bounce when the song pauses, and
+ * shrinks away when playback resumes — the tap-to-play gesture gets the
+ * same tactile feedback the reference's video pause affordance has.
+ */
 @Composable
 private fun TikTokPausedOverlay(visible: Boolean) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(150)),
-        exit = fadeOut(tween(150)),
+        enter =
+            fadeIn(tween(150)) +
+                scaleIn(
+                    initialScale = 0.55f,
+                    animationSpec =
+                        spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                ),
+        exit =
+            fadeOut(tween(120)) +
+                scaleOut(targetScale = 0.55f, animationSpec = tween(120)),
     ) {
         Box(
             modifier =

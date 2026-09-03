@@ -121,6 +121,41 @@ fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBac
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Light-mode ink color for content (icons / labels) drawn on top of a Liquid
+ * Glass surface.
+ *
+ * Liquid Glass surfaces sample the content behind them and then add a light
+ * luminance overlay (see [liquidGlass]'s `onDrawSurface`). In dark mode the
+ * sampled content is dark, so the surface reads as dark frosted glass and
+ * `Color.White` content is perfectly legible. In LIGHT mode, however, the
+ * sampled content is bright and the surface renders as a bright frosted
+ * white — so `Color.White` icons/labels become nearly invisible (user report
+ * 2026-09-03 with Playlists/Library screenshots: header pill text, back
+ * arrow, and top-end action icons all "almost invisible").
+ *
+ * This near-black ink restores legibility on light glass. Dark mode keeps
+ * `Color.White` unchanged.
+ */
+private val LiquidGlassLightContentColor = Color(0xFF1C1B1F)
+
+/**
+ * Theme-aware content color (icon tint / label color) for elements rendered
+ * inside a Liquid Glass surface that samples page content.
+ *
+ * - Dark mode: [Color.White] (unchanged — matches the original look).
+ * - Light mode: [LiquidGlassLightContentColor] near-black ink, because the
+ *   glass surface renders bright in light mode.
+ *
+ * Only use this for glass that samples PAGE CONTENT (header pills, nav bar,
+ * mini player). Glass that sits on top of dark artwork (player surfaces,
+ * scrims over images) should keep `Color.White` — the artwork keeps the
+ * surface dark in both themes.
+ */
+@Composable
+fun liquidGlassContentColor(): Color =
+    if (isSystemInDarkTheme()) Color.White else LiquidGlassLightContentColor
+
+/**
  * Applies the SimpMusic liquid-glass effect to any element.
  *
  * Encapsulates the per-surface [GraphicsLayer], the Kyant `drawBackdrop`
@@ -297,11 +332,15 @@ fun LiquidGlassIconButton(
     painter: Painter,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
-    tint: Color = Color.White,
+    // Default is Color.Unspecified so the resolved tint can be theme-aware
+    // (white in dark mode, dark ink in light mode) — see
+    // [liquidGlassContentColor]. Passing an explicit color still wins.
+    tint: Color = Color.Unspecified,
     contentDescription: String? = null,
     interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
@@ -315,7 +354,7 @@ fun LiquidGlassIconButton(
             Icon(
                 painter = painter,
                 contentDescription = contentDescription,
-                tint = tint,
+                tint = resolvedTint,
             )
         }
     }
@@ -330,11 +369,15 @@ fun LiquidGlassIconButton(
     imageVector: ImageVector,
     modifier: Modifier = Modifier.size(48.dp),
     shape: Shape = CircleShape,
-    tint: Color = Color.White,
+    // Default is Color.Unspecified so the resolved tint can be theme-aware
+    // (white in dark mode, dark ink in light mode) — see
+    // [liquidGlassContentColor]. Passing an explicit color still wins.
+    tint: Color = Color.Unspecified,
     contentDescription: String? = null,
     interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val resolvedTint = if (tint == Color.Unspecified) liquidGlassContentColor() else tint
     LiquidGlassContainer(
         backdrop = backdrop,
         modifier = modifier,
@@ -348,7 +391,7 @@ fun LiquidGlassIconButton(
             Icon(
                 imageVector = imageVector,
                 contentDescription = contentDescription,
-                tint = tint,
+                tint = resolvedTint,
             )
         }
     }

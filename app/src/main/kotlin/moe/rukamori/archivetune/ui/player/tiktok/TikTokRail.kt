@@ -36,6 +36,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,12 +48,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -73,7 +77,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -84,6 +90,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.ArtistEntity
+import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -91,10 +98,47 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import moe.rukamori.archivetune.ui.utils.formatCompactCount
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.shareLocalAudio
+import java.util.concurrent.ConcurrentHashMap
 
 /** TikTok's brand red, the same one the reference feed uses for its active heart. */
 internal val TIKTOK_RED = Color(0xFFFE2C55)
+
+/**
+ * In-process per-song like-count cache backing the rail heart's count label
+ * (user request 2026-09-03: "show the number of likes below the like icon",
+ * TikTok-style).
+ *
+ * - Values are fetched at most once per session per song via the lightweight
+ *   RYD votes endpoint ([YouTube.getLikeCount] — a single GET, no `next`
+ *   call), so swiping through the feed costs at most one cheap request per
+ *   NEW song.
+ * - A sentinel of `-1` marks "fetched but no data" so songs RYD doesn't know
+ *   about are not re-fetched on every recomposition of their feed page.
+ * - Only hard network FAILURES are left uncached, so a later recomposition
+ *   can retry.
+ * - Local media ids never hit the network.
+ */
+private object TikTokLikeCountCache {
+    private const val NO_DATA = -1
+    private val cache = ConcurrentHashMap<String, Int>()
+
+    suspend fun likeCountLabelOf(videoId: String): String? {
+        if (videoId.isBlank() || videoId.isLocalMediaId()) return null
+        cache[videoId]?.let { cached ->
+            return cached.takeIf { it > 0 }?.toLabel()
+        }
+        val result = YouTube.getLikeCount(videoId)
+        if (result.isSuccess) {
+            cache[videoId] = result.getOrNull() ?: NO_DATA
+        }
+        return result.getOrNull()?.takeIf { it > 0 }?.toLabel()
+    }
+
+    private fun Int.toLabel(): String = formatCompactCount(this.toLong())
+}
 
 /**
  * The rail's fade for the lyrics-open hide: quick and unadorned, the
@@ -135,6 +179,15 @@ internal fun TikTokRail(
             isCurrentPage = isCurrentPage,
             playerConnection = playerConnection,
         )
+
+    // The song's like count for the TikTok-style label under the rail heart
+    // (user request 2026-09-03). produceState keeps its value across key
+    // changes, so reset FIRST — the previous page's count must never flash
+    // when the feed settles on a new page.
+    val likeCountLabel by produceState<String?>(initialValue = null, pageMetadata.id) {
+        value = null
+        value = TikTokLikeCountCache.likeCountLabelOf(pageMetadata.id)
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -180,6 +233,7 @@ internal fun TikTokRail(
         ) {
             TikTokLikeRailButton(
                 liked = liked,
+                likeCountLabel = likeCountLabel,
                 onLike = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     likeAction(false)
@@ -485,10 +539,17 @@ internal fun rememberTikTokLikeAction(
  * from a small scale whenever the song flips to liked — whether that came
  * from this button or a double-tap on the media, since both land in the
  * same Room row this reads — and settles with a small shrink when unliked.
+ *
+ * Below the glyph rides the song's like count (user request 2026-09-03:
+ * TikTok-style engagement label under the icon), compactly formatted via
+ * [formatCompactCount] — at most 3 digits plus a K/M/B suffix (600K,
+ * 21M, 2B). While the count is loading (or unavailable — local songs / RYD
+ * misses) no label is shown; it fades and slides in once it arrives.
  */
 @Composable
 private fun TikTokLikeRailButton(
     liked: Boolean,
+    likeCountLabel: String?,
     onLike: () -> Unit,
 ) {
     val likeLabel = stringResource(R.string.action_like)
@@ -516,23 +577,76 @@ private fun TikTokLikeRailButton(
         }
         wasLiked = liked
     }
-    TikTokRailActionButton(onClick = onLike) {
-        Box(
-            contentAlignment = Alignment.Center,
+    Box(
+        modifier =
+            Modifier
+                .width(48.dp)
+                .tiktokNoRippleClickable(onClick = onLike),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(30.dp)
+                        .graphicsLayer {
+                            scaleX = scale.value
+                            scaleY = scale.value
+                        },
+            ) {
+                TikTokRailGlyph(
+                    iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
+                    contentDescription = likeLabel,
+                    tint = if (liked) TIKTOK_RED else Color.White,
+                )
+            }
+            // The count label under the heart. AnimatedVisibility removes it
+            // from layout while null, so the rail's rhythm is identical for
+            // songs whose count hasn't arrived (or never will).
+            AnimatedVisibility(
+                visible = likeCountLabel != null,
+                enter =
+                    fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
+                        slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
+                exit = fadeOut(tween(120)),
+            ) {
+                TikTokRailCountLabel(label = likeCountLabel.orEmpty())
+            }
+        }
+    }
+    Spacer(Modifier.height(2.dp))
+}
+
+/**
+ * The TikTok-style count label under a rail icon: small white text with the
+ * same drop-shadow treatment as [TikTokRailGlyph] (a blurred, slightly
+ * offset dark copy behind the crisp one), so the label stays legible over
+ * light artwork exactly like the glyphs do.
+ */
+@Composable
+private fun TikTokRailCountLabel(label: String) {
+    Box {
+        Text(
+            text = label,
+            color = Color.Black.copy(alpha = 0.35f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
             modifier =
                 Modifier
-                    .size(30.dp)
-                    .graphicsLayer {
-                        scaleX = scale.value
-                        scaleY = scale.value
-                    },
-        ) {
-            TikTokRailGlyph(
-                iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
-                contentDescription = likeLabel,
-                tint = if (liked) TIKTOK_RED else Color.White,
-            )
-        }
+                    .align(Alignment.Center)
+                    .offset(y = 1.dp)
+                    .blur(2.dp),
+        )
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 
