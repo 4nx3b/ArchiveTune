@@ -130,6 +130,9 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AlbumUiState
 import moe.rukamori.archivetune.viewmodels.AlbumViewModel
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -293,12 +296,20 @@ fun AlbumScreen(
     // LocalPlaylistScreen / HistoryScreen pattern already does.
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
+    // Header haze (2026-09-04): the home page's blurred top haze, ported to
+    // this screen. See LocalPlaylistScreen for the full note.
+    val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .hazeSource(headerHaze),
     ) {
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         LazyColumn(
             modifier =
                 if (layerBackdropActive) {

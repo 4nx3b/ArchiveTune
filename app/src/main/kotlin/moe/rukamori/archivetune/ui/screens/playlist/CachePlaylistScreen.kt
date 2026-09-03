@@ -119,6 +119,9 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -378,12 +381,20 @@ fun CachePlaylistScreen(
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
+    // Header haze (2026-09-04): the home page's blurred top haze, ported to
+    // this screen. See LocalPlaylistScreen for the full note.
+    val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(surfaceColor),
+                .background(surfaceColor)
+                .hazeSource(headerHaze),
     ) {
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         LazyColumn(
             state = lazyListState,
             modifier =

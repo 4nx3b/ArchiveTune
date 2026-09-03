@@ -154,6 +154,7 @@ import moe.rukamori.archivetune.viewmodels.HistoryViewModel
 import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import dev.chrisbanes.haze.hazeSource
 
 @Composable
 fun HistoryScreen(
@@ -753,7 +754,22 @@ fun HistoryScreen(
             }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        // Header haze (2026-09-04): the home page's blurred top haze, ported
+        // to this screen. This content Box tags its whole subtree as the haze
+        // source; the ScreenHeaderHaze overlay renders the progressive
+        // top-fade blur behind the pinned Liquid Glass pills (and behind the
+        // transparent LargeFlexibleTopAppBar when it is the one showing).
+        val headerHaze = rememberScreenHeaderHaze()
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .hazeSource(headerHaze),
+        ) {
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
             if (!showSearchBar) {
                 // When the persistent Liquid Glass header pills are shown,
                 // the LargeFlexibleTopAppBar is hidden so innerPadding's

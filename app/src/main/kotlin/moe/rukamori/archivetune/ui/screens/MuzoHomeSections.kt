@@ -351,6 +351,13 @@ private fun Modifier.muzoGlassSurface(
 
 // ----------------------------------------------------------------------------
 // Trending Playlist — the layered stacked carousel.
+//
+// NOT RENDERED since 2026-09-04: the user asked to "remove the Trending
+// playlist section from home page" (the home feed no longer calls this), so
+// this block and its private helpers are dormant. Kept compiled (unused
+// private composables are a warning, not an error, and detekt is not part
+// of the CI gate) so restoring the section is a one-line change in
+// HomeScreen.kt.
 // ----------------------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
