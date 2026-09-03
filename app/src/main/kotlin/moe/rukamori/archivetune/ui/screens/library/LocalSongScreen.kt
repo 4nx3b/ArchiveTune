@@ -139,6 +139,7 @@ import java.text.Collator
 import java.time.LocalDateTime
 import java.util.Locale
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -841,6 +842,7 @@ private fun LocalSongScanSheet(
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         tonalElevation = 2.dp,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier =

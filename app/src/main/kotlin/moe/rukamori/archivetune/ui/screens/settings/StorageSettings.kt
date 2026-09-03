@@ -115,6 +115,7 @@ import moe.rukamori.archivetune.viewmodels.StorageMigrationUiPhase
 import moe.rukamori.archivetune.viewmodels.StorageSettingsScreenState
 import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 @OptIn(ExperimentalCoilApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -840,6 +841,7 @@ private fun StorageLocationPickerSheet(
         shape = MaterialTheme.shapes.extraLarge,
         tonalElevation = 2.dp,
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier =

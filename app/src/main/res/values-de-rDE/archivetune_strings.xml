@@ -62,9 +62,6 @@
     <string name="follow_theme">Thema folgen</string>
     <string name="gradient">Gradient</string>
     <string name="player_design_style">Player-Design-Stil</string>
-    <string name="player_design_v1">Klassisch</string>
-    <string name="player_design_v2">Modern</string>
-    <string name="player_design_v3">Minimal</string>
     <string name="player_design_v4">Kinematisch</string>
     <string name="coloring">Farbung</string>
     <string name="blur_gradient">Weichzeichnerverlauf</string>
@@ -314,9 +311,7 @@
     <string name="lyrics_share_export_not_supported">Für die Bildfreigabe ist Android 6.0 oder höher erforderlich</string>
     <string name="show_home_category_chips">Kategorie-Chips auf der Startseite anzeigen</string>
     <string name="show_home_category_chips_desc">Kategorie-Filter-Chips auf der Startseite anzeigen</string>
-    <string name="player_design_v6">Ausdrucksvoll</string>
     <string name="player_design_v7">Immersiv</string>
-    <string name="player_design_v8">Immersiv erweitert</string>
     <string name="player_design_v9">Material erweitert</string>
     <string name="lyrics_sync_offset">Versatz bei der Songtext-Synchronisation</string>
     <string name="lyrics_romanize_chinese">Chinesische Songtexte romanisieren</string>

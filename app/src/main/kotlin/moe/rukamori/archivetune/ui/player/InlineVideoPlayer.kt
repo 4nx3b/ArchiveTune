@@ -103,6 +103,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
  * Walk the [ContextWrapper] chain to find the hosting [Activity].
@@ -1202,6 +1203,7 @@ fun FullscreenVideoOverlay(
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
+            KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
             VideoOverflowSheetContent(
                 sliderStyle = sliderStyle,
                 onSliderStyleChange = onSliderStyleChange,

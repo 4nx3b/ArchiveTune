@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
@@ -706,12 +707,12 @@ fun AutoPlaylistScreen(
                     Icon(
                         painter = painterResource(R.drawable.arrow_back),
                         contentDescription = stringResource(R.string.library),
-                        tint = Color.White,
+                        tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
                     text = playlist,
-                    color = Color.White,
+                    color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -734,7 +735,7 @@ fun AutoPlaylistScreen(
                         Icon(
                             painter = painterResource(R.drawable.search),
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = liquidGlassContentColor(),
                         )
                     }
                 }
@@ -756,7 +757,7 @@ fun AutoPlaylistScreen(
                             Icon(
                                 painter = painterResource(R.drawable.more_horiz),
                                 contentDescription = stringResource(R.string.more_options),
-                                tint = Color.White,
+                                tint = liquidGlassContentColor(),
                             )
                         }
                     }

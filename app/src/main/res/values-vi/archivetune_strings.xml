@@ -75,9 +75,6 @@
     <string name="follow_theme">Theo giao diện</string>
     <string name="gradient">Gradient</string>
     <string name="player_design_style">Kiểu thiết kế trình phát</string>
-    <string name="player_design_v1">Cổ điển</string>
-    <string name="player_design_v2">Hiện đại</string>
-    <string name="player_design_v3">Tối giản</string>
     <string name="player_design_v4">Điện ảnh</string>
     <string name="player_background_blur">Làm mờ</string>
     <string name="coloring">Tô màu</string>
@@ -212,7 +209,6 @@
     <string name="music_recognition_error">Đã xảy ra lỗi</string>
     <string name="show_home_category_chips">Hiển thị danh mục chip ở trang chủ</string>
     <string name="show_home_category_chips_desc">Hiển thị các chip lọc danh mục trên màn hình chính</string>
-    <string name="player_design_v6">Biểu cảm</string>
     <string name="player_design_v7">Đắm chìm</string>
     <string name="lyrics_romanize_chinese">Romanize lời bài hát Trung Quốc</string>
     <string name="lyrics_romanize_hindi">Romanize lời bài hát Ấn Độ</string>
@@ -397,7 +393,6 @@
     <string name="aod_control_filled">Đặc</string>
     <string name="aod_control_tonal">Tông màu</string>
     <string name="aod_control_minimal">Tối giản</string>
-    <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="mini_player_background_style">Kiểu nền trình phát mini</string>
     <string name="playlist_sync_progress_step">%1$d/%2$d Bài hát</string>

@@ -115,6 +115,7 @@ import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
+import moe.rukamori.archivetune.constants.WallpaperExtractionFailedKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -139,6 +140,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
+    val (wallpaperExtractionFailed) =
+        rememberPreference(WallpaperExtractionFailedKey, defaultValue = false)
     val (dynamicTheme, onDynamicThemeChange) =
         rememberPreference(
             DynamicThemeKey,
@@ -333,16 +336,29 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val isPlayerStyleCustomizationEnabled =
         when (playerDesignStyle) {
             PlayerDesignStyle.V7,
-            PlayerDesignStyle.V8,
             PlayerDesignStyle.V9,
             PlayerDesignStyle.APPLE_MUSIC,
+            PlayerDesignStyle.V10,
+            PlayerDesignStyle.BITCHORD,
+            PlayerDesignStyle.TIKTOK,
             -> false
 
             else -> true
         }
-    val isVolumeBarSupported =
-        playerDesignStyle == PlayerDesignStyle.V7 ||
-            playerDesignStyle == PlayerDesignStyle.V8
+    // The lyrics background only feeds the standalone lyrics page's backdrop.
+    // The BitChord, Apple Music and TikTok styles own their lyrics surfaces
+    // outright — Bitchord's panel sits on its mesh-gradient backdrop, Apple
+    // Music's inline pane on its artwork-tinted gradient, and TikTok opens the
+    // shared full-screen lyrics page from its comment-bubble action without
+    // drawing a lyrics backdrop of its own — so the setting does nothing for
+    // them and reads as broken. Disabled (with a note) rather than hidden so
+    // the row keeps its search anchor and its position in the list (user
+    // request 2026-09-01).
+    val isLyricsBackgroundStyleAvailable =
+        playerDesignStyle != PlayerDesignStyle.BITCHORD &&
+            playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
+            playerDesignStyle != PlayerDesignStyle.TIKTOK
+    val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
         remember(darkMode, isSystemInDarkTheme) {
@@ -509,7 +525,24 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                item(visible = dynamicTheme && Build.VERSION.SDK_INT < Build.VERSION_CODES.S && wallpaperExtractionFailed) {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("wallpaper_permission"),
+                        title = { Text(stringResource(R.string.wallpaper_permission)) },
+                        description = stringResource(R.string.wallpaper_permission_desc),
+                        icon = { Icon(painterResource(R.drawable.storage), null) },
+                        onClick = {
+                            val intent =
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", context.packageName, null),
+                                )
+                            context.startActivity(intent)
+                        },
+                    )
+                }
+
+                item(visible = !dynamicTheme) {
                     SwitchPreference(
                         modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },
@@ -741,17 +774,18 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             onValueSelected = onPlayerDesignStyleChange,
                             valueText = {
                                 when (it) {
-                                    PlayerDesignStyle.V1 -> stringResource(R.string.player_design_v1)
-                                    PlayerDesignStyle.V2 -> stringResource(R.string.player_design_v2)
-                                    PlayerDesignStyle.V3 -> stringResource(R.string.player_design_v3)
                                     PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
                                     PlayerDesignStyle.V5 -> stringResource(R.string.player_design_v5)
-                                    PlayerDesignStyle.V6 -> stringResource(R.string.player_design_v6)
                                     PlayerDesignStyle.V7 -> stringResource(R.string.player_design_v7)
-                                    PlayerDesignStyle.V8 -> stringResource(R.string.player_design_v8)
                                     PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
                                     PlayerDesignStyle.APPLE_MUSIC ->
                                         stringResource(R.string.player_design_apple_music)
+                                    PlayerDesignStyle.V10 ->
+                                        stringResource(R.string.player_design_v10)
+                                    PlayerDesignStyle.BITCHORD ->
+                                        stringResource(R.string.player_design_bitchord)
+                                    PlayerDesignStyle.TIKTOK ->
+                                        stringResource(R.string.player_design_tiktok)
                                 }
                             },
                         )
@@ -821,11 +855,19 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         ListPreference(
                             modifier = positions.modifierFor("lyrics_background_style"),
                             title = { Text(stringResource(R.string.lyrics_background_style)) },
+                            description =
+                                if (isLyricsBackgroundStyleAvailable) {
+                                    null
+                                } else {
+                                    stringResource(R.string.lyrics_background_style_own_player_desc)
+                                },
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
                             selectedValue = lyricsBackground,
                             values = availableLyricsBackgroundStyles,
                             onValueSelected = onLyricsBackgroundChange,
-                            isEnabled = playerBackground != PlayerBackgroundStyle.CUSTOM,
+                            isEnabled =
+                                playerBackground != PlayerBackgroundStyle.CUSTOM &&
+                                    isLyricsBackgroundStyleAvailable,
                             valueText = {
                                 when (it) {
                                     LyricsBackgroundStyle.DEFAULT -> stringResource(R.string.lyrics_background_default)

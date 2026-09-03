@@ -76,9 +76,6 @@
     <string name="follow_theme">Temayı takip et</string>
     <string name="gradient">Gradyan</string>
     <string name="player_design_style">Oyuncu tasarım stili</string>
-    <string name="player_design_v1">Klasik</string>
-    <string name="player_design_v2">Çağdaş</string>
-    <string name="player_design_v3">Asgari</string>
     <string name="player_design_v4">Sinematik</string>
     <string name="player_design_v5">Ufak</string>
     <string name="player_background_blur">Bulanıklaştırma</string>

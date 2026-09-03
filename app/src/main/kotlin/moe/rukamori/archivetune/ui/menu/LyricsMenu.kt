@@ -82,6 +82,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -92,11 +93,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -141,6 +142,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
+import moe.rukamori.archivetune.ui.component.NewAction
+import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
@@ -154,6 +157,7 @@ import moe.rukamori.archivetune.viewmodels.LyricsSearchScreenState
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private enum class LyricsTranslationSource {
     AI_TRANSLATION,
@@ -924,103 +928,138 @@ fun LyricsMenu(
                     ),
                 )
 
-            // When `transparentSurface` is true (popup context), use a
-            // transparent Surface so the frosted-glass blur applied to the
-            // popup's outer Box is visible. The opaque `surfaceContainerLow`
-            // background of `MenuSurfaceSection` would otherwise completely
-            // cover the blur — the user reported "the white popup is loading
-            // on top of the liquid glass effect". The transparent surface
-            // keeps the same `extraLarge` corner shape so the rounded clip
-            // still matches the popup's outer clip (no dark gap).
+            // Two visual presentations share this one menu implementation:
+            //
+            //  - `transparentSurface = true` (Apple Music player's anchored popup):
+            //    transparent Surface so the frosted-glass blur applied to the popup's
+            //    outer Box is visible, with the compact dark-glass Apple Music rows
+            //    (white text, iOS-red destructive row, hairline dividers) from
+            //    batches 12-15.
+            //
+            //  - `transparentSurface = false` (non-Apple-Music player styles —
+            //    LyricsScreen's ModalBottomSheet slide-up popup): RESTORED to the
+            //    original pre-batch-10 presentation (user request 2026-09-01:
+            //    "Restore the old bottom screen popup in lyrics page in non
+            //    apple music player styles"): a `MenuSurfaceSection` card with the
+            //    `NewActionGrid` 3-column action tiles (28dp theme-tinted icons over
+            //    labels) exactly as the app's other menus render. The Apple Music
+            //    rows' hardcoded white/red colors were never meant for this light
+            //    `surfaceContainerLow` card — they left the rows unreadable here.
             //
             // Vertical padding 8dp -> 4dp per "apply the dimensions and
-            // scaling from this commit" (batch-13 reference, 2026-08-31).
-            // The user reported the batch-14 redesign made the popup too
-            // big; reverting to batch-13's compact surface padding while
-            // keeping batch-14's dark-glass visual style (white text,
-            // dark tint, blur, shadow).
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = if (transparentSurface) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(vertical = 0.dp)) {
-                    menuItems.forEachIndexed { index, item ->
-                        AppleMusicLyricsMenuRow(
-                            item = item,
-                        )
-                        // Hairline divider BETWEEN items only — no divider before the first
-                        // or after the last, matching Apple Music's grid-separated look.
-                        // Color: white at 12% opacity per reference "Divider lines
-                        //   should be approximately 10–18% white/gray opacity"
-                        //   (kept from batch-14 visual style).
-                        // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
-                        //   16dp per batch-13 dimensions (2026-08-31) — the
-                        //   batch-14 redesign was reported as too big.
-                        if (index < menuItems.size - 1) {
-                            HorizontalDivider(
-                                color = Color.White.copy(alpha = 0.12f),
-                                thickness = 0.5.dp,
-                                modifier = Modifier.padding(horizontal = 16.dp),
+            // scaling from this commit" (batch-13 reference, 2026-08-31) —
+            // popup path only.
+            if (transparentSurface) {
+                Surface(
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = Color.Transparent,
+                    modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 0.dp)) {
+                        menuItems.forEachIndexed { index, item ->
+                            AppleMusicLyricsMenuRow(
+                                item = item,
                             )
+                            // Hairline divider BETWEEN items only — no divider before the first
+                            // or after the last, matching Apple Music's grid-separated look.
+                            // Color: white at 12% opacity per reference "Divider lines
+                            //   should be approximately 10–18% white/gray opacity"
+                            //   (kept from batch-14 visual style).
+                            // Thickness: 1dp -> 0.5dp and horizontal padding 20dp ->
+                            //   16dp per batch-13 dimensions (2026-08-31) — the
+                            //   batch-14 redesign was reported as too big.
+                            if (index < menuItems.size - 1) {
+                                HorizontalDivider(
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    thickness = 0.5.dp,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                )
+                            }
                         }
                     }
+                    // The anchored popup call site always passes
+                    // showControlsToggles = false (the toggles were suspected of
+                    // contributing to the lyrics animation stutter), so the
+                    // switches intentionally live only in the bottom-sheet branch
+                    // below — matching the pre-batch-10 structure.
                 }
-                // "Show player controls" / "Auto-hide player controls" toggles
-                // are gated behind showControlsToggles. The Apple Music in-place
-                // lyrics view passes false because those toggles were suspected
-                // of contributing to the lyrics animation stutter; the standalone
-                // LyricsScreen still renders them.
-                if (showControlsToggles) {
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.show_lyrics_player_controls))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = showPlayerControls,
-                                onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
-                            )
-                        },
-                        onClick = {
-                            onShowPlayerControlsChange?.invoke(!showPlayerControls)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                            ),
+            } else {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    NewActionGrid(
+                        actions =
+                            menuItems.map { item ->
+                                NewAction(
+                                    icon = {
+                                        Icon(
+                                            painter = painterResource(item.iconRes),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(28.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    text = item.label,
+                                    onClick = item.onClick,
+                                    enabled = item.enabled,
+                                )
+                            },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                     )
-                    NewMenuItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls))
-                        },
-                        supportingContent = {
-                            Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = autoHidePlayerControls,
-                                onCheckedChange = {
-                                    onAutoHidePlayerControlsPreferenceChange(it)
-                                    onAutoHidePlayerControlsChange(it)
-                                },
-                                enabled = showPlayerControls,
-                            )
-                        },
-                        enabled = showPlayerControls,
-                        onClick = {
-                            val nextValue = !autoHidePlayerControls
-                            onAutoHidePlayerControlsPreferenceChange(nextValue)
-                            onAutoHidePlayerControlsChange(nextValue)
-                        },
-                        modifier =
-                            Modifier.padding(
-                                start = 8.dp,
-                                end = 8.dp,
-                                bottom = 8.dp,
-                            ),
-                    )
+                    // "Show player controls" / "Auto-hide player controls" toggles
+                    // are gated behind showControlsToggles. The Apple Music in-place
+                    // lyrics view passes false because those toggles were suspected
+                    // of contributing to the lyrics animation stutter; the standalone
+                    // LyricsScreen still renders them.
+                    if (showControlsToggles) {
+                        NewMenuItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.show_lyrics_player_controls))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = showPlayerControls,
+                                    onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
+                                )
+                            },
+                            onClick = {
+                                onShowPlayerControlsChange?.invoke(!showPlayerControls)
+                            },
+                            modifier =
+                                Modifier.padding(
+                                    start = 8.dp,
+                                    end = 8.dp,
+                                ),
+                        )
+                        NewMenuItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.auto_hide_lyrics_player_controls))
+                            },
+                            supportingContent = {
+                                Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = autoHidePlayerControls,
+                                    onCheckedChange = {
+                                        onAutoHidePlayerControlsPreferenceChange(it)
+                                        onAutoHidePlayerControlsChange(it)
+                                    },
+                                    enabled = showPlayerControls,
+                                )
+                            },
+                            enabled = showPlayerControls,
+                            onClick = {
+                                val nextValue = !autoHidePlayerControls
+                                onAutoHidePlayerControlsPreferenceChange(nextValue)
+                                onAutoHidePlayerControlsChange(nextValue)
+                            },
+                            modifier =
+                                Modifier.padding(
+                                    start = 8.dp,
+                                    end = 8.dp,
+                                    bottom = 8.dp,
+                                ),
+                        )
+                    }
                 }
             }
         }
@@ -1041,6 +1080,7 @@ private fun LyricsSearchResultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -2041,7 +2081,12 @@ private fun AppleMusicLyricsMenuRow(
  *   by `Modifier.onGloballyPositioned { coords -> iconBounds =
  *   coords.boundsInRoot() }`). The popup's right edge aligns with
  *   [Rect.right] and the popup's top edge sits [Rect.bottom] + 4dp below
- *   the icon's bottom edge.
+ *   the icon's bottom edge — UNLESS the icon sits so low on screen that
+ *   the popup would not fit below it (an anchor in a bottom caption row,
+ *   as the TikTok style's ⋯ button), in which case the popup opens ABOVE
+ *   the icon instead: its bottom edge at [Rect.top] - 4dp, growing from
+ *   its bottom-right corner — the corner that meets the icon — so the
+ *   "grows out of the icon" morph reads identically either way.
  * @param backdrop Optional kyant [PlatformBackdrop] that captures the
  *   player content behind the popup. When non-null, the popup samples this
  *   backdrop with a 20dp blur to produce a real frosted-glass effect. The
@@ -2165,6 +2210,33 @@ fun AnchoredLyricsOverflowMenu(
     val scale = scaleAnim.value
     val alpha = alphaAnim.value
 
+    // ── Above-anchor flip (2026-09-02) ──
+    // The TikTok style anchors this popup to the horizontal-dots button in
+    // the BOTTOM caption row (user request: "the lyrics animation should
+    // play attached with the three horizontal dots"), where a below-the-
+    // icon popup would run off the bottom of the screen. The scrim's own
+    // measured height is the popup's available space, and the popup's
+    // measured height is what it needs; when the two don't fit below the
+    // anchor, the popup flips to open above it instead (bottom edge at the
+    // icon's top, growth origin switched to the popup's bottom-right
+    // corner). Both reads are draw-phase (offset placement + graphicsLayer),
+    // so measuring settles the placement without recomposing the menu.
+    var anchorSpaceHeightPx by remember { mutableIntStateOf(0) }
+    var popupHeightPx by remember { mutableIntStateOf(0) }
+    val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
+
+    // Whether the popup opens above its anchor: true when the space below
+    // the icon can't hold the popup. The popup's height is 0 until its
+    // first layout completes — the first frames fall back to a generous
+    // estimate, which only ever makes the flip decision MORE conservative
+    // (and the popup is at alpha 0 then, so the settle is invisible).
+    fun opensAboveAnchor(): Boolean {
+        val neededHeightPx =
+            if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()
+        return anchorSpaceHeightPx > 0 &&
+            iconBoundsInRoot.bottom + verticalOffsetPx + neededHeightPx > anchorSpaceHeightPx
+    }
+
     // Memoize the drawBackdrop modifier chain so it isn't rebuilt on every
     // recomposition. The chain depends only on `backdrop` — stable across
     // scroll-driven recompositions of the host screen. Without this,
@@ -2206,6 +2278,7 @@ fun AnchoredLyricsOverflowMenu(
         modifier =
             Modifier
                 .fillMaxSize()
+                .onSizeChanged { anchorSpaceHeightPx = it.height }
                 .background(Color.Black.copy(alpha = 0.45f * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -2240,50 +2313,83 @@ fun AnchoredLyricsOverflowMenu(
         //   1. offset — positions the popup's top-right corner at the icon.
         //   2. widthIn(max = 220.dp) — compact fixed width (batch-13 value).
         //   3. heightIn(max = 520.dp) — safety bound for tall content.
-        //   4. graphicsLayer — UNCHANGED (alpha + scale + transformOrigin).
-        //      The animation reads scaleAnim.value / alphaAnim.value and
-        //      applies them via this graphicsLayer. Untouched per user spec.
-        //   5. shadow(16.dp, RoundedCornerShape(16.dp)) — soft elevated
-        //      shadow per reference "soft shadow, large shadow blur, subtle
-        //      depth". Applied AFTER graphicsLayer so the shadow scales +
-        //      fades with the popup's enter/exit animation (no janky
-        //      full-size shadow during the small-scale enter frame).
-        //   6. frostedBlurModifier (or fallback dark tint) — backdrop blur.
-        //   7. background(Color.Black at 55%) — dark charcoal tint over the
+        //   4. graphicsLayer — UNCHANGED animation reads (alpha + scale +
+        //      transformOrigin). NEW (batch-16, 2026-08-31): merged the
+        //      `shadowElevation` + `shape` + `clip = false` INTO this same
+        //      graphicsLayer block — previously this was a SEPARATE
+        //      `Modifier.shadow(16.dp, RoundedCornerShape(16.dp), clip = false)`
+        //      call which created its own internal graphicsLayer, resulting in
+        //      TWO graphicsLayer render passes per frame during the scale
+        //      animation (popup lag). Merging into one layer halves the layer
+        //      overhead while producing identical visuals: the shadow is still
+        //      drawn with 16dp elevation, RoundedCornerShape(16.dp) outline,
+        //      outside the bounds (clip=false), and is still transformed by
+        //      the same alpha/scale/transformOrigin — so it scales + fades
+        //      with the popup's enter/exit animation exactly as before.
+        //      User request: "Fix it without removing or sacrificing anything".
+        //   5. frostedBlurModifier (or fallback dark tint) — backdrop blur.
+        //   6. background(Color.Black at 55%) — dark charcoal tint over the
         //      blur, per reference "dark charcoal/black translucent
         //      material". The graphicsLayer's alpha animates this tint in/out.
-        //   8. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
+        //   7. clip(RoundedCornerShape(16.dp)) — was `extraLarge` (~28dp);
         //      reduced to 16dp per reference "24 px corner radius at the
         //      reference scale" (24px ≈ 16dp at mdpi).
-        //   9. clickable — consumes taps inside the popup.
+        //   8. clickable — consumes taps inside the popup.
         Box(
             modifier =
                 Modifier
                     .offset {
                         val popupWidthPx = with(density) { 220.dp.toPx() }.toInt()
                         val horizontalMarginPx = with(density) { 16.dp.toPx() }.toInt()
-                        val verticalOffsetPx = with(density) { 4.dp.toPx() }.toInt()
                         val iconRight = iconBoundsInRoot.right.toInt()
                         val iconBottom = iconBoundsInRoot.bottom.toInt()
                         val x =
                             (iconRight - popupWidthPx)
                                 .coerceAtLeast(horizontalMarginPx)
-                        val y = iconBottom + verticalOffsetPx
+                        val y =
+                            if (opensAboveAnchor()) {
+                                // Open ABOVE the anchor: the popup's bottom
+                                // edge sits 4dp above the icon's top edge, so
+                                // the corner the scale animation grows from
+                                // (bottom-right, set in the graphicsLayer
+                                // below) lands right on the icon.
+                                (iconBoundsInRoot.top - verticalOffsetPx -
+                                    (if (popupHeightPx > 0) popupHeightPx else with(density) { 360.dp.toPx() }.toInt()))
+                                    .coerceAtLeast(0f)
+                                    .toInt()
+                            } else {
+                                iconBottom + verticalOffsetPx
+                            }
                         IntOffset(x = x, y = y)
                     }
                     .widthIn(max = 220.dp)
                     .heightIn(max = 520.dp)
+                    .onSizeChanged { popupHeightPx = it.height }
                     .graphicsLayer {
                         this.alpha = alpha
                         this.scaleX = scale
                         this.scaleY = scale
-                        this.transformOrigin = TransformOrigin(1f, 0f)
+                        // The growth corner is the corner that meets the icon:
+                        // top-right when the popup opens below the anchor,
+                        // bottom-right when it flips above (TikTok's caption-
+                        // row anchor) — either way the popup reads as growing
+                        // straight out of the icon the user tapped.
+                        this.transformOrigin =
+                            TransformOrigin(1f, if (opensAboveAnchor()) 1f else 0f)
+                        // Merged from the previous `.shadow(16.dp, RoundedCornerShape(16.dp), clip = false)`
+                        // modifier (batch-16, 2026-08-31). Setting these inside the existing
+                        // graphicsLayer avoids creating a SECOND internal graphicsLayer — the
+                        // separate Modifier.shadow internally wraps content in another
+                        // graphicsLayer to render the elevation shadow, so stacking them caused
+                        // 2 layer passes per frame during the scale animation (laggy popup).
+                        // Visuals are identical: 16dp elevation shadow, RoundedCornerShape(16.dp)
+                        // outline, shadow drawn outside bounds (clip = false). The shadow still
+                        // scales + fades with the popup's alpha/scale/transformOrigin because
+                        // these properties live on the same layer.
+                        this.shadowElevation = with(density) { 16.dp.toPx() }
+                        this.shape = RoundedCornerShape(16.dp)
+                        this.clip = false
                     }
-                    .shadow(
-                        elevation = 16.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        clip = false,
-                    )
                     // Apply the frosted-blur backdrop sampler FIRST
                     // (before clip + background), so the blur samples the
                     // full backdrop at the popup's location, then the clip
@@ -2314,16 +2420,14 @@ fun AnchoredLyricsOverflowMenu(
         ) {
             // Delegate the actual menu items to the existing [LyricsMenu]
             // composable — same Edit / Refetch / Translate / Romanise /
-            // Undo / Search list, same click handlers, same dialogs. The
-            // MenuSurfaceSection card that LyricsMenu draws inside itself
-            // is now the popup's only visible surface (we removed the outer
-            // dark tint + border above so there's no gap around the card).
-            // Pass transparentSurface = true so the inner MenuSurfaceSection
-            // (an opaque `surfaceContainerLow` card) is replaced with a
-            // transparent surface — otherwise the white popup card sits ON
-            // TOP of the frosted-glass blur and hides it (user report:
-            // "liquid glass effect is behind the white popup but the white
-            // popup is loading on top of it").
+            // Undo / Search list, same click handlers, same dialogs. With
+            // transparentSurface = true, LyricsMenu renders its compact
+            // Apple-Music dark-glass row list inside a transparent Surface,
+            // so the frosted-glass blur applied to this outer Box stays
+            // visible (user report: "liquid glass effect is behind the white
+            // popup but the white popup is loading on top of it"). The
+            // non-Apple-Music styles (transparentSurface = false) render
+            // the restored NewActionGrid bottom-sheet card instead.
             LyricsMenu(
                 lyricsProvider = lyricsProvider,
                 mediaMetadataProvider = mediaMetadataProvider,

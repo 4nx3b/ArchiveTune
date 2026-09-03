@@ -122,6 +122,7 @@ import moe.rukamori.archivetune.ui.theme.palette.TonalPalettes
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private enum class SeedRole {
     PRIMARY,
@@ -1192,6 +1193,7 @@ fun ThemeCreatorScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showImportErrorDialog = false },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(onClick = { showImportErrorDialog = false }, shapes = ButtonDefaults.shapes()) {
                     Text(text = stringResource(android.R.string.ok))
                 }

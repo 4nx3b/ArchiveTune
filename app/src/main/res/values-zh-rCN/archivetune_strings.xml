@@ -67,9 +67,6 @@
     <string name="follow_theme">跟随主题</string>
     <string name="gradient">梯度</string>
     <string name="player_design_style">播放器设计风格</string>
-    <string name="player_design_v1">经典</string>
-    <string name="player_design_v2">现代</string>
-    <string name="player_design_v3">最小</string>
     <string name="player_design_v4">空间感</string>
     <string name="player_design_v5">小</string>
     <string name="player_background_blur">模糊</string>
@@ -191,7 +188,6 @@
     <string name="restore_step_restoring_file">正在恢复%1$s</string>
     <string name="show_home_category_chips">显示首页分类标签</string>
     <string name="show_home_category_chips_desc">在首页显示分类筛选标签</string>
-    <string name="player_design_v6">生动</string>
     <string name="canvas_cache">画面缓存</string>
     <string name="clear_canvas_cache">清理画面缓存</string>
     <string name="clear_canvas_cache_dialog">确定要清除所有画面缓存吗？</string>

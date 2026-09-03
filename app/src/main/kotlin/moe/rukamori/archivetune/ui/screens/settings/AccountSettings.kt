@@ -132,6 +132,7 @@ import moe.rukamori.archivetune.viewmodels.AccountChannelsState
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import java.util.UUID
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 private val AccountContentMaxWidth = 840.dp
 private val AvatarSize = 72.dp
@@ -586,6 +587,7 @@ fun AccountSettings(
                 Text(text = stringResource(R.string.unsaved_account_dialog_text))
             },
             confirmButton = {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
                 TextButton(
                     onClick = {
                         showUnsavedAccountDialog = false
@@ -815,6 +817,7 @@ private fun AccountSwitcherSheet(
             .orEmpty()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
+        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
         Text(
             text = stringResource(R.string.saved_accounts),
             style = MaterialTheme.typography.headlineSmall,

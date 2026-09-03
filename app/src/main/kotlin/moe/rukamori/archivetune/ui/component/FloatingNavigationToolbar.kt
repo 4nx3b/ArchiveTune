@@ -313,6 +313,14 @@ fun FloatingNavigationToolbar(
     // between items instead. On pure-black we also pin the icon/label colors for contrast.
     // For the tint-frosted variant, the bar surface is the primary color, so icons/labels use
     // onPrimary for contrast (selected = full opacity, unselected = 0.85 opacity for legibility).
+    //
+    // Liquid Glass nav bar: icons/labels stay WHITE in BOTH themes (user
+    // request 2026-09-03: "Revert the visibility change for just navigation
+    // bar. I only wanted you to fix the visibility for the liquid glass
+    // header pills in light mode."). The light-mode glass-ink treatment
+    // (liquidGlassContentColor) applies ONLY to the header pills / icon
+    // buttons / mini player — the navigation bar deliberately keeps its
+    // original pinned-white look.
     val itemColors =
         when {
             canLiquidGlass ->
@@ -1016,6 +1024,8 @@ fun FloatingNavigationToolbar(
                         Icon(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
+                            // Pinned white in both themes — see the canLiquidGlass note above
+                            // (the nav bar was explicitly excluded from the light-mode glass ink).
                             tint = Color.White,
                             modifier =
                                 Modifier.graphicsLayer {
@@ -1029,6 +1039,8 @@ fun FloatingNavigationToolbar(
                         if (!hideNavigationLabels) {
                             Text(
                                 text = stringResource(displayScreen.titleId),
+                                // Pinned white in both themes — see the canLiquidGlass note above
+                                // (the nav bar was explicitly excluded from the light-mode glass ink).
                                 color = Color.White,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
