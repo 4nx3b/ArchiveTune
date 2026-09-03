@@ -37,6 +37,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -77,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -117,6 +119,15 @@ import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
 
 /** Height of the top navigation row (icons + tabs). */
 internal val TIKTOK_TOP_NAV_HEIGHT = 44.dp
+
+/**
+ * Blur radius applied to the whole feed (the pager) while the inline queue
+ * sheet is open — the same depth the Apple Music style blurs its artwork
+ * backdrop to behind ITS queue sheet (Modifier.blur(72.dp) in
+ * AppleMusicPlayer), so the sheet's translucent glassy rows sit on the same
+ * kind of frosted field they were designed for.
+ */
+private val TIKTOK_QUEUE_FEED_BLUR = 72.dp
 
 /**
  * The feed player. Parameters mirror the other self-contained styles so
@@ -406,6 +417,26 @@ fun TikTokPlayerContent(
     val sliderPositionState = rememberUpdatedState(sliderPosition)
     val lyricsPosProvider = remember { { sliderPositionState.value } }
 
+    // ── The queue's backdrop blur (the Apple Music treatment) ──
+    // The Apple Music style renders its queue sheet over the artwork blurred
+    // at 72dp (AppleMusicPlayer's Modifier.blur(72.dp) canvas backdrop) — the
+    // sheet's translucent glassy rows are designed for that frosted field,
+    // not for a sharp cover (user report 2026-09-03: "the background is
+    // transparent. Fix it. it should be blurred"). The feed's equivalent: the
+    // PAGER itself defocuses while [queueOpen] — mesh, artwork, rail, all of
+    // it — animated from 0 to 72dp on the same 600ms easing the sheet rides
+    // in on, and back to 0 when it leaves, so the queue arrives the way it
+    // arrives in the Apple Music player: the content recedes, the sheet owns
+    // the face. Below Android S there is no RenderEffect (Modifier.blur is a
+    // no-op there) — those devices get a deeper scrim instead (see the
+    // queueOpen overlay's background below).
+    val canBlurFeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val feedBlur by animateDpAsState(
+        targetValue = if (queueOpen && canBlurFeed) TIKTOK_QUEUE_FEED_BLUR else 0.dp,
+        animationSpec = tween(600, easing = FastOutSlowInEasing),
+        label = "tiktokQueueFeedBlur",
+    )
+
     // ── The lyrics overflow popup's frosted backdrop ──
     // The Apple Music style's lyrics overflow popup is real frosted glass:
     // the player content records itself into a layer backdrop and the popup
@@ -462,9 +493,18 @@ fun TikTokPlayerContent(
             // a SIBLING at the root Box below. A drawBackdrop sampler must
             // never sit INSIDE the layer it samples — that is a
             // render-feedback loop (kyant).
+            //
+            // The queue's backdrop blur sits INSIDE the backdrop capture
+            // (closer to the content), so a sampled backdrop always matches
+            // what is on screen. Harmless either way in practice: the lyrics
+            // popup and the inline queue are mutually exclusive owners of
+            // the feed's face (opening the queue closes the lyrics pane).
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .let { base ->
+                        if (feedBlur > 0.dp) base.blur(feedBlur) else base
+                    }
                     .let { base ->
                         if (popupBackdrop != null) {
                             base.layerBackdrop(popupBackdrop)
@@ -577,7 +617,14 @@ fun TikTokPlayerContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.35f))
+                        // Deepened on pre-S (no RenderEffect → no blur): a
+                        // darker flat scrim is the fallback that keeps the
+                        // white glassy rows legible over the sharp mesh.
+                        .background(
+                            Color.Black.copy(
+                                alpha = if (canBlurFeed) 0.35f else 0.55f,
+                            ),
+                        )
                         .padding(top = topChromeHeight, bottom = bottomChromeHeight),
             ) {
                 AppleMusicQueueSheet(
