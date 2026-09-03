@@ -161,7 +161,14 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.component.LyricsV2
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -709,6 +716,14 @@ fun AppleMusicPlayerContent(
     // user taps the overflow "more" button).
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
+    // "Show lyrics on player": the three-line synced pane takes the artwork's place in the
+    // COVER state, the same as every other player style (see PlayerInlineLyrics). Suppressed
+    // while a music video or canvas is on screen — that artwork slot is showing moving picture,
+    // not a cover, and replacing it would stop playback's visuals mid-song. Tapping the pane
+    // opens this style's own full lyrics morph rather than the standalone lyrics page.
+    val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, defaultValue = true)
+    val inlineLyricLines = rememberInlineLyricLines(playerConnection)
+
     // ─── Automatic AI translation ───────────────────────────────────────
     // Mirrors the same LaunchedEffect in LyricsScreen.kt. The Apple Music
     // player uses an inline LyricsV2/LyricsEnhanced view (not LyricsScreen),
@@ -949,6 +964,25 @@ fun AppleMusicPlayerContent(
         // the album-art blur (RenderEffect is unavailable, so blurring a video surface
         // efficiently isn't possible).
         val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
+        val inlineLyricsAvailable =
+            showLyricsOnPlayer && inlineLyricLines.isNotEmpty() && !videoShowing && !canvasActive
+        val inlineLyricsPane: @Composable (Dp, Dp) -> Unit = { size, cornerRadius ->
+            PlayerInlineLyrics(
+                lines = inlineLyricLines,
+                positionProvider = { playerConnection.player.currentPosition },
+                isPlaying = isPlaying,
+                // The Apple Music stage is always dark (blurred artwork under a black scrim),
+                // so the pane's text is white rather than theme-tinted, matching the lyrics
+                // morph this taps through to.
+                textColor = Color.White,
+                artworkUrl = artworkUrl,
+                onOpenLyrics = toggleLyrics,
+                modifier =
+                    Modifier
+                        .size(size)
+                        .clip(RoundedCornerShape(cornerRadius)),
+            )
+        }
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
@@ -1292,6 +1326,8 @@ fun AppleMusicPlayerContent(
                     isMusicVideo = mediaMetadata.isMusicVideo,
                     landscape = true,
                     artworkCornerRadiusDp = artworkCornerRadiusDp,
+                    inlineLyrics =
+                        inlineLyricsPane.takeIf { inlineLyricsAvailable && !lyricsOpen && !queueOpen },
                     modifier =
                         Modifier
                             .weight(1f)
@@ -1461,6 +1497,11 @@ fun AppleMusicPlayerContent(
                                     // AppleMusicSharpArtwork matches the overlay
                                     // clip on the sharedBounds modifier below.
                                     artworkCornerRadiusDp = artworkCornerRadiusDp,
+                                    // Gated on targetState rather than lyricsOpen/queueOpen: inside
+                                    // AnimatedContent this branch IS the cover state, and reading
+                                    // the flags directly would swap the pane out a frame early,
+                                    // mid-morph.
+                                    inlineLyrics = inlineLyricsPane.takeIf { inlineLyricsAvailable },
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
@@ -1919,6 +1960,12 @@ private fun AppleMusicSharpArtwork(
     // transitions. See clipInOverlayDuringTransition on the sharedBounds
     // modifier in AppleMusicPlayerContent.
     artworkCornerRadiusDp: Dp = 16.dp,
+    // Drawn in the cover's place when "show lyrics on player" is on and the song has synced
+    // lyrics. A slot rather than a boolean because only this composable knows the size and
+    // corner radius it settled on — the caller would have to re-derive both to line the pane
+    // up with the artwork it replaces. Only consulted on the still-cover path: a canvas or
+    // music video keeps its stage (see inlineLyricsAvailable in AppleMusicPlayerContent).
+    inlineLyrics: (@Composable (size: Dp, cornerRadius: Dp) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -2056,6 +2103,10 @@ private fun AppleMusicSharpArtwork(
                     modifier = Modifier.matchParentSize(),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (inlineLyrics != null) {
+                        inlineLyrics(artworkSize, artworkCornerRadiusDp)
+                        return@Box
+                    }
                     AsyncImage(
                         model = artworkRequest ?: artworkUrl,
                         contentDescription = null,
