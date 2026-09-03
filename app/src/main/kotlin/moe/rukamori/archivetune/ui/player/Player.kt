@@ -1709,7 +1709,9 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenQueue = openQueue,
+                            // NOTE: no onOpenQueue here — the feed opens the
+                            // Apple Music inline queue sheet itself (see
+                            // TikTokPlayerContent's queueOpen overlay).
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )
@@ -2126,7 +2128,9 @@ fun BottomSheetPlayer(
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenQueue = openQueue,
+                            // NOTE: no onOpenQueue here — the feed opens the
+                            // Apple Music inline queue sheet itself (see
+                            // TikTokPlayerContent's queueOpen overlay).
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )
