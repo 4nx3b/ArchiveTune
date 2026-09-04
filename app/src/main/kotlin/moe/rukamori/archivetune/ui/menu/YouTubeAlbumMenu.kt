@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.utils.SpeedDialPin
@@ -415,7 +416,7 @@ fun YouTubeAlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -545,7 +546,7 @@ fun YouTubeAlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -638,7 +639,7 @@ fun YouTubeAlbumMenu(
 
         if (albumItem.artists != null) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {

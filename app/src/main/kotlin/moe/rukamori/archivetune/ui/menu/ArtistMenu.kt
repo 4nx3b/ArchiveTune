@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.ui.component.ArtistListItem
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.dataStore
@@ -210,7 +211,7 @@ fun ArtistMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {

@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.SongListItem
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
@@ -468,7 +469,7 @@ fun AlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -569,7 +570,7 @@ fun AlbumMenu(
 
         if (!isLocalAlbum) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -660,7 +661,7 @@ fun AlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {

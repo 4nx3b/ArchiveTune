@@ -47,6 +47,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.CanvasSourceDiagnosis
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
+import moe.rukamori.archivetune.tidal.TidalCanvasCheck
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 
@@ -64,16 +65,21 @@ import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
  *    song (or a fixed famous probe when nothing plays).
  *  * **Apple Music canvas API**: the AMP catalog search the Apple-Music
  *    canvas path performs, including token refresh.
+ *  * **Tidal** (2026-09-04, user request: "Also in the canvas check there's
+ *    no tidal option"): the account token validated (refreshing through
+ *    auth.tidal.com when expired) and the catalog search the Tidal artwork
+ *    path performs — own instances first, public API as fallback.
  *  * **Every configured mirror**: each user resolver endpoint gets the exact
  *    `GET <base>?id=<video id>` the fallback chain issues, validated with the
  *    same JSON content-type rule (HTML = dead endpoint).
  *
- * All checks run in parallel on Dispatchers.IO through the canvas module's
- * real network stacks — no mock pings; the statuses shown are what playback
+ * All checks run in parallel on Dispatchers.IO through the real network
+ * stacks — no mock pings; the statuses shown are what playback
  * would experience right now. Results stream in as each source answers.
  */
 private const val SPOTIFY_ROW_KEY = "spotify-account"
 private const val APPLE_MUSIC_ROW_KEY = "apple-music"
+private const val TIDAL_ROW_KEY = "tidal"
 
 /**
  * Fallback probe when nothing is playing: a permanently-online, extremely
@@ -122,6 +128,7 @@ fun CanvasCheckDialog(
         buildList {
             add(CanvasCheckRow(SPOTIFY_ROW_KEY, stringResourceSafe(context, R.string.canvas_check_source_spotify)))
             add(CanvasCheckRow(APPLE_MUSIC_ROW_KEY, stringResourceSafe(context, R.string.canvas_check_source_apple_music)))
+            add(CanvasCheckRow(TIDAL_ROW_KEY, stringResourceSafe(context, R.string.canvas_check_source_tidal)))
             mirrors.forEach { endpoint ->
                 add(CanvasCheckRow("mirror:$endpoint", stringResourceSafe(context, R.string.canvas_check_source_mirror, endpoint)))
             }
@@ -159,6 +166,10 @@ fun CanvasCheckDialog(
                     launch {
                         val diagnosis = AppleMusicProvider.diagnose(probeTitle, probeArtist)
                         updateRow(APPLE_MUSIC_ROW_KEY, diagnosis)
+                    }
+                    launch {
+                        val diagnosis = TidalCanvasCheck.diagnose(context, probeTitle, probeArtist)
+                        updateRow(TIDAL_ROW_KEY, diagnosis)
                     }
                     mirrors.forEach { endpoint ->
                         launch {

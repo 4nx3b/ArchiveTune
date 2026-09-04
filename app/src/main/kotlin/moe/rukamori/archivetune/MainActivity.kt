@@ -320,6 +320,10 @@ import moe.rukamori.archivetune.ui.component.FontSizeRange
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
+import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.NetworkStatusBanner
 import moe.rukamori.archivetune.ui.component.StarDialog
@@ -329,6 +333,10 @@ import moe.rukamori.archivetune.ui.component.TvNavigationRail
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.menu.CastRoutePickerRootOverlay
+import moe.rukamori.archivetune.cast.CastViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
@@ -1448,21 +1456,46 @@ class MainActivity : ComponentActivity() {
                     // animated content in real time (2026-09-04: "The liquid
                     // glass blur behind the song popup is static. it should
                     // render in real time just like new lyrics popup").
-                    val menuGlassBackdrop: LayerBackdrop? =
+                    //
+                    // 2026-09-04 (scroll smoothness, "the scrolling in popup
+                    // lags a bit sometimes when there's canvas"): the recorder
+                    // is now a ThrottledLayerBackdrop — the layer is re-
+                    // recorded at most every ~33ms instead of on every draw
+                    // invalidation, so a playing canvas video (which
+                    // invalidates the whole screen every frame) no longer
+                    // steals the frame budget from the popup's scroll. The
+                    // frost still updates live at ~30fps — indistinguishable
+                    // behind the 32dp blur + scrim.
+                    val menuGlassBackdrop: ThrottledLayerBackdrop? =
                         if (liquidGlassActive) {
-                            rememberLayerBackdrop()
+                            rememberThrottledLayerBackdrop()
                         } else {
                             null
                         }
 
+                    // The route picker (Cast) glass popup is rendered at this
+                    // root level (CastRoutePickerRootOverlay below) and samples
+                    // the SAME menu-glass backdrop, so its recorder has to stay
+                    // attached while the cast popup is open too — even though
+                    // the overflow menu that launched it has already closed
+                    // (2026-09-04: "When I click on cast the songs overflow
+                    // popup should automatically close").
+                    // The CastViewModel is activity-scoped and shared with the
+                    // menu/player cast actions (the repository is flavor-split,
+                    // so this is safe on foss too — the picker just never
+                    // becomes visible there).
+                    val castViewModel: CastViewModel = viewModel()
+                    val castRoutePickerVisible by castViewModel.isRoutePickerVisible.collectAsState()
+
                     // Keep the recorder attached slightly past the menu's own
                     // close (the popup plays a ~200ms exit fade while
                     // menuState.isVisible is already false); detaching the
-                    // kyant recorder clears the layer coordinates instantly,
-                    // which would blank the frost mid-fade.
+                    // recorder clears the layer coordinates instantly, which
+                    // would blank the frost mid-fade. The cast picker keeps the
+                    // layer attached the whole time it is visible.
                     var menuGlassRecordingActive by remember { mutableStateOf(false) }
-                    LaunchedEffect(menuState.isVisible) {
-                        if (menuState.isVisible) {
+                    LaunchedEffect(menuState.isVisible, castRoutePickerVisible) {
+                        if (menuState.isVisible || castRoutePickerVisible) {
                             menuGlassRecordingActive = true
                         } else {
                             delay(260)
@@ -2155,6 +2188,28 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
                     ) {
+                        // ── Player-collapse BACK FALLBACK (2026-09-04, moved) ──
+                        // This used to be composed AFTER the app-surface Row,
+                        // which made it the LAST-registered (highest-priority)
+                        // back callback — it consumed the back gesture even
+                        // while the player's queue sheet / lyrics panel /
+                        // BitChord queue overlay was open, minimizing the whole
+                        // player instead of closing the overlay (user report
+                        // 2026-09-04, video: "Lyrics/queue should get closed
+                        // not player when I use the back navigation gesture.
+                        // right now it minimises the full player instead").
+                        // Compose dispatches back callbacks LIFO, so composing
+                        // it FIRST — before the Row whose subtree contains
+                        // every player-internal overlay BackHandler — makes it
+                        // the LOWEST-priority callback: the player's own
+                        // handlers (queue collapse, lyrics close, AOD, inline
+                        // video) all win, and this only fires when the player
+                        // is expanded with no overlay handling back — the pure
+                        // "collapse to mini player" case it was written for.
+                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
+                            playerBottomSheetState.collapseSoft()
+                        }
+
                         // ── Muzo sheet frosted glass (2026-09-04, revised) ──
                         // The song-overflow sheet's "blurred glass" now lives on
                         // the SHEET ITSELF, not on the app behind it: the
@@ -2173,24 +2228,26 @@ class MainActivity : ComponentActivity() {
                         // surface — the navigation rail, the Scaffold's top
                         // bar, the NavHost pages AND the bottom-bar slot with
                         // the mini player + navigation bar. While the overflow
-                        // menu is open, the menu-glass backdrop records this whole
-                        // subtree (the recording itself is draw-phase only, so
+                        // menu (or the root-level cast route picker) is open,
+                        // the menu-glass backdrop records this whole subtree
+                        // (the recording itself is draw-phase only, so
                         // attaching/detaching the modifier never re-lays-out
-                        // the app). The floating menu popup is composed as a
-                        // SIBLING below (never inside this Row), so it can
-                        // safely sample the layer with kyant drawBackdrop —
-                        // the non-reentrant case. The conditional attach keeps
-                        // the cost at zero whenever no menu is showing; while
-                        // attached the layer stays live, so the popup's frost
+                        // the app). The floating menu popup and the cast glass
+                        // popup are composed as SIBLINGS below (never inside
+                        // this Row), so they can safely sample the layer with
+                        // kyant drawBackdrop — the non-reentrant case. The
+                        // conditional attach keeps the cost at zero whenever no
+                        // glass popup is showing; while attached the layer stays
+                        // live (throttled to ~30fps), so the popups' frost
                         // follows the mini player's animated progress line /
                         // artwork crossfades and anything else moving behind
-                        // it, exactly like the lyrics popup's frost follows
+                        // them, exactly like the lyrics popup's frost follows
                         // the player's drifting artwork.
                         Row(
                             modifier =
                                 Modifier.let { base ->
                                     if (menuGlassBackdrop != null && menuGlassRecordingActive) {
-                                        base.layerBackdrop(menuGlassBackdrop)
+                                        base.throttledLayerBackdrop(menuGlassBackdrop)
                                     } else {
                                         base
                                     }
@@ -3480,12 +3537,30 @@ modifier =
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
-                            playerBottomSheetState.collapseSoft()
-                        }
+                        // (The player-collapse back handler used to live here —
+                        // it moved ABOVE the app-surface Row so the player's
+                        // internal overlay handlers outrank it. See the comment
+                        // at its new position.)
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+
+                        // Root-level real-time liquid-glass Cast route picker
+                        // (2026-09-04, user report: "The cast doesn't have any
+                        // realtime liquid glass blur. Fix it."). Rendered AFTER
+                        // BottomSheetMenu so it draws on top of the overflow
+                        // menu's exit fade and its BackHandler outranks the
+                        // menu's (back closes the cast popup first). Samples
+                        // the SAME menu-glass recorder as the song popup — the
+                        // full live app surface — so the frost is real-time on
+                        // EVERY trigger path (mini player menu, any player
+                        // style's more-menu, the Apple-Music output chip, the
+                        // expanded player). gms renders the floating glass card;
+                        // foss ships a no-op stub (no Cast support).
+                        CastRoutePickerRootOverlay(
+                            backdrop = menuGlassBackdrop,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
 

@@ -164,7 +164,6 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
-import moe.rukamori.archivetune.ui.menu.CastRoutePickerGlassOverlay
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.ImageBlurUtils
@@ -864,14 +863,16 @@ fun AppleMusicPlayerContent(
     // renders the route-picker bottom sheet when it becomes visible. On flavors without Cast (foss)
     // rememberCastPlayerMenuAction() returns null and we fall back to the system output switcher.
     //
-    // renderSheet = false (2026-09-04): the player-level instance no longer renders
-    // the ModalBottomSheet — AppleMusicPlayer renders the real-time liquid-glass
-    // route picker via CastRoutePickerGlassOverlay (next to the anchored lyrics
-    // popup, sampling the same live player backdrop) when the player is expanded
-    // and no overflow menu is open. Every other trigger path (the "Cast" row in
-    // the more-menu on any player style, the collapsed mini player) keeps the
-    // ModalBottomSheet rendered by the PlayerMenu instance.
-    val castAction = rememberCastPlayerMenuAction(renderSheet = false)
+    // 2026-09-04 (root-level glass picker): the real-time liquid-glass route
+    // picker now renders at the ROOT level for EVERY trigger path (see
+    // CastRoutePickerRootOverlay in MainActivity) — including this player's
+    // output chip — sampling the whole-app menu-glass recorder. This instance
+    // therefore keeps the DEFAULT renderSheet = true so the plain
+    // ModalBottomSheet still composes here when Liquid Glass is off (the root
+    // overlay renders nothing in that case); when glass is on the sheet is
+    // skipped inside rememberCastPlayerMenuAction and the root overlay owns
+    // the popup — no double render.
+    val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
         // Cast-less flavors (foss): open the system media-output switcher panel.
         runCatching {
@@ -1879,19 +1880,12 @@ fun AppleMusicPlayerContent(
             )
         }
 
-        // Real-time liquid-glass Cast route picker (2026-09-04, user request:
-        // "use the same kind of real time liquid glass blur for cast popup").
-        // Rendered as a sibling of the player's layer-capturing inner Box —
-        // the same safe non-reentrant position the lyrics popup above uses —
-        // so its frost samples the player's live backdrop (drifting artwork,
-        // progress) in real time. Eligible only while the player sheet is
-        // expanded AND no overflow menu is open (the root-level menu popup
-        // would sit on top of this inline overlay); all other trigger paths
-        // keep the ModalBottomSheet the PlayerMenu cast row renders.
-        CastRoutePickerGlassOverlay(
-            backdrop = popupBackdrop,
-            eligible = state.isExpandedOrExpanding && !menuState.isVisible,
-        )
+        // (2026-09-04) The real-time liquid-glass Cast route picker that used
+        // to render here was unified into the ROOT-level
+        // CastRoutePickerRootOverlay composed by MainActivity — it samples the
+        // whole-app menu-glass recorder (which records the expanded player
+        // too), so the frost is identical and every trigger path now shares
+        // the same glass popup. Nothing to render inline anymore.
     }
 }
 

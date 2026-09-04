@@ -34,9 +34,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,6 +54,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -108,7 +113,7 @@ private fun sumCachedBytesForSong(
 ): Long {
     val cache = downloadUtil?.playerCache ?: return 0L
     var total = 0L
-    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId)) {
+    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", "apple:$songId", songId)) {
         total += runCatching { sumCacheSpans(cache, key) }.getOrDefault(0L)
     }
     return total
@@ -146,6 +151,15 @@ fun DebugSettings(navController: NavController) {
 
     val playerConnection = LocalPlayerConnection.current
 
+    // Header haze (2026-09-04, user request: "There's no haze effect and
+    // header behaviour like home page in developer options, updates and
+    // about page") — the same progressive top-fade blur the Home route and
+    // the other settings screens use: the scrolling content is the haze
+    // source, the transparent pill header zone blurs whatever scrolls
+    // under it.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -169,6 +183,10 @@ fun DebugSettings(navController: NavController) {
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { innerPadding: PaddingValues ->
@@ -177,18 +195,28 @@ fun DebugSettings(navController: NavController) {
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal,
-                        ),
-                    ).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal,
+                            ),
+                        ).verticalScroll(scrollState)
+                        // Haze source for the pinned header's top-fade blur —
+                        // chained AFTER verticalScroll (like every ported
+                        // screen) so the top padding scrolls away and content
+                        // flows under the header pill, which is what makes the
+                        // blur visible.
+                        .hazeSource(headerHaze)
+                        .padding(top = topPadding)
+                        .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
             PreferenceGroup(title = stringResource(R.string.experimental_features)) {
                 item {
                     SwitchPreference(
@@ -278,8 +306,17 @@ fun DebugSettings(navController: NavController) {
                     NerdStatsSection(playerConnection = playerConnection)
                 }
             }
+            }
 
-            Spacer(modifier = Modifier.height(playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding))
+            // Header haze overlay — later sibling of the scrolling content so
+            // it draws on top of it, under the pinned pill header (the same
+            // placement every ported settings screen uses; the bottom spacing
+            // the old trailing Spacer provided now rides on the Column's own
+            // bottom padding).
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 }
