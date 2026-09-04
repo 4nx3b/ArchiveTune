@@ -94,6 +94,9 @@ import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
+import moe.rukamori.archivetune.constants.SpotifyHomeStyle
+import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
+import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -265,6 +268,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
     val (homeScreenStyle, onHomeScreenStyleChange) =
         rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
+    var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
+    val spotifySignedIn = rememberHomeSourceAvailable()
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -485,11 +490,14 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("liquid_glass_effects"),
+                modifier = positions.modifierFor("dynamic_theme"),
                 title = stringResource(R.string.theme),
             ) {
+                // Liquid glass used to sit in its own PreferenceGroup, also titled "Theme", so the
+                // screen opened with a Theme header, one switch, and a second Theme header. Same
+                // group, same order, one header.
                 item {
-                    Column {
+                    Column(modifier = positions.modifierFor("liquid_glass_effects")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.liquid_glass_effects)) },
                             description = stringResource(R.string.liquid_glass_effects_desc),
@@ -507,12 +515,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         }
                     }
                 }
-            }
 
-            PreferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
-                title = stringResource(R.string.theme),
-            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_dynamic_theme)) },
@@ -1058,32 +1061,13 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
+            // The three settings that decide what the Home tab shows were scattered through
+            // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
+            // one decision — which home you get — so they read as one group.
             PreferenceGroup(
-                modifier = positions.modifierFor("app_language"),
-                title = stringResource(R.string.misc),
+                modifier = positions.modifierFor("home_screen"),
+                title = stringResource(R.string.home),
             ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("tablet_mode"),
-                        title = { Text(stringResource(R.string.tablet_mode)) },
-                        description = stringResource(R.string.tablet_mode_desc),
-                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
-                        checked = tabletModeEnabled,
-                        onCheckedChange = onTabletModeEnabledChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("minimal_home_mode"),
-                        title = { Text(stringResource(R.string.minimal_home_mode)) },
-                        description = stringResource(R.string.minimal_home_mode_desc),
-                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
-                        checked = minimalHomeMode,
-                        onCheckedChange = onMinimalHomeModeChange,
-                    )
-                }
-
                 item {
                     EnumListPreference(
                         modifier = positions.modifierFor("home_screen_style"),
@@ -1101,24 +1085,36 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("navigation_bar_style"),
-                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
-                        description = stringResource(R.string.navigation_bar_settings_subtitle),
-                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
-                    )
+                // Only worth showing once there is a Spotify home to style. Same three-way choice
+                // as above so the two pages can be set independently — the point of splitting them.
+                if (spotifySignedIn) {
+                    item {
+                        EnumListPreference(
+                            modifier = positions.modifierFor("spotify_home_style"),
+                            title = { Text(stringResource(R.string.spotify_home_style)) },
+                            description = stringResource(R.string.spotify_home_style_desc),
+                            icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                            selectedValue = spotifyHomeStyle,
+                            onValueSelected = { spotifyHomeStyle = it },
+                            valueText = {
+                                when (it) {
+                                    SpotifyHomeStyle.SPOTIFY -> stringResource(R.string.home_screen_style_spotify)
+                                    SpotifyHomeStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
+                                    SpotifyHomeStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
+                                }
+                            },
+                        )
+                    }
                 }
 
                 item {
                     SwitchPreference(
-                        modifier = positions.modifierFor("hide_scrollbar"),
-                        title = { Text(stringResource(R.string.hide_scrollbar)) },
-                        description = stringResource(R.string.hide_scrollbar_desc),
-                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
-                        checked = hideScrollbar,
-                        onCheckedChange = onHideScrollbarChange,
+                        modifier = positions.modifierFor("minimal_home_mode"),
+                        title = { Text(stringResource(R.string.minimal_home_mode)) },
+                        description = stringResource(R.string.minimal_home_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
+                        checked = minimalHomeMode,
+                        onCheckedChange = onMinimalHomeModeChange,
                     )
                 }
 
@@ -1138,6 +1134,45 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             },
                         )
                     }
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("app_language"),
+                title = stringResource(R.string.misc),
+            ) {
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("tablet_mode"),
+                        title = { Text(stringResource(R.string.tablet_mode)) },
+                        description = stringResource(R.string.tablet_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
+                        checked = tabletModeEnabled,
+                        onCheckedChange = onTabletModeEnabledChange,
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        // Both keys on the one row: this page used to carry two identical entries
+                        // for the same sub-page, one per key. One row, both aliases.
+                        modifier = positions.modifierFor("navigation_bar_settings", "navigation_bar_style"),
+                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
+                        description = stringResource(R.string.navigation_bar_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("hide_scrollbar"),
+                        title = { Text(stringResource(R.string.hide_scrollbar)) },
+                        description = stringResource(R.string.hide_scrollbar_desc),
+                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                        checked = hideScrollbar,
+                        onCheckedChange = onHideScrollbarChange,
+                    )
                 }
 
                 // "Change default library chip" preference removed per user

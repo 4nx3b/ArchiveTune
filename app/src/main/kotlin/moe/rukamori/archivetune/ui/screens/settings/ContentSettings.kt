@@ -102,6 +102,8 @@ fun ContentSettings(
         )
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
+    val (homeCatalogueSwitch, onHomeCatalogueSwitchChange) =
+        rememberPreference(key = HomeCatalogueSwitchKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     // (Round 13) "Set quick picks" UI removed — the preference is still read
@@ -226,6 +228,17 @@ fun ContentSettings(
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,
                     onCheckedChange = onHideVideoChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("enable_catalogue_switch"),
+                    title = { Text(stringResource(R.string.enable_catalogue_switch)) },
+                    description = stringResource(R.string.enable_catalogue_switch_summary),
+                    icon = { Icon(painterResource(R.drawable.sync), null) },
+                    checked = homeCatalogueSwitch,
+                    onCheckedChange = onHomeCatalogueSwitchChange,
                 )
             }
 

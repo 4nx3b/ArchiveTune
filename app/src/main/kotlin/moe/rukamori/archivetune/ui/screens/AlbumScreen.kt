@@ -130,6 +130,9 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AlbumUiState
 import moe.rukamori.archivetune.viewmodels.AlbumViewModel
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -293,6 +296,16 @@ fun AlbumScreen(
     // LocalPlaylistScreen / HistoryScreen pattern already does.
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
+    // Header haze (2026-09-04, revised): the home page's blurred top haze,
+    // ported to this screen. The haze SOURCE is the scrolling LazyColumn
+    // itself, and the ScreenHeaderHaze overlay renders ON TOP of it (a later
+    // sibling), beneath the pinned Liquid Glass pills — the overlay was
+    // previously the FIRST child under the LazyColumn, so the list drew
+    // straight over it and the haze was never visible (user report
+    // 2026-09-04: "I don't see the haze effect"). Keeping the source (list)
+    // and the effect (overlay) as siblings also matches the home page's
+    // top-bar blur pattern.
+    val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
             Modifier
@@ -301,11 +314,11 @@ fun AlbumScreen(
     ) {
         LazyColumn(
             modifier =
-                if (layerBackdropActive) {
+                (if (layerBackdropActive) {
                     Modifier.layerBackdrop(artworkBackdrop)
                 } else {
                     Modifier
-                },
+                }).hazeSource(headerHaze),
             state = lazyListState,
             contentPadding =
                 PaddingValues(
@@ -764,6 +777,15 @@ fun AlbumScreen(
                 }
             }
         }
+
+        // ── Header haze overlay (2026-09-04, revised) ──
+        // Progressive top-fade blur over the list — AFTER the LazyColumn in
+        // declaration order so it draws on top of it, BEFORE the pinned pills
+        // so they stay crisp above the frosted strip.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
 
         // Persistent Liquid Glass header buttons. These are siblings of the
         // LazyColumn (children of the outer Box), positioned at top-start and

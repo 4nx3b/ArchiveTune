@@ -270,6 +270,13 @@ val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+// When ON, the YouTube ⇄ Spotify home switcher (HomeSourceSwitcher) renders at
+// the top of the Home page. Default OFF: the switcher was removed from the home
+// page per the user request 2026-09-04 ("remove the switch text between
+// youtube and Spotify catalogue on the home page. Instead give an option for
+// that in Content named Enable Catalogue switch") — the option lives in
+// Settings → Content → "Enable Catalogue switch".
+val HomeCatalogueSwitchKey = booleanPreferencesKey("homeCatalogueSwitch")
 // When ON, music videos render an inline video surface in the player. Default OFF so songs
 // play as plain audio (album artwork shown, no video stream is loaded) unless the user opts in.
 // Distinct from HideVideoKey which filters videos out of the library/queue entirely.
@@ -1037,6 +1044,41 @@ enum class HomeScreenStyle {
 
 val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
 
+/**
+ * Which service the Home tab is showing. The two homes are separate pages you switch between,
+ * not one feed with the other stacked into it — signing into Spotify must not cost you the
+ * YouTube home, and vice versa.
+ *
+ * SPOTIFY resolves back to YOUTUBE while [SpotifySpDcKey] is blank (see NavigationBuilder), so a
+ * signed-out user can never be stranded on an empty page.
+ *
+ * This briefly lived as a third `HomeScreenStyle` case, which conflated "which service" with
+ * "which layout" and meant the two could not be chosen independently. `toEnum` falls back to the
+ * default on an unknown name, so anyone who had picked that case lands on the YouTube home and
+ * finds Spotify on the switcher.
+ */
+enum class HomeSource {
+    YOUTUBE,
+    SPOTIFY,
+}
+
+val HomeSourceKey = stringPreferencesKey("homeSource")
+
+/**
+ * Layout style for the Spotify home, mirroring [HomeScreenStyle] for the YouTube one.
+ *
+ * SPOTIFY is the default and is the geometry Spotify itself uses — tracks two rows deep, wide
+ * cards. DEFAULT and RUKAMORI render the same Spotify data in the geometry of the two YouTube
+ * homes, so the page matches whichever of those the user already prefers.
+ */
+enum class SpotifyHomeStyle {
+    SPOTIFY,
+    DEFAULT,
+    RUKAMORI,
+}
+
+val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
+
 enum class PlayerDesignStyle {
     /**
      * Cinematic (V4) — the default legacy style. Classic (V1), Modern (V2),
@@ -1240,6 +1282,17 @@ enum class SearchSource {
 val VisitorDataKey = stringPreferencesKey("visitorData")
 val DataSyncIdKey = stringPreferencesKey("dataSyncId")
 val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
+
+/**
+ * OAuth2 credentials for the YouTube VR device-code flow, the signed-in path that does not use a
+ * cookie. The access token is short-lived (~1h) and is what reaches InnerTube as a Bearer; the
+ * refresh token is long-lived and never leaves the app.
+ */
+val InnerTubeOAuthTokenKey = stringPreferencesKey("innerTubeOAuthToken")
+val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshToken")
+
+/** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
+val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")

@@ -1728,12 +1728,17 @@ class MusicService :
             }
         }
 
+        // Periodic save exists only to keep the resume *position* roughly current for a process
+        // death; every change to the queue itself already calls saveQueueToDisk from the eight
+        // event handlers that cause one. So this writes the small player-state file only — the
+        // full-queue snapshot it used to take mapped every media item on the main thread and wrote
+        // both files, six times a minute, for a queue that had not changed.
         scope.launch {
             while (isActive) {
-                delay(if (player.isPlaying) 10.seconds else 30.seconds)
+                delay(PERSISTENT_POSITION_SAVE_INTERVAL)
                 val shouldSave = withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }
                 if (shouldSave && player.mediaItemCount > 0) {
-                    saveQueueToDisk()
+                    savePlayerStateToDisk()
                 }
             }
         }
@@ -7591,6 +7596,14 @@ class MusicService :
     private val directStreamCache = ConcurrentHashMap<String, CachedDirectStream>()
     private var nextMediaItemPrefetchJob: kotlinx.coroutines.Job? = null
 
+    /**
+     * Media id [nextMediaItemPrefetchJob] is resolving, so a still-wanted job is not cancelled.
+     * Only meaningful while that job is active — every read is guarded on `isActive`, so a stale
+     * id left behind by a finished job is inert and needs no clearing.
+     */
+    @Volatile
+    private var prefetchingMediaId: String? = null
+
     private data class CachedDirectStream(
         val stream: DirectStream,
         val expiresAtMs: Long,
@@ -7607,12 +7620,23 @@ class MusicService :
      * silently swallowed — prefetch is an optimization, not a requirement.
      */
     private fun prefetchNextMediaItemStream() {
-        nextMediaItemPrefetchJob?.cancel()
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return
         val nextIndex = player.nextMediaItemIndex
         if (nextIndex == C.INDEX_UNSET || nextIndex < 0 || nextIndex >= player.mediaItemCount) return
         val nextItem = player.getMediaItemAt(nextIndex)
         val mediaId = nextItem.mediaId.trim().takeIf { it.isNotBlank() } ?: return
+
+        // Don't cancel a prefetch whose result is still wanted. This used to cancel
+        // unconditionally, so skipping twice inside the resolve window killed the in-flight job
+        // for the very track being skipped onto — the one case where the work was about to pay
+        // off — and that track then resolved from scratch, synchronously, while the user waited.
+        // A job for the now-current item is finishing into the same caches the resolver reads.
+        val inFlight = prefetchingMediaId
+        if (nextMediaItemPrefetchJob?.isActive == true && inFlight != null) {
+            val currentId = player.currentMediaItem?.mediaId?.trim()
+            if (inFlight == mediaId || inFlight == currentId) return
+        }
+        nextMediaItemPrefetchJob?.cancel()
         // Skip prefetch for local/telegram files (no network resolution needed).
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
         // Skip if we already have a fresh cached entry.
@@ -7621,6 +7645,7 @@ class MusicService :
         // Skip in low-data mode (user wants minimal background data).
         if (isLowDataModeActive()) return
 
+        prefetchingMediaId = mediaId
         nextMediaItemPrefetchJob =
             scope.launch(Dispatchers.IO + SilentHandler) {
                 runCatching {
@@ -9597,19 +9622,7 @@ class MusicService :
      * thread mid-request, surfacing an [InterruptedException] with the real 401 attached only as a
      * suppressed exception — in which case a naive `catch (TidalUnauthorizedException)` misses it.
      */
-    private fun isTidalUnauthorized(root: Throwable?): Boolean {
-        val stack = ArrayDeque<Throwable>()
-        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
-        root?.let { stack.addLast(it) }
-        while (stack.isNotEmpty()) {
-            val t = stack.removeLast()
-            if (!seen.add(t)) continue
-            if (t is TidalAccountManager.TidalUnauthorizedException) return true
-            t.cause?.let { stack.addLast(it) }
-            t.suppressed.forEach { stack.addLast(it) }
-        }
-        return false
-    }
+    private fun isTidalUnauthorized(root: Throwable?) = TidalAccountManager.isUnauthorized(root)
 
     /**
      * Serializes all Tidal token refreshes. Tracks resolve on parallel ExoPlayer loader threads, so
@@ -9853,12 +9866,24 @@ class MusicService :
                 val poolCountry = poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
                 val poolStream =
                     runCatching { attempt(poolAccount.token, poolCountry) }
-                        .onFailure { Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId) }
+                        .onFailure {
+                            if (TidalAccountManager.isUnauthorized(it)) {
+                                PoolAccountManager.report("tidal", "account", poolAccount.id, "dead")
+                            } else {
+                                Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId)
+                            }
+                        }
                         .getOrNull()
                 if (poolStream != null) {
                     Timber.tag("MusicService").d("Tidal resolved via pool account (premium=%s)", poolAccount.premium)
+                    PoolAccountManager.noteAccountSuccess("tidal", poolAccount.id)
                     return poolStream
                 }
+                // Threw, or returned null because this account has no match. Either way it just
+                // cost up to 20s, so sort it last for a while rather than paying that again on
+                // the next track — the server's own dead-account handling is far slower than a
+                // listening session.
+                PoolAccountManager.noteAccountFailure("tidal", poolAccount.id)
             }
         }
 
@@ -9938,6 +9963,7 @@ class MusicService :
                     appSecret = it.appSecret,
                     label = "Source Pool",
                     subscription = if (it.premium) "premium" else "",
+                    poolId = it.id,
                 )
             }
         val configuredTokens =
@@ -11599,6 +11625,55 @@ class MusicService :
         )
     }
 
+    /**
+     * Last player state actually written, compared ignoring [PersistPlayerState.timestamp] so a
+     * paused player — whose position does not move — stops rewriting an identical file every tick.
+     */
+    @Volatile
+    private var lastPersistedPlayerState: PersistPlayerState? = null
+
+    /**
+     * Writes just the resume position and transport flags, skipping the queue snapshot.
+     *
+     * Deliberately not [saveQueueToDisk]: that maps every media item to persistable metadata on
+     * the main thread and writes two files. For the periodic save none of that changes between
+     * ticks — only the position does — and the queue file is already written by every handler that
+     * can change it.
+     */
+    private suspend fun savePlayerStateToDisk() {
+        val saveGeneration = persistentSaveGeneration.get()
+        val state =
+            withContext(Dispatchers.Main.immediate) {
+                if (
+                    saveGeneration != persistentSaveGeneration.get() ||
+                    isRestoringPersistentState ||
+                    isHydratingRestoredQueue ||
+                    player.mediaItemCount == 0
+                ) {
+                    return@withContext null
+                }
+                PersistPlayerState(
+                    playWhenReady = player.playWhenReady,
+                    repeatMode = player.repeatMode,
+                    shuffleModeEnabled = player.shuffleModeEnabled,
+                    volume = playerVolume.value,
+                    currentPosition = player.currentPosition,
+                    currentMediaItemIndex = player.currentMediaItemIndex,
+                    playbackState = player.playbackState,
+                )
+            } ?: return
+
+        // timestamp defaults to now, so it always differs — compare everything else.
+        val previous = lastPersistedPlayerState
+        if (previous != null && previous.copy(timestamp = 0L) == state.copy(timestamp = 0L)) return
+
+        withContext(Dispatchers.IO) {
+            if (saveGeneration != persistentSaveGeneration.get()) return@withContext
+            writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, state)
+            lastPersistedPlayerState = state
+        }
+    }
+
     private suspend fun saveQueueToDisk() {
         val saveGeneration = persistentSaveGeneration.get()
         val snapshot =
@@ -11943,6 +12018,16 @@ class MusicService :
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
+
+        /**
+         * How often the resume position is written while the service is alive.
+         *
+         * This only bounds how far back a restore lands after a process death, so 30s of accuracy
+         * is plenty; it used to be 10s while playing, which meant six wakeups and six pairs of file
+         * writes a minute for a queue that had not changed. Every event that changes the queue
+         * saves it directly, so nothing is lost by ticking less often.
+         */
+        private val PERSISTENT_POSITION_SAVE_INTERVAL = 30.seconds
         const val MAX_CONSECUTIVE_ERR = 5
         const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 350L
         const val AUDIO_EFFECT_ROUTE_REBIND_DELAY_MS = 200L
@@ -11995,7 +12080,19 @@ class MusicService :
         const val CROSSFADE_FRAME_MS = 32L
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
-        const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 2_000L
+        /**
+         * How often the stuck-mute watchdog re-checks the player volume during active playback.
+         *
+         * This is only a backstop: ensureAudiblePlaybackVolume already runs from onEvents and from
+         * both source-switch paths, so any state change that could mute the player is covered
+         * event-driven. The watchdog exists for a mute that arrives with no player event at all.
+         *
+         * It was 2s, which is 30 CPU wakeups a minute for a check that almost always does nothing,
+         * and background audio is exactly where that stops the SoC reaching deep idle between
+         * buffer fills. At 15s the worst-case recovery for an already-rare bug goes from 2s to 15s
+         * and the wakeups drop by 7.5x.
+         */
+        const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 15_000L
 
         /**
          * TTL for cached Qobuz/Tidal DirectStreams. Set to 5 minutes to match the

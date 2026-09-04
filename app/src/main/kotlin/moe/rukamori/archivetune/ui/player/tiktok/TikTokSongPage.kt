@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -99,6 +100,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.utils.resize
 
 /** The inactive gray the reference uses for everything unselected/secondary. */
@@ -146,6 +148,11 @@ internal fun TikTokSongPage(
     queueTitle: String?,
     immersive: Boolean,
     lyricsOpen: Boolean,
+    // Looping canvas video (Spotify-style vertical) for THIS page — only the
+    // current page ever receives non-null URLs (see TikTokPlayerContent), so
+    // neighbour pages never spin up an ExoPlayer of their own.
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     topChromeHeight: Dp,
@@ -211,6 +218,51 @@ internal fun TikTokSongPage(
             trackKey = pageMetadata.id,
             reduceAnimation = LocalAnimationsDisabled.current,
         )
+        // ── Full-bleed canvas video (2026-09-04) ──────────────────────────
+        // When the current song has a looping canvas (ArchiveTune/Apple
+        // Music canvas or Spotify Canvas), it now plays FULL SCREEN like a
+        // real TikTok video instead of being zoom-cropped into the fixed
+        // square hero (user requests 2026-09-04: "the videos box is bigger
+        // and the dimensions of the video is different" + "the canvas
+        // should play in full screen when available"). RESIZE_MODE_ZOOM
+        // keeps TikTok's own fill behaviour (a 9:16 canvas matches a phone
+        // screen exactly, so nothing is actually lost), the layer carries
+        // only a rounded clip — no border, no shadow ("rounded and
+        // borderless") — and the legibility scrim above it keeps the chrome
+        // readable over bright footage. The artwork hero stays as the
+        // buffering/error fallback: it fades out once the canvas renders its
+        // first frame (see onPlaybackAvailabilityChange below) and comes
+        // back if playback dies. Paused while the inline lyrics pane owns
+        // the page. Only the current page ever receives non-null URLs, so
+        // neighbour pages never spin up an ExoPlayer.
+        var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
+        if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying && !lyricsOpen,
+                // While the inline lyrics pane owns the current page, the
+                // video SURFACE is removed from composition too (the Apple
+                // Music player's own recipe for its backdrop canvas): the
+                // pane is designed to ride the page's mesh backdrop — the
+                // artwork's colours read through the karaoke text — and a
+                // sharp full-bleed video behind it is exactly the "background
+                // is transparent" the user reported (2026-09-04: "In Tiktok
+                // player style when a canvas is playing and I open lyrics the
+                // background is transparent. Fix it"): the lyrics sat directly
+                // on the bright footage with no legibility layer. Hiding the
+                // TextureView (the player stays alive, paused) restores the
+                // mesh + edge scrim the pane was designed for — and closing
+                // the pane re-attaches instantly with no reload delay.
+                visible = !(isCurrentPage && lyricsOpen),
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                onPlaybackAvailabilityChange = { canvasShowing = it },
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
+            )
+        }
         Box(modifier = Modifier.fillMaxSize().tiktokScrim())
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -316,6 +368,21 @@ internal fun TikTokSongPage(
                                             }
                                         },
                             ) {
+                                // The artwork hero doubles as the full-bleed
+                                // canvas's fallback: while the canvas buffers
+                                // (or failed), the cover shows exactly as
+                                // before; once the video renders its first
+                                // frame it fades out over ~300ms so the
+                                // full-screen canvas owns the page, and it
+                                // fades back in if the canvas dies. The hero
+                                // Box itself (gesture detector, paused
+                                // overlay, double-tap hearts) stays live the
+                                // whole time — taps keep toggling playback.
+                                val artworkFallbackAlpha by animateFloatAsState(
+                                    targetValue = if (canvasShowing) 0f else 1f,
+                                    animationSpec = tween(300),
+                                    label = "tiktokArtworkFallbackAlpha",
+                                )
                                 AsyncImage(
                                     model =
                                         ImageRequest
@@ -329,6 +396,7 @@ internal fun TikTokSongPage(
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
+                                            .graphicsLayer { alpha = artworkFallbackAlpha }
                                             .shadow(
                                                 elevation = 18.dp,
                                                 shape = RoundedCornerShape(cornerRadius),
@@ -829,6 +897,15 @@ internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCR
 
 /** Decode size for the hero artwork, in pixels. */
 internal const val TIKTOK_ART_PX = 1080
+
+/**
+ * Corner radius of the full-bleed canvas video layer. The video runs edge to
+ * edge like a real TikTok post, but carries this rounded clip (and nothing
+ * else — no border, no shadow) per the user's 2026-09-04 request that "the
+ * videos should be rounded and borderless"; the mesh backdrop peeks through
+ * the corners so the rounding reads as intentional rather than clipped.
+ */
+internal val TIKTOK_CANVAS_CORNER = 20.dp
 
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)
 

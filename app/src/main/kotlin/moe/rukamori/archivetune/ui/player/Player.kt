@@ -1399,11 +1399,15 @@ fun BottomSheetPlayer(
             }
         val shouldUseV7Canvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                playerDesignStyle == PlayerDesignStyle.V7 &&
+                (playerDesignStyle == PlayerDesignStyle.V7 ||
+                    playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC &&
+                (
+                    playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+                        playerDesignStyle == PlayerDesignStyle.V9
+                ) &&
                 !aodModeEnabled
         val shouldFetchV7Canvas = shouldUseV7Canvas && !lowDataModeActive
         val shouldFetchArtworkCanvas = shouldUseArtworkCanvas && !lowDataModeActive
@@ -1705,11 +1709,17 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            // Vertical canvas (same resolver the V7 style uses): the current
+                            // page's hero artwork becomes the looping canvas video.
+                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenQueue = openQueue,
+                            // NOTE: no onOpenQueue here — the feed opens the
+                            // Apple Music inline queue sheet itself (see
+                            // TikTokPlayerContent's queueOpen overlay).
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )
@@ -2122,11 +2132,17 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            // Vertical canvas (same resolver the V7 style uses): the current
+                            // page's hero artwork becomes the looping canvas video.
+                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            onOpenQueue = openQueue,
+                            // NOTE: no onOpenQueue here — the feed opens the
+                            // Apple Music inline queue sheet itself (see
+                            // TikTokPlayerContent's queueOpen overlay).
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )

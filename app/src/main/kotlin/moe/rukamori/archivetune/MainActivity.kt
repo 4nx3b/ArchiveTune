@@ -41,6 +41,8 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
@@ -80,6 +82,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -143,6 +146,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
+import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
+import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -293,6 +299,8 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
@@ -779,6 +787,11 @@ class MainActivity : ComponentActivity() {
                     moe.rukamori.archivetune.ui.component
                         .MenuState()
                 }
+            // BitChord home redesign (2026-09-03): shared Haze state for the Home
+            // route's progressive top-fade blur. HomeScreen tags its root Box as
+            // the haze source; the top bar renders the blurred strip (see the
+            // topBar slot). Provided to the tree via LocalHomeHazeState.
+            val homeHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -2076,6 +2089,10 @@ class MainActivity : ComponentActivity() {
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
+                        // BitChord home redesign (2026-09-03): the haze state shared
+                        // between HomeScreen's hazeSource and the top bar's progressive
+                        // fade blur over the Home route.
+                        moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
@@ -2084,6 +2101,18 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
                     ) {
+                        // ── Muzo sheet frosted glass (2026-09-04, revised) ──
+                        // The song-overflow sheet's "blurred glass" now lives on
+                        // the SHEET ITSELF, not on the app behind it: the
+                        // BottomSheetMenu captures a one-shot snapshot of the
+                        // app window (PixelCopy) at open time, blurs it and
+                        // draws it as the sheet surface's frosted material,
+                        // Apple-Music-lyrics-popup style. The app content is
+                        // deliberately NOT blurred anymore (user request
+                        // 2026-09-04: "i don't want the background of the
+                        // popup to be blurred but the popup itself should be
+                        // blurred") — the area around the sheet only gets the
+                        // dialog's plain dim scrim.
                         Row {
                             AnimatedVisibility(
                                 visible =
@@ -2314,6 +2343,21 @@ class MainActivity : ComponentActivity() {
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
+                                        // BitChord home redesign (2026-09-03): the Home route's bar is
+                                        // pinned — content scrolls under it into a progressive blur —
+                                        // while its bar title fades in only once the list is scrolled
+                                        // (the big in-list greeting owns the title at rest).
+                                        val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
+                                        val homeBarScrolled by remember(isHomeRoute) {
+                                            derivedStateOf {
+                                                homeScrollBehavior.state.collapsedFraction > 0.05f
+                                            }
+                                        }
+                                        val homeBarTitleAlpha by animateFloatAsState(
+                                            targetValue = if (isHomeRoute && homeBarScrolled) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "homeBarTitleAlpha",
+                                        )
 
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
@@ -2343,7 +2387,10 @@ class MainActivity : ComponentActivity() {
                                                     // cached while the user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
-                                                            if (isLibraryRoute) {
+                                                            if (isLibraryRoute || isHomeRoute) {
+                                                                // Library and Home both keep the bar
+                                                                // pinned: Home's content scrolls under
+                                                                // it into the progressive blur.
                                                                 0f
                                                             } else {
                                                                 currentScrollBehavior.state.heightOffset
@@ -2351,6 +2398,23 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
+                                                if (isHomeRoute &&
+                                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                                                    !playerBottomSheetState.isExpandedOrExpanding
+                                                ) {
+                                                    // ── BitChord TopFadeBlur (2026-09-03) ──────────────────
+                                                    // Full blur along the top edge ramping to nothing on the
+                                                    // way down (progressive vertical gradient, EaseOutCubic,
+                                                    // peak 0.75), over the HazeState HomeScreen tags its
+                                                    // content with. A modest readability scrim sits over
+                                                    // the blur so the bar's glyphs keep a floor whatever
+                                                    // scrolls beneath them.
+                                                    HomeTopFadeBlur(
+                                                        hazeState = homeHazeState,
+                                                        pageColor = surfaceColor,
+                                                        barHeight = AppBarHeight + effectiveStatusBarTop,
+                                                    )
+                                                } else {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
                                                 Box(
 modifier =
@@ -2362,7 +2426,7 @@ modifier =
                                                                 // blur background overlay under
                                                                 // the top app bar.
                                                                 .graphicsLayer {
-                                                                    if (!isLibraryRoute) {
+                                                                    if (!isLibraryRoute && !isHomeRoute) {
                                                                         val raw = currentScrollBehavior.state.heightOffset
                                                                         val clamped = raw.coerceAtLeast(-appBarHeightPx)
                                                                         translationY = clamped - raw
@@ -2382,6 +2446,7 @@ modifier =
                                                                     ),
                                                                 ),
                                                 )
+                                                }
                                             }
 
                                             TopAppBar(
@@ -2395,9 +2460,55 @@ modifier =
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
+                                                // ── Home header (2026-09-04, re-revised) ──
+                                                // Plain profile avatar, no pill around
+                                                // it (user request 2026-09-04: "The
+                                                // profile picture is surrounded in a
+                                                // pill remove that") — the same menu
+                                                // the old "Menu" pill and the avatar
+                                                // button open (News, New releases,
+                                                // Stats, Music recognition, Listen
+                                                // together, Settings), so no
+                                                // functionality moves; it only exists
+                                                // on the Home route.
+                                                navigationIcon = {
+                                                    if (isHomeRoute) {
+                                                        IconButton(
+                                                            onClick = { profileMenuExpanded = true },
+                                                            onLongClick = {},
+                                                            modifier = Modifier.padding(start = 10.dp),
+                                                        ) {
+                                                            Surface(
+                                                                modifier = Modifier.size(30.dp),
+                                                                shape = CircleShape,
+                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                            ) {
+                                                                if (!accountImageUrl.isNullOrBlank()) {
+                                                                    AsyncImage(
+                                                                        model = accountImageUrl,
+                                                                        contentDescription = stringResource(R.string.account),
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .clip(CircleShape),
+                                                                        contentScale = ContentScale.Crop,
+                                                                    )
+                                                                } else {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.account),
+                                                                            contentDescription = stringResource(R.string.account),
+                                                                            modifier = Modifier.size(20.dp),
+                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
                                                 title = {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        if (isLibraryRoute) {
+                                                    if (isLibraryRoute) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                                             // On the Library tab, the top app bar's
                                                             // title slot carries the big bold
                                                             // "Library" header (38sp, matching the
@@ -2430,8 +2541,39 @@ modifier =
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Ellipsis,
                                                             )
-                                                        } else {
-                                                            // app icon
+                                                        }
+                                                    } else if (isHomeRoute) {
+                                                        // ── Home title (2026-09-04, re-revised) ──
+                                                        // Just the "Home" text, horizontally
+                                                        // centered in the bar, always visible,
+                                                        // and NO app logo in front of it
+                                                        // (user request 2026-09-04: "i only want
+                                                        // the home text and not the archivetune
+                                                        // logo before it. Also shift the home
+                                                        // [text] to the middle"). The fillMaxWidth
+                                                        // centers it in the space between the
+                                                        // avatar and the search pill — the two
+                                                        // side elements are nearly equal width,
+                                                        // so the title reads as screen-centered.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.home),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            // app icon — visible on every non-Home
+                                                            // route (the Home route's title is the
+                                                            // centered "Home" text above; the user
+                                                            // asked for the logo NOT to appear there).
                                                             Icon(
                                                                 painter = painterResource(R.drawable.about_appbar),
                                                                 contentDescription = null,
@@ -2447,45 +2589,108 @@ modifier =
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Visible,
                                                                 softWrap = true,
-                                                                modifier = Modifier.weight(1f, fill = false),
+                                                                modifier =
+                                                                    Modifier
+                                                                        .weight(1f, fill = false)
+                                                                        .graphicsLayer { alpha = homeBarTitleAlpha },
                                                             )
                                                         }
                                                     }
                                                 },
                                                 actions = {
-                                                    Box(
-                                                        modifier = Modifier.padding(end = 4.dp),
-                                                    ) {
-                                                        IconButton(
-                                                            onClick = { profileMenuExpanded = true },
-                                                            colors = IconButtonDefaults.iconButtonColors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                                    .copy(alpha = TopAppBarIconButtonContainerAlpha),
-                                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            ),
-                                                        ) {
-                                                            Surface(
-                                                                modifier = Modifier.size(28.dp),
-                                                                shape = CircleShape,
-                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                    if (isHomeRoute) {
+                                                        // ── Home header search (2026-09-04, re-revised) ──
+                                                        // The search icon in a REAL liquid glass
+                                                        // pill (user request 2026-09-04: "place
+                                                        // the search icon on the home page inside
+                                                        // liquid glass pill") — the same
+                                                        // LiquidGlassIconButton the playlist
+                                                        // screens' circular back buttons use,
+                                                        // sampling the app-wide NavHost backdrop
+                                                        // (the top bar is a SIBLING of the
+                                                        // layer-capturing NavHost Box, so this is
+                                                        // the safe non-reentrant sample). Search
+                                                        // opens the app's existing Search tab.
+                                                        // When Liquid Glass is off (or pre-S),
+                                                        // it falls back to the frosted pill.
+                                                        val liquidGlassBackdrop =
+                                                            LocalLiquidGlassBackdrop.current
+                                                        if (liquidGlassBackdrop != null) {
+                                                            LiquidGlassIconButton(
+                                                                backdrop = liquidGlassBackdrop,
+                                                                painter = painterResource(R.drawable.search),
+                                                                contentDescription = stringResource(R.string.search),
+                                                                modifier =
+                                                                    Modifier.padding(end = 10.dp),
+                                                                onClick = {
+                                                                    navController.navigate("search") {
+                                                                        popUpTo(navController.graph.startDestinationId) {
+                                                                            saveState = true
+                                                                        }
+                                                                        launchSingleTop = true
+                                                                        restoreState = true
+                                                                    }
+                                                                },
+                                                            )
+                                                        } else {
+                                                            FrostedHeaderPill(
+                                                                modifier = Modifier.padding(end = 6.dp),
                                                             ) {
-                                                                if (!accountImageUrl.isNullOrBlank()) {
-                                                                    AsyncImage(
-                                                                        model = accountImageUrl,
-                                                                        contentDescription = stringResource(R.string.account),
-                                                                        modifier = Modifier
-                                                                            .fillMaxSize()
-                                                                            .clip(CircleShape),
-                                                                        contentScale = ContentScale.Crop,
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        navController.navigate("search") {
+                                                                            popUpTo(navController.graph.startDestinationId) {
+                                                                                saveState = true
+                                                                            }
+                                                                            launchSingleTop = true
+                                                                            restoreState = true
+                                                                        }
+                                                                    },
+                                                                    onLongClick = {},
+                                                                ) {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.search),
+                                                                        contentDescription = stringResource(R.string.search),
+                                                                        modifier = Modifier.size(20.dp),
                                                                     )
-                                                                } else {
-                                                                    Box(contentAlignment = Alignment.Center) {
-                                                                        Icon(
-                                                                            painter = painterResource(R.drawable.account),
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Box(
+                                                            modifier = Modifier.padding(end = 4.dp),
+                                                        ) {
+                                                            IconButton(
+                                                                onClick = { profileMenuExpanded = true },
+                                                                colors = IconButtonDefaults.iconButtonColors(
+                                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                                        .copy(alpha = TopAppBarIconButtonContainerAlpha),
+                                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                ),
+                                                            ) {
+                                                                Surface(
+                                                                    modifier = Modifier.size(28.dp),
+                                                                    shape = CircleShape,
+                                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                                ) {
+                                                                    if (!accountImageUrl.isNullOrBlank()) {
+                                                                        AsyncImage(
+                                                                            model = accountImageUrl,
                                                                             contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier.size(20.dp),
-                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            modifier = Modifier
+                                                                                .fillMaxSize()
+                                                                                .clip(CircleShape),
+                                                                            contentScale = ContentScale.Crop,
                                                                         )
+                                                                    } else {
+                                                                        Box(contentAlignment = Alignment.Center) {
+                                                                            Icon(
+                                                                                painter = painterResource(R.drawable.account),
+                                                                                contentDescription = stringResource(R.string.account),
+                                                                                modifier = Modifier.size(20.dp),
+                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            )
+                                                                        }
                                                                     }
                                                                 }
                                                             }

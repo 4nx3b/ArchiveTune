@@ -14,8 +14,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,14 +31,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
@@ -51,7 +44,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,7 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -76,7 +67,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -87,8 +77,6 @@ import coil3.request.crossfade
 import coil3.size.Size
 import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.GridThumbnailHeight
-import moe.rukamori.archivetune.constants.ListItemHeight
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.db.entities.Album
@@ -111,14 +99,9 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.AlbumGridItem
-import moe.rukamori.archivetune.ui.component.ArtistGridItem
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.MenuState
-import moe.rukamori.archivetune.ui.component.SongGridItem
-import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SpeedDialGridItem
-import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.ArtistMenu
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
@@ -127,7 +110,6 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
-import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -146,7 +128,8 @@ fun HomeCategoryChips(
                 .fillMaxWidth()
                 .heightIn(min = 68.dp)
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .padding(horizontal = HomeFeedGutter)
+                .padding(vertical = 10.dp),
     ) {
         chips.forEach { chip ->
             val selected = chip == selectedChip
@@ -197,49 +180,19 @@ fun HomeSectionHeader(
     leadingIcon: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = 24.dp, vertical = 6.dp),
-    ) {
-        leadingIcon?.invoke()
-        thumbnail?.invoke()
-        Column(
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.weight(1f),
-        ) {
-            label?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (onClick != null) {
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-    }
+    // BitChord-style section header (2026-09-03 redesign): a heavy 22sp W700
+    // title with an optional subtitle line, typography-led rather than
+    // chrome-led, sitting at the 10dp page gutter. The fork's existing
+    // affordances (leading glyph, account avatar, tap-to-navigate) render
+    // inline before the title. See HomeFeedSectionHeader.
+    HomeFeedSectionHeader(
+        title = title,
+        subtitle = label.orEmpty(),
+        thumbnail = thumbnail,
+        leadingIcon = leadingIcon,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 private const val SpeedDialGridRows = 3
@@ -622,7 +575,8 @@ private fun SpeedDialRandomTile(
 }
 
 /**
- * Keep Listening section - horizontal grid of local items
+ * Keep Listening section — the BitChord compact shelf (2026-09-03 redesign):
+ * a single row of square 150dp cards for the mixed Song/Album/Artist items.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -638,17 +592,6 @@ fun KeepListeningSection(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val rows = if (keepListening.size > 6) 2 else 1
-    val gridHeight =
-        (
-            GridThumbnailHeight +
-                with(LocalDensity.current) {
-                    MaterialTheme.typography.bodyLarge.lineHeight
-                        .toDp() * 2 +
-                        MaterialTheme.typography.bodyMedium.lineHeight
-                            .toDp() * 2
-                }
-        ) * rows
 
     // Per user request (2026-08-28): "Whenever I play a song from forgotten
     // favourites, keep listening or any other section I've to play each of
@@ -660,7 +603,7 @@ fun KeepListeningSection(
     // Filter keepListening to songs only (the section is a mix of Song /
     // Album / Artist / Playlist) so we can build a ListQueue from just the
     // playable items. When a song is tapped, we look up its index in this
-    // filtered list and pass it to LocalGridItem as the startIndex.
+    // filtered list and pass it to the card as the startIndex.
     val songsInSection = remember(keepListening) { keepListening.filterIsInstance<Song>() }
 
     fun playFromSection(songId: String) {
@@ -675,14 +618,10 @@ fun KeepListeningSection(
         )
     }
 
-    LazyHorizontalGrid(
-        state = rememberLazyGridState(),
-        rows = GridCells.Fixed(rows),
-        contentPadding = PaddingValues(horizontal = 12.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(gridHeight),
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+        modifier = modifier.fillMaxWidth(),
     ) {
         items(
             items = keepListening,
@@ -696,7 +635,7 @@ fun KeepListeningSection(
             },
             contentType = { item -> item::class },
         ) { item ->
-            LocalGridItem(
+            HomeFeedLocalItemCard(
                 item = item,
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
@@ -712,7 +651,9 @@ fun KeepListeningSection(
 }
 
 /**
- * Forgotten Favorites section - horizontal grid of songs
+ * Forgotten Favorites section — the BitChord compact shelf (2026-09-03
+ * redesign): a single row of square 150dp song cards. Tap plays from a queue
+ * built over the whole section; hold opens the song menu.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -720,9 +661,6 @@ fun ForgottenFavoritesSection(
     forgottenFavorites: List<Song>,
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
-    horizontalLazyGridItemWidth: Dp,
-    lazyGridState: LazyGridState,
-    snapLayoutInfoProvider: SnapLayoutInfoProvider,
     navController: NavController,
     playerConnection: PlayerConnection,
     menuState: MenuState,
@@ -730,7 +668,6 @@ fun ForgottenFavoritesSection(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val rows = min(4, forgottenFavorites.size)
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
 
     // Per user request (2026-08-28): "Whenever I play a song from
@@ -742,10 +679,7 @@ fun ForgottenFavoritesSection(
     //
     // Build the queue from the entire section list (with the tapped song
     // as the startIndex) so Next/Previous walks the section list in
-    // order. This replaces the previous single-song ListQueue /
-    // YouTubeQueue.radio() that played only one song and then either
-    // stopped (local) or played a YouTube-generated radio queue
-    // unrelated to the section (remote).
+    // order.
     fun playSectionQueue(startIndex: Int) {
         if (distinctForgottenFavorites.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctForgottenFavorites.lastIndex)
@@ -758,69 +692,25 @@ fun ForgottenFavoritesSection(
         )
     }
 
-    LazyHorizontalGrid(
-        state = lazyGridState,
-        rows = GridCells.Fixed(rows),
-        flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-        contentPadding = PaddingValues(horizontal = 8.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(ListItemHeight * rows),
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
+        modifier = modifier.fillMaxWidth(),
     ) {
         itemsIndexed(
             items = distinctForgottenFavorites,
             key = { _, song -> song.id },
             contentType = { _, _ -> "forgotten_favorite_song" },
         ) { index, song ->
-            SongListItem(
+            HomeFeedSongCard(
                 song = song,
-                showInLibraryIcon = true,
-                isActive = song.id == mediaMetadata?.id,
+                mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
-                isSwipeable = false,
-                trailingContent = {
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                SongMenu(
-                                    originalSong = song,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.more_vert),
-                            contentDescription = null,
-                        )
-                    }
-                },
-                modifier =
-                    Modifier
-                        .width(horizontalLazyGridItemWidth)
-                        .focusable()
-                        .combinedClickable(
-                            onClick = {
-                                if (song.id == mediaMetadata?.id) {
-                                    playerConnection.player.togglePlayPause()
-                                } else {
-                                    playSectionQueue(index)
-                                }
-                            },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    SongMenu(
-                                        originalSong = song,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        ),
+                navController = navController,
+                playerConnection = playerConnection,
+                menuState = menuState,
+                haptic = haptic,
+                onPlayFromSection = { playSectionQueue(index) },
             )
         }
     }
@@ -845,7 +735,8 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 12.dp),
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
         modifier = modifier,
     ) {
         items(
@@ -853,12 +744,11 @@ fun AccountPlaylistsSection(
             key = { it.id },
             contentType = { "account_playlist" },
         ) { item ->
-            YouTubeGridItemWrapper(
+            HomeFeedYTItemCard(
                 item = item,
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
                 navController = navController,
-                playerConnection = playerConnection,
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
@@ -884,7 +774,8 @@ fun SimilarRecommendationsSection(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 12.dp),
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
         modifier = modifier,
     ) {
         items(
@@ -892,12 +783,11 @@ fun SimilarRecommendationsSection(
             key = { it.id },
             contentType = { item -> item::class },
         ) { item ->
-            YouTubeGridItemWrapper(
+            HomeFeedYTItemCard(
                 item = item,
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
                 navController = navController,
-                playerConnection = playerConnection,
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
@@ -950,7 +840,8 @@ fun HomePageSectionContent(
     }
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 12.dp),
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
         modifier = modifier,
     ) {
         items(
@@ -958,221 +849,17 @@ fun HomePageSectionContent(
             key = { it.id },
             contentType = { item -> item::class },
         ) { item ->
-            YouTubeGridItemWrapper(
+            HomeFeedYTItemCard(
                 item = item,
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
                 navController = navController,
-                playerConnection = playerConnection,
                 menuState = menuState,
                 haptic = haptic,
                 scope = scope,
                 onPlaySongFromSection = ::playFromSection,
             )
         }
-    }
-}
-
-// ============== Helper Composables ==============
-
-/**
- * Wrapper for YouTube grid items with click handling
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun YouTubeGridItemWrapper(
-    item: YTItem,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    // Per user request (2026-08-28): unified section queue — see
-    // HomePageSectionContent.playFromSection above.
-    onPlaySongFromSection: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    YouTubeGridItem(
-        item = item,
-        isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
-        isPlaying = isPlaying,
-        coroutineScope = scope,
-        modifier =
-            modifier
-                .focusable()
-                .combinedClickable(
-                    onClick = {
-                        when (item) {
-                            is SongItem -> {
-                                onPlaySongFromSection(item.id)
-                            }
-
-                            is AlbumItem -> {
-                                navController.navigate("album/${item.id}")
-                            }
-
-                            is ArtistItem -> {
-                                navController.navigate("artist/${item.id}")
-                            }
-
-                            is PlaylistItem -> {
-                                navController.navigate("online_playlist/${item.id}")
-                            }
-                        }
-                    },
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuState.show {
-                            when (item) {
-                                is SongItem -> {
-                                    YouTubeSongMenu(
-                                        song = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-
-                                is AlbumItem -> {
-                                    YouTubeAlbumMenu(
-                                        albumItem = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-
-                                is ArtistItem -> {
-                                    YouTubeArtistMenu(
-                                        artist = item,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-
-                                is PlaylistItem -> {
-                                    YouTubePlaylistMenu(
-                                        playlist = item,
-                                        coroutineScope = scope,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            }
-                        }
-                    },
-                ),
-    )
-}
-
-/**
- * Local item grid item for songs, albums, artists
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun LocalGridItem(
-    item: LocalItem,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    navController: NavController,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    scope: CoroutineScope,
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same."
-    //
-    // When the item is a Song, the parent (KeepListeningSection) provides
-    // this callback with the song's id; the callback builds a ListQueue
-    // from the section's filtered songs list with the tapped song as
-    // startIndex. Previously this played a single-song radio queue
-    // (YouTubeQueue.radio) which yielded a YouTube-generated queue
-    // unrelated to the section.
-    onPlaySongFromSection: (String) -> Unit = {},
-    modifier: Modifier = Modifier,
-) {
-    when (item) {
-        is Song -> {
-            SongGridItem(
-                song = item,
-                modifier =
-                    modifier
-                        .fillMaxWidth()
-                        .focusable()
-                        .combinedClickable(
-                            onClick = {
-                                if (item.id == mediaMetadata?.id) {
-                                    playerConnection.player.togglePlayPause()
-                                } else {
-                                    onPlaySongFromSection(item.id)
-                                }
-                            },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    SongMenu(
-                                        originalSong = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        ),
-                isActive = item.id == mediaMetadata?.id,
-                isPlaying = isPlaying,
-            )
-        }
-
-        is Album -> {
-            AlbumGridItem(
-                album = item,
-                isActive = item.id == mediaMetadata?.album?.id,
-                isPlaying = isPlaying,
-                coroutineScope = scope,
-                modifier =
-                    modifier
-                        .fillMaxWidth()
-                        .focusable()
-                        .combinedClickable(
-                            onClick = { navController.navigate("album/${item.id}") },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    AlbumMenu(
-                                        originalAlbum = item,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        ),
-            )
-        }
-
-        is Artist -> {
-            ArtistGridItem(
-                artist = item,
-                modifier =
-                    modifier
-                        .fillMaxWidth()
-                        .focusable()
-                        .combinedClickable(
-                            onClick = { navController.navigate("artist/${item.id}") },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    ArtistMenu(
-                                        originalArtist = item,
-                                        coroutineScope = scope,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                        ),
-            )
-        }
-
-        is Playlist -> { /* Not displayed */ }
     }
 }
 
@@ -1402,27 +1089,30 @@ fun HomeGreetingHeader(
 
     Text(
         text = text,
-        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp),
-        fontWeight = FontWeight.Bold,
+        // BitChord displayLarge (2026-09-03 redesign): 34sp W800 with tight
+        // -0.8 tracking — the page-title scale the big in-list header owns.
+        fontSize = 34.sp,
+        fontWeight = FontWeight.W800,
+        letterSpacing = (-0.8).sp,
         color = foreground,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 14.dp),
+                .padding(horizontal = HomeFeedGutter)
+                .padding(vertical = 8.dp),
     )
 }
 
 /**
- * "Jump back in" hero section — a two-column layout with one large hero card
- * on the left (~58% width) and two stacked smaller cards on the right (~42%
- * width). The hero card has a "JUMP BACK IN" pill badge at the top-left and
- * title/artist overlaid at the bottom. The smaller cards have title/artist
- * overlaid on the image.
+ * "Jump back in" hero shelf — the BitChord lead-shelf treatment (2026-09-03
+ * redesign): near-page-width cards (70% of the row, capped at 320dp, 0.92
+ * aspect, 18dp corners) that page sideways, with the title/artist caption
+ * laid over a scrim on the artwork itself.
  *
- * Uses the top 3 [recentlyPlayed] songs. Falls back gracefully if fewer are
- * available (collapses to 1 or 2 cards).
+ * Uses [recentlyPlayed] (the listening-preference hero picks). Falls back
+ * gracefully if fewer are available.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1438,18 +1128,14 @@ fun JumpBackInHeroSection(
 ) {
     val context = LocalContext.current
     if (recentlyPlayed.isEmpty()) return
-    val hero = recentlyPlayed.first()
-    val sideCards = recentlyPlayed.drop(1).take(2)
 
     // Per user request (2026-08-28): "Whenever I play a song from
     // forgotten favourites, keep listening or any other section I've to
     // play each of them manually because the queue for each song is
     // different. it should be same."
     //
-    // Build the queue from the entire "Jump back in" hero+side cards list
-    // with the tapped song as the startIndex. The hero is index 0; the
-    // first side card is index 1; the second side card is index 2. The
-    // ListQueue then walks the section in order via Next/Previous.
+    // Build the queue from the entire hero list with the tapped song as the
+    // startIndex, so Next/Previous walks the shelf in order.
     fun playFromSection(startIndex: Int) {
         if (recentlyPlayed.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, recentlyPlayed.lastIndex)
@@ -1462,81 +1148,46 @@ fun JumpBackInHeroSection(
         )
     }
 
-    if (sideCards.isEmpty()) {
-        // No side cards — render a single full-width hero card.
-        BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-            val heroWidth = maxWidth
-            val heroHeight = (heroWidth * 0.75f).coerceIn(180.dp, 260.dp)
-            JumpBackInHeroCard(
-                song = hero,
-                isHero = true,
-                width = heroWidth,
-                height = heroHeight,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                navController = navController,
-                onPlayFromSection = { playFromSection(0) },
-            )
-        }
-        return
-    }
-
-    BoxWithConstraints(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-    ) {
-        val spacing = 10.dp
-        val availableWidth = maxWidth - spacing
-        // Hero ~58% width, side column ~42% width — both deterministic.
-        val heroWidth = availableWidth * 0.58f
-        val sideColumnWidth = availableWidth * 0.42f
-        // Side cards are rounded squares (matching the Recently Played style)
-        // — both equal in shape so the "two pills" look identical.
-        val sideCardHeight = sideColumnWidth
-        val sideColumnHeight =
-            (sideCardHeight * sideCards.size) + (spacing * (sideCards.size - 1))
-        // Match hero height to the side column so the row has no empty gap.
-        val heroHeight = sideColumnHeight
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            JumpBackInHeroCard(
-                song = hero,
-                isHero = true,
-                width = heroWidth,
-                height = heroHeight,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                navController = navController,
-                onPlayFromSection = { playFromSection(0) },
-            )
-            Column(
-                verticalArrangement = Arrangement.spacedBy(spacing),
-                modifier = Modifier.width(sideColumnWidth),
+    Column(modifier = modifier.fillMaxWidth()) {
+        HomeFeedSectionHeader(title = stringResource(R.string.home_jump_back_in_badge))
+        // Measured rather than taken as a share of the parent, because the
+        // card has a ceiling as well as a fraction — see homeHeroCardWidth().
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cardWidth = homeHeroCardWidth(maxWidth)
+            LazyRow(
+                state = rememberLazyListState(),
+                contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+                horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
             ) {
-                sideCards.forEachIndexed { sideIndex, song ->
-                    JumpBackInHeroCard(
-                        song = song,
-                        isHero = false,
-                        width = sideColumnWidth,
-                        height = sideCardHeight,
-                        mediaMetadata = mediaMetadata,
+                itemsIndexed(
+                    items = recentlyPlayed,
+                    key = { index, song -> "hero_${song.id}_$index" },
+                    contentType = { _, _ -> "hero_song" },
+                ) { index, song ->
+                    HomeFeedHeroCard(
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name },
+                        isActive = song.id == mediaMetadata?.id,
                         isPlaying = isPlaying,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        navController = navController,
-                        onPlayFromSection = { playFromSection(sideIndex + 1) },
+                        onClick = {
+                            if (song.id == mediaMetadata?.id) {
+                                playerConnection.player.togglePlayPause()
+                            } else {
+                                playFromSection(index)
+                            }
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                        modifier = Modifier.width(cardWidth),
                     )
                 }
             }
@@ -1544,132 +1195,11 @@ fun JumpBackInHeroSection(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun JumpBackInHeroCard(
-    song: Song,
-    isHero: Boolean,
-    width: Dp,
-    height: Dp,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    navController: NavController,
-    // Per user request (2026-08-28): unified section queue — see
-    // JumpBackInHeroSection.playFromSection above.
-    onPlayFromSection: () -> Unit = {},
-) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val requestWidthPx = with(density) { width.roundToPx().coerceAtLeast(1) }
-    val requestHeightPx = with(density) { height.roundToPx().coerceAtLeast(1) }
-    val isActive = song.id == mediaMetadata?.id
-    val imageRequest =
-        remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
-            ImageRequest
-                .Builder(context)
-                .data(song.song.thumbnailUrl)
-                .size(Size(requestWidthPx, requestHeightPx))
-                .crossfade(true)
-                .build()
-        }
-
-    Box(
-        modifier =
-            Modifier
-                .size(width = width, height = height)
-                .clip(RoundedCornerShape(20.dp))
-                .combinedClickable(
-                    onClick = {
-                        if (isActive) {
-                            playerConnection.player.togglePlayPause()
-                        } else {
-                            onPlayFromSection()
-                        }
-                    },
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuState.show {
-                            SongMenu(
-                                originalSong = song,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
-                    },
-                ),
-    ) {
-        AsyncImage(
-            model = imageRequest,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        // Bottom-to-top scrim so the overlaid text stays legible on any artwork.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            0.55f to Color.Black.copy(alpha = 0.10f),
-                            1f to Color.Black.copy(alpha = 0.70f),
-                        ),
-                    ),
-        )
-        // ── "JUMP BACK IN" badge removed ───────────────────────────────────
-        // Per user request (2026-08-28): "Remove the home liquid glass buttons
-        // and fade effect". The translucent black "JUMP BACK IN" pill badge
-        // that lived here was the closest match to a "liquid glass button" on
-        // the Home tab — the hero card already conveys the same context via its
-        // title/artist overlay, and the user wanted the clutter removed.
-        // Title + artist overlay at the bottom.
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(14.dp),
-        ) {
-            Text(
-                text = song.song.title,
-                style = if (isHero) MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp) else MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp),
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = song.artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = if (isHero) 13.sp else 12.sp),
-                color = Color.White.copy(alpha = 0.78f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        // Active / playing indicator — small dot at top-right.
-        if (isActive) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        ),
-            )
-        }
-    }
-}
-
 /**
- * "Recently Played" section — horizontal row of square cards. Each card is
- * album-art-dominant with a 3-dot menu floating at the top-right corner and
- * title/artist beneath the artwork (matching the screenshot).
+ * "Recently Played" section — the BitChord compact shelf (2026-09-03
+ * redesign): a single row of square 150dp cards, 12dp corners, hairline
+ * thumbnail border, with the title and artist beneath the artwork. Tap plays
+ * from a queue built over the whole section; hold opens the song menu.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1693,9 +1223,6 @@ fun RecentlyPlayedSection(
     // be same. For example if I play a song in recently listened all the
     // other next songs in queue should be from recently listened one by one
     // in order".
-    //
-    // Build the queue from the entire Recently Played list with the tapped
-    // song as the startIndex so Next/Previous walks the section in order.
     fun playFromSection(startIndex: Int) {
         if (distinctSongs.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctSongs.lastIndex)
@@ -1709,8 +1236,8 @@ fun RecentlyPlayedSection(
     }
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = HomeFeedGutter),
+        horizontalArrangement = Arrangement.spacedBy(HomeShelfCardSpacing),
         modifier = modifier.fillMaxWidth(),
     ) {
         itemsIndexed(
@@ -1718,151 +1245,36 @@ fun RecentlyPlayedSection(
             key = { _, song -> "recent_${song.id}" },
             contentType = { _, _ -> "recent_song" },
         ) { index, song ->
-            RecentlyPlayedCard(
+            HomeFeedSongCard(
                 song = song,
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
+                navController = navController,
                 playerConnection = playerConnection,
                 menuState = menuState,
                 haptic = haptic,
-                navController = navController,
                 onPlayFromSection = { playFromSection(index) },
             )
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RecentlyPlayedCard(
-    song: Song,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    navController: NavController,
-    // Per user request (2026-08-28): unified section queue — see
-    // RecentlyPlayedSection.playFromSection above.
-    onPlayFromSection: () -> Unit = {},
-) {
-    // Echo-nightly-style compact song card: 132dp wide instead of the old 165dp giant, with
-    // the artwork handled by [ItemThumbnail] exactly like the library grid — full image
-    // visible (Fit) unless the user's global "crop thumbnails to square" preference is on.
-    // The previous implementation forced a 1:1 box with ContentScale.Crop, which cut ~44%
-    // off the sides of 16:9 thumbnails and made these cards look far more "zoomed in" than
-    // every other shelf in the app.
-    val cardWidth = 132.dp
-    val isActive = song.id == mediaMetadata?.id
-
-    Column(
-        modifier =
-            Modifier
-                .width(cardWidth)
-                .combinedClickable(
-                    onClick = {
-                        if (isActive) {
-                            playerConnection.player.togglePlayPause()
-                        } else {
-                            onPlayFromSection()
-                        }
-                    },
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuState.show {
-                            SongMenu(
-                                originalSong = song,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
-                    },
-                ),
-    ) {
-        Box(
-            modifier = Modifier.size(cardWidth),
-        ) {
-            ItemThumbnail(
-                thumbnailUrl = song.song.thumbnailUrl,
-                isActive = isActive,
-                isPlaying = isPlaying,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxSize(),
-            )
-            // 3-dot menu floating at top-right of the artwork (subtler at this size).
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                SongMenu(
-                                    originalSong = song,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.more_vert),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = song.song.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            text = song.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
 /**
- * Helper that renders a small neutral-tinted circular icon used as the leading
- * icon for section headers (clock for "Recently Played", bolt for "Quick Picks").
- * Uses surfaceContainerHigh so the accent color is reserved for the username,
- * play button, active indicators, and progress bars — per the redesign spec.
+ * Helper that renders the small neutral glyph used as the leading icon for
+ * section headers (clock for "Recently Played", bolt for "Speed Dial").
+ * Restyled for the BitChord header design (2026-09-03): the icon now renders
+ * inline at 20dp with no circular container, so the header reads as
+ * typography first with a quiet affordance before it.
  */
 @Composable
 fun HomeSectionLeadingIcon(
     iconRes: Int,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier =
-            modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(18.dp),
-        )
-    }
+    Icon(
+        painter = painterResource(iconRes),
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.size(20.dp),
+    )
 }

@@ -36,9 +36,13 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -74,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -108,11 +113,21 @@ import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
 
 /** Height of the top navigation row (icons + tabs). */
 internal val TIKTOK_TOP_NAV_HEIGHT = 44.dp
+
+/**
+ * Blur radius applied to the whole feed (the pager) while the inline queue
+ * sheet is open — the same depth the Apple Music style blurs its artwork
+ * backdrop to behind ITS queue sheet (Modifier.blur(72.dp) in
+ * AppleMusicPlayer), so the sheet's translucent glassy rows sit on the same
+ * kind of frosted field they were designed for.
+ */
+private val TIKTOK_QUEUE_FEED_BLUR = 72.dp
 
 /**
  * The feed player. Parameters mirror the other self-contained styles so
@@ -139,7 +154,11 @@ fun TikTokPlayerContent(
     lyricsVisible: Boolean,
     lyricsSyncOffset: Int = 0,
     onLyricsSyncOffsetChange: (Int) -> Unit = {},
-    onOpenQueue: () -> Unit = {},
+    // Vertical canvas for the CURRENT song (resolved by Player.kt through the same
+    // V7 vertical-canvas resolver). Only the settled page gets it — neighbour
+    // pages keep their static artwork, exactly like TikTok's idle neighbours.
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
     onSeek: (Long) -> Unit = {},
     onSeekFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -309,6 +328,20 @@ fun TikTokPlayerContent(
     // for the separate lyrics page.
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
 
+    // ── Inline queue (the Apple Music treatment) ──
+    // The queue chip in the caption row opens the queue IN PLACE — the same
+    // [AppleMusicQueueSheet] the Apple Music style morphs to (the pill row,
+    // the "Queue" header with its edit-lock, the reorderable glassy rows)
+    // — instead of leaving the feed for the player's bottom-sheet queue
+    // (user request 2026-09-03: "Add the inline queue of apple music style
+    // to Tiktok style"). The sheet renders as a full-size overlay BETWEEN
+    // the feed's chrome: the top navigation and the progress row stay
+    // visible and interactive, the mesh backdrop keeps breathing behind it,
+    // and because the overlay is a SIBLING of the pager (not a page), the
+    // feed's swipe never fights the queue list's own scrolling — the queue
+    // is simply the only thing the finger touches while it is open.
+    var queueOpen by rememberSaveable { mutableStateOf(false) }
+
     // ── Lyrics overflow (the Apple Music anchored popup) ──
     // While the inline pane is open, the horizontal-dots button in the
     // caption row (right of the queue chip; see TikTokSongInfo) opens the
@@ -336,12 +369,17 @@ fun TikTokPlayerContent(
     // lyrics page (if something else opened it) keeps its own back handling.
     BackHandler(enabled = lyricsOpen && !lyricsVisible) { lyricsOpen = false }
     BackHandler(enabled = immersive && !lyricsVisible) { immersive = false }
+    // Registered last so it wins the back dispatch while the queue is open —
+    // back closes the queue before anything else (the lyrics/immersive
+    // handlers are mutually exclusive with it by construction anyway).
+    BackHandler(enabled = queueOpen && !lyricsVisible) { queueOpen = false }
     // Reset both when the player sheet collapses so re-expanding always
     // shows the full feed chrome, and when the lyrics page opens.
     LaunchedEffect(state.isExpanded, lyricsVisible) {
         if (!state.isExpanded || lyricsVisible) {
             if (immersive) immersive = false
             if (lyricsOpen) lyricsOpen = false
+            if (queueOpen) queueOpen = false
         }
     }
     val onFullscreenAction =
@@ -351,7 +389,10 @@ fun TikTokPlayerContent(
                     videoFullscreenHolder.isFullscreen = true
                 } else {
                     immersive = !immersive
-                    if (immersive) lyricsOpen = false
+                    if (immersive) {
+                        lyricsOpen = false
+                        queueOpen = false
+                    }
                 }
             }
         }
@@ -380,6 +421,26 @@ fun TikTokPlayerContent(
     // that steps). Hoisted above the pager so a scrub tick recomposes no page.
     val sliderPositionState = rememberUpdatedState(sliderPosition)
     val lyricsPosProvider = remember { { sliderPositionState.value } }
+
+    // ── The queue's backdrop blur (the Apple Music treatment) ──
+    // The Apple Music style renders its queue sheet over the artwork blurred
+    // at 72dp (AppleMusicPlayer's Modifier.blur(72.dp) canvas backdrop) — the
+    // sheet's translucent glassy rows are designed for that frosted field,
+    // not for a sharp cover (user report 2026-09-03: "the background is
+    // transparent. Fix it. it should be blurred"). The feed's equivalent: the
+    // PAGER itself defocuses while [queueOpen] — mesh, artwork, rail, all of
+    // it — animated from 0 to 72dp on the same 600ms easing the sheet rides
+    // in on, and back to 0 when it leaves, so the queue arrives the way it
+    // arrives in the Apple Music player: the content recedes, the sheet owns
+    // the face. Below Android S there is no RenderEffect (Modifier.blur is a
+    // no-op there) — those devices get a deeper scrim instead (see the
+    // queueOpen overlay's background below).
+    val canBlurFeed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val feedBlur by animateDpAsState(
+        targetValue = if (queueOpen && canBlurFeed) TIKTOK_QUEUE_FEED_BLUR else 0.dp,
+        animationSpec = tween(600, easing = FastOutSlowInEasing),
+        label = "tiktokQueueFeedBlur",
+    )
 
     // ── The lyrics overflow popup's frosted backdrop ──
     // The Apple Music style's lyrics overflow popup is real frosted glass:
@@ -437,9 +498,18 @@ fun TikTokPlayerContent(
             // a SIBLING at the root Box below. A drawBackdrop sampler must
             // never sit INSIDE the layer it samples — that is a
             // render-feedback loop (kyant).
+            //
+            // The queue's backdrop blur sits INSIDE the backdrop capture
+            // (closer to the content), so a sampled backdrop always matches
+            // what is on screen. Harmless either way in practice: the lyrics
+            // popup and the inline queue are mutually exclusive owners of
+            // the feed's face (opening the queue closes the lyrics pane).
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .let { base ->
+                        if (feedBlur > 0.dp) base.blur(feedBlur) else base
+                    }
                     .let { base ->
                         if (popupBackdrop != null) {
                             base.layerBackdrop(popupBackdrop)
@@ -498,6 +568,11 @@ fun TikTokPlayerContent(
                 queueTitle = queueTitle,
                 immersive = immersive,
                 lyricsOpen = lyricsOpen,
+                // The canvas is the current song's: only the page that is
+                // actually playing renders the video (neighbours would
+                // each spin up their own muted ExoPlayer otherwise).
+                canvasPrimaryUrl = if (isCurrentPage) canvasPrimaryUrl else null,
+                canvasFallbackUrl = if (isCurrentPage) canvasFallbackUrl else null,
                 sliderPositionProvider = lyricsPosProvider,
                 lyricsSyncOffset = lyricsSyncOffset,
                 topChromeHeight = topChromeHeight,
@@ -506,13 +581,68 @@ fun TikTokPlayerContent(
                 onAddToPlaylist = { addToPlaylistSong = pageMetadata },
                 onToggleLyrics = { lyricsOpen = !lyricsOpen },
                 onTogglePlayPause = { player.togglePlayPause() },
-                onQueueClick = onOpenQueue,
+                // The queue chip opens the INLINE Apple Music queue sheet (see
+                // the queueOpen block above) — not the player's bottom-sheet
+                // queue. Opening it closes the lyrics pane first: the two
+                // panes are mutually exclusive owners of the feed's face.
+                onQueueClick = {
+                    if (lyricsOpen) lyricsOpen = false
+                    queueOpen = true
+                },
                 onOpenLyricsMenu = { showLyricsMenu = true },
                 onLyricsOverflowAnchorChange = { lyricsOverflowAnchor = it },
                 navController = navController,
                 menuState = menuState,
                 bottomSheetPageState = bottomSheetPageState,
             )
+        }
+
+        // ── Inline queue (the Apple Music sheet over the feed) ──
+        // A SIBLING of the pager, drawn between the top navigation and the
+        // progress row (both render after it in this Box, so the feed's own
+        // chrome stays on top and reachable). The enter/exit is the exact
+        // morph the Apple Music style plays for its QUEUE state — slide up
+        // from a quarter of the height with a long fade, slide back down with
+        // a short one — so the queue arrives in the feed the same way it
+        // arrives in the Apple Music player. The flat scrim guarantees the
+        // sheet's white glassy rows stay legible over ANY mesh palette (the
+        // Apple Music sheet renders on a blurred + scrimmed artwork; the mesh
+        // backdrop is already dimmed, this tops it off to the same guarantee).
+        // Tap a row and the engine follows behind the sheet — the feed is on
+        // the right page when the queue closes (the queue-tap seek lands
+        // through the same engine→feed effect a queue-sheet tap always did).
+        AnimatedVisibility(
+            visible = queueOpen,
+            enter =
+                slideInVertically(
+                    animationSpec = tween(600, easing = FastOutSlowInEasing),
+                ) { it / 4 } + fadeIn(tween(600)),
+            exit =
+                fadeOut(tween(400)) +
+                    slideOutVertically(
+                        animationSpec = tween(400, easing = FastOutSlowInEasing),
+                    ) { it / 4 },
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Deepened on pre-S (no RenderEffect → no blur): a
+                        // darker flat scrim is the fallback that keeps the
+                        // white glassy rows legible over the sharp mesh.
+                        .background(
+                            Color.Black.copy(
+                                alpha = if (canBlurFeed) 0.35f else 0.55f,
+                            ),
+                        )
+                        .padding(top = topChromeHeight, bottom = bottomChromeHeight),
+            ) {
+                AppleMusicQueueSheet(
+                    navController = navController,
+                    playerBottomSheetState = state,
+                    onClose = { queueOpen = false },
+                )
+            }
         }
 
         // ── Top navigation: [fullscreen] [section tabs + Queue] [search] ──
@@ -627,7 +757,8 @@ fun TikTokPlayerContent(
  * the same destinations, the same semantics, as the main navigation. (The
  * Queue action that briefly rode to the tabs' right was removed per user
  * request 2026-09-02: "remove the queue text from the top" — the queue
- * sheet stays reachable through the song info's queue chip.)
+ * stays reachable through the song info's queue chip, which opens the
+ * Apple Music inline queue sheet in place, 2026-09-03.)
  *
  * The row's own padding is the notch-safe stable inset (not
  * statusBarsPadding): the status bar can be hidden — the app's hide-status-

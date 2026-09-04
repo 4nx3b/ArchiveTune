@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -270,9 +272,21 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // ── Muzo sheet section material (2026-09-04 redesign) ──
+    // The reference's grouped-action surface: a lighter translucent step
+    // above the sheet's own charcoal (#3A3A3C over #1C1C1E), with the
+    // reference's ~16pt radius. One surface per group of rows; the rows
+    // inside carry thin dividers, not individual cards.
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val sectionColor =
+        if (dark) {
+            Color(0xFF3A3A3C).copy(alpha = 0.92f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
+        }
     Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(16.dp),
+        color = sectionColor,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)
