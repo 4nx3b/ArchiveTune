@@ -68,6 +68,8 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.graphics.graphicsLayer
 
 /** Alias so call sites can refer to a stable type name regardless of the backdrop impl. */
 typealias PlatformBackdrop = LayerBackdrop
@@ -633,5 +635,58 @@ fun LiquidGlassIconButton(
                 tint = resolvedTint,
             )
         }
+    }
+}
+
+/**
+ * ── Glass-pipeline pre-warm (2026-09-04) ─────────────────────────────────────
+ *
+ * User report: "When I open the songs overflow popup for the first few
+ * seconds after opening the app, the scrolling in the popup is a bit laggy."
+ *
+ * The first time a glass popup opens in a process, three things are COLD:
+ *  1. the AGSL vibrancy shader + the blur RenderEffect (compiled lazily on
+ *     first use — on the popup's own first frames);
+ *  2. the [ThrottledLayerBackdrop] recorder (its first full-screen
+ *     [GraphicsLayer] record allocates the layer and runs the whole record
+ *     path for the first time);
+ *  3. the menu row composables themselves (JIT).
+ *
+ * This composable runs all three ONCE, ~2 s after launch, while nothing is
+ * on screen: a 1 dp, ~2%-alpha strip (invisible, but still DRAWN — alpha 0
+ * would skip drawing and warm nothing) that samples [backdrop] with the
+ * exact vibrancy + 32 dp blur recipe the real popups use, with an optional
+ * [content] slot for composing a couple of real menu rows. The caller also
+ * keeps the throttled recorder attached for the warm-up window so the first
+ * full-screen record happens here, not inside the popup's first scroll.
+ *
+ * Costs one Record + a couple of frames of 1-dp blur, once per process.
+ */
+@Composable
+fun GlassPipelinePrewarm(
+    backdrop: Backdrop?,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {},
+) {
+    if (!active || backdrop == null) return
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                // NOT alpha 0: a zero-alpha layer is skipped entirely and
+                // warms nothing. 2% over one strip of pixels is invisible.
+                .graphicsLayer { alpha = 0.02f }
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { androidx.compose.ui.graphics.RectangleShape },
+                    effects = {
+                        vibrancy()
+                        blur(32.dp.toPx())
+                    },
+                ),
+    ) {
+        content()
     }
 }

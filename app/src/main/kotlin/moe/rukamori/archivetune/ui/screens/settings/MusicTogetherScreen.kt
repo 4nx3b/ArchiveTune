@@ -248,6 +248,16 @@ fun MusicTogetherScreen(
             } else {
                 0.dp
             }
+        // CRASH FIX (2026-09-04, user report: "Opening music recognition or
+        // Listen Together crashes the app"): the overlay used to be composed
+        // INSIDE the Box that carried glassHeaderSource — a descendant of the
+        // haze/backdrop source. Nested sampling (a backdrop sampler drawn
+        // inside the layer that records it, plus the haze effect inside its
+        // own source) crashes the RuntimeShader the moment the screen opens
+        // with Liquid Glass on. Restructured to the kit's required shape:
+        // the OUTER Box carries no source, the CONTENT box alone is the
+        // source, and the pills/haze overlay is its SIBLING — the same
+        // structure as NewReleaseScreen / NewsScreen / LastFmDashboard.
         Box(
             modifier =
                 Modifier
@@ -257,8 +267,14 @@ fun MusicTogetherScreen(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
-                    ).glassHeaderSource(glassHeader),
+                    ),
         ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .glassHeaderSource(glassHeader),
+            ) {
             when (val state = screenState) {
                 MusicTogetherScreenState.Loading -> {
                     LoadingContent()
@@ -281,9 +297,10 @@ fun MusicTogetherScreen(
                     )
                 }
             }
+            }
 
             // Persistent glass back pill + header haze (History-page
-            // behaviour). Sibling of the scrolling content, drawn on top.
+            // behaviour). TRUE sibling of the source box, drawn on top.
             if (glassHeader.liquidGlassActive) {
                 GlassScreenHeaderOverlay(
                     header = glassHeader,

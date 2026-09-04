@@ -316,19 +316,28 @@ private fun MusicRecognitionContent(
             } else {
                 contentPadding.calculateTopPadding()
             }
+        // CRASH FIX (2026-09-04, user report: "Opening music recognition or
+        // Listen Together crashes the app"): the overlay used to be composed
+        // INSIDE the Box that carried glassHeaderSource — a descendant of the
+        // haze/backdrop source, and nested sampling (a sampler drawn inside
+        // the layer that records it) crashes the RuntimeShader when the
+        // screen opens with Liquid Glass on. Restructured to the kit's
+        // required shape: the LazyColumn alone carries the source and the
+        // pills/haze overlay is its SIBLING — the same structure as
+        // NewReleaseScreen / NewsScreen / LastFmDashboard.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(top = contentTopPadding, bottom = contentPadding.calculateBottomPadding())
-                    .glassHeaderSource(glassHeader),
+                    .padding(top = contentTopPadding, bottom = contentPadding.calculateBottomPadding()),
             contentAlignment = Alignment.TopCenter,
         ) {
             LazyColumn(
                 modifier =
                     Modifier
                         .widthIn(max = maximumContentWidth)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .glassHeaderSource(glassHeader),
                 contentPadding =
                     PaddingValues(
                         start = if (useWideLayout) 24.dp else 16.dp,

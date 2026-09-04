@@ -1121,10 +1121,22 @@ fun BottomSheetPlayer(
         }
 
     if (!aodModeEnabled) {
+        // Root-overlay back-priority guard (2026-09-04, second report): the
+        // back gesture was still collapsing the full player out from under an
+        // open root popup (overflow menu / Cast picker / details sheet) even
+        // after the handlers were re-ordered — callback registration order is
+        // not a guarantee across predictive-back paths. While a root overlay
+        // is showing, this handler disables itself entirely so back can only
+        // reach the overlay's own dismissal handler: the popup closes first,
+        // the full player stays put (user report: "when I use back navigation
+        // gesture it should return to the full player and not close it
+        // instead"). The overlay-back layering then unwinds one press at a
+        // time: popup → queue/lyrics → collapse.
+        val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
-                queueSheetState.isExpandedOrExpanding ||
-                    state.isExpandedOrExpanding,
+                (queueSheetState.isExpandedOrExpanding ||
+                    state.isExpandedOrExpanding) && !rootOverlayActive,
         ) {
             when {
                 isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false

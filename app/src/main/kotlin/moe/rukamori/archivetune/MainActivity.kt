@@ -300,6 +300,9 @@ import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
+import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
+import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
@@ -398,6 +401,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var syncUtils: SyncUtils
+
+    @Inject
+    lateinit var searchDiscoveryRepository: moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
@@ -687,6 +693,37 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // ── High-refresh smoothness (2026-09-04) ──
+        // User request: "Make the app use more gpu/cpu power so it's more
+        // smooth." Many OEMs run non-game apps at 60 Hz even on 90/120 Hz
+        // panels unless the window explicitly asks for a higher mode. Pin
+        // the window to the display's fastest mode at the CURRENT
+        // resolution — every Compose animation (player morphs, lyrics
+        // sweeps, popup springs, scroll flings) then renders at the panel's
+        // full rate instead of 60 fps, which is the single biggest
+        // "smoothness" lever available without touching content code.
+        // Battery cost is accepted by the request. Guarded per API level
+        // and best-effort: on failure the window keeps the default mode.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val display =
+                    display ?: @Suppress("DEPRECATION") windowManager.defaultDisplay
+                val current = display.mode
+                val best =
+                    display.supportedModes
+                        .filter { mode ->
+                            mode.physicalWidth == current.physicalWidth &&
+                                mode.physicalHeight == current.physicalHeight
+                        }.maxByOrNull { mode -> mode.refreshRate }
+                if (best != null && best.modeId != current.modeId) {
+                    window.attributes =
+                        window.attributes.apply {
+                            preferredDisplayModeId = best.modeId
+                        }
+                }
+            }
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
@@ -741,6 +778,17 @@ class MainActivity : ComponentActivity() {
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
+
+            LaunchedEffect(Unit) {
+                // Search-tab warm-up (2026-09-04, user request: "Make the
+                // search tab load extremely fast"): kick the discovery
+                // prefetch ~1.5 s after the first composition — late enough
+                // not to compete with cold-start frames, early enough that
+                // the cache is hot before the user taps Search. Single-flight
+                // in the repository shares this with any concurrent entry.
+                delay(1500)
+                searchDiscoveryRepository.warmUp()
+            }
 
             LaunchedEffect(Unit) {
                 while (playerConnection == null) {
@@ -1503,6 +1551,48 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // ── Glass-pipeline pre-warm (2026-09-04) ──
+                    // User report: "When I open the songs overflow popup for
+                    // the first few seconds after opening the app, the
+                    // scrolling in the popup is a bit laggy." The first popup
+                    // open in a process pays three cold costs — the AGSL
+                    // vibrancy shader + blur RenderEffect compile, the
+                    // recorder's first full-screen GraphicsLayer record, and
+                    // the menu rows' JIT. Warm all three ONCE ~2 s after
+                    // launch (after startup settles, before the user has
+                    // usually opened anything): attach the throttled recorder
+                    // for ~450 ms and draw a 1dp invisible strip that samples
+                    // it with the real vibrancy + 32dp blur recipe, with two
+                    // real menu rows composed inside so the row machinery is
+                    // warm too. The first REAL popup open then composes into
+                    // warm pipelines instead of compiling inside its first
+                    // scroll frames.
+                    var glassPrewarmActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        delay(2000)
+                        glassPrewarmActive = true
+                        delay(450)
+                        glassPrewarmActive = false
+                    }
+
+                    // ── Root-overlay back-priority guard (2026-09-04) ──
+                    // True while ANY root-level overlay is showing over the app
+                    // surface: the overflow glass menu, the Cast route picker's
+                    // root glass card, or the details BottomSheetPage — plus the
+                    // 260 ms exit-fade tail (menuGlassRecordingActive already
+                    // tracks exactly that window for the frost recorder).
+                    // Provided to the tree as LocalRootOverlayActive; both
+                    // player-collapse BackHandlers gate on it so the back
+                    // gesture can never minimize the player out from under an
+                    // open popup — it closes the popup instead (user report
+                    // 2026-09-04: "when I use back navigation gesture it should
+                    // return to the full player and not close it instead").
+                    val rootOverlayActive by remember {
+                        derivedStateOf {
+                            menuGlassRecordingActive || bottomSheetPageState.isVisible
+                        }
+                    }
+
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
@@ -2187,6 +2277,10 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
+                        // Root-overlay back-priority guard (2026-09-04): gates
+                        // every player-collapse BackHandler while a root popup
+                        // is open so back closes the popup, not the player.
+                        moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                     ) {
                         // ── Player-collapse BACK FALLBACK (2026-09-04, moved) ──
                         // This used to be composed AFTER the app-surface Row,
@@ -2206,7 +2300,24 @@ class MainActivity : ComponentActivity() {
                         // video) all win, and this only fires when the player
                         // is expanded with no overlay handling back — the pure
                         // "collapse to mini player" case it was written for.
-                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
+                        //
+                        // 2026-09-04 (second report, same symptom after the
+                        // move): registration order alone turned out not to be
+                        // a reliable guarantee across predictive-back paths —
+                        // the gesture still collapsed the player out from
+                        // under an open popup. The handler now also DISABLES
+                        // itself via the root-overlay guard while any root
+                        // popup (overflow menu / Cast picker / details sheet)
+                        // is showing, so back can only reach the popup's own
+                        // dismissal handler: the popup closes, the full
+                        // player stays.
+                        BackHandler(
+                            enabled =
+                                playerBottomSheetState.isExpanded &&
+                                    !isPlayerLyricsFullScreen &&
+                                    !aodModeEnabled &&
+                                    !rootOverlayActive,
+                        ) {
                             playerBottomSheetState.collapseSoft()
                         }
 
@@ -2246,7 +2357,9 @@ class MainActivity : ComponentActivity() {
                         Row(
                             modifier =
                                 Modifier.let { base ->
-                                    if (menuGlassBackdrop != null && menuGlassRecordingActive) {
+                                    if (menuGlassBackdrop != null &&
+                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                    ) {
                                         base.throttledLayerBackdrop(menuGlassBackdrop)
                                     } else {
                                         base
@@ -3546,6 +3659,32 @@ modifier =
                             state = LocalMenuState.current,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
+
+                        // Glass-pipeline pre-warm strip (2026-09-04): while
+                        // active, a 1dp / 2%-alpha strip samples the throttled
+                        // recorder with the real vibrancy + 32dp blur recipe
+                        // and composes two real menu rows — compiling the
+                        // shaders, running the first full-screen record and
+                        // JIT-ing the row machinery BEFORE the user ever
+                        // opens a popup (user report: first-seconds popup
+                        // scroll lag). Composed AFTER BottomSheetMenu so it
+                        // draws above it (it is invisible either way).
+                        GlassPipelinePrewarm(
+                            backdrop = menuGlassBackdrop,
+                            active = glassPrewarmActive,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        ) {
+                            MenuSurfaceSection {
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                            }
+                        }
 
                         // Root-level real-time liquid-glass Cast route picker
                         // (2026-09-04, user report: "The cast doesn't have any
