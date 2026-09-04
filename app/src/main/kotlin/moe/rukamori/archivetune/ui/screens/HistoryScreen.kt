@@ -154,6 +154,7 @@ import moe.rukamori.archivetune.viewmodels.HistoryViewModel
 import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import dev.chrisbanes.haze.hazeSource
 
 @Composable
 fun HistoryScreen(
@@ -753,24 +754,47 @@ fun HistoryScreen(
             }
         },
     ) { innerPadding ->
+        // Header haze (2026-09-04, revised): the home page's blurred top haze,
+        // ported to this screen. The haze SOURCE below wraps the scrolling
+        // content only, and the ScreenHeaderHaze overlay renders ON TOP of it
+        // (a LATER sibling), beneath the pinned Liquid Glass pills. The
+        // overlay was previously the FIRST child — the full-screen list drew
+        // straight over it, so the haze was never visible at all (user report
+        // 2026-09-04: "I don't see the haze effect I asked you to add"). The
+        // source/effect split also mirrors the home page's top-bar blur and
+        // the PlayerComponents pattern, keeping the effect OUT of the layer
+        // the source records (haze does not support a hazeEffect nested
+        // inside its own hazeSource content).
+        val headerHaze = rememberScreenHeaderHaze()
         Box(modifier = Modifier.fillMaxSize()) {
-            if (!showSearchBar) {
-                // When the persistent Liquid Glass header pills are shown,
-                // the LargeFlexibleTopAppBar is hidden so innerPadding's
-                // top is 0 — the LazyColumn starts at the very top of the
-                // screen (under the persistent pills). The hero item inside
-                // the LazyColumn carries its own top padding (see
-                // historySourceDock above) to sit below the pills.
-                //
-                // When Liquid Glass is off (or in selection mode), the
-                // LargeFlexibleTopAppBar reserves the top space and the
-                // LazyColumn's top padding equals the topBar's height — same
-                // as before.
-                val topPaddingForContent =
-                    if (showPersistentLiquidGlassHeader) 0.dp
-                    else innerPadding.calculateTopPadding()
-                historyContent(topPaddingForContent, false)
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(headerHaze),
+            ) {
+                if (!showSearchBar) {
+                    // When the persistent Liquid Glass header pills are shown,
+                    // the LargeFlexibleTopAppBar is hidden so innerPadding's
+                    // top is 0 — the LazyColumn starts at the very top of the
+                    // screen (under the persistent pills). The hero item inside
+                    // the LazyColumn carries its own top padding (see
+                    // historySourceDock above) to sit below the pills.
+                    //
+                    // When Liquid Glass is off (or in selection mode), the
+                    // LargeFlexibleTopAppBar reserves the top space and the
+                    // LazyColumn's top padding equals the topBar's height — same
+                    // as before.
+                    val topPaddingForContent =
+                        if (showPersistentLiquidGlassHeader) 0.dp
+                        else innerPadding.calculateTopPadding()
+                    historyContent(topPaddingForContent, false)
+                }
             }
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
 
             // ── Persistent Liquid Glass header pills ───────────────────────
             // Siblings of the LazyColumn (inside this content Box). They

@@ -26,6 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -74,6 +75,28 @@ object PoolAccountManager {
     /** Last resolved read key, so fire-and-forget /api/report calls use the same identity. */
     @Volatile
     private var poolApiKey: String? = null
+
+    /** Application context for DataStore access in report merge operations. Not Service-scoped. */
+    @Volatile
+    private var appContext: Context? = null
+
+    /**
+     * Why the last pool fetch failed, or null when it succeeded (or no pool URL is configured).
+     *
+     * [refresh] returns `hasAccounts()`, which is true whenever *anything* is in the persisted
+     * cache — so a pool that 404s on every request still reported "success" to the settings
+     * screen as long as one stale account survived from an earlier session. That made a broken
+     * pool indistinguishable from a working one in the UI, and the real HTTP status was only
+     * ever visible in logcat. Callers surface this alongside the result so the reason reaches
+     * the user instead of just the log.
+     */
+    @Volatile
+    var lastFeedError: String? = null
+        private set
+
+    /** Report deduplication: "$service:$id:$type" → timestamp. Suppresses duplicate reports within ~10 minutes. */
+    private val reportDedupe = ConcurrentHashMap<String, Long>()
+    private const val REPORT_DEDUPE_WINDOW_MS = 10 * 60 * 1000L
 
     /** A shared Tidal subscriber token contributed to the pool. */
     data class TidalPoolAccount(
@@ -173,12 +196,68 @@ object PoolAccountManager {
 
     private val legacySourcesUrl: String? get() = poolBaseUrl?.let { "$it/api/sources" }
 
-    /** Premium accounts first; callers try them in order. Paste-list accounts follow pool ones. Never throws. */
-    fun tidalAccounts(): List<TidalPoolAccount> = (tidalCache + PasteListPoolSource.tidalAccounts()).sortedByDescending { it.premium }
+    /**
+     * How long an account that just failed to resolve is tried last for.
+     *
+     * The server needs three reports (or its hourly sweep) before it stops serving a dead account,
+     * and the app only re-reads the feed every 15 minutes — so without this, a dead account was
+     * retried at the front of the list on *every* track, burning its full timeout each time
+     * (20s per Tidal attempt) before anything else was tried. Ten minutes is long enough to cover
+     * a listening session's worth of skips and short enough that an account which recovers, or one
+     * demoted by a single network blip, comes back on its own.
+     */
+    private const val ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000L
 
-    fun qobuzAccounts(): List<QobuzPoolAccount> = (qobuzCache + PasteListPoolSource.qobuzAccounts()).sortedByDescending { it.premium }
+    /** "service:id" -> the time it becomes worth trying first again. */
+    private val accountCooldownUntil = ConcurrentHashMap<String, Long>()
 
-    fun deezerAccounts(): List<DeezerPoolAccount> = (deezerCache + PasteListPoolSource.deezerAccounts()).sortedByDescending { it.premium }
+    private fun cooldownKey(service: String, id: Long?) = "$service:${id ?: 0L}"
+
+    private fun isCoolingDown(service: String, id: Long?): Boolean {
+        val key = cooldownKey(service, id)
+        val until = accountCooldownUntil[key] ?: return false
+        if (until > System.currentTimeMillis()) return true
+        accountCooldownUntil.remove(key, until)
+        return false
+    }
+
+    /**
+     * Records that an account failed to resolve, so it sorts last for [ACCOUNT_COOLDOWN_MS].
+     *
+     * Deliberately a demotion rather than a removal: with a thin pool every account may be cooling
+     * down at once, and a list that went empty would fall straight through to the lossy YouTube
+     * path. Sorted last still means tried — just after everything with a better recent record.
+     */
+    fun noteAccountFailure(service: String, id: Long?) {
+        if (id == null || id <= 0L) return
+        accountCooldownUntil[cooldownKey(service, id)] = System.currentTimeMillis() + ACCOUNT_COOLDOWN_MS
+    }
+
+    /** Records that an account resolved, clearing any cooldown from an earlier blip. */
+    fun noteAccountSuccess(service: String, id: Long?) {
+        if (id == null || id <= 0L) return
+        accountCooldownUntil.remove(cooldownKey(service, id))
+    }
+
+    /**
+     * Accounts that resolved recently first, premium before free within each group. Callers try
+     * them in order, so this is what keeps a known-bad account from costing every skip its timeout.
+     */
+    private fun <T> ordered(
+        service: String,
+        accounts: List<T>,
+        idOf: (T) -> Long?,
+        premiumOf: (T) -> Boolean,
+    ): List<T> = accounts.sortedWith(compareBy({ isCoolingDown(service, idOf(it)) }, { !premiumOf(it) }))
+
+    fun tidalAccounts(): List<TidalPoolAccount> =
+        ordered("tidal", tidalCache + PasteListPoolSource.tidalAccounts(), { it.id }, { it.premium })
+
+    fun qobuzAccounts(): List<QobuzPoolAccount> =
+        ordered("qobuz", qobuzCache + PasteListPoolSource.qobuzAccounts(), { it.id }, { it.premium })
+
+    fun deezerAccounts(): List<DeezerPoolAccount> =
+        ordered("deezer", deezerCache + PasteListPoolSource.deezerAccounts(), { it.id }, { it.premium })
 
     fun appleMusicAccounts(): List<AppleMusicPoolAccount> = (appleMusicCache + PasteListPoolSource.appleMusicAccounts()).sortedByDescending { it.premium }
 
@@ -209,6 +288,7 @@ object PoolAccountManager {
      */
     suspend fun loadCached(context: Context) {
         if (loadedFromDisk) return
+        appContext = context.applicationContext
         withContext(Dispatchers.IO) {
             runCatching {
                 PasteListPoolSource.loadCached(context)
@@ -249,6 +329,7 @@ object PoolAccountManager {
         force: Boolean = false,
     ): Boolean =
         withContext(Dispatchers.IO) {
+            appContext = context.applicationContext
             // Paste lists work with no Source Pool URL baked in — only skip when there is
             // neither a pool URL nor any paste-list URL configured.
             if (!isEnabled && !PasteListPoolSource.hasUrls(context)) return@withContext false
@@ -266,7 +347,9 @@ object PoolAccountManager {
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
-                    // No Source Pool URL baked in — paste lists are the only account source.
+                    // No Source Pool URL baked in — paste lists are the only account source, so
+                    // there is no pool failure to report.
+                    lastFeedError = null
                     Timber.tag(TAG).d("No Source Pool URL configured; refreshing paste lists only")
                 } else {
                     // A key pasted by the user on-device (pool site /dashboard → copy) wins over
@@ -303,6 +386,33 @@ object PoolAccountManager {
                             result = fetchAccounts(context, legacySourcesUrl!!, readKey)
                         }
                     }
+                    // Record why the fetch failed — or clear it on success — so the settings screen
+                    // can show the reason rather than a generic "failed". refresh()'s own Boolean
+                    // cannot carry this: it reports whether anything is cached, not whether the
+                    // network call actually worked.
+                    lastFeedError =
+                        when {
+                            result.succeeded -> null
+                            // Both the split feed and the legacy combined feed 404'd. That is not
+                            // an "old pool deployment" — nothing at this host serves the pool API
+                            // at all (wrong SOURCE_PROVIDER_URL, or a deployment that no longer
+                            // exists). A missing or invalid read key is a 401, never a 404.
+                            result.code == 404 -> {
+                                Timber.tag(TAG).e(
+                                    "No pool API at %s — both /api/accounts and /api/sources returned 404. " +
+                                        "SOURCE_PROVIDER_URL points at a host that is not an ArchivePool deployment " +
+                                        "(this is NOT a read-key problem; a bad key answers 401).",
+                                    poolBaseUrl,
+                                )
+                                "No pool API at $poolBaseUrl (HTTP 404) — that URL is not an ArchivePool deployment."
+                            }
+                            result.code == 401 ->
+                                "The pool requires an API key (HTTP 401). Create a free account at " +
+                                    "$poolBaseUrl, press “Request API key” on its dashboard, then paste the key " +
+                                    "into Sources → Pool API key and refresh again."
+                            result.code == 0 -> "Could not reach $poolBaseUrl — network error."
+                            else -> "Pool feed returned HTTP ${result.code}."
+                        }
                 } // else (pool URL configured)
 
                 // Second source: user-configured community paste lists (rentry/gist tables).
@@ -364,19 +474,7 @@ object PoolAccountManager {
                     return@use FeedFetch(null, response.code)
                 }
                 val root = JSONObject(response.body?.string().orEmpty())
-                // Which key protects the feed's sensitive fields — "read-key" (v2: derived from the
-                // read key we presented) or "client-key" (legacy: BuildConfig.POOL_CLIENT_KEY). Try
-                // the indicated scheme first and fall back to the other, so the app works against
-                // both current and older pool deployments regardless of which scheme they chose.
-                val derivedKey = PoolCrypto.deriveClientKey(readKey)
-                val encryptionScheme = root.optString("encryption", "")
-                val decryptor: (String) -> String? = { raw ->
-                    if (encryptionScheme == "read-key") {
-                        PoolCrypto.maybeDecryptWith(raw, derivedKey) ?: PoolCrypto.maybeDecrypt(raw)
-                    } else {
-                        PoolCrypto.maybeDecrypt(raw) ?: PoolCrypto.maybeDecryptWith(raw, derivedKey)
-                    }
-                }
+                val decryptor = decryptorFor(root, readKey)
                 val tidal = parseTidal(accountsArray(root, "tidal"), decryptor)
                 val qobuz = parseQobuz(accountsArray(root, "qobuz"), decryptor)
                 val deezer = parseDeezer(accountsArray(root, "deezer"), decryptor)
@@ -506,6 +604,20 @@ object PoolAccountManager {
     ) {
         if (id == null) return
         val base = poolBaseUrl ?: return
+
+        // Deduplicate reports within ~10 minutes to avoid spamming the server when one dead
+        // token is hit by multiple resolvers (e.g., LosslessStreamResolver racing all pool accounts).
+        val dedupeKey = "$service:$id:$reportType"
+        val now = System.currentTimeMillis()
+        val lastReported = reportDedupe[dedupeKey]
+        if (lastReported != null && now - lastReported < REPORT_DEDUPE_WINDOW_MS) {
+            return
+        }
+        reportDedupe[dedupeKey] = now
+
+        // Prune old entries to prevent unbounded map growth (~10min window).
+        reportDedupe.entries.removeIf { (_, ts) -> now - ts > REPORT_DEDUPE_WINDOW_MS }
+
         reportScope.launch {
             runCatching {
                 val body =
@@ -520,14 +632,23 @@ object PoolAccountManager {
                         .Builder()
                         .url("$base/api/report")
                         .header("User-Agent", "ArchiveTune-Android")
+                        .header("X-Pool-Client", "v2")
                         .post(body.toRequestBody(JSON_MEDIA))
-                    val readKey = poolApiKey?.takeIf { it.isNotBlank() } ?: BuildConfig.SOURCE_PROVIDER_KEY
-                    if (readKey.isNotBlank()) {
-                        builder.header("Authorization", "Bearer $readKey")
-                    }
+                val readKey = poolApiKey?.takeIf { it.isNotBlank() } ?: BuildConfig.SOURCE_PROVIDER_KEY
+                if (readKey.isNotBlank()) {
+                    builder.header("Authorization", "Bearer $readKey")
+                }
                 client.newCall(builder.build()).execute().use { response ->
                     if (!response.isSuccessful) {
                         Timber.tag(TAG).d("Pool report %s/%s/%s returned HTTP %d", service, reportType, id, response.code)
+                        return@use
+                    }
+                    val responseBody = response.body?.string().orEmpty()
+                    if (responseBody.isNotBlank()) {
+                        val root = JSONObject(responseBody)
+                        if (root.optBoolean("ok", false) && kind == "account" && readKey.isNotBlank()) {
+                            mergeReplacement(root, service, id, readKey)
+                        }
                     }
                 }
             }.onFailure { Timber.tag(TAG).w(it, "Pool report failed") }
@@ -554,6 +675,78 @@ object PoolAccountManager {
             Timber.tag(TAG).w("Dropped encrypted pool field %s because no available key could decrypt it", key)
         }
         return decoded
+    }
+
+    /** Builds the decryptor lambda for a feed response, selecting the indicated encryption scheme. */
+    private fun decryptorFor(root: JSONObject, readKey: String): (String) -> String? {
+        val derivedKey = PoolCrypto.deriveClientKey(readKey)
+        val encryptionScheme = root.optString("encryption", "")
+        return { raw ->
+            if (encryptionScheme == "read-key") {
+                PoolCrypto.maybeDecryptWith(raw, derivedKey) ?: PoolCrypto.maybeDecrypt(raw)
+            } else {
+                PoolCrypto.maybeDecrypt(raw) ?: PoolCrypto.maybeDecryptWith(raw, derivedKey)
+            }
+        }
+    }
+
+    /**
+     * Merges a replacement credential into the cache after a dead-token report, under the refresh mutex
+     * to ensure atomicity with persist(). Replaces the dead element in-place or drops it when no
+     * replacement is available. The replacement shape matches /api/accounts exactly.
+     */
+    private suspend fun mergeReplacement(
+        root: JSONObject,
+        service: String,
+        deadId: Long,
+        readKey: String,
+    ) {
+        val ctx = appContext ?: return
+        val replacementObj = root.optJSONObject("replacement") ?: return
+        val decryptor = decryptorFor(replacementObj, readKey)
+        val replacementArr = replacementObj.optJSONObject(service)?.optJSONArray("accounts") ?: JSONArray()
+
+        refreshMutex.withLock {
+            when (service) {
+                "tidal" -> tidalCache = mergeList(tidalCache, deadId, TidalPoolAccount::id, replacementArr, ::parseTidal, decryptor) ?: return@withLock
+                "qobuz" -> qobuzCache = mergeList(qobuzCache, deadId, QobuzPoolAccount::id, replacementArr, ::parseQobuz, decryptor) ?: return@withLock
+                "deezer" -> deezerCache = mergeList(deezerCache, deadId, DeezerPoolAccount::id, replacementArr, ::parseDeezer, decryptor) ?: return@withLock
+                "apple-music" -> appleMusicCache = mergeList(appleMusicCache, deadId, AppleMusicPoolAccount::id, replacementArr, ::parseAppleMusic, decryptor) ?: return@withLock
+                else -> return@withLock
+            }
+            persist(ctx, tidalCache, qobuzCache, deezerCache, appleMusicCache)
+        }
+    }
+
+    /**
+     * Replaces the dead-id element of [cacheList] with the parsed replacement, preserving order.
+     * Null return means "nothing to persist": the dead entry is no longer cached (a refresh landed
+     * while the report was in flight, so that cache is authoritative) or the replacement failed to
+     * parse. An empty [replacementArr] drops the dead entry with no substitute.
+     */
+    private fun <T> mergeList(
+        cacheList: List<T>,
+        deadId: Long,
+        idOf: (T) -> Long?,
+        replacementArr: JSONArray,
+        parse: (JSONArray?, (String) -> String?) -> List<T>,
+        decryptor: (String) -> String?,
+    ): List<T>? {
+        val deadIndex = cacheList.indexOfFirst { idOf(it) == deadId }
+        if (deadIndex < 0) return null
+
+        if (replacementArr.length() == 0) {
+            return cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        }
+
+        val replacementEntry = parse(replacementArr, decryptor).firstOrNull() ?: return null
+
+        // Replacement already cached (a concurrent report raced to the same one) — just drop the dead entry.
+        return if (cacheList.any { idOf(it) == idOf(replacementEntry) }) {
+            cacheList.filterIndexed { idx, _ -> idx != deadIndex }
+        } else {
+            cacheList.mapIndexed { idx, entry -> if (idx == deadIndex) replacementEntry else entry }
+        }
     }
 
     private fun parseTidal(

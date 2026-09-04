@@ -27,6 +27,7 @@ import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.HomeScreenStyle
 import moe.rukamori.archivetune.constants.HomeScreenStyleKey
+import moe.rukamori.archivetune.constants.HomeSource
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
@@ -93,6 +94,8 @@ import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LibreFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.YOUTUBE_OAUTH_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.YouTubeOAuthLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFmDashboardScreen
@@ -131,6 +134,15 @@ fun NavGraphBuilder.navigationBuilder(
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
+        // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
+        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
+        // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
+        // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
+        if (rememberHomeSource() == HomeSource.SPOTIFY) {
+            SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
+            return@composable
+        }
+
         val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.DEFAULT)
         when (homeScreenStyle) {
             HomeScreenStyle.RUKAMORI -> {
@@ -731,5 +743,9 @@ fun NavGraphBuilder.navigationBuilder(
             navController,
             startUrl = backStackEntry.arguments?.getString(LOGIN_URL_ARGUMENT)?.let(Uri::decode),
         )
+    }
+    // The other half of YouTube sign-in: no WebView, no cookie — a code typed at google.com/device.
+    composable(YOUTUBE_OAUTH_ROUTE) {
+        YouTubeOAuthLoginScreen(navController)
     }
 }

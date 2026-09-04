@@ -72,6 +72,13 @@ fun CanvasArtworkPlayer(
     // re-created and the ExoPlayer attaches to it — no reload delay because
     // the player instance was retained.
     visible: Boolean = true,
+    // Optional availability signal for callers that keep a fallback behind
+    // the video: invoked with `true` once a frame is actually rendering (the
+    // surface's alpha has faded in) and `false` whenever playback dies (error
+    // with no fallback left) or the media item is being swapped. The TikTok
+    // player uses this to dissolve its artwork hero out while the full-bleed
+    // canvas plays and bring it back when the canvas is unavailable.
+    onPlaybackAvailabilityChange: ((available: Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -86,6 +93,7 @@ fun CanvasArtworkPlayer(
     var isVideoReady by remember(initial) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(initial) { mutableStateOf(false) }
     val shouldPlay by rememberUpdatedState(isPlaying)
+    val reportAvailability by rememberUpdatedState(onPlaybackAvailabilityChange)
 
     val okHttpClient =
         remember {
@@ -250,6 +258,7 @@ fun CanvasArtworkPlayer(
             if (stalledForMs >= CanvasPlaybackStallTimeoutMs) {
                 currentUrl = fallback
                 isVideoReady = false
+                reportAvailability?.invoke(false)
                 return@LaunchedEffect
             }
 
@@ -290,11 +299,13 @@ fun CanvasArtworkPlayer(
                         currentUrl = next
                     } else {
                         exoPlayer.stop()
+                        reportAvailability?.invoke(false)
                     }
                 }
 
                 override fun onRenderedFirstFrame() {
                     isVideoReady = true
+                    reportAvailability?.invoke(true)
                     if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.setCanvasPlayback(isPlaying = true)
                     }
@@ -328,6 +339,9 @@ fun CanvasArtworkPlayer(
         val normalized = currentUrl.trim()
         isVideoReady = false
         hasPlaybackFailed = false
+        // While the media item swaps (initial load or fallback retry) no frame
+        // is rendering — let the fallback-behind caller show through again.
+        reportAvailability?.invoke(false)
         val lowercaseUrl = normalized.lowercase(Locale.ROOT)
         val mimeType =
             when {
