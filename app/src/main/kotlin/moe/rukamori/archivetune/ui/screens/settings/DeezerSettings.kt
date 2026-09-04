@@ -53,6 +53,7 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
