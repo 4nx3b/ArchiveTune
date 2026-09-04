@@ -71,6 +71,8 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
+import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
+import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -308,6 +310,11 @@ fun AppearanceSectionSettings(
     val (liquidGlassEnabled, onLiquidGlassEnabledChange) =
         rememberPreference(
             LiquidGlassEnabledKey,
+            defaultValue = false,
+        )
+    val (appleMusicExperience, onAppleMusicExperienceChange) =
+        rememberPreference(
+            AppleMusicExperienceKey,
             defaultValue = false,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
@@ -927,6 +934,24 @@ fun AppearanceSectionSettings(
                     modifier = positions.modifierFor("disable_blur"),
                     title = playerTitle,
                 ) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("apple_music_experience"),
+                            title = { Text(stringResource(R.string.apple_music_experience)) },
+                            description = stringResource(R.string.apple_music_experience_desc),
+                            icon = { Icon(painterResource(R.drawable.music_note), null) },
+                            checked = appleMusicExperience,
+                            onCheckedChange = { enabled ->
+                                onAppleMusicExperienceChange(enabled)
+                                // Turning the experience on also puts the player in Apple Music's
+                                // style: half an Apple Music app is not an experience. Turning it
+                                // off leaves the player alone — someone who liked that player and
+                                // only wanted the old headers back should keep it.
+                                if (enabled) onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
+                            },
+                        )
+                    }
+
                     item {
                         Column(modifier = positions.modifierFor("player_design_style")) {
                             EnumListPreference(
