@@ -2598,108 +2598,86 @@ modifier =
                                                     }
                                                 },
                                                 actions = {
+                                                    // The settings-update badge is computed once
+                                                    // for BOTH consumers: the small dot on the
+                                                    // Home route's liquid-glass settings icon
+                                                    // and (previously) the profile popup's
+                                                    // Settings row. Settings is now reachable
+                                                    // from the Home top-end icon only.
+                                                    val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
+                                                        latestUpdateChannel == effectiveUpdateChannel &&
+                                                        Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                     if (isHomeRoute) {
-                                                        // ── Home header search (2026-09-04, re-revised) ──
-                                                        // The search icon in a REAL liquid glass
-                                                        // pill (user request 2026-09-04: "place
-                                                        // the search icon on the home page inside
-                                                        // liquid glass pill") — the same
-                                                        // LiquidGlassIconButton the playlist
-                                                        // screens' circular back buttons use,
-                                                        // sampling the app-wide NavHost backdrop
-                                                        // (the top bar is a SIBLING of the
-                                                        // layer-capturing NavHost Box, so this is
-                                                        // the safe non-reentrant sample). Search
-                                                        // opens the app's existing Search tab.
-                                                        // When Liquid Glass is off (or pre-S),
-                                                        // it falls back to the frosted pill.
+                                                        // ── Home header settings (2026-09-04) ──
+                                                        // The ONLY top-end action on the Home
+                                                        // route is the settings icon in a
+                                                        // liquid-glass pill (user request
+                                                        // 2026-09-04: "instead of search icon
+                                                        // on the top right on home page there
+                                                        // should only be settings icon in
+                                                        // liquid glass"). The search entry
+                                                        // point stays the Search tab in the
+                                                        // bottom navigation. The small accent
+                                                        // dot on the icon carries over the
+                                                        // update-available badge that the
+                                                        // profile popup's Settings row used to
+                                                        // show, so no functionality is lost.
                                                         val liquidGlassBackdrop =
                                                             LocalLiquidGlassBackdrop.current
                                                         if (liquidGlassBackdrop != null) {
-                                                            LiquidGlassIconButton(
-                                                                backdrop = liquidGlassBackdrop,
-                                                                painter = painterResource(R.drawable.search),
-                                                                contentDescription = stringResource(R.string.search),
-                                                                modifier =
-                                                                    Modifier.padding(end = 10.dp),
-                                                                onClick = {
-                                                                    navController.navigate("search") {
-                                                                        popUpTo(navController.graph.startDestinationId) {
-                                                                            saveState = true
-                                                                        }
-                                                                        launchSingleTop = true
-                                                                        restoreState = true
-                                                                    }
-                                                                },
-                                                            )
+                                                            Box(
+                                                                modifier = Modifier.padding(end = 10.dp),
+                                                            ) {
+                                                                LiquidGlassIconButton(
+                                                                    backdrop = liquidGlassBackdrop,
+                                                                    painter = painterResource(R.drawable.settings),
+                                                                    contentDescription = stringResource(R.string.settings),
+                                                                    onClick = {
+                                                                        navController.navigate("settings")
+                                                                    },
+                                                                )
+                                                                if (showSettingsBadge) {
+                                                                    Box(
+                                                                        modifier =
+                                                                            Modifier
+                                                                                .align(Alignment.TopEnd)
+                                                                                .offset(x = 2.dp, y = 2.dp)
+                                                                                .size(10.dp)
+                                                                                .graphicsLayer { alpha = 0.95f }
+                                                                                .background(
+                                                                                    MaterialTheme.colorScheme.error,
+                                                                                    CircleShape,
+                                                                                ),
+                                                                    )
+                                                                }
+                                                            }
                                                         } else {
                                                             FrostedHeaderPill(
                                                                 modifier = Modifier.padding(end = 6.dp),
                                                             ) {
                                                                 IconButton(
                                                                     onClick = {
-                                                                        navController.navigate("search") {
-                                                                            popUpTo(navController.graph.startDestinationId) {
-                                                                                saveState = true
-                                                                            }
-                                                                            launchSingleTop = true
-                                                                            restoreState = true
-                                                                        }
+                                                                        navController.navigate("settings")
                                                                     },
                                                                     onLongClick = {},
                                                                 ) {
                                                                     Icon(
-                                                                        painter = painterResource(R.drawable.search),
-                                                                        contentDescription = stringResource(R.string.search),
+                                                                        painter = painterResource(R.drawable.settings),
+                                                                        contentDescription = stringResource(R.string.settings),
                                                                         modifier = Modifier.size(20.dp),
                                                                     )
                                                                 }
                                                             }
                                                         }
-                                                    } else {
-                                                        Box(
-                                                            modifier = Modifier.padding(end = 4.dp),
-                                                        ) {
-                                                            IconButton(
-                                                                onClick = { profileMenuExpanded = true },
-                                                                colors = IconButtonDefaults.iconButtonColors(
-                                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                                        .copy(alpha = TopAppBarIconButtonContainerAlpha),
-                                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                                ),
-                                                            ) {
-                                                                Surface(
-                                                                    modifier = Modifier.size(28.dp),
-                                                                    shape = CircleShape,
-                                                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                                                ) {
-                                                                    if (!accountImageUrl.isNullOrBlank()) {
-                                                                        AsyncImage(
-                                                                            model = accountImageUrl,
-                                                                            contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier
-                                                                                .fillMaxSize()
-                                                                                .clip(CircleShape),
-                                                                            contentScale = ContentScale.Crop,
-                                                                        )
-                                                                    } else {
-                                                                        Box(contentAlignment = Alignment.Center) {
-                                                                            Icon(
-                                                                                painter = painterResource(R.drawable.account),
-                                                                                contentDescription = stringResource(R.string.account),
-                                                                                modifier = Modifier.size(20.dp),
-                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
                                                     }
+                                                    // Non-Home routes (Search / Library) no
+                                                    // longer render a profile avatar in the
+                                                    // top bar (user request 2026-09-04:
+                                                    // "Remove the profile icons on the top
+                                                    // from search and library page"). The
+                                                    // profile menu remains reachable from the
+                                                    // Home tab's avatar.
                                                     if (profileMenuExpanded) {
-                                                        val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
-                                                            latestUpdateChannel == effectiveUpdateChannel &&
-                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                         ProfileMenuDialog(
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
@@ -2749,15 +2727,11 @@ modifier =
                                                                         navController.navigate("settings/music_together")
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.settings,
-                                                                    label = stringResource(R.string.settings),
-                                                                    showBadge = showSettingsBadge,
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings")
-                                                                    },
-                                                                ),
+                                                                // Settings entry removed (user request 2026-09-04:
+                                                                // "remove settings from profile popup") — the
+                                                                // Home route's top-end settings icon in
+                                                                // liquid glass is now the sole entry point,
+                                                                // and it carries the update-available badge.
                                                             ),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )

@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -94,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.viewmodels.NewReleaseContent
 import moe.rukamori.archivetune.viewmodels.NewReleaseUiState
 import moe.rukamori.archivetune.viewmodels.NewReleaseViewModel
@@ -119,9 +121,20 @@ fun NewReleaseScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
+    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
+    // back pill + search pill pinned over the scrolling content, plus the
+    // header haze — replaces the normal top bar while Liquid Glass is on.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
+            // While the glass pills own the header, the normal bar (and the
+            // in-bar search mode) is hidden — search moves to the trailing
+            // glass pill. In search mode the SearchBar still renders in the
+            // topBar slot so it stays reachable.
+            if (isSearchActive || !glassHeader.liquidGlassActive) {
             // Switch between the normal top app bar and a Material3 SearchBar
             // when the user taps the search icon. Rendering the search bar in
             // the topBar slot (instead of as a grid item below the top app bar)
@@ -231,22 +244,41 @@ fun NewReleaseScreen(
                     )
                 }
             }
+            }
         },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current,
     ) { paddingValues ->
+        // In glass-header mode the topBar is empty, so the Scaffold's top
+        // padding is 0 — the grid instead gets the pill zone (status bar +
+        // pills + breathing room) as its content top padding, and the items
+        // scroll under the pills/haze exactly like the History page.
+        val contentTopPadding =
+            if (glassHeader.liquidGlassActive && !isSearchActive) {
+                systemBarsTopPadding + 84.dp
+            } else {
+                paddingValues.calculateTopPadding()
+            }
+        val adjustedPaddingValues =
+            PaddingValues(
+                start = paddingValues.calculateStartPadding(LocalLayoutDirection.current),
+                top = contentTopPadding,
+                end = paddingValues.calculateEndPadding(LocalLayoutDirection.current),
+                bottom = paddingValues.calculateBottomPadding(),
+            )
+        Box(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = uiState,
             transitionSpec = {
                 fadeIn(tween(300)) togetherWith fadeOut(tween(150))
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
             label = "NewReleaseContent",
         ) { state ->
             when (state) {
                 NewReleaseUiState.Loading -> {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-                        contentPadding = paddingValues,
+                        contentPadding = adjustedPaddingValues,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(12) {
@@ -262,7 +294,7 @@ fun NewReleaseScreen(
                         content = state.content,
                         selectedTab = selectedTab,
                         onTabSelected = { selectedTab = it },
-                        paddingValues = paddingValues,
+                        paddingValues = adjustedPaddingValues,
                         activeAlbumId = mediaMetadata?.album?.id,
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
@@ -288,7 +320,7 @@ fun NewReleaseScreen(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .padding(paddingValues)
+                                .padding(adjustedPaddingValues)
                                 .padding(horizontal = 24.dp),
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -329,7 +361,7 @@ fun NewReleaseScreen(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .padding(paddingValues)
+                                .padding(adjustedPaddingValues)
                                 .padding(horizontal = 24.dp),
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -350,6 +382,20 @@ fun NewReleaseScreen(
                     }
                 }
             }
+        }
+
+        // Persistent glass pills + header haze (History-page behaviour). The
+        // search pill activates the same in-bar SearchBar flow the normal
+        // top bar's search icon used, so the feature is fully preserved.
+        if (glassHeader.liquidGlassActive && !isSearchActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.new_releases),
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+                onSearch = { isSearchActive = true },
+            )
+        }
         }
     }
 }

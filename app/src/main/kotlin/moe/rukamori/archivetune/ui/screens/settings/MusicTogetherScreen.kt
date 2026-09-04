@@ -89,6 +89,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -117,6 +118,10 @@ import moe.rukamori.archivetune.viewmodels.MusicTogetherViewModel
 import moe.rukamori.archivetune.ui.component.IconButton as AtIconButton
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,8 +171,15 @@ fun MusicTogetherScreen(
         MusicTogetherDialogs(model = model, viewModel = viewModel)
     }
 
+    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
+    // back pill pinned over the scrolling content, plus the header haze —
+    // replaces the normal top bar while Liquid Glass is on.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         topBar = {
+            if (!glassHeader.liquidGlassActive) {
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
@@ -205,6 +217,7 @@ fun MusicTogetherScreen(
                     ),
                 scrollBehavior = scrollBehavior,
             )
+            }
         },
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = MaterialTheme.colorScheme.surface,
@@ -218,16 +231,32 @@ fun MusicTogetherScreen(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
+        // Glass-header mode: the topBar is empty so innerPadding's top is just
+        // the status bar — drop it entirely and let the inner LazyColumn's
+        // content padding carry the pill zone instead, so the cards scroll
+        // under the pills/haze exactly like the History page.
+        val contentTopPadding =
+            if (glassHeader.liquidGlassActive) {
+                0.dp
+            } else {
+                innerPadding.calculateTopPadding()
+            }
+        val glassTopContentPadding =
+            if (glassHeader.liquidGlassActive) {
+                systemBarsTopPadding + 84.dp
+            } else {
+                0.dp
+            }
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(top = contentTopPadding, bottom = innerPadding.calculateBottomPadding())
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
-                    ),
+                    ).glassHeaderSource(glassHeader),
         ) {
             when (val state = screenState) {
                 MusicTogetherScreenState.Loading -> {
@@ -247,8 +276,20 @@ fun MusicTogetherScreen(
                         model = state.model,
                         useSupportingPane = useSupportingPane,
                         viewModel = viewModel,
+                        topContentPadding = glassTopContentPadding,
                     )
                 }
+            }
+
+            // Persistent glass back pill + header haze (History-page
+            // behaviour). Sibling of the scrolling content, drawn on top.
+            if (glassHeader.liquidGlassActive) {
+                GlassScreenHeaderOverlay(
+                    header = glassHeader,
+                    title = stringResource(R.string.music_together),
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                )
             }
         }
     }
@@ -259,6 +300,7 @@ private fun MusicTogetherContent(
     model: MusicTogetherUiModel,
     useSupportingPane: Boolean,
     viewModel: MusicTogetherViewModel,
+    topContentPadding: Dp = 0.dp,
 ) {
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
@@ -279,7 +321,7 @@ private fun MusicTogetherContent(
                         .weight(1.25f)
                         .fillMaxHeight()
                         .widthIn(max = 720.dp),
-                contentPadding = PaddingValues(bottom = playerAwareBottomPadding + MusicTogetherSpacing.lg),
+                contentPadding = PaddingValues(top = topContentPadding, bottom = playerAwareBottomPadding + MusicTogetherSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(MusicTogetherSpacing.sm),
             ) {
                 item(contentType = "status") {
@@ -343,7 +385,7 @@ private fun MusicTogetherContent(
             contentPadding =
                 PaddingValues(
                     start = MusicTogetherSpacing.sm,
-                    top = MusicTogetherSpacing.xs,
+                    top = topContentPadding + MusicTogetherSpacing.xs,
                     end = MusicTogetherSpacing.sm,
                     bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                 ),

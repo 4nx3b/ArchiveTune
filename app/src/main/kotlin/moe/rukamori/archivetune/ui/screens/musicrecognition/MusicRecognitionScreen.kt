@@ -121,6 +121,12 @@ import moe.rukamori.archivetune.viewmodels.RecognitionPhaseUi
 import moe.rukamori.archivetune.viewmodels.RecognizedTrackUiModel
 import moe.rukamori.archivetune.musicrecognition.navigateToMusicRecognitionDetails
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -254,12 +260,19 @@ private fun MusicRecognitionContent(
         )
     val maximumContentWidth = if (useWideLayout) 1_040.dp else 680.dp
 
+    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
+    // back pill + actions pill pinned over the scrolling content, plus the
+    // header haze — replaces the normal top bar while Liquid Glass is on.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         modifier =
             Modifier
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
+            if (!glassHeader.liquidGlassActive) {
             LargeTopAppBar(
                 title = { Text(stringResource(R.string.music_recognition)) },
                 navigationIcon = {
@@ -289,15 +302,26 @@ private fun MusicRecognitionContent(
                 },
                 scrollBehavior = scrollBehavior,
             )
+            }
         },
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets.safeDrawing,
     ) { contentPadding ->
+        // Glass-header mode: drop the Scaffold's top padding so the list
+        // scrolls under the pinned pills; the pill zone becomes the list's
+        // content top padding instead (History-page behaviour).
+        val contentTopPadding =
+            if (glassHeader.liquidGlassActive) {
+                0.dp
+            } else {
+                contentPadding.calculateTopPadding()
+            }
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(contentPadding),
+                    .padding(top = contentTopPadding, bottom = contentPadding.calculateBottomPadding())
+                    .glassHeaderSource(glassHeader),
             contentAlignment = Alignment.TopCenter,
         ) {
             LazyColumn(
@@ -308,7 +332,7 @@ private fun MusicRecognitionContent(
                 contentPadding =
                     PaddingValues(
                         start = if (useWideLayout) 24.dp else 16.dp,
-                        top = 24.dp,
+                        top = if (glassHeader.liquidGlassActive) systemBarsTopPadding + 84.dp else 24.dp,
                         end = if (useWideLayout) 24.dp else 16.dp,
                         bottom = 40.dp,
                     ),
@@ -379,6 +403,42 @@ private fun MusicRecognitionContent(
                         }
                     }
                 }
+            }
+
+            // Persistent glass pills + header haze (History-page behaviour).
+            // The trailing pill carries the same history + settings actions
+            // the normal top bar exposes, so nothing is lost.
+            if (glassHeader.liquidGlassActive) {
+                GlassScreenHeaderOverlay(
+                    header = glassHeader,
+                    title = stringResource(R.string.music_recognition),
+                    onBack = onNavigateBack,
+                    onBackLongClick = {},
+                    trailing = {
+                        AppIconButton(
+                            onClick = onShowHistory,
+                            onLongClick = {},
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.history),
+                                contentDescription = stringResource(R.string.music_recognition_history),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                        AppIconButton(
+                            onClick = onShowSettings,
+                            onLongClick = {},
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.settings),
+                                contentDescription = stringResource(R.string.music_recognition_settings),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    },
+                )
             }
         }
     }
