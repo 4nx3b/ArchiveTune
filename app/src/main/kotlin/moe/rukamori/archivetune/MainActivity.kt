@@ -2625,9 +2625,7 @@ modifier =
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
-<<<<<<< HEAD
                                                 // ── Home header (2026-09-04, re-revised) ──
-                                                                        // ── Home header (2026-09-04, re-revised) ──
                                                 // Plain profile avatar, no pill around
                                                 // it (user request 2026-09-04: "The
                                                 // profile picture is surrounded in a
@@ -2640,7 +2638,8 @@ modifier =
                                                 // on the Home route.
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
-lick = { profileMenuExpanded = true },
+                                                        IconButton(
+                                                            onClick = { profileMenuExpanded = true },
                                                             onLongClick = {},
                                                             modifier = Modifier.padding(start = 10.dp),
                                                         ) {
