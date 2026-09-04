@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
@@ -310,7 +311,10 @@ private class ThrottledLayerBackdropNode(
                 val previousDensity = drawContext.density
                 drawContext.density = density
                 try {
-                    drawContent()
+                    // Explicit receiver: GraphicsLayer.record's block is a plain
+                    // DrawScope, so the ContentDrawScope member needs to be named
+                    // (kyant's LayerBackdropNode does the same via this@draw).
+                    this@draw.drawContent()
                 } finally {
                     drawContext.density = previousDensity
                 }
