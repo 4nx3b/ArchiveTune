@@ -457,7 +457,7 @@ fun LyricsMenu(
         }
     }
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -981,7 +981,7 @@ fun LyricsMenu(
                     // below — matching the pre-batch-10 structure.
                 }
             } else {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     NewActionGrid(
                         actions =
                             menuItems.map { item ->

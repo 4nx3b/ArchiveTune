@@ -148,6 +148,17 @@
     <string name="canvas_resolvers_count">%1$d configured</string>
     <string name="canvas_resolvers_none">Built-in resolver only</string>
 
+    <!-- Canvas source health check (Settings → Playback → Artwork) -->
+    <string name="canvas_check">Canvas Check</string>
+    <string name="canvas_check_description">Check whether every canvas source — your Spotify account, the Apple Music canvas API and your configured mirrors — is working right now.</string>
+    <string name="canvas_check_running">Checking…</string>
+    <string name="canvas_check_source_spotify">Spotify Canvas — your account</string>
+    <string name="canvas_check_source_apple_music">Apple Music canvas API</string>
+    <string name="canvas_check_source_mirror">Mirror: %1$s</string>
+    <string name="canvas_check_recheck">Re-check</string>
+    <string name="canvas_check_probe_playing">Probing with the current song: %1$s — %2$s</string>
+    <string name="canvas_check_probe_fallback">Nothing is playing — probing with Blinding Lights (The Weeknd)</string>
+
     <!-- Paxsenix endpoint check -->
     <string name="paxsenix_check_endpoints">Check Paxsenix endpoints</string>
     <string name="paxsenix_check_endpoints_description">Ask the configured endpoint which per-provider lyrics paths it actually serves.</string>

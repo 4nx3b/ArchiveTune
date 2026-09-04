@@ -692,7 +692,7 @@ fun PlayerMenu(
             }
         } else {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         buildList {
@@ -867,7 +867,7 @@ fun PlayerMenu(
             }
         }
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
         // "Save Canvas" — list-item form. Shown only when canvas artwork is
         // available for the current song. Tapping opens the SaveCanvasDialog
@@ -883,7 +883,7 @@ fun PlayerMenu(
             hasCanvasArtwork
         ) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.save_canvas)) },
                         leadingContent = {
@@ -901,7 +901,7 @@ fun PlayerMenu(
                 }
             }
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
         // "Add to playlist" and "Pin to speed dial" — converted from
@@ -909,7 +909,7 @@ fun PlayerMenu(
         // per user request. They now appear in their own MenuSurfaceSection
         // with the same visual style as the other list items below.
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
@@ -963,11 +963,11 @@ fun PlayerMenu(
             }
         }
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
         if (splitArtists.isNotEmpty() || mediaMetadata.album != null) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     Column {
                         if (splitArtists.isNotEmpty()) {
                             ListItem(
@@ -1021,12 +1021,12 @@ fun PlayerMenu(
                 }
             }
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
         if (!isLocalMedia) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     when (download?.state) {
                         Download.STATE_COMPLETED -> {
                             ListItem(
@@ -1167,7 +1167,7 @@ fun PlayerMenu(
             }
         }
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     if (isQueueTrigger == true && onPlayNextFromQueue != null) {
                         ListItem(

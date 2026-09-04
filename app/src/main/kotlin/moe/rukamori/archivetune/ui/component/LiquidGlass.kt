@@ -122,6 +122,35 @@ fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBac
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Dedicated [LayerBackdrop] for the floating liquid-glass overflow menu
+ * ([BottomSheetMenu]) — the song/artist/album popup (2026-09-04, user report:
+ * "The liquid glass blur behind the song popup is static. it should render in
+ * real time just like new lyrics popup").
+ *
+ * The app-wide [LocalLiquidGlassBackdrop] only records the NavHost content
+ * slot, which excludes the bottom-bar slot — the mini player and the
+ * navigation bar — exactly the region the floating popup hovers over. While
+ * the menu is open nothing in the NavHost changes (the scrim blocks
+ * interaction), so sampling that layer renders a frozen smear: the "static"
+ * glass the user reported. The lyrics popup renders in real time because it
+ * samples the full player surface behind it, whose drifting artwork and
+ * progress continuously re-record the layer.
+ *
+ * This backdrop is attached (conditionally, only while the menu is visible)
+ * to the container that wraps the ENTIRE app surface — the rail row plus the
+ * Scaffold with its top bar, NavHost pages, mini player and navigation bar —
+ * so the popup's frost samples everything actually behind it. The mini
+ * player's animated progress line and artwork crossfades re-record the layer
+ * every frame they change, and the kyant GraphicsLayer reference chain
+ * propagates those changes into the popup's blur without any manual
+ * invalidation — the exact same live mechanism the lyrics popup uses.
+ *
+ * Provided by MainActivity; null when Liquid Glass is off or below
+ * Android 12. [BottomSheetMenu] prefers it over [LocalLiquidGlassBackdrop].
+ */
+val LocalMenuGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
+
+/**
  * Blur radius the pill-shaped glass surfaces (header pills, icon pills,
  * action pills) sample the backdrop at (2026-09-04, user report: "The pills
  * have opaque background. it should be blurred.").

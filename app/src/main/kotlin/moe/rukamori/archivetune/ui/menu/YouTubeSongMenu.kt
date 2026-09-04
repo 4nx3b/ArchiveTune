@@ -435,7 +435,7 @@ fun YouTubeSongMenu(
         item {
             MuzoQuickActionRow(
                 actions = quickActions,
-                modifier = Modifier.padding(vertical = 6.dp),
+                modifier = Modifier.padding(vertical = 2.dp),
             )
         }
 
@@ -445,11 +445,11 @@ fun YouTubeSongMenu(
         // unchanged. One unified surface, thin dividers — the reference's
         // grouped-action list.
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = startRadioText) },
@@ -519,7 +519,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -585,11 +585,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
@@ -653,11 +653,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     when (download?.state) {
                         Download.STATE_COMPLETED -> {
@@ -812,11 +812,11 @@ fun YouTubeSongMenu(
 
         if (splitArtists.isNotEmpty() || song.album != null) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     Column {
                         if (splitArtists.isNotEmpty()) {
                             ListItem(
@@ -870,7 +870,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         // "Don't recommend this song again" — the counterpart of the same item in SongMenu.
@@ -878,7 +878,7 @@ fun YouTubeSongMenu(
         // search, related), which is exactly where a recommendation the user wants gone
         // comes from. SongMenu only ever opens for rows that are already in the library.
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {
@@ -937,11 +937,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.download_cover)) },

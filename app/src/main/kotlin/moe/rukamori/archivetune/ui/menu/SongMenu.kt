@@ -740,7 +740,7 @@ fun SongMenu(
             item {
                 MuzoQuickActionRow(
                     actions = quickActions,
-                    modifier = Modifier.padding(vertical = 6.dp),
+                    modifier = Modifier.padding(vertical = 2.dp),
                 )
             }
 
@@ -750,11 +750,11 @@ fun SongMenu(
             // action set is unchanged. One unified surface, thin dividers —
             // the reference's grouped-action list.
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     Column {
                         if (!isLocalSong && !isTelegramSong) {
                             ListItem(
@@ -847,12 +847,12 @@ fun SongMenu(
             }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         if (!isLocalSong) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = {
                             Text(
@@ -892,12 +892,12 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = { Text(text = addToPlaylistText) },
                     leadingContent = {
@@ -917,7 +917,7 @@ fun SongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -949,12 +949,12 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         if (showMutationSection) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     val dividerModifier = Modifier.padding(start = 56.dp)
                     Column {
                         if (event != null) {
@@ -1252,12 +1252,12 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
@@ -1335,7 +1335,7 @@ fun SongMenu(
         if (!song.song.isLocal) item {
             val blockedSongIds by database.blockedSongIds().collectAsState(initial = emptyList())
             val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {
@@ -1385,11 +1385,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {

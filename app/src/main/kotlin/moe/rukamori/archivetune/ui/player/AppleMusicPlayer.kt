@@ -164,6 +164,7 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
+import moe.rukamori.archivetune.ui.menu.CastRoutePickerGlassOverlay
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.ImageBlurUtils
@@ -862,7 +863,15 @@ fun AppleMusicPlayerContent(
     // The "AirPlay" slot opens the Cast route picker on flavors that ship Cast (gms). This also
     // renders the route-picker bottom sheet when it becomes visible. On flavors without Cast (foss)
     // rememberCastPlayerMenuAction() returns null and we fall back to the system output switcher.
-    val castAction = rememberCastPlayerMenuAction()
+    //
+    // renderSheet = false (2026-09-04): the player-level instance no longer renders
+    // the ModalBottomSheet — AppleMusicPlayer renders the real-time liquid-glass
+    // route picker via CastRoutePickerGlassOverlay (next to the anchored lyrics
+    // popup, sampling the same live player backdrop) when the player is expanded
+    // and no overflow menu is open. Every other trigger path (the "Cast" row in
+    // the more-menu on any player style, the collapsed mini player) keeps the
+    // ModalBottomSheet rendered by the PlayerMenu instance.
+    val castAction = rememberCastPlayerMenuAction(renderSheet = false)
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
         // Cast-less flavors (foss): open the system media-output switcher panel.
         runCatching {
@@ -1869,6 +1878,20 @@ fun AppleMusicPlayerContent(
                 backdrop = popupBackdrop,
             )
         }
+
+        // Real-time liquid-glass Cast route picker (2026-09-04, user request:
+        // "use the same kind of real time liquid glass blur for cast popup").
+        // Rendered as a sibling of the player's layer-capturing inner Box —
+        // the same safe non-reentrant position the lyrics popup above uses —
+        // so its frost samples the player's live backdrop (drifting artwork,
+        // progress) in real time. Eligible only while the player sheet is
+        // expanded AND no overflow menu is open (the root-level menu popup
+        // would sit on top of this inline overlay); all other trigger paths
+        // keep the ModalBottomSheet the PlayerMenu cast row renders.
+        CastRoutePickerGlassOverlay(
+            backdrop = popupBackdrop,
+            eligible = state.isExpandedOrExpanding && !menuState.isVisible,
+        )
     }
 }
 
