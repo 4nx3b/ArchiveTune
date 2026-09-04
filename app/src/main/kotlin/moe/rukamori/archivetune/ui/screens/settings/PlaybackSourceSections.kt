@@ -126,9 +126,12 @@ private fun AudioSourceType.iconRes(): Int =
     }
 
 /**
- * Renders all streaming-source preference groups inline in the caller's scrolling Column. Meant to
- * be called from [PlayerSettings]. Emits, in order: the common "Sources" group (preferred-source
- * picker + YouTube history sync), then YouTube, Tidal and Qobuz specific groups.
+ * Renders all streaming-source preference groups inline in the caller's scrolling Column. Called
+ * from Settings → Sources, which is the one place per-source quality lives: Player Settings used to
+ * carry a second, compact copy of the same pickers over the same preference keys, so the same
+ * setting appeared in two screens and neither was obviously the real one. Emits, in order: the
+ * common "Sources" group (preferred-source picker + YouTube history sync), then YouTube, Tidal and
+ * Qobuz specific groups.
  *
  * [positions] belongs to the *host* screen: these rows are searchable, and settings search deep
  * links to them with `?scrollTo=<key>`, which only resolves if the anchors register against the

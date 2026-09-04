@@ -625,12 +625,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // Per-source audio quality pickers were removed from this page
-            // (2026-09-01, user request): they duplicated Settings → Sources and
-            // cluttered the playback page. The pickers live on in the full
-            // Sources page (PlaybackSourceSections) and each source's own
-            // settings screen; nothing was removed from the data layer.
-
             PreferenceGroup(
                 modifier = positions.modifierFor("archive_tune_canvas"),
                 title = stringResource(R.string.tidal_artwork),
