@@ -21,17 +21,21 @@ import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.PlaybackAuthState
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeClient
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_TESTSUITE
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_UNPLUGGED
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IOS
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.MWEB
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IOS_MUSIC
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IPADOS
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.MOBILE
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5_SIMPLY_EMBEDDED_PLAYER
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.VISIONOS
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_PRIMARY
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
@@ -121,22 +125,31 @@ object YTPlayerUtils {
      */
     private val MAIN_CLIENT: YouTubeClient = WEB_REMIX
 
-    private val ANONYMOUS_MWEB_CLIENT: YouTubeClient =
-        MWEB.copy(
-            supportsCookieAuthentication = false,
-            friendlyName = "Mobile Web (Anonymous)",
-        )
-
     /**
      * Clients used for fallback streams in case the streams of the main client do not work.
+     *
+     * Ported verbatim from vossgraves/ArchiveTune (upstream/main): the 13-client
+     * recovery chain. When the primary client fails (403 / bot detection / age
+     * gate), resolution walks this list in cookie-aware order — see
+     * [buildStreamClientOrder]. The previous fork chain (6 clients) is what made
+     * a single blocked client end playback with "No stream available".
      */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> =
         arrayOf(
-            VISIONOS,
-            ANDROID_VR_1_65_10,
             WEB_REMIX,
+            ANDROID_VR_1_65_10,
+            IOS,
+            MOBILE,
+            ANDROID_MUSIC,
+            IOS_MUSIC,
+            ANDROID_CREATOR,
+            ANDROID_TESTSUITE,
+            ANDROID_UNPLUGGED,
+            IPADOS,
+            VISIONOS,
+            TVHTML5,
+            TVHTML5_SIMPLY_EMBEDDED_PLAYER,
             WEB,
-            MWEB,
             WEB_CREATOR,
         )
 
@@ -203,6 +216,7 @@ object YTPlayerUtils {
     private data class CachedStreamUrl(
         val url: String,
         val expiresAtMs: Long,
+        val authFingerprint: String,
     )
 
     private data class PlaybackDataCacheKey(
@@ -350,7 +364,7 @@ object YTPlayerUtils {
 
         if (
             repairedAuthState.visitorData.isNullOrBlank() ||
-            !hasWebGvsPoToken(repairedAuthState, videoId)
+            !hasCompleteWebPlaybackPoToken(repairedAuthState, videoId)
         ) {
             repairedAuthState =
                 ensureVisitorDataReady(
@@ -361,7 +375,7 @@ object YTPlayerUtils {
                 )
         }
 
-        if (!hasWebGvsPoToken(repairedAuthState, videoId)) {
+        if (!hasCompleteWebPlaybackPoToken(repairedAuthState, videoId)) {
             repairedAuthState = mintWebPlaybackPoTokens(videoId, repairedAuthState)
         }
 
@@ -379,6 +393,22 @@ object YTPlayerUtils {
     ): Boolean =
         authState.webClientPoTokenEnabled &&
             !authState.resolveGvsPoToken(WEB_CREATOR, videoId).isNullOrBlank()
+
+    /**
+     * Ported from vossgraves/ArchiveTune: the "complete web PO token" gate that the
+     * upstream client ordering and bot-detection repair both key off — both the Web
+     * Remix player token AND the GVS token must resolve. Adapted to this fork's
+     * video-scoped token fields: when [videoId] is known it is passed through so
+     * freshly minted per-video tokens count; without it the session-level fallback
+     * decides (client ordering runs before any videoId exists).
+     */
+    private fun hasCompleteWebPlaybackPoToken(
+        authState: PlaybackAuthState,
+        videoId: String? = null,
+    ): Boolean =
+        authState.webClientPoTokenEnabled &&
+            !authState.resolvePlayerPoToken(WEB_REMIX, videoId = videoId).isNullOrBlank() &&
+            !authState.resolveGvsPoToken(WEB_REMIX, videoId).isNullOrBlank()
 
     private suspend fun mintWebPlaybackPoTokens(
         videoId: String,
@@ -601,6 +631,7 @@ object YTPlayerUtils {
 
     internal fun resolvePreferredPlaybackClient(
         preferredStreamClient: PlayerStreamClient,
+        authState: PlaybackAuthState,
     ): YouTubeClient =
         when (preferredStreamClient) {
             PlayerStreamClient.ANDROID_VR -> {
@@ -609,6 +640,15 @@ object YTPlayerUtils {
 
             PlayerStreamClient.WEB_REMIX -> {
                 WEB_REMIX
+            }
+
+            // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR
+            // playback client resolves through the moriextractor backend, but
+            // the *metadata* pass still runs over InnerTube — upstream picks the
+            // signed-in ANDROID_MUSIC profile for that, falling back to WEB_REMIX
+            // for anonymous sessions.
+            PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
+                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
             }
 
             PlayerStreamClient.HI_RES_LOSSLESS -> {
@@ -636,23 +676,25 @@ object YTPlayerUtils {
         preferredStreamClient: PlayerStreamClient,
         authState: PlaybackAuthState,
     ): List<YouTubeClient> {
-        val preferredYouTubeClient = resolvePreferredPlaybackClient(preferredStreamClient)
+        val preferredYouTubeClient = resolvePreferredPlaybackClient(preferredStreamClient, authState)
+        val hasCompleteWebPoTokens = hasCompleteWebPlaybackPoToken(authState)
         val lastSuccessfulClient =
             lastSuccessfulClientKey?.let { key ->
                 STREAM_FALLBACK_CLIENTS.find { StreamClientUtils.buildClientKey(it) == key }
             }
 
+        // Ported from vossgraves/ArchiveTune: order the whole recovery chain by
+        // cookie support — cookie-authenticated clients first while a signed-in
+        // session with complete PO tokens exists (they carry premium formats and
+        // survive anonymous-traffic throttling), anonymous clients first otherwise
+        // (a signed-in request without tokens is the one YouTube 403s).
         val orderedFallbackClients =
-            buildList {
-                STREAM_FALLBACK_CLIENTS.forEach { client ->
-                    add(client)
-                    if (authState.hasPlaybackLoginContext) {
-                        when (client) {
-                            MWEB -> add(ANONYMOUS_MWEB_CLIENT)
-                            else -> Unit
-                        }
-                    }
-                }
+            if (authState.hasPlaybackLoginContext && hasCompleteWebPoTokens) {
+                STREAM_FALLBACK_CLIENTS.filter { it.supportsCookieAuthentication } +
+                    STREAM_FALLBACK_CLIENTS.filterNot { it.supportsCookieAuthentication }
+            } else {
+                STREAM_FALLBACK_CLIENTS.filterNot { it.supportsCookieAuthentication } +
+                    STREAM_FALLBACK_CLIENTS.filter { it.supportsCookieAuthentication }
             }
 
         return buildList {
@@ -660,8 +702,17 @@ object YTPlayerUtils {
             lastSuccessfulClient
                 ?.takeIf { it != preferredYouTubeClient }
                 ?.let { add(it) }
+            if (authState.hasPlaybackLoginContext && hasCompleteWebPoTokens) {
+                add(WEB_REMIX)
+            }
             addAll(orderedFallbackClients)
             if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
+            // Ported from vossgraves/ArchiveTune: with the Web Remix client selected,
+            // give the full chain a second pass — a WEB_REMIX-only failure is usually
+            // a transient rejection, not a dead client.
+            if (preferredStreamClient == PlayerStreamClient.WEB_REMIX) {
+                addAll(STREAM_FALLBACK_CLIENTS)
+            }
             // Last resort, opt-in only: the embedded players are the only clients YouTube will
             // serve an age-gated track to. See [AGE_GATE_BYPASS_CLIENTS].
             if (ageRestrictedPlaybackAllowed()) addAll(AGE_GATE_BYPASS_CLIENTS)
@@ -691,6 +742,9 @@ object YTPlayerUtils {
         preferredStreamClient: PlayerStreamClient = PlayerStreamClient.WEB_REMIX,
         // if provided, this preference overrides ConnectivityManager.isActiveNetworkMetered
         networkMetered: Boolean? = null,
+        // Ported from vossgraves/ArchiveTune: downloads pass true so the format
+        // selector ranks AAC/M4A above Opus (jaudiotagger can only tag .m4a).
+        preferM4A: Boolean = false,
     ): Result<PlaybackData> {
         val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
         val initialKey =
@@ -719,6 +773,7 @@ object YTPlayerUtils {
                 connectivityManager = connectivityManager,
                 preferredStreamClient = preferredStreamClient,
                 networkMetered = isMetered,
+                preferM4A = preferM4A,
             ).onSuccess { playbackData ->
                 cachePlaybackData(
                     key = currentKey.copy(authFingerprint = playbackData.authFingerprint),
@@ -738,6 +793,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): Result<PlaybackData> =
         runCatching {
             val attempts =
@@ -750,6 +806,10 @@ object YTPlayerUtils {
                 }.distinct()
 
             var lastError: Throwable? = null
+            // Ported from vossgraves/ArchiveTune: one IP-rotation refresh per
+            // resolution — bot detection is often per-egress-IP, so rotating the
+            // proxy pool and retrying once beats failing the whole chain.
+            var didRefreshIpRotationAfterBotDetection = false
             for (attempt in attempts) {
                 val attemptResult =
                     runCatching {
@@ -760,11 +820,34 @@ object YTPlayerUtils {
                             connectivityManager = connectivityManager,
                             preferredStreamClient = preferredStreamClient,
                             networkMetered = networkMetered,
+                            preferM4A = preferM4A,
                         )
                     }
                 if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
                 lastError = attemptResult.exceptionOrNull()
                 if (lastError is CancellationException) throw lastError
+                if (
+                    !didRefreshIpRotationAfterBotDetection &&
+                    lastError is BotDetectionPlaybackException &&
+                    refreshIpRotationForBotDetection(videoId, lastError)
+                ) {
+                    didRefreshIpRotationAfterBotDetection = true
+                    val rotatedAttemptResult =
+                        runCatching {
+                            playerResponseForPlaybackOnce(
+                                videoId = videoId,
+                                playlistId = playlistId,
+                                audioQuality = attempt,
+                                connectivityManager = connectivityManager,
+                                preferredStreamClient = preferredStreamClient,
+                                networkMetered = networkMetered,
+                                preferM4A = preferM4A,
+                            )
+                        }
+                    if (rotatedAttemptResult.isSuccess) return@runCatching rotatedAttemptResult.getOrThrow()
+                    lastError = rotatedAttemptResult.exceptionOrNull()
+                    if (lastError is CancellationException) throw lastError
+                }
             }
             throw lastError ?: IllegalStateException("Failed to resolve stream")
         }
@@ -812,15 +895,28 @@ object YTPlayerUtils {
         }
     }
 
+    /**
+     * Resolves a YouTube Music player response specifically for offline downloads.
+     *
+     * Ported from vossgraves/ArchiveTune: when [preferM4A] is true (the default),
+     * the format selector prefers AAC/M4A streams (itag 140 / 141) over
+     * Opus/WebM (itag 251 / 250) — codec rank is compared BEFORE bitrate.
+     * This is critical for downloads because:
+     *   1. jaudiotagger has no WebM/Matroska reader — Opus-in-WebM files cannot
+     *      be tagged, leaving exported songs with no metadata.
+     *   2. The .m4a extension is universally recognized by external players.
+     *   3. AAC at 128 kbps (itag 140) is perceptually transparent for most music.
+     */
     suspend fun playerResponseForDownload(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         networkMetered: Boolean? = null,
+        preferM4A: Boolean = true,
     ): Result<PlaybackData> =
         runCatching {
-            Timber.tag(logTag).i("Fetching download response for videoId: $videoId, playlistId: $playlistId")
+            Timber.tag(logTag).i("Fetching download response for videoId: $videoId, playlistId: $playlistId, preferM4A=$preferM4A")
             var lastError: Throwable? = null
 
             for (preferredStreamClient in downloadPreferredStreamClientAttempts) {
@@ -832,6 +928,7 @@ object YTPlayerUtils {
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
                         networkMetered = networkMetered,
+                        preferM4A = preferM4A,
                     )
 
                 if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
@@ -857,6 +954,33 @@ object YTPlayerUtils {
             PlayerStreamClient.ANDROID_MUSIC,
         )
 
+    /**
+     * Ported from vossgraves/ArchiveTune: after YouTube bot-detection blocks the
+     * client chain, rotate the rotating-proxy egress IP (when one is configured)
+     * and drop the cached playback auth so the next attempt leaves with a fresh
+     * identity. Returns true when the rotation actually happened.
+     */
+    private suspend fun refreshIpRotationForBotDetection(
+        videoId: String,
+        failure: BotDetectionPlaybackException?,
+    ): Boolean {
+        if (failure == null) return false
+        if (YouTube.ipRotationActiveCount.value <= 0) return false
+
+        return runCatching {
+            Timber.tag(logTag).w(
+                failure,
+                "Refreshing IP rotation after YouTube bot detection blocked playback for %s",
+                videoId,
+            )
+            YouTube.refreshIpRotation()
+            clearPlaybackAuthCaches()
+        }.onFailure {
+            Timber.tag(logTag).w(it, "Failed to refresh IP rotation after bot detection for %s", videoId)
+            reportException(it)
+        }.isSuccess
+    }
+
     private suspend fun playerResponseForPlaybackOnce(
         videoId: String,
         playlistId: String?,
@@ -864,6 +988,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient,
         networkMetered: Boolean?,
+        preferM4A: Boolean = false,
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
@@ -886,17 +1011,10 @@ object YTPlayerUtils {
                     reason = if (hasLoginCookie) "cookie-only playback fallback" else "anonymous playback bootstrap",
                 )
         }
-        var sessionId = authState.sessionId
-        if (!sessionId.isNullOrBlank()) {
-            try {
-                authState = mintWebPlaybackPoTokens(videoId, authState)
-                sessionId = authState.sessionId
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (e: Exception) {
-                Timber.tag(logTag).w(e, "PoToken generation failed for playback request")
-            }
-        }
+        // Ported from vossgraves/ArchiveTune: no blanket upfront token mint — tokens
+        // are minted lazily per request family (metadata below, stream clients in
+        // the loop) and only for clients that actually use web PO tokens.
+        val sessionId = authState.sessionId
         val authStatus =
             when {
                 canUseLoggedInPlayback -> "Logged in"
@@ -911,19 +1029,26 @@ object YTPlayerUtils {
         var streamPlayerResponse: PlayerResponse? = null
         var streamClientUsed: YouTubeClient? = null
         var didRepairAuthAfterBotDetection = false
-        var didAttemptGvsPoTokenRecovery = false
+        var didRetryWithoutRejectedLoginContext = false
         val failedPlayerClients = linkedSetOf<String>()
         val playerRequestFailures = mutableListOf<Throwable>()
 
-        var metadataClient =
-            if (authState.hasPlaybackLoginContext && !hasWebGvsPoToken(authState, videoId)) {
-                WEB_PRIMARY
-            } else {
-                MAIN_CLIENT
-            }
+        // Ported from vossgraves/ArchiveTune: metadata always goes through the main
+        // client with login enabled — the WEB_PRIMARY metadata detour this fork
+        // carried is gone; minting happens only when the client uses web PO tokens.
+        var metadataClient = MAIN_CLIENT
 
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
 
+        if (metadataClient.useWebPoTokens && sessionId != null) {
+            try {
+                authState = mintWebPlaybackPoTokens(videoId, authState)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (e: Exception) {
+                Timber.tag(logTag).w(e, "PoToken generation failed for metadata request")
+            }
+        }
         var metadataPoToken = authState.resolvePlayerPoToken(metadataClient, videoId = videoId)
 
         var metadataResult =
@@ -933,7 +1058,7 @@ object YTPlayerUtils {
                 client = metadataClient,
                 signatureTimestamp = signatureTimestamp,
                 poToken = metadataPoToken,
-                setLogin = canUseLoggedInPlayback && metadataClient.supportsCookieAuthentication,
+                setLogin = true,
                 authState = authState,
             )
         val metadataFailure = metadataResult.exceptionOrNull()
@@ -954,10 +1079,9 @@ object YTPlayerUtils {
             clearPlaybackAuthCaches()
 
             val newSessionId = authState.sessionId
-            if (newSessionId != null) {
+            if (metadataClient.useWebPoTokens && newSessionId != null) {
                 try {
                     authState = mintWebPlaybackPoTokens(videoId, authState)
-                    sessionId = authState.sessionId
                     metadataPoToken = authState.resolvePlayerPoToken(metadataClient, videoId = videoId)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -973,7 +1097,7 @@ object YTPlayerUtils {
                     client = metadataClient,
                     signatureTimestamp = signatureTimestamp,
                     poToken = metadataPoToken,
-                    setLogin = canUseLoggedInPlayback && metadataClient.supportsCookieAuthentication,
+                    setLogin = true,
                     authState = authState,
                 )
         }
@@ -1061,23 +1185,6 @@ object YTPlayerUtils {
                 )}",
             )
 
-            if (
-                !didAttemptGvsPoTokenRecovery &&
-                    client != WEB_PRIMARY &&
-                    authState.sessionId != null &&
-                    PlaybackAuthState.supportsGvsPoToken(client) &&
-                    authState.resolveGvsPoToken(client, videoId).isNullOrBlank()
-            ) {
-                didAttemptGvsPoTokenRecovery = true
-                try {
-                    authState = mintWebPlaybackPoTokens(videoId, authState)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (e: Exception) {
-                    Timber.tag(logTag).w(e, "PoToken generation failed for stream client ${client.clientName}")
-                }
-            }
-
             if (client != MAIN_CLIENT && client.loginRequired && !requestUsesCookieAuthentication) {
                 Timber.tag(logTag).i(
                     "Skipping client ${describeClient(client)} - requires compatible cookie authentication",
@@ -1121,6 +1228,58 @@ object YTPlayerUtils {
                 var isLoginRecovery = isLoginRecoveryResponse(playabilityStatus.status, reason)
                 var isBotDetection = isBotDetectionError(reason)
 
+                // Ported from vossgraves/ArchiveTune: when a logged-in request comes
+                // back LOGIN_REQUIRED, the account context itself was rejected —
+                // strip it (once) and retry the same client anonymously instead of
+                // burning the whole chain on a session YouTube has decided to gate.
+                if (isLoginRecovery && requestUsesCookieAuthentication && !didRetryWithoutRejectedLoginContext) {
+                    didRetryWithoutRejectedLoginContext = true
+                    authState =
+                        ensureVisitorDataReady(
+                            videoId = videoId,
+                            authState = authState.withoutAccountBoundPlaybackState(),
+                            reason = "logged-in playback context rejected by ${client.clientName}",
+                        )
+                    canUseLoggedInPlayback = false
+                    requestUsesCookieAuthentication = false
+                    clearPlaybackAuthCaches()
+
+                    if (client.useWebPoTokens) {
+                        try {
+                            authState = mintWebPlaybackPoTokens(videoId, authState)
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (e: Exception) {
+                            Timber.tag(logTag).w(e, "PoToken generation failed for visitor playback retry")
+                        }
+                    }
+
+                    if (!client.loginRequired) {
+                        Timber.tag(logTag).i(
+                            "Retrying %s for %s without the rejected login context",
+                            describeClient(client),
+                            videoId,
+                        )
+                        streamPlayerResponse =
+                            YouTube
+                                .player(
+                                    videoId = videoId,
+                                    playlistId = playlistId,
+                                    client = client,
+                                    signatureTimestamp = signatureTimestamp,
+                                    setLogin = false,
+                                    authState = authState,
+                                ).getPlaybackPlayerResponseOrNull(videoId, authState)
+
+                        if (streamPlayerResponse == null) continue
+
+                        playabilityStatus = streamPlayerResponse.playabilityStatus
+                        reason = playabilityStatus.reason.orEmpty()
+                        isLoginRecovery = isLoginRecoveryResponse(playabilityStatus.status, reason)
+                        isBotDetection = isBotDetectionError(reason)
+                    }
+                }
+
                 if (isBotDetection && !didRepairAuthAfterBotDetection) {
                     val repairedAuthState =
                         repairAuthStateAfterBotDetection(
@@ -1130,9 +1289,8 @@ object YTPlayerUtils {
                         )
                     val shouldUseWebRemix =
                         repairedAuthState.hasPlaybackLoginContext &&
-                            hasWebGvsPoToken(repairedAuthState, videoId) &&
-                            client != WEB_REMIX &&
-                            WEB_REMIX in streamClients
+                            hasCompleteWebPlaybackPoToken(repairedAuthState, videoId) &&
+                            client != WEB_REMIX
 
                     if (repairedAuthState.fingerprint != authState.fingerprint || shouldUseWebRemix) {
                         authState = repairedAuthState
@@ -1222,6 +1380,7 @@ object YTPlayerUtils {
                     streamPlayerResponse,
                     audioQuality,
                     isMetered,
+                    preferM4A = preferM4A,
                 )
 
             if (candidates.isEmpty()) continue
@@ -1373,6 +1532,7 @@ object YTPlayerUtils {
             CachedStreamUrl(
                 url = streamUrl,
                 expiresAtMs = System.currentTimeMillis() + (streamExpiresInSeconds * 1000L),
+                authFingerprint = authState.streamCacheFingerprint,
             )
 
         return PlaybackData(
@@ -1430,12 +1590,14 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         // optional override from user preference; if non-null, use this instead of ConnectivityManager
         networkMetered: Boolean? = null,
+        preferM4A: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
         val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
         return selectAudioFormatCandidates(
             playerResponse,
             audioQuality,
             isMetered,
+            preferM4A = preferM4A,
         ).firstOrNull()
     }
 
@@ -1443,6 +1605,7 @@ object YTPlayerUtils {
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): List<PlayerResponse.StreamingData.Format> {
         Timber.tag(logTag).i("Finding format with audioQuality: $audioQuality, network metered: $networkMetered")
 
@@ -1471,17 +1634,44 @@ object YTPlayerUtils {
                 AudioQuality.AUTO -> null
             }
 
+        // Ported from vossgraves/ArchiveTune: when preferM4A is true (downloads),
+        // prefer MP4A/AAC over OPUS so the resulting file is .m4a (which jaudiotagger
+        // can tag) instead of .webm (which jaudiotagger cannot read, leaving the
+        // exported file untagged). The codec rank is compared BEFORE bitrate —
+        // YouTube Music typically serves OPUS at 150-160 kbps inside .webm and
+        // MP4A/AAC at 128 kbps inside .m4a, so a bitrate-first ranking would always
+        // pick OPUS for downloads. Playback (preferM4A=false) keeps the original
+        // order (bitrate first, codec second) because ExoPlayer handles both
+        // containers and the highest bitrate should win live playback.
+        val resolvedCodecRank: (String?) -> Int = { codec ->
+            if (preferM4A) codecRankPreferM4A(codec) else codecRank(codec)
+        }
+
         val preferHigher =
-            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
-                .thenByDescending { it.bitrate }
-                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
-                .thenByDescending { it.audioSampleRate ?: 0 }
+            if (preferM4A) {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.bitrate }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            } else {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { it.bitrate }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            }
 
         val preferLowerAboveTarget =
-            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
-                .thenBy { it.bitrate }
-                .thenByDescending { codecRank(extractCodec(it.mimeType)) }
-                .thenByDescending { it.audioSampleRate ?: 0 }
+            if (preferM4A) {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenBy { it.bitrate }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            } else {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenBy { it.bitrate }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            }
 
         val candidates =
             when {
@@ -1536,8 +1726,10 @@ object YTPlayerUtils {
         videoId: String,
         authState: PlaybackAuthState,
     ): Boolean {
+        // Ported from vossgraves/ArchiveTune: the web-client gate is decided by the
+        // request profile (TV / web-music families), not by the GVS support table.
+        val isWebClient = StreamClientUtils.isWebClient(client.clientName)
         val isCiphered = isCipheredFormat(format)
-        val isWebClient = PlaybackAuthState.supportsGvsPoToken(client)
         val hasGvsPoToken = !authState.resolveGvsPoToken(client, videoId).isNullOrBlank()
         if (
             !shouldSkipCipheredWebPlaybackCandidate(
@@ -1562,6 +1754,20 @@ object YTPlayerUtils {
             codec.isNullOrBlank() -> 0
             codec.contains("opus", ignoreCase = true) -> 3
             codec.contains("mp4a", ignoreCase = true) -> 2
+            else -> 1
+        }
+
+    /**
+     * Ported from vossgraves/ArchiveTune: variant of [codecRank] that prefers
+     * MP4A/AAC over OPUS. Used for downloads where the file must be .m4a
+     * (jaudiotagger-readable) rather than .webm (jaudiotagger-unreadable, would
+     * silently skip metadata tagging).
+     */
+    private fun codecRankPreferM4A(codec: String?): Int =
+        when {
+            codec.isNullOrBlank() -> 0
+            codec.contains("mp4a", ignoreCase = true) -> 3
+            codec.contains("opus", ignoreCase = true) -> 2
             else -> 1
         }
 
@@ -1590,6 +1796,8 @@ object YTPlayerUtils {
 
     /**
      * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
+     * Ported from vossgraves/ArchiveTune: also patches `cver` on the resolved URL to
+     * the client version actually used, preventing version-mismatch 403s.
      */
     private suspend fun findUrl(
         format: PlayerResponse.StreamingData.Format,
@@ -1600,7 +1808,9 @@ object YTPlayerUtils {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
         return NewPipeUtils
             .getStreamUrl(format, videoId, client, authState)
-            .onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
+            .map { url ->
+                if (client == null) url else StreamClientUtils.patchClientVersion(url, client.clientVersion)
+            }.onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
     }
 
     private fun Throwable.isJavaScriptPlayerExtractorFailure(): Boolean {

@@ -125,6 +125,17 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
 
+        // ArchiveTune Extractor (moriextractor backend) bearer token. Mirrors
+        // vossgraves/ArchiveTune: local.properties → EXTRACTOR_BEARER env → "".
+        // Empty token simply disables the ARCHIVETUNE_EXTRACTOR client's remote
+        // resolution until a token is provided (or refreshed at runtime via
+        // MusicService.updateExtractorBearerToken).
+        val extractorBearer =
+            localProperties.getProperty("EXTRACTOR_BEARER")
+                ?: System.getenv("EXTRACTOR_BEARER")
+                ?: ""
+        buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
+
         // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
         // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
         // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
@@ -513,6 +524,7 @@ dependencies {
     implementation(project(":spotifycore"))
     implementation(project(":morideobfuscator"))
     implementation(project(":jiosaavn"))
+    implementation(project(":moriextractor"))
     implementation("com.materialkolor:material-kolor:5.0.0-alpha07")
 
     implementation(libs.ktor.client.core)

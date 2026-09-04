@@ -79,6 +79,9 @@ import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.PoTokenGvsKey
+import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
@@ -203,11 +206,30 @@ internal fun PlaybackSourceSections(
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
     val (autoChoosePlaybackClient, onAutoChoosePlaybackClientChange) =
         rememberPreference(AutoChoosePlaybackClientKey, true)
+    val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, defaultValue = "")
+    val (poTokenGvs, _) = rememberPreference(PoTokenGvsKey, defaultValue = "")
+    val (poTokenPlayer, _) = rememberPreference(PoTokenPlayerKey, defaultValue = "")
+    // Ported from vossgraves/ArchiveTune: the ArchiveTune Extractor backend client
+    // needs a signed-in YouTube session (login cookie + both PO tokens) — the same
+    // inputs the backend forwards to YouTube — so it stays disabled until those
+    // exist and resets itself if they disappear.
+    val isArchiveTuneExtractorEnabled =
+        remember(innerTubeCookie, poTokenGvs, poTokenPlayer) {
+            hasYouTubeLoginCookie(innerTubeCookie) &&
+                poTokenGvs.isNotBlank() &&
+                poTokenPlayer.isNotBlank()
+        }
     val playerStreamClients =
         remember { PlayerStreamClient.entries }
     val selectedPlayerStreamClient =
         if (playerStreamClient in playerStreamClients) playerStreamClient
         else PlayerStreamClient.WEB_REMIX
+
+    LaunchedEffect(playerStreamClient, isArchiveTuneExtractorEnabled) {
+        if (playerStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR && !isArchiveTuneExtractorEnabled) {
+            onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
+        }
+    }
 
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
@@ -355,6 +377,12 @@ internal fun PlaybackSourceSections(
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
                 isEnabled = !autoChoosePlaybackClient,
+                // Ported from vossgraves/ArchiveTune: the backend client needs a
+                // signed-in YouTube session — cookie + both PO tokens — before it
+                // can be picked.
+                isValueEnabled = { client ->
+                    client != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR || isArchiveTuneExtractorEnabled
+                },
                 // Exhaustive on purpose: no `else` branch, so adding a client to
                 // PlayerStreamClient fails the build here instead of silently rendering
                 // every row with the Web Remix label.
@@ -364,6 +392,8 @@ internal fun PlaybackSourceSections(
                             stringResource(R.string.player_stream_client_android_vr)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix)
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            stringResource(R.string.player_stream_client_archivetune_extractor)
                         PlayerStreamClient.HI_RES_LOSSLESS ->
                             stringResource(R.string.player_stream_client_hi_res_lossless)
                         PlayerStreamClient.IOS ->
@@ -380,6 +410,12 @@ internal fun PlaybackSourceSections(
                             stringResource(R.string.player_stream_client_android_vr_desc)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix_desc)
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            if (isArchiveTuneExtractorEnabled) {
+                                stringResource(R.string.player_stream_client_archivetune_extractor_desc)
+                            } else {
+                                stringResource(R.string.player_stream_client_archivetune_extractor_login_required)
+                            }
                         PlayerStreamClient.HI_RES_LOSSLESS ->
                             stringResource(R.string.player_stream_client_hi_res_lossless_desc)
                         PlayerStreamClient.IOS ->
