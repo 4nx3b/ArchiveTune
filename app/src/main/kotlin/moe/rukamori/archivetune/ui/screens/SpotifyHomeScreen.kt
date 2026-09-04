@@ -76,7 +76,6 @@ import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
-import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -177,8 +176,6 @@ fun SpotifyHomeScreen(
             }
             is SpotifyHomeScreenState.Success -> {
 
-                val (homeCatalogueSwitchEnabled, _) =
-                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
                 ExpressivePullToRefreshBox(
                     isRefreshing = false,
                     onRefresh = { viewModel.onAction(SpotifyHomeAction.Refresh) },
@@ -188,12 +185,6 @@ fun SpotifyHomeScreen(
                         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        if (homeCatalogueSwitchEnabled) {
-                            item(key = "home_source_switcher", contentType = "source_switcher") {
-                                HomeSourceSwitcher(modifier = Modifier.animateItem())
-                            }
-                        }
-
                         item(key = "spotify_recent_panel", contentType = "recent_panel") {
                             SpotifyRecentPanel(
                                 recentItems = state.recentItems,
