@@ -82,6 +82,9 @@ import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
 import moe.rukamori.archivetune.constants.HideOfflineCardKey
 import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.spotify.SPOTIFY_LIKED_SONGS_ID
+import moe.rukamori.archivetune.constants.LibrarySource
+import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.TopSize
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -173,6 +176,10 @@ fun LibraryMixScreen(
 
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
 
+    // Which service the library sections are showing. The Liked songs card follows it —
+    // the count only means something for the local library, so Spotify's is named instead.
+    val librarySource = rememberLibrarySource()
+
     val filteredPlaylistIds by database
         .playlistIdsByTags(
             if (selectedTagIds.isEmpty()) emptyList() else selectedTagIds.toList(),
@@ -224,6 +231,12 @@ fun LibraryMixScreen(
                     LibraryHeaderRow()
                 }
 
+                // The Library's source pills, above the shortcut cards they steer. Renders nothing
+                // without a usable Spotify session.
+                item(key = "library_source_pills", contentType = "library_source_pills") {
+                    LibrarySourcePills()
+                }
+
                 item(key = "library_category_list", contentType = "category_list") {
                     LibraryCategoryList(
                         playlistsCount = visiblePlaylists.size,
@@ -240,10 +253,17 @@ fun LibraryMixScreen(
                         hideCached = hideCachedCard,
                         hideLocalFiles = hideLocalFilesCard,
                         hideTop50 = hideTop50Card,
+                        likedOnSpotify = librarySource == LibrarySource.SPOTIFY,
                         onPlaylistsClick = { navController.navigate("library_playlists") },
                         onSpotifyClick = { navController.navigate("library_spotify_playlists") },
                         onArtistsClick = { navController.navigate("library_artists") },
-                        onFavoritesClick = { navController.navigate("auto_playlist/liked") },
+                        onFavoritesClick = {
+                            if (librarySource == LibrarySource.SPOTIFY) {
+                                navController.navigate("spotify_playlist/$SPOTIFY_LIKED_SONGS_ID")
+                            } else {
+                                navController.navigate("auto_playlist/liked")
+                            }
+                        },
                         onOfflineClick = { navController.navigate("auto_playlist/downloaded") },
                         onCachedClick = { navController.navigate("cache_playlist/cached") },
                         onLocalFilesClick = { navController.navigate("local_songs") },
@@ -302,6 +322,7 @@ private fun LibraryCategoryList(
     hideCached: Boolean,
     hideLocalFiles: Boolean,
     hideTop50: Boolean,
+    likedOnSpotify: Boolean,
     onPlaylistsClick: () -> Unit,
     onSpotifyClick: () -> Unit,
     onArtistsClick: () -> Unit,
@@ -348,7 +369,15 @@ private fun LibraryCategoryList(
                 add(
                     LibraryCategory(
                         title = stringResource(R.string.favorites),
-                        count = favoritesCount,
+                        // Spotify's liked songs are a remote list — the local count is meaningless
+                        // there, so the row names the source instead of counting it.
+                        count = if (likedOnSpotify) -1 else favoritesCount,
+                        countLabel =
+                            if (likedOnSpotify) {
+                                stringResource(R.string.home_source_spotify)
+                            } else {
+                                null
+                            },
                         iconRes = R.drawable.favorite,
                         onClick = onFavoritesClick,
                     ),
@@ -441,6 +470,7 @@ private data class LibraryCategory(
     val onClick: () -> Unit,
 
     val iconTint: Color? = null,
+    val countLabel: String? = null,
 )
 
 @Composable
@@ -494,7 +524,15 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
 
-            if (category.count > 0) {
+            if (category.countLabel != null) {
+                Text(
+                    text = category.countLabel,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 19.sp,
+                    maxLines = 1,
+                )
+            } else if (category.count > 0) {
                 Text(
                     text = category.count.toString(),
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.50f),
