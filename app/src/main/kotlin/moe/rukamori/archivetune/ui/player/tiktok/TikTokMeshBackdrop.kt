@@ -50,6 +50,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -58,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
@@ -94,6 +96,23 @@ private val MeshFallbackColors = listOf(
 /** The four mesh colours, wrapped so the backdrop can skip recomposition. */
 @Immutable
 internal data class TikTokMeshPalette(val colors: List<Color>)
+
+/**
+ * Fraction of the layout size the mesh layer actually rasterizes at
+ * (2026-09-04 "TikTok style lags for the first few seconds" fix).
+ *
+ * The mesh content is four soft radial-gradient blobs plus a vertical scrim
+ * — inherently low-frequency, and it is blurred at 64dp on top of that. So
+ * it is rasterized at a QUARTER of the layout size and scaled back up
+ * (the same trick as a render-scale): the RenderEffect blur then works on
+ * 1/16 of the pixels, and because every primitive in the layer is a smooth
+ * gradient, the upscaled result is pixel-for-pixel indistinguishable from
+ * the full-resolution render. The blob drift invalidated this blurred
+ * full-screen canvas for ~8s after every track change, which was the
+ * dominant frame cost of the TikTok player's enter/exit window; at
+ * quarter resolution the same animation runs at a fraction of the GPU time.
+ */
+private const val MESH_RENDER_SCALE = 0.25f
 
 /**
  * The Bitchord backdrop: four luminous colour blobs sampled from the album
@@ -149,59 +168,74 @@ internal fun TikTokMeshBackdrop(
     // one clips what is drawn *into* it, in its own coordinates, and the
     // scale is applied after — so the overhang the scale creates survives
     // it. This has to sit outside the scale to contain it.
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .graphicsLayer {
-                scaleX = 1.3f
-                scaleY = 1.3f
-            }
-            .background(baseColor)
-            .blur(blurRadius),
+    //
+    // PERF (2026-09-04): the layer itself renders at [MESH_RENDER_SCALE]
+    // (quarter size) and is scaled back up by 1.3/MESH_RENDER_SCALE — the
+    // blur radius is scaled down by the same factor so the DISPLAYED blur
+    // (blur × display scale) is exactly the 1.3× blurRadius the full-res
+    // version showed. The quarter-res canvas is centered in the clipping
+    // Box so the 1.3 overscan still radiates from the middle.
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .clipToBounds(),
+        contentAlignment = Alignment.Center,
     ) {
-        val anchors = listOf(
-            Offset(0.20f, 0.25f),
-            Offset(0.80f, 0.20f),
-            Offset(0.75f, 0.80f),
-            Offset(0.25f, 0.75f),
-        )
-        val speeds = listOf(1f, -0.7f, 0.85f, -1.15f)
-        val drift = phase.value
-
-        animatedColors.forEachIndexed { index, color ->
-            val anchor = anchors[index]
-            val center = Offset(
-                x = (anchor.x + 0.16f * cos(drift * speeds[index] + index * 1.7f)) * size.width,
-                y = (anchor.y + 0.16f * sin(drift * speeds[index] * 0.9f + index * 2.3f)) * size.height,
+        Canvas(
+            modifier =
+                Modifier
+                    .fillMaxSize(MESH_RENDER_SCALE)
+                    .graphicsLayer {
+                        scaleX = 1.3f / MESH_RENDER_SCALE
+                        scaleY = 1.3f / MESH_RENDER_SCALE
+                    }
+                    .background(baseColor)
+                    .blur(blurRadius * MESH_RENDER_SCALE),
+        ) {
+            val anchors = listOf(
+                Offset(0.20f, 0.25f),
+                Offset(0.80f, 0.20f),
+                Offset(0.75f, 0.80f),
+                Offset(0.25f, 0.75f),
             )
-            val radius = size.maxDimension * 0.62f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    // 0.78 (was 0.85, the Bitchord value): lets more of the
-                    // dimmed base (lightness 0.12) breathe between blobs so
-                    // the mesh reads as a colour wash rather than a full
-                    // saturation fill — the "too full" half of the report.
-                    colors = listOf(color.copy(alpha = 0.78f), color.copy(alpha = 0f)),
-                    center = center,
+            val speeds = listOf(1f, -0.7f, 0.85f, -1.15f)
+            val drift = phase.value
+
+            animatedColors.forEachIndexed { index, color ->
+                val anchor = anchors[index]
+                val center = Offset(
+                    x = (anchor.x + 0.16f * cos(drift * speeds[index] + index * 1.7f)) * size.width,
+                    y = (anchor.y + 0.16f * sin(drift * speeds[index] * 0.9f + index * 2.3f)) * size.height,
+                )
+                val radius = size.maxDimension * 0.62f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        // 0.78 (was 0.85, the Bitchord value): lets more of the
+                        // dimmed base (lightness 0.12) breathe between blobs so
+                        // the mesh reads as a colour wash rather than a full
+                        // saturation fill — the "too full" half of the report.
+                        colors = listOf(color.copy(alpha = 0.78f), color.copy(alpha = 0f)),
+                        center = center,
+                        radius = radius,
+                    ),
                     radius = radius,
+                    center = center,
+                )
+            }
+
+            // The Bitchord scrim so the mesh never reads as pure brightness.
+            // The TikTok page adds its own (lightened) legibility scrim on top
+            // of this layer, so this one stays exactly as gentle as Bitchord's.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.10f),
+                        Color.Black.copy(alpha = 0.38f),
+                    ),
                 ),
-                radius = radius,
-                center = center,
             )
         }
-
-        // The Bitchord scrim so the mesh never reads as pure brightness.
-        // The TikTok page adds its own (lightened) legibility scrim on top
-        // of this layer, so this one stays exactly as gentle as Bitchord's.
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Black.copy(alpha = 0.10f),
-                    Color.Black.copy(alpha = 0.38f),
-                ),
-            ),
-        )
     }
 }
 

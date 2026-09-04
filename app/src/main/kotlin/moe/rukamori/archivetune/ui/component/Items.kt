@@ -1436,6 +1436,19 @@ fun YouTubeListItem(
                 },
             badges = badges,
             thumbnailContent = {
+                // Video (landscape-source) thumbnails keep their REAL breadth
+                // and width (user request 2026-09-04: "The thumbnails should
+                // have their actual breadth and width without any borders")
+                // instead of being cropped into the square row frame — a
+                // landscape source renders a 16:9 row thumbnail exactly like
+                // the YouTube Music app's video rows; square sources stay
+                // square. The frame matches the image, so ContentScale fills
+                // it perfectly — no letterbox bands, no crop.
+                val rowRatio =
+                    item.thumbnailSourceRatio
+                        ?.takeIf { it >= 4f / 3f }
+                        ?.let { 16f / 9f }
+                        ?: 1f
                 ItemThumbnail(
                     thumbnailUrl = item.thumbnail,
                     albumIndex = albumIndex,
@@ -1443,7 +1456,16 @@ fun YouTubeListItem(
                     isActive = isActive,
                     isPlaying = isPlaying,
                     shape = RoundedCornerShape(ThumbnailCornerRadius),
-                    modifier = Modifier.size(ListThumbnailSize),
+                    thumbnailRatio = rowRatio,
+                    modifier =
+                        if (rowRatio > 1f) {
+                            Modifier.size(
+                                width = ListThumbnailSize * rowRatio,
+                                height = ListThumbnailSize,
+                            )
+                        } else {
+                            Modifier.size(ListThumbnailSize)
+                        },
                 )
             },
             trailingContent = trailingContent,

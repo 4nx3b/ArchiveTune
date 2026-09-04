@@ -88,6 +88,7 @@ import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.fileExtension
@@ -202,6 +203,12 @@ fun SongMenu(
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, false)
+    // Spotify-account canvas (2026-09-04): a connected web-auth session
+    // enables the Spotify source on its own — same rule the player uses —
+    // so a logged-in user can save their account's canvas without finding
+    // the Player-settings toggle first.
+    val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(song.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = song.id) }
     val isInSpeedDial =
@@ -360,7 +367,7 @@ fun SongMenu(
                         byUrl[url] = CanvasSourceOption("ArchiveTune / Apple Music", artwork)
                     }
                 }
-                if (spotifyCanvasEnabled && !song.song.isLocal) {
+                if (spotifyCanvasAvailable && !song.song.isLocal) {
                     runCatching {
                         SpotifyCanvasProvider.getByVideoId(
                             videoId = song.id,

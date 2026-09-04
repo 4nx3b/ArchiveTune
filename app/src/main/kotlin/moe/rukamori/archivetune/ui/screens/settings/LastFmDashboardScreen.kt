@@ -832,7 +832,8 @@ fun LastFmDashboardScreen(
             Spacer(
                 Modifier.height(
                     if (glassHeader.liquidGlassActive) {
-                        systemBarsTopPadding + 84.dp
+                        systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
+            // pills so the glass actually samples it (2026-09-04 fix)
                     } else {
                         innerPadding.calculateTopPadding()
                     },
