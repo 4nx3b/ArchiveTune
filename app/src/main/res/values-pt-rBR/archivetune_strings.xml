@@ -198,6 +198,7 @@
     <string name="lyrics_share_background_blur">Desfoque do fundo</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>
     <string name="lyrics_line_blur">Desfocar linhas da letra</string>
+    <string name="show_lyrics_player_controls">Mostrar controles do player</string>
     <string name="lyrics_share_background_dim">Escurecimento do fundo</string>
     <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="lyrics_share_show_cover">Mostrar capa do álbum</string>

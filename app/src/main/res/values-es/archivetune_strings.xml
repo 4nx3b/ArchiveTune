@@ -275,6 +275,7 @@
     <string name="local_songs_no_matches_desc">Prueba con otra canción, otro artista u otro álbum.</string>
     <string name="sort_by_album">Álbum</string>
     <string name="lyrics_line_blur">Desenfocar letras de canciones</string>
+    <string name="show_lyrics_player_controls">Mostrar controles del reproductor</string>
     <string name="quick_picks_display_mode">Modo de visualización «Selecciones rápidas»</string>
     <string name="quick_picks_display_mode_card">Tarjeta</string>
     <string name="quick_picks_display_mode_list">Lista</string>

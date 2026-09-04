@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -46,7 +48,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +56,7 @@ import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -108,6 +110,8 @@ import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.screens.settings.SettingsDimensions
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalAlbumsGrid
 import moe.rukamori.archivetune.ui.component.LocalArtistsGrid
@@ -243,32 +247,37 @@ fun StatsScreen(
                 .toList()
         }
 
-    val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
+    // Fixed (2026-09-04, user report: "Whole screen is not scrollable in LastFm
+    // and stats page in settings and because of that I don't see haze effect
+    // around the header"): the LargeFlexibleTopAppBar reserved its expanded
+    // height and the LazyColumn's top spacing was a STATIC modifier padding —
+    // the list's viewport started below the bar, so nothing ever scrolled
+    // under the header and the haze overlay had nothing to frost. The bar is
+    // now a pinned transparent TopAppBar (FrostedHeaderPill back + "Stats",
+    // year-picker action) and the bar height moved INTO the LazyColumn's
+    // contentPadding so it scrolls away — content flows under the header
+    // into the progressive top-fade blur, exactly like the other fixed screens.
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFlexibleTopAppBar(
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
-                title = {
-                    Text(
-                        text = stringResource(R.string.stats),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+            TopAppBar(
+                title = {},
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    FrostedHeaderPill(plain = true) {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                        }
+                        Text(
+                            text = stringResource(R.string.stats),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
                     }
                 },
                 actions = {
@@ -278,12 +287,15 @@ fun StatsScreen(
                         modifier = Modifier.padding(end = 8.dp),
                     ) {
                         Icon(
-                            painterResource(R.drawable.auto_awesome),
+                            painter = painterResource(R.drawable.auto_awesome),
                             contentDescription = stringResource(R.string.year_in_music),
                         )
                     }
                 },
-                scrollBehavior = topAppBarScrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { scaffoldPadding ->
@@ -297,17 +309,35 @@ fun StatsScreen(
         val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
+                // Top spacing as contentPadding (2026-09-04 fix): a LazyColumn's
+                // contentPadding scrolls AWAY with the content, so the list
+                // starts under the transparent pinned header and its items
+                // flow through the header-haze zone — which the previous
+                // STATIC Modifier.padding(top = bar) could never do (it
+                // shifted the whole viewport below the bar instead).
                 contentPadding =
-                    LocalPlayerAwareWindowInsets.current
-                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                        .asPaddingValues(),
+                    PaddingValues(
+                        start = LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Horizontal)
+                            .asPaddingValues()
+                            .calculateLeftPadding(LocalLayoutDirection.current),
+                        top = scaffoldPadding.calculateTopPadding() + 8.dp,
+                        end = LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Horizontal)
+                            .asPaddingValues()
+                            .calculateRightPadding(LocalLayoutDirection.current),
+                        bottom = LocalPlayerAwareWindowInsets.current
+                            .only(WindowInsetsSides.Bottom)
+                            .asPaddingValues()
+                            .calculateBottomPadding() +
+                            SettingsDimensions.ScreenBottomPadding,
+                    ),
                 modifier =
                     Modifier
                         .widthIn(max = 1040.dp)
                         .fillMaxHeight()
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .padding(top = scaffoldPadding.calculateTopPadding())
                         // Haze source for the header's top-fade blur.
                         .hazeSource(headerHaze),
             ) {

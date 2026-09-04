@@ -244,6 +244,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
+import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -423,7 +424,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -1012,7 +1014,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
-            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1681,7 +1684,8 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
-            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC
+            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -2044,6 +2048,38 @@ fun BottomSheetPlayer(
                                         WindowInsets(top = LocalStableSystemBarsTopPadding.current)
                                             .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+} else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
+                    // fully self-contained port of its FullPlayer — artwork pager over the real
+                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
+                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
+                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
+                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
+                    // not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
@@ -2500,6 +2536,38 @@ fun BottomSheetPlayer(
                         )
                     }
 
+} else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
+                    // fully self-contained port of its FullPlayer — artwork pager over the real
+                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
+                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
+                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
+                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
+                    // not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
                     // SimpMusic's default now-playing screen: a diagonal wash pulled from the
                     // artwork palette, the sleeve on a pager backed by the real queue, then the
@@ -2680,6 +2748,7 @@ fun BottomSheetPlayer(
                 playerDesignStyle == PlayerDesignStyle.BITCHORD ||
                 playerDesignStyle == PlayerDesignStyle.TIKTOK ||
                 playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+                playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
                 useBlackBackground
             ) {
                 Color.White

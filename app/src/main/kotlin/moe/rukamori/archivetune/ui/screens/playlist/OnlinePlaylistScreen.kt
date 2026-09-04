@@ -867,8 +867,17 @@ fun OnlinePlaylistScreen(
         //  - Not in selection mode
         //  - Not searching
         //  - Playlist is loaded
+        //
+        // Fixed (2026-09-04, user report: "When I select songs in history page
+        // the liquid glass pills disappear and opaque rounded pill appears.
+        // Fix this. Fix the same thing for other screens too"): selection mode
+        // NO LONGER hides the glass pills. The back pill morphs in place —
+        // close (X) icon + the "N songs" count, tap to clear the selection —
+        // and the trailing pill swaps to the select-all / deselect toggle and
+        // the ⋯ that opens SelectionMediaMetadataMenu, the exact actions the
+        // opaque selection bar offered.
         val currentPlaylistForGlass = playlist
-        if (layerBackdropActive && !selection && !isSearching && currentPlaylistForGlass != null) {
+        if (layerBackdropActive && !isSearching && currentPlaylistForGlass != null) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -878,18 +887,37 @@ fun OnlinePlaylistScreen(
                         .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 IconButton(
-                    onClick = { navController.navigateUp() },
-                    onLongClick = { navController.backToMain() },
+                    onClick = {
+                        if (selection) {
+                            selection = false
+                        } else {
+                            navController.navigateUp()
+                        }
+                    },
+                    onLongClick = {
+                        if (!selection) {
+                            navController.backToMain()
+                        }
+                    },
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.arrow_back),
+                        painter =
+                            painterResource(
+                                if (selection) R.drawable.close else R.drawable.arrow_back,
+                            ),
                         contentDescription = stringResource(R.string.back_button_desc),
                         tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
-                    text = currentPlaylistForGlass.title,
+                    text =
+                        if (selection) {
+                            val count = wrappedSongs.count { it.isSelected }
+                            pluralStringResource(R.plurals.n_song, count, count)
+                        } else {
+                            currentPlaylistForGlass.title
+                        },
                     color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -904,6 +932,58 @@ fun OnlinePlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                if (selection) {
+                    // Selection actions in glass (2026-09-04): select-all /
+                    // deselect toggle + the ⋯ that opens the selection menu —
+                    // the exact actions the opaque selection bar carried.
+                    val selectedCount = wrappedSongs.count { it.isSelected }
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.IconButton(
+                            onClick = {
+                                if (selectedCount == wrappedSongs.size) {
+                                    wrappedSongs.forEach { it.isSelected = false }
+                                } else {
+                                    wrappedSongs.forEach { it.isSelected = true }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (selectedCount == wrappedSongs.size) R.drawable.deselect else R.drawable.select_all,
+                                    ),
+                                contentDescription = null,
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    androidx.compose.material3.IconButton(onClick = {
+                        menuState.show {
+                            SelectionMediaMetadataMenu(
+                                songSelection =
+                                    wrappedSongs
+                                        .filter { it.isSelected }
+                                        .map {
+                                            it.item.second
+                                                .toMediaItem()
+                                                .metadata!!
+                                        },
+                                onDismiss = menuState::dismiss,
+                                clearAction = { selection = false },
+                                currentItems = emptyList(),
+                            )
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_vert),
+                            contentDescription = null,
+                            tint = liquidGlassContentColor(),
+                        )
+                    }
+                } else {
                 // Search
                 Box(
                     modifier = Modifier.size(48.dp),
@@ -942,18 +1022,21 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 }
+                } // end non-selection branch of the trailing pill (2026-09-04)
             }
         }
 
         // Top App Bar — hidden when the Liquid Glass header buttons are visible
         // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
-        // search+more pill handle navigation/actions when the hero is visible.
-        // The TopAppBar is only rendered during selection mode and search mode,
-        // where it provides the selection count / search TextField. Rendering the
-        // TopAppBar on top of the Liquid Glass buttons (even when transparent and
-        // with empty actions) causes it to intercept pointer events in the top
-        // area, making the Liquid Glass buttons unclickable.
-        if (selection || isSearching) {
+        // search+more pill handle navigation/actions when the hero is visible,
+        // INCLUDING selection mode (2026-09-04: the glass pills now carry the
+        // selection state, so the opaque bar no longer swaps in mid-selection).
+        // The TopAppBar is only rendered during search mode, where it provides
+        // the search TextField. Rendering the TopAppBar on top of the Liquid
+        // Glass buttons (even when transparent and with empty actions) causes
+        // it to intercept pointer events in the top area, making the Liquid
+        // Glass buttons unclickable.
+        if (isSearching) {
             val topAppBarColors =
                 if (transparentAppBar) {
                     TopAppBarDefaults.topAppBarColors(

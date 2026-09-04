@@ -57,6 +57,8 @@ import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsScrollKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
@@ -419,6 +421,10 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics romanize other languages", "lyrics_romanize_other", listOf("romanize", "other languages", "arabic", "thai", "cyrillic")),
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
+                // Restored (2026-09-04): search entries for the two control preferences
+                // that returned with the Apple Music auto-hide.
+                SettingsChild("Show lyrics player controls", "show_lyrics_player_controls", listOf("player controls", "lyrics controls")) { SearchResultSwitch(ShowLyricsPlayerControlsKey, true) },
+                SettingsChild("Auto-hide lyrics player controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "autohide", "hide controls", "controls fade")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, true) },
                 SettingsChild("Preload queue lyrics", "preload_queue_lyrics", listOf("preload", "preload lyrics", "queue lyrics", "preload count", "queue lyrics count", "preload amount", "preload size")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("BetterLyrics", "betterlyrics", listOf("betterlyrics", "better lyrics", "better lyrics provider")),

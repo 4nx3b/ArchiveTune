@@ -18,6 +18,9 @@ enum class StreamPurpose {
 enum class StreamSource {
     YT_DLP,
     NATIVE_INNERTUBE,
+
+    /** NewPipe `StreamInfo` watch-page extraction (SpatialFlow's resolution path). */
+    NEWPIPE,
 }
 
 data class AudioStreamRequest(

@@ -59,7 +59,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -117,7 +117,6 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.GitCommit
@@ -139,7 +138,6 @@ fun UpdateScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val scrollBehavior = appBarScrollBehavior()
     val coroutineScope = rememberCoroutineScope()
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
     val useWideLayout =
@@ -515,15 +513,21 @@ fun UpdateScreen(
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        // Fixed (2026-09-04, user report: "There's empty space between headers
+        // and actual content in updates and account settings page"): the
+        // MediumFlexibleTopAppBar reserved its full EXPANDED height (~112dp)
+        // even with an empty title, so a dead band sat between the pill header
+        // and the first content card. A pinned single-row TopAppBar (the exact
+        // DebugSettings/ContentSettings pattern) replaces it — same transparent
+        // colors, same FrostedHeaderPill navigation slot, no expanded state to
+        // reserve. The LazyColumn keeps its contentPadding top so the content
+        // still flows under the transparent bar into the header haze.
+        modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            MediumFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -546,7 +550,6 @@ fun UpdateScreen(
                     }
                 },
                 actions = {},
-                scrollBehavior = scrollBehavior,
                 colors =
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,

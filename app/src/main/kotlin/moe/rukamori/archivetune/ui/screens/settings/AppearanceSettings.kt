@@ -812,6 +812,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                         stringResource(R.string.player_design_tiktok)
                                     PlayerDesignStyle.SIMPMUSIC ->
                                         stringResource(R.string.player_design_simpmusic)
+                                    PlayerDesignStyle.SPATIALFLOW ->
+                                        stringResource(R.string.player_design_spatialflow)
                                 }
                             },
                         )

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
+import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -162,7 +163,21 @@ fun BottomSheet(
                     },
                 ),
     ) {
-        if (state.isExpandedOrExpanding && backHandlerEnabled) {
+        // Root-overlay back-priority guard (2026-09-04, third report): this
+        // sheet's collapse BackHandler is composed through the hosting
+        // Scaffold's subcomposition (bottomBar/bottomSheet slots), so it
+        // registers AFTER the root-level popup overlays (BottomSheetMenu,
+        // CastRoutePickerRootOverlay, BottomSheetPage) even though those are
+        // declared later in the tree — subcomposed slots measure after the
+        // direct children compose. LIFO dispatch therefore reached THIS
+        // handler first, so the back gesture collapsed the player out from
+        // under an open popup (user report: "Using back gesture while songs
+        // overflow popup or cast menu is open still minimises the player into
+        // mini player"). Gate it on LocalRootOverlayActive — while any root
+        // popup (overflow menu / Cast picker / details sheet, including the
+        // 260ms exit-fade tail) is showing, back must reach the popup's own
+        // dismissal handler, never the sheet.
+        if (state.isExpandedOrExpanding && backHandlerEnabled && !LocalRootOverlayActive.current) {
             BackHandler(onBack = state::collapseSoft)
         }
 

@@ -427,17 +427,13 @@ fun YouTubeSongMenu(
                 bottom = 12.dp,
             ),
     ) {
+        // ── Muzo quick-action tile row (2026-09-04, metric parity) ──
+        // Rendered through the same MenuSurfaceSection + NewActionGrid
+        // geometry as the full-screen player's inner overflow menu, straight
+        // under the song header — no extra top spacer or per-row padding
+        // (the section card carries its own 12/12 padding now).
         item {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        // ── Muzo quick-action tile row (2026-09-04) ──
-        // The reference's four tiles, straight under the song header.
-        item {
-            MuzoQuickActionRow(
-                actions = quickActions,
-                modifier = Modifier.padding(vertical = 2.dp),
-            )
+            MuzoQuickActionRow(actions = quickActions)
         }
 
         // ── The actions the reference doesn't show as tiles ──

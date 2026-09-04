@@ -1118,12 +1118,16 @@ enum class PlayerDesignStyle {
      * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
      * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
      * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's default
-     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager. All
-     * three are views over the app's one playback engine and queue, not players of their own.
+     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager.
+     * [SPATIALFLOW] is the SpatialFlow player (github.com/MythicalSHUB/SpatialFlow, GPL-3.0) —
+     * artwork pager, pill-chip control row, wavy seek bar, M3 Expressive transport, embedded
+     * sliding queue drawer, circular-reveal lyrics overlay and music haptics. All four are views
+     * over the app's one playback engine and queue, not players of their own.
      */
     BITCHORD,
     TIKTOK,
     SIMPMUSIC,
+    SPATIALFLOW,
 }
 
 enum class PlayerBackgroundStyle {
@@ -1225,6 +1229,15 @@ enum class LyricsAnimationStyle {
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
+
+// Restored (2026-09-04): the Sept 3→4 upstream port removed these together with the
+// five-second auto-hide of the Apple Music player's bottom controls ("controls never
+// hide"). The user asked for the auto-hide back, so both keys return with the same
+// names/defaults they always had — previously-saved values keep applying.
+// ShowLyricsPlayerControlsKey: whether the controls appear at all over the AM lyrics/queue.
+// AutoHideLyricsPlayerControlsKey: whether they fade out again after five seconds.
+val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
+val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
 val TopSize = stringPreferencesKey("topSize")
 

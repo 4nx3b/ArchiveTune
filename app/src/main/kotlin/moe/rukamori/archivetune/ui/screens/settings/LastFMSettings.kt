@@ -12,10 +12,12 @@ package moe.rukamori.archivetune.ui.screens.settings
 import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
@@ -38,8 +40,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,6 +85,11 @@ import moe.rukamori.archivetune.viewmodels.LastFmTimingSetting
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,8 +103,21 @@ fun LastFMSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
+            // Fixed (2026-09-04, user report: "Whole screen is not scrollable in
+            // LastFm and stats page in settings and because of that I don't see
+            // haze effect around the header"): the bar used default (opaque)
+            // colors and the content's top padding was applied BEFORE
+            // verticalScroll, so the column scrolled strictly BELOW the bar —
+            // nothing ever flowed under the header, and the header haze had
+            // nothing to frost. The bar is now transparent (the DebugSettings
+            // pattern) and the top padding moves INSIDE the scroll, so the
+            // content scrolls under the pill header into the haze overlay.
             TopAppBar(
                 title = {},
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
                         IconButton(
@@ -120,12 +142,18 @@ fun LastFMSettings(
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
-
+        // Header haze (2026-09-04): the scrolling content is the haze source;
+        // the overlay renders ON TOP of it (a LATER sibling), beneath the
+        // transparent pill header.
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+        Box(modifier = Modifier.fillMaxSize()) {
         LastFmSettingsContent(
             navController = navController,
             state = state,
             topPadding = topPadding,
             scrollTo = scrollTo,
+            headerHaze = headerHaze,
             onOpenLoginDialog = viewModel::openLoginDialog,
             onDismissLoginDialog = viewModel::dismissLoginDialog,
             onLoginUsernameChange = viewModel::updateLoginUsername,
@@ -150,6 +178,14 @@ fun LastFMSettings(
                 viewModel.saveCustomEndpoint(endpoint, apiKey, secret)
             },
         )
+
+        // Header haze overlay — later sibling of the scrolling content,
+        // drawn on top of it, beneath the transparent pill header.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
     }
 }
 
@@ -159,6 +195,7 @@ private fun LastFmSettingsContent(
     state: LastFmSettingsScreenState,
     topPadding: Dp,
     scrollTo: String? = null,
+    headerHaze: HazeState,
     onOpenLoginDialog: () -> Unit,
     onDismissLoginDialog: () -> Unit,
     onLoginUsernameChange: (String) -> Unit,
@@ -191,11 +228,15 @@ private fun LastFmSettingsContent(
 
     Column(
         Modifier
-            .padding(top = topPadding)
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
+            // Haze source for the pinned header's top-fade blur (2026-09-04) —
+            // chained AFTER verticalScroll so the top padding below scrolls
+            // away and the content flows under the transparent pill header.
+            .hazeSource(headerHaze)
+            .padding(top = topPadding)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         when (state) {
