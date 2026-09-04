@@ -744,11 +744,7 @@ fun TikTokPlayerContent(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
                 onDismiss = { showLyricsMenu = false },
-                showControlsToggles = false,
                 backdrop = popupBackdrop,
             )
         }
