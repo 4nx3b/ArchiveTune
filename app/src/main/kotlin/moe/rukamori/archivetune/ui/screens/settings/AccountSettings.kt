@@ -94,9 +94,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.App.Companion.forgetAccount
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
@@ -1382,10 +1380,4 @@ private fun TokenEditorDialog(
     )
 }
 
-/** The hosting Activity, needed so microG's consent prompt has somewhere to appear. */
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
+
