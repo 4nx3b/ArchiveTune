@@ -130,8 +130,10 @@ private fun Modifier.drawWithCachePathClip(
                         bottom = revealCenter.y + radius,
                     ),
                 )
+                // clipPath's block receiver is a plain DrawScope; drawContent()
+                // lives on the ContentDrawScope of onDrawWithContent — qualify it.
                 clipPath(revealPath, ClipOp.Intersect) {
-                    drawContent()
+                    this@onDrawWithContent.drawContent()
                 }
             }
         }
