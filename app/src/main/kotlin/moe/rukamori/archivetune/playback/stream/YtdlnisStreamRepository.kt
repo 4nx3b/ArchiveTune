@@ -6,11 +6,17 @@
  *
  * Ytdlnis-compatible fallback resolver: mirrors YTDLnis's data-fetching switch
  * (NewPipe ↔ yt-dlp) but without bundling Python. Tries:
- *   1) NewPipe (MetrolistExtractor) via core's NewPipeUtils — pure Kotlin, no Python, handles
- *      age-restricted and signatureCipher via NewPipe's JS player.
- *   2) External yt-dlp via CompactYtDlp (YTDLnis plugin APK) — only if a plugin APK is installed
- *      (com.deniscerri.ytdl.python etc). No Python is bundled; the APK's libpython.so is probed
- *      at runtime (see CompactYtDlp.kt). This is the YTDLnis fallback path but compact.
+ *   1) NewPipe (MetrolistExtractor) watch-page extraction via core's
+ *      NewPipeWatchPageExtractor — pure Kotlin, no Python, the EXACT resolution
+ *      path SpatialFlow uses (StreamInfo.getInfo on the public watch page,
+ *      local signature/throttling deobfuscation, no PO token). This is what
+ *      answers the user's 2026-09-04 report: InnerTube 403s ("No stream
+ *      available", HTTP 403, PO-token error) and the old NewPipe branch was a
+ *      stub returning null, so the chain fell straight through to yt-dlp.
+ *   2) External yt-dlp via CompactYtDlp (YTDLnis plugin APK) — only if a plugin
+ *      APK is installed (com.deniscerri.ytdl.python etc). No Python is bundled;
+ *      the APK's libpython.so is probed at runtime (see CompactYtDlp.kt). This
+ *      is the YTDLnis fallback path but compact.
  *
  * ResolveAudioStreamUseCase tries NativeStreamRepository (InnerTubeX/BotGuard) first; only on
  * failure does it delegate here, so the hot path stays native and fast.
@@ -22,6 +28,8 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import moe.rukamori.archivetune.constants.AudioQuality
+import moe.rukamori.archivetune.innertube.pages.NewPipeWatchPageExtractor
 import moe.rukamori.archivetune.ytdlp.CompactYtDlp
 import org.json.JSONObject
 import timber.log.Timber
@@ -34,8 +42,10 @@ class YtdlnisStreamRepository
     ) : AudioStreamRepository {
 
         override suspend fun resolve(request: AudioStreamRequest): ResolvedAudioStream {
-            // 1) Try NewPipe extractor (MetrolistExtractor) if available — this is what YTDLnis
-            // calls "NewPipe" data fetching. It handles signatureCipher without Python.
+            // 1) NewPipe extractor (MetrolistExtractor) — this is what YTDLnis
+            // calls "NewPipe" data fetching, and since 2026-09-04 it is the
+            // REAL SpatialFlow watch-page extraction: no PO token, no proxy,
+            // handles signatureCipher without Python.
             try {
                 val newPipeResult = tryNewPipe(request)
                 if (newPipeResult != null) return newPipeResult
@@ -57,18 +67,44 @@ class YtdlnisStreamRepository
         }
 
         private suspend fun tryNewPipe(request: AudioStreamRequest): ResolvedAudioStream? {
-            // Use core's NewPipeUtils if present; keep reflection to avoid hard dependency at compile
-            // when the core is the MetrolistExtractor fork (same org.schabi.newpipe.extractor package).
-            return try {
-                val clazz = Class.forName("moe.rukamori.archivetune.innertube.NewPipeUtils")
-                val method = clazz.getMethod("getStreamUrl", String::class.java, String::class.java)
-                // NewPipeUtils.getStreamUrl(format, videoId) is not directly usable here without a format;
-                // instead try NewPipeExtractor.getStreamUrl style — fall back to null to let external yt-dlp try.
-                // This stub keeps the NewPipe path as a placeholder for a full MetrolistExtractor integration.
-                null
-            } catch (_: ClassNotFoundException) {
-                null
-            }
+            // SpatialFlow resolves by quality tier (Data Saver / Normal / High);
+            // map the app's AudioQuality onto the same three tiers.
+            val preference =
+                when (request.quality) {
+                    AudioQuality.LOW -> NewPipeWatchPageExtractor.QualityPreference.LOW
+                    AudioQuality.AUTO -> NewPipeWatchPageExtractor.QualityPreference.MEDIUM
+                    AudioQuality.HIGH, AudioQuality.HIGHEST -> NewPipeWatchPageExtractor.QualityPreference.HIGH
+                }
+            val stream =
+                NewPipeWatchPageExtractor.extract(request.mediaId, preference).getOrNull()
+                    ?: return null
+            val mime = stream.mimeType.substringBefore(';')
+            return ResolvedAudioStream(
+                url = stream.url,
+                requestHeaders = emptyMap(),
+                formatId = stream.itag,
+                mimeType = mime,
+                codecs = stream.codecs ?: when {
+                    mime.contains("webm") -> "opus"
+                    mime.contains("mp4") -> "mp4a.40.2"
+                    else -> "opus"
+                },
+                bitrate = stream.bitrate,
+                sampleRate = null,
+                contentLength = stream.contentLength ?: 0L,
+                // Watch-page URLs carry googlevideo's ~6h expiry like every
+                // other extracted URL; SpatialFlow's own yt-dlp path assumed
+                // the same.
+                expiresAtMs = System.currentTimeMillis() + 6 * 60 * 60 * 1000L,
+                authFingerprint = request.authState.streamCacheFingerprint,
+                source = StreamSource.NEWPIPE,
+                title = stream.title,
+                durationSeconds = stream.durationSeconds.toInt(),
+                thumbnailUrl = stream.thumbnailUrl,
+                loudnessDb = null,
+                perceptualLoudnessDb = null,
+                playbackTrackingUrl = null,
+            )
         }
 
         private suspend fun tryExternalYtDlp(request: AudioStreamRequest): ResolvedAudioStream? {

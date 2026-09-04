@@ -84,6 +84,8 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeKoreanKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsScrollKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
@@ -120,6 +122,12 @@ fun LyricsSettings(
 
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
+    // Restored (2026-09-04): the two control-preference reads behind the restored
+    // "Show player controls" / "Auto-hide controls" settings (see the items below).
+    val (showPlayerControls, onShowPlayerControlsChange) =
+        rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
     // LyricsMode picker removed by user request — Enhanced is the only renderer now, so the
@@ -415,13 +423,34 @@ fun LyricsSettings(
                 )
             }
 
-            // ── Removed (2026-09-04 port of 6701ec36b) ────────────────────────────
-            // "Show player controls" and "Auto-hide controls" toggles used to live here.
-            // The lyrics controls no longer hide at all: the bottom bar carries the
-            // scrubber, the quality badge and the lyrics provider, so there is nothing
-            // left to toggle. The preference keys were removed from PreferenceKeys.kt
-            // with the rest of the plumbing.
-            // ─────────────────────────────────────────────────────────────────────
+            // ── Restored (2026-09-04) ──────────────────────────────────────────
+            // "Show player controls" / "Auto-hide controls" toggles, back by
+            // user request after the Sept 3→4 upstream port removed them together
+            // with the Apple Music five-second auto-hide. The keys kept their
+            // original names so previously-saved values continue to apply. The
+            // description matches the restored behaviour: fade after 5s, tap to
+            // bring back.
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("show_lyrics_player_controls"),
+                    title = { Text(stringResource(R.string.show_lyrics_player_controls)) },
+                    icon = { Icon(painterResource(R.drawable.play), null) },
+                    checked = showPlayerControls,
+                    onCheckedChange = onShowPlayerControlsChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    modifier = positions.modifierFor("auto_hide_lyrics_player_controls"),
+                    title = { Text(stringResource(R.string.auto_hide_lyrics_player_controls)) },
+                    description = stringResource(R.string.auto_hide_lyrics_player_controls_description),
+                    icon = { Icon(painterResource(R.drawable.timer), null) },
+                    checked = autoHidePlayerControls,
+                    onCheckedChange = onAutoHidePlayerControlsChange,
+                    isEnabled = showPlayerControls,
+                )
+            }
 
             item {
                 SwitchPreference(

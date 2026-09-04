@@ -327,10 +327,16 @@ fun HistoryScreen(
     // The persistent liquid glass pills only render when:
     //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
     //  - Not in search mode (the TopSearch overlay has its own back button)
-    //  - Not in selection mode (the LargeFlexibleTopAppBar shows the count
-    //    + clear/close in selection mode)
+    //
+    // Fixed (2026-09-04, user report: "When I select songs in history page the
+    // liquid glass pills disappear and opaque rounded pill appears. Fix this"):
+    // selection mode NO LONGER hides the liquid glass pills. The back pill
+    // morphs in place — close (X) icon + the "N songs" count, tapping it
+    // clears the selection — and the search pill hides (matching the previous
+    // selection-mode top bar, which also had no actions). The opaque
+    // FrostedHeaderPill top bar is now only used when Liquid Glass is off.
     val showPersistentLiquidGlassHeader =
-        liquidGlassHeaderActive && !showSearchBar && selectionCount == 0
+        liquidGlassHeaderActive && !showSearchBar
 
     if (showClearHistoryDialog) {
         DefaultDialog(
@@ -807,9 +813,10 @@ fun HistoryScreen(
             // / LocalSongScreen pattern.
             //
             // Visible only when the Liquid Glass master toggle is on AND
-            // not searching AND not in selection mode. In those other cases
-            // the LargeFlexibleTopAppBar (with FrostedHeaderPill fallbacks)
-            // handles the back + search affordances.
+            // not searching. Selection mode keeps them (2026-09-04); when
+            // Liquid Glass is off the LargeFlexibleTopAppBar (with
+            // FrostedHeaderPill fallbacks) handles the back + search
+            // affordances instead.
             if (showPersistentLiquidGlassHeader) {
                 // iOS-inspired back pill: persistent translucent liquid-glass
                 // capsule containing a left-pointing chevron followed by the
@@ -817,6 +824,11 @@ fun HistoryScreen(
                 // The pill samples the backdrop to render the liquid-glass
                 // blur. Tapping it pops back to the previous destination;
                 // long-pressing it jumps straight to the Home tab.
+                //
+                // In selection mode (2026-09-04 fix) the SAME glass pill
+                // carries the selection state instead of swapping to the
+                // opaque FrostedHeaderPill top bar: close (X) icon, the
+                // "N songs" count, and a tap that clears the selection.
                 LiquidGlassActionPill(
                     backdrop = backdrop,
                     interactive = true,
@@ -826,18 +838,30 @@ fun HistoryScreen(
                             .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
                 ) {
                     AppIconButton(
-                        onClick = { navController.navigateUp() },
-                        onLongClick = { navController.backToMain() },
+                        onClick = {
+                            if (selectionCount > 0) clearSelection() else navController.navigateUp()
+                        },
+                        onLongClick = {
+                            if (selectionCount == 0) navController.backToMain()
+                        },
                         modifier = Modifier.size(48.dp),
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.arrow_back),
+                            painter =
+                                painterResource(
+                                    if (selectionCount > 0) R.drawable.close else R.drawable.arrow_back,
+                                ),
                             contentDescription = stringResource(R.string.library),
                             tint = liquidGlassContentColor(),
                         )
                     }
                     Text(
-                        text = stringResource(R.string.library),
+                        text =
+                            if (selectionCount > 0) {
+                                pluralStringResource(R.plurals.n_song, selectionCount, selectionCount)
+                            } else {
+                                stringResource(R.string.library)
+                            },
                         color = liquidGlassContentColor(),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -854,26 +878,32 @@ fun HistoryScreen(
                 // above opts in to `interactive = true` for the press-based
                 // lens animation because it carries both onClick and
                 // onLongClick (matching the LocalPlaylistScreen pattern).
-                LiquidGlassActionPill(
-                    backdrop = backdrop,
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier.size(48.dp),
-                        contentAlignment = Alignment.Center,
+                //
+                // Hidden in selection mode (2026-09-04): the selection
+                // state lives in the back pill and the floating bottom
+                // selection bar; a search affordance would only be noise.
+                if (selectionCount == 0) {
+                    LiquidGlassActionPill(
+                        backdrop = backdrop,
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
                     ) {
-                        AppIconButton(
-                            onClick = { isSearching = true },
-                            onLongClick = {},
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.search),
-                                contentDescription = null,
-                                tint = liquidGlassContentColor(),
-                            )
+                            AppIconButton(
+                                onClick = { isSearching = true },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.search),
+                                    contentDescription = null,
+                                    tint = liquidGlassContentColor(),
+                                )
+                            }
                         }
                     }
                 }

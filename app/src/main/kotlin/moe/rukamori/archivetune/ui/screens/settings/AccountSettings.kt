@@ -50,7 +50,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -124,7 +123,6 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.SavedAccount
@@ -158,7 +156,6 @@ fun AccountSettings(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
-    val scrollBehavior = appBarScrollBehavior()
 
     val accountLabel = stringResource(R.string.account)
     val generalLabel = stringResource(R.string.general)
@@ -283,14 +280,20 @@ fun AccountSettings(
     }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        // Fixed (2026-09-04, user report: "There's empty space between headers
+        // and actual content in updates and account settings page"): the
+        // LargeFlexibleTopAppBar reserved its full EXPANDED height (~152dp) even
+        // with an empty title, leaving a dead band between the pill header and
+        // the first account row. A pinned single-row TopAppBar (the exact
+        // DebugSettings pattern) replaces it — same transparent colors, same
+        // FrostedHeaderPill navigation slot, no expanded state. The LazyColumn's
+        // top spacing stays in contentPadding so content still flows under the
+        // transparent bar into the header haze.
+        modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFlexibleTopAppBar(
+            androidx.compose.material3.TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -312,9 +315,8 @@ fun AccountSettings(
                         )
                     }
                 },
-                windowInsets = TopAppBarDefaults.windowInsets,
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
+                    TopAppBarDefaults.topAppBarColors(
                         // Header haze (2026-09-04, user request: "Add the same
                         // haze effect in Account page and stats page in
                         // settings"): the bar stays transparent so the list
@@ -324,7 +326,6 @@ fun AccountSettings(
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->

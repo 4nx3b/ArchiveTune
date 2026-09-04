@@ -135,7 +135,49 @@ fun ContentSettings(
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-
+    // Fixed (2026-09-04, user report: "the header is missing in content
+    // settings"): the TopAppBar used to be emitted as a sibling AFTER the
+    // scrolling Column, so the nav host's layout stacked it below the
+    // full-screen content — off-screen, i.e. invisible. The screen now
+    // uses the same Scaffold shape as every other settings page: the bar
+    // sits in the topBar slot (pinned, transparent, FrostedHeaderPill
+    // navigation), and the content + haze overlay + snackbar live in the
+    // content slot. The top spacing stays inside the scrolling column so
+    // content flows under the bar into the haze.
+    androidx.compose.material3.Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    FrostedHeaderPill(plain = true) {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.content),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
+            )
+        },
+    ) { innerPadding ->
+    val topPadding = innerPadding.calculateTopPadding()
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
@@ -143,7 +185,7 @@ fun ContentSettings(
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
         .hazeSource(headerHaze)
-        .padding(top = systemBarsTopPadding + 64.dp)
+        .padding(top = topPadding)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         PreferenceGroup(
@@ -342,34 +384,6 @@ fun ContentSettings(
         }
     }
 
-    TopAppBar(
-        title = {},
-        navigationIcon = {
-            FrostedHeaderPill(plain = true) {
-                IconButton(
-                    onClick = navController::navigateUp,
-                    onLongClick = navController::backToMain,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.arrow_back),
-                        contentDescription = null,
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.content),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    modifier = Modifier.padding(end = 4.dp),
-                )
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.Transparent,
-            scrolledContainerColor = Color.Transparent,
-        ),
-    )
-
         // Header haze overlay — later sibling of the scrolling content,
         // drawn on top of it, beneath the pill header.
         ScreenHeaderHaze(
@@ -383,6 +397,8 @@ fun ContentSettings(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
+    }
     }
 }
 
