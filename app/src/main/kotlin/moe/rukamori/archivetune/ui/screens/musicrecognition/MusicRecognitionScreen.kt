@@ -332,8 +332,10 @@ private fun MusicRecognitionContent(
                 contentPadding =
                     PaddingValues(
                         start = if (useWideLayout) 24.dp else 16.dp,
-                        top = if (glassHeader.liquidGlassActive) systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
-            // pills so the glass actually samples it (2026-09-04 fix) else 24.dp,
+                        // History pill pattern: content sits 12dp under the
+                        // pills so the glass actually samples it (2026-09-04
+                        // "pills have opaque background" fix).
+                        top = if (glassHeader.liquidGlassActive) systemBarsTopPadding + 72.dp else 24.dp,
                         end = if (useWideLayout) 24.dp else 16.dp,
                         bottom = 40.dp,
                     ),
