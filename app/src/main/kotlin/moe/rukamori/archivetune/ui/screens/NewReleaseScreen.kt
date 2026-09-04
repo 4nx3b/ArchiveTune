@@ -256,7 +256,8 @@ fun NewReleaseScreen(
         // scroll under the pills/haze exactly like the History page.
         val contentTopPadding =
             if (glassHeader.liquidGlassActive && !isSearchActive) {
-                systemBarsTopPadding + 84.dp
+                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
+            // pills so the glass actually samples it (2026-09-04 fix)
             } else {
                 paddingValues.calculateTopPadding()
             }

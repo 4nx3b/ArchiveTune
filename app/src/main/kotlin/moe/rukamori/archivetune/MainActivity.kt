@@ -792,6 +792,13 @@ class MainActivity : ComponentActivity() {
             // the haze source; the top bar renders the blurred strip (see the
             // topBar slot). Provided to the tree via LocalHomeHazeState.
             val homeHazeState = remember { HazeState() }
+            // Search-page redesign (2026-09-04): the Search route's own haze
+            // state — SearchScreen tags its root Box as the source and the top
+            // bar renders the SAME progressive top-fade blur over the Search
+            // route ("the same behaviour and reference from Home page... with
+            // haze"). Separate instance so the two tabs never cross-sample
+            // while both compose during the slide transition.
+            val searchHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -2093,6 +2100,9 @@ class MainActivity : ComponentActivity() {
                         // between HomeScreen's hazeSource and the top bar's progressive
                         // fade blur over the Home route.
                         moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
+                        // Search-page redesign (2026-09-04): the Search route's
+                        // haze twin (see searchHazeState above).
+                        moe.rukamori.archivetune.ui.screens.LocalSearchHazeState provides searchHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
@@ -2348,6 +2358,13 @@ class MainActivity : ComponentActivity() {
                                         // while its bar title fades in only once the list is scrolled
                                         // (the big in-list greeting owns the title at rest).
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
+                                        // Search-page redesign (2026-09-04): the Search route follows
+                                        // the Home route's behaviour exactly — pinned transparent
+                                        // bar, content scrolling under it into the progressive
+                                        // top-fade blur, centered page title. ("Redesign the whole
+                                        // search page from scratch with the same behaviour and
+                                        // reference from Home page.")
+                                        val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
                                         val homeBarScrolled by remember(isHomeRoute) {
                                             derivedStateOf {
                                                 homeScrollBehavior.state.collapsedFraction > 0.05f
@@ -2387,10 +2404,11 @@ class MainActivity : ComponentActivity() {
                                                     // cached while the user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
-                                                            if (isLibraryRoute || isHomeRoute) {
-                                                                // Library and Home both keep the bar
-                                                                // pinned: Home's content scrolls under
-                                                                // it into the progressive blur.
+                                                            if (isLibraryRoute || isHomeRoute || isSearchRoute) {
+                                                                // Library, Home and Search all keep the
+                                                                // bar pinned: Home's and Search's
+                                                                // content scrolls under it into the
+                                                                // progressive blur.
                                                                 0f
                                                             } else {
                                                                 currentScrollBehavior.state.heightOffset
@@ -2398,7 +2416,7 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
-                                                if (isHomeRoute &&
+                                                if ((isHomeRoute || isSearchRoute) &&
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
@@ -2409,8 +2427,14 @@ class MainActivity : ComponentActivity() {
                                                     // content with. A modest readability scrim sits over
                                                     // the blur so the bar's glyphs keep a floor whatever
                                                     // scrolls beneath them.
+                                                    //
+                                                    // 2026-09-04 search redesign: the Search route gets
+                                                    // the EXACT same material over its own HazeState
+                                                    // (SearchScreen tags its root as the source) —
+                                                    // replacing the flat surface gradient it used to
+                                                    // fall back to.
                                                     HomeTopFadeBlur(
-                                                        hazeState = homeHazeState,
+                                                        hazeState = if (isHomeRoute) homeHazeState else searchHazeState,
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
                                                     )
@@ -2426,7 +2450,7 @@ modifier =
                                                                 // blur background overlay under
                                                                 // the top app bar.
                                                                 .graphicsLayer {
-                                                                    if (!isLibraryRoute && !isHomeRoute) {
+                                                                    if (!isLibraryRoute && !isHomeRoute && !isSearchRoute) {
                                                                         val raw = currentScrollBehavior.state.heightOffset
                                                                         val clamped = raw.coerceAtLeast(-appBarHeightPx)
                                                                         translationY = clamped - raw
@@ -2561,6 +2585,35 @@ modifier =
                                                         ) {
                                                             Text(
                                                                 text = stringResource(R.string.home),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
+                                                    } else if (isSearchRoute) {
+                                                        // ── Search title (2026-09-04 redesign) ──
+                                                        // The Search route follows the Home
+                                                        // route's header exactly: just the
+                                                        // "Search" text, horizontally centered
+                                                        // in the bar, always visible — with NO
+                                                        // app logo on the left and NO trailing
+                                                        // icon (user request 2026-09-04:
+                                                        // "the only difference is that there
+                                                        // should be search text in the middle
+                                                        // with haze include offcourse and no
+                                                        // app logo on the left or search icon
+                                                        // in liquid glass on the right"). The
+                                                        // search entry stays the in-feed
+                                                        // SearchEntryField; this bar only owns
+                                                        // the page identity + the haze.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.search),
                                                                 color = MaterialTheme.colorScheme.onBackground,
                                                                 fontWeight = FontWeight.Bold,
                                                                 style = MaterialTheme.typography.titleLarge,

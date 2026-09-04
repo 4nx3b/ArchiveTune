@@ -29,6 +29,13 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     allowNetwork: Boolean,
     albumTitle: String? = null,
     trySpotifyCanvas: Boolean = false,
+    // The song's Spotify identity when the player already knows it — the
+    // enriched MediaMetadata carries `spotifyTrackId` from the user's own
+    // Spotify session (web-auth login). Passed through to the official
+    // canvaz endpoint so the canvas is fetched from THEIR actual account's
+    // track rather than re-derived from a title/artist search (user request
+    // 2026-09-04).
+    spotifyTrackId: String? = null,
 ): CanvasArtwork? {
     // Telegram/local files have tag-derived (often noisy) metadata — use fuzzy identity matching
     // so a real canvas isn't discarded over a "(2019)" suffix or a channel-name artist.
@@ -73,6 +80,10 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                         videoId = mediaId,
                         songTitle = songTitleRaw,
                         artistName = artistNameRaw,
+                        // Direct identity when the player's metadata already
+                        // carries it (the user's own Spotify session) — skips
+                        // the title/artist search entirely.
+                        spotifyTrackUri = spotifyTrackId?.takeIf { it.isNotBlank() }?.let { "spotify:track:$it" },
                     )
                 }.onFailure { throwable ->
                     Timber.tag(CanvasArtworkLogTag).w(throwable, "Spotify Canvas lookup failed for %s", mediaId)

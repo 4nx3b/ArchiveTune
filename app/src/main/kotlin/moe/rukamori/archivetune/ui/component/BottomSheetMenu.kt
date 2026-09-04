@@ -269,7 +269,12 @@ fun BottomSheetMenu(
     val configuration = LocalConfiguration.current
     // The popup never covers the whole screen — it floats at the bottom and
     // its content scrolls internally (the menus are LazyColumns).
-    val maxPopupHeight = configuration.screenHeightDp.dp * 0.78f
+    // Compact sizing (user request 2026-09-04: "make the popup compact so
+    // that it only around 40% of the screen length"): the card is capped at
+    // 40% of the screen height. Taller menus scroll inside the card exactly
+    // as before — no menu item, dialog or callback is lost; the menus'
+    // LazyColumns keep their keys and scroll positions.
+    val maxPopupHeight = configuration.screenHeightDp.dp * 0.40f
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = modifier.fillMaxSize()) {

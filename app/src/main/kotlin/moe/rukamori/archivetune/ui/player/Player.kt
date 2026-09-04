@@ -185,6 +185,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -514,6 +515,21 @@ fun BottomSheetPlayer(
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
+    // ── Spotify-account canvas (2026-09-04) ──
+    // "When users have logged in using their Spotify account the canvas
+    // should be fetched from their actual account using the Spotify tokens
+    // generated from the web auth during login." A connected session (the
+    // sp_dc cookie captured by the web-auth login sheet) enables the
+    // Spotify Canvas path on its own — the user no longer has to find the
+    // "Spotify Canvas" toggle in Player settings first. The tokens are
+    // minted from that same web-auth session by
+    // SpotifyCanvasProvider.tokenProvider (App.kt wires it to
+    // spotifyLibraryRepository.ensureAccessToken()), so the canvaz lookup
+    // runs against the user's ACTUAL account; the title/artist search is
+    // skipped entirely when the playing metadata already carries a
+    // spotifyTrackId from their session.
+    val spotifyConnected by rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyCanvasEffective = spotifyCanvasEnabled || spotifyConnected.isNotBlank()
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -1398,12 +1414,12 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val shouldUseV7Canvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||
                     playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9
@@ -1445,7 +1461,8 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = next.spotifyTrackId,
                     )
                 }
             }
@@ -1494,7 +1511,8 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     v7CanvasArtwork = resolvedArtwork
@@ -1533,7 +1551,8 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     artworkCanvas = resolvedArtwork

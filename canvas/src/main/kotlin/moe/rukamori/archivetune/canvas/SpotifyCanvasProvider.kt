@@ -168,6 +168,15 @@ object SpotifyCanvasProvider {
      * [artistName] are used only to identify the song on Spotify for the official
      * endpoint; the fallback resolver keys off [videoId] alone.
      *
+     * [spotifyTrackUri] — when the host app ALREADY knows the song's Spotify
+     * identity (e.g. the player's enriched MediaMetadata carries
+     * `spotifyTrackId` from the user's own Spotify session), pass it here
+     * (`"spotify:track:<id>"`): the official canvaz lookup then goes straight
+     * to the user's account's track instead of re-deriving it from a
+     * title/artist search (2026-09-04: "the canvas should be fetched from
+     * their actual account using the Spotify tokens generated from the web
+     * auth during login").
+     *
      * Returns `null` if neither source has a canvas for the song, the song isn't
      * on Spotify, or both requests fail.
      */
@@ -175,6 +184,7 @@ object SpotifyCanvasProvider {
         videoId: String,
         songTitle: String? = null,
         artistName: String? = null,
+        spotifyTrackUri: String? = null,
     ): CanvasArtwork? {
         if (videoId.isBlank()) return null
 
@@ -193,7 +203,7 @@ object SpotifyCanvasProvider {
         // Source 1: Spotify's own Canvas endpoint.
         val official =
             try {
-                fetchOfficialCanvas(videoId, songTitle, artistName)
+                fetchOfficialCanvas(videoId, songTitle, artistName, spotifyTrackUri)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 log("Official Spotify Canvas lookup failed for $videoId: ${throwable.message}")
@@ -279,18 +289,25 @@ object SpotifyCanvasProvider {
      * Returns null (without caching) when the host app hasn't wired up a token /
      * track resolver, when the user has no Spotify session, when the song can't
      * be matched on Spotify, or when Spotify has no canvas for the track.
+     *
+     * [spotifyTrackUri] short-circuits the title/artist search with a track URI
+     * the host app already resolved from the user's own session — the canvas
+     * then comes straight from their actual account's track.
      */
     private suspend fun fetchOfficialCanvas(
         videoId: String,
         songTitle: String?,
         artistName: String?,
+        spotifyTrackUri: String? = null,
     ): CanvasArtwork? {
         val resolveTrackUri = trackUriResolver ?: return null
         val provideToken = tokenProvider ?: return null
 
         val token = provideToken()?.takeIf { it.isNotBlank() } ?: return null
         val trackUri =
-            resolveTrackUri(videoId, songTitle, artistName)?.takeIf { it.isNotBlank() } ?: return null
+            spotifyTrackUri?.takeIf { it.isNotBlank() }
+                ?: resolveTrackUri(videoId, songTitle, artistName)?.takeIf { it.isNotBlank() }
+                ?: return null
 
         val response =
             spotifyClient.post(CANVAZ_URL) {

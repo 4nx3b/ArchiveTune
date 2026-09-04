@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -121,6 +122,23 @@ fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBac
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Blur radius the pill-shaped glass surfaces (header pills, icon pills,
+ * action pills) sample the backdrop at (2026-09-04, user report: "The pills
+ * have opaque background. it should be blurred.").
+ *
+ * The original 8dp resting blur — ported from SimpMusic — reads as a flat
+ * tint whenever the sampled band behind the pill is short on detail, which
+ * made the header pills look like opaque chips. 18dp makes the frost
+ * unmistakably glass: whatever sits behind the pill (list content, artwork,
+ * the lens-refracted card edges) visibly smears through the surface.
+ *
+ * Scoped to the PILL composables only — the navigation bar, the mini player
+ * and the other full-width surfaces keep the default 8dp so the look the
+ * user already approved there is untouched.
+ */
+val LiquidGlassPillBlurRadius = 18.dp
+
+/**
  * Light-mode ink color for content (icons / labels) drawn on top of a Liquid
  * Glass surface.
  *
@@ -174,15 +192,15 @@ fun liquidGlassContentColor(): Color =
  * loop that crashes the RuntimeShader.
  *
  * **Performance note:** The modifier chain is wrapped in `remember` keyed on
- * [backdrop], [shape], [interactive], [baseColor] and the current dark-theme
- * state. This is the single biggest lever for the "lag when switching pages"
- * symptom: without memoization, every recomposition of the host screen
- * (which can happen many times per second during scroll) rebuilt the entire
- * `drawBackdrop` modifier chain — re-allocating the kyant effect stack and
- * re-installing the RuntimeShader on the GraphicsLayer. Memoizing it means
- * the chain is built ONCE per (backdrop, shape, dark-theme) tuple and
- * reused across recompositions, so scroll-driven recompositions no longer
- * trigger per-frame GPU setup cost.
+ * [backdrop], [shape], [interactive], [baseColor], [blurRadius] and the
+ * current dark-theme state. This is the single biggest lever for the "lag
+ * when switching pages" symptom: without memoization, every recomposition of
+ * the host screen (which can happen many times per second during scroll)
+ * rebuilt the entire `drawBackdrop` modifier chain — re-allocating the kyant
+ * effect stack and re-installing the RuntimeShader on the GraphicsLayer.
+ * Memoizing it means the chain is built ONCE per (backdrop, shape,
+ * dark-theme) tuple and reused across recompositions, so scroll-driven
+ * recompositions no longer trigger per-frame GPU setup cost.
  *
  * @param baseColor Optional OPAQUE color drawn UNDER the backdrop sample
  *   (via the kyant `onDrawBehind` callback). When the backdrop has content
@@ -201,6 +219,7 @@ fun Modifier.liquidGlass(
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
+    blurRadius: Dp = 8.dp,
 ): Modifier {
     // Theme-aware dark/light surface overlay (part of the 2026-09-03 light-mode
     // black-pills fix). This used to read isSystemInDarkTheme(), which follows
@@ -219,7 +238,7 @@ fun Modifier.liquidGlass(
     // RuntimeShader on the GraphicsLayer, which was the dominant cause of the "lag
     // when switching pages" symptom (the new page's first frames all paid that GPU
     // setup cost while the user was already trying to scroll).
-    return remember(backdrop, shape, interactive, baseColor, isDark) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
@@ -227,9 +246,9 @@ fun Modifier.liquidGlass(
                 vibrancy()
                 blur(
                     if (l > 0f) {
-                        lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                        lerp(blurRadius.toPx() * 2f, blurRadius.toPx() * 4f, l)
                     } else {
-                        lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
+                        blurRadius.toPx()
                     },
                 )
                 lens(24f.dp.toPx(), size.minDimension / 4f, false)
@@ -277,11 +296,12 @@ fun LiquidGlassContainer(
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
     interactive: Boolean = false,
+    blurRadius: Dp = LiquidGlassPillBlurRadius,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive),
+        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -307,6 +327,7 @@ fun LiquidGlassActionPill(
     backdrop: PlatformBackdrop,
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
+    blurRadius: Dp = LiquidGlassPillBlurRadius,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -317,6 +338,7 @@ fun LiquidGlassActionPill(
                     backdrop = backdrop,
                     shape = RoundedCornerShape(24.dp),
                     interactive = interactive,
+                    blurRadius = blurRadius,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
