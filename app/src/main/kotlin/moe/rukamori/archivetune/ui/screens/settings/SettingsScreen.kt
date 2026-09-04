@@ -18,6 +18,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,18 +33,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
@@ -51,9 +52,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -66,14 +67,19 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.glassAwareLargeTopAppBarColors
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.glassAwareSurface
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeader
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
@@ -280,7 +286,6 @@ fun SettingsScreen(
         }
 
     var searchQuery by remember { mutableStateOf("") }
-    val scrollBehavior = appBarScrollBehavior()
     val shouldShowPermissionHint = !isStorageGranted || !isNotificationGranted
     val hasUpdate =
         BuildConfig.UPDATER_AVAILABLE &&
@@ -322,6 +327,24 @@ fun SettingsScreen(
     // dialog composables signal show/dismiss via LocalSettingsDialogShowing.
     val settingsDialogShowing = rememberSettingsDialogHostState()
 
+    // ── Settings home redesign (2026-09-04) ──
+    // "Implement the same home page ui and behaviour for setting main page
+    // and library tab main page too. Just don't change the background color
+    // to that of gradience like home page in settings main page."
+    //
+    // The Home route's header recipe, applied here: a PINNED TRANSPARENT
+    // bar (back icon + centered bold "Settings" title + the scroll-time
+    // search pill) with the settings list scrolling UNDER it into the same
+    // progressive top-fade blur [ScreenHeaderHaze] the Home bar renders, the
+    // scrolling content recorded into a screen-scoped backdrop so the glass
+    // icons sample real vibrancy (the [GlassScreenHeader] kit). The bar no
+    // longer collapses — Home behaviour — so the collapsing
+    // LargeFlexibleTopAppBar + appBarScrollBehavior are gone. The page
+    // background stays EXACTLY as it was ([glassAwareSurface] — no Home
+    // atmosphere gradient), per the user's instruction.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     CompositionLocalProvider(LocalSettingsDialogShowing provides settingsDialogShowing) {
         Scaffold(
             modifier =
@@ -338,118 +361,47 @@ fun SettingsScreen(
                         } else {
                             Modifier
                         },
-                    )
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    ),
             containerColor = glassAwareSurface(),
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = {
-                    // Empty title pill — the "Settings" label is already
-                    // rendered inside the navigationIcon pill below (back
-                    // arrow + "Settings"). Per user request (2026-08-28):
-                    // "On the settings main page there's second settings
-                    // pill in the middle. Remove that." Previously this
-                    // rendered a SECOND FrostedHeaderPill containing just
-                    // the "Settings" text, which sat in the top-center
-                    // of the page as a duplicate of the back+Settings pill
-                    // at the start. Removing it leaves the navigationIcon
-                    // pill as the sole header pill, matching the layout
-                    // of the History page and the settings submenus.
-                },
-                navigationIcon = {
-                    // Liquid-glass back pill — back chevron + "Settings"
-                    // label, mirroring the HistoryScreen back+Library pill
-                    // layout. Tapping pops back to the previous destination;
-                    // long-pressing jumps straight to the Home tab.
-                    FrostedHeaderPill(plain = true) {
-                        IconButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = stringResource(R.string.back_button_desc),
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.settings),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
-                    }
-                },
-                actions = {
-                    // Per user request (2026-08-28): "Also when I scroll a
-                    // search icon pill should also appear on the right in
-                    // liquid glass." When the user scrolls the settings list
-                    // down, the inline search TextField at the top of the
-                    // LazyColumn scrolls out of view. To keep search
-                    // reachable, we surface a small search-icon pill in the
-                    // top-app-bar's actions slot while scrolling. Tapping it
-                    // scrolls back to the search bar and requests focus.
-                    val isScrolling by remember {
-                        derivedStateOf {
-                            listState.firstVisibleItemIndex > 0 ||
-                                listState.firstVisibleItemScrollOffset > 200
-                        }
-                    }
-                    AnimatedVisibility(
-                        visible = isScrolling,
-                        enter = fadeIn(animationSpec = tween(180)),
-                        exit = fadeOut(animationSpec = tween(140)),
-                    ) {
-                        FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp), plain = true) {
-                            IconButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(0)
-                                    }
-                                },
-                                onLongClick = {},
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.search),
-                                    contentDescription = stringResource(R.string.search),
-                                )
-                            }
-                        }
-                    }
-                },
-                colors = glassAwareLargeTopAppBarColors(),
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { innerPadding ->
-        // Compute the player-aware bottom inset (nav bar + mini player + safe inset) so we can
-        // fold it into the LazyColumn's contentPadding. We do NOT apply it via windowInsetsPadding
-        // because that would reserve space ABOVE the nav bar — content would never scroll behind
-        // the floating nav bar. By putting it into contentPadding instead, the column extends to
-        // the very bottom of the screen (content visibly scrolls behind the nav bar) and the last
-        // items get a "minimum height" clearance so they aren't permanently hidden behind the bar.
-        val playerAwareBottomPadding =
-            LocalPlayerAwareWindowInsets.current
-                .only(WindowInsetsSides.Bottom)
-                .asPaddingValues()
-                .calculateBottomPadding()
-        LazyColumn(
-            state = listState,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal,
+        ) { _ ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Compute the player-aware bottom inset (nav bar + mini player + safe inset) so we can
+                // fold it into the LazyColumn's contentPadding. We do NOT apply it via windowInsetsPadding
+                // because that would reserve space ABOVE the nav bar — content would never scroll behind
+                // the floating nav bar. By putting it into contentPadding instead, the column extends to
+                // the very bottom of the screen (content visibly scrolls behind the nav bar) and the last
+                // items get a "minimum height" clearance so they aren't permanently hidden behind the bar.
+                val playerAwareBottomPadding =
+                    LocalPlayerAwareWindowInsets.current
+                        .only(WindowInsetsSides.Bottom)
+                        .asPaddingValues()
+                        .calculateBottomPadding()
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            // The haze source AND the liquid-glass backdrop source
+                            // for the pinned header — the scroll content must be a
+                            // SIBLING of the header overlay, never its parent.
+                            .glassHeaderSource(glassHeader)
+                            .windowInsetsPadding(
+                                LocalPlayerAwareWindowInsets.current.only(
+                                    WindowInsetsSides.Horizontal,
+                                ),
+                            ),
+                    contentPadding =
+                        PaddingValues(
+                            // Scroll-under clearance: the pinned bar zone (status
+                            // bar + 64dp) + 8dp of breathing room — items scroll
+                            // THROUGH the zone into the progressive blur, exactly
+                            // the Home feed's pattern (the old collapsing bar
+                            // reserved this space via the Scaffold's innerPadding).
+                            top = systemBarsTopPadding + AppBarHeight + 8.dp,
+                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                         ),
-                    ),
-            contentPadding =
-                PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
-                ),
-        ) {
+                ) {
             if (hasUpdate && !isUpdateDismissed && searchQuery.isBlank()) {
                 item(key = "update", contentType = "settings_banner") {
                     SettingsUpdateBanner(
@@ -586,6 +538,149 @@ fun SettingsScreen(
                 }
             }
         }
+
+                // ── The Home-style pinned header ──
+                // Drawn AFTER the LazyColumn (later sibling = on top): the
+                // progressive header haze plus the transparent bar row with
+                // the back icon, the centered bold "Settings" title and the
+                // scroll-time search pill — the exact composition of the Home
+                // route's top bar.
+                SettingsHomeStyleHeader(
+                    glassHeader = glassHeader,
+                    listState = listState,
+                    onBack = navController::navigateUp,
+                    onBackLongClick = navController::backToMain,
+                    onSearch = {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(0)
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The Settings main page's Home-style pinned header (2026-09-04):
+ *
+ *  * [ScreenHeaderHaze] — the exact progressive top-fade blur material the
+ *    Home route's top bar renders, sampling the settings list scrolling
+ *    beneath it.
+ *  * A transparent, always-pinned bar row carrying the back affordance
+ *    (liquid-glass circular icon button while Liquid Glass is on, the plain
+ *    app icon button otherwise), the CENTERED bold "Settings" title (the
+ *    Home/Search header pattern — no app logo, no second pill), and the
+ *    search pill that fades in once the list scrolls past the inline search
+ *    field (user request 2026-08-28, behaviour kept).
+ *
+ * Back behaviour is unchanged: tap pops to the previous destination,
+ * long-press jumps straight to the Home tab.
+ */
+@Composable
+private fun BoxScope.SettingsHomeStyleHeader(
+    glassHeader: GlassScreenHeader,
+    listState: LazyListState,
+    onBack: () -> Unit,
+    onBackLongClick: () -> Unit,
+    onSearch: () -> Unit,
+) {
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    // The header haze renders in BOTH modes — it only needs the (transparent)
+    // header zone, not the Liquid Glass toggle.
+    ScreenHeaderHaze(
+        hazeState = glassHeader.haze,
+        systemBarsTopPadding = systemBarsTopPadding,
+    )
+
+    // The transparent bar row — pinned, never collapsing (Home behaviour).
+    Box(
+        modifier =
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(top = systemBarsTopPadding)
+                .height(AppBarHeight),
+    ) {
+        // Centered bold title — the Home/Search header pattern. Sits between
+        // the back affordance and the search pill exactly like Home's title
+        // sits between the avatar and the settings pill.
+        Text(
+            text = stringResource(R.string.settings),
+            color = MaterialTheme.colorScheme.onBackground,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            modifier = Modifier.align(Alignment.Center),
+        )
+
+        // Back affordance (leading edge): liquid-glass circular icon button
+        // while the screen glass is live, the plain app icon button otherwise.
+        val backdrop = glassHeader.backdrop
+        if (backdrop != null) {
+            LiquidGlassIconButton(
+                backdrop = backdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = stringResource(R.string.back_button_desc),
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 12.dp),
+                onClick = onBack,
+            )
+        } else {
+            IconButton(
+                onClick = onBack,
+                onLongClick = onBackLongClick,
+                modifier =
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 12.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.arrow_back),
+                    contentDescription = stringResource(R.string.back_button_desc),
+                )
+            }
+        }
+
+        // Trailing search pill — fades in only once the inline search field
+        // has scrolled out of view (user request 2026-08-28, kept). Tapping
+        // scrolls back to the search field.
+        val isScrolling by remember {
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 ||
+                    listState.firstVisibleItemScrollOffset > 200
+            }
+        }
+        AnimatedVisibility(
+            visible = isScrolling,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(140)),
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            if (backdrop != null) {
+                LiquidGlassIconButton(
+                    backdrop = backdrop,
+                    painter = painterResource(R.drawable.search),
+                    contentDescription = stringResource(R.string.search),
+                    modifier = Modifier.padding(end = 12.dp),
+                    onClick = onSearch,
+                )
+            } else {
+                FrostedHeaderPill(modifier = Modifier.padding(end = 8.dp), plain = true) {
+                    IconButton(
+                        onClick = onSearch,
+                        onLongClick = {},
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = stringResource(R.string.search),
+                        )
+                    }
+                }
+            }
         }
     }
 }

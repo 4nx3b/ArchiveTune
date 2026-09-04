@@ -68,6 +68,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.PureBlackKey
@@ -76,6 +77,7 @@ import moe.rukamori.archivetune.constants.SongFilterKey
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.SongSortTypeKey
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
@@ -121,6 +123,11 @@ fun LibrarySongsScreen(
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
     val lazyListState = rememberLazyListState()
 
+    // Stable status-bar + cutout top inset (see LibraryArtistsScreen for the
+    // notch rationale) — combined with AppBarHeight it forms the bar-zone
+    // clearance this screen now owns since the Library root went full-bleed.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     // Issue 2: player-aware bottom padding so content is never hidden behind nav bar + miniplayer
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
@@ -165,13 +172,22 @@ fun LibrarySongsScreen(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.refresh(filter) },
         modifier = Modifier.fillMaxSize(),
-        indicatorOffset = LibraryPullToRefreshIndicatorOffset,
+        // indicatorOffset intentionally omitted: the box now spans the full
+        // window (the Library root no longer pads the top inset below the
+        // bar), so the default (status bar + app bar) places the indicator
+        // just under the pinned bar.
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(top = LibraryHeaderContentPadding),
+                    // 2026-09-04 library redesign: the bar zone (status bar +
+                    // app bar) the Library root's windowInsetsPadding used to
+                    // provide now lives here — the sub-filter row starts just
+                    // below the pinned bar, matching the Home feed's spacing.
+                    .padding(
+                        top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
+                    ),
         ) {
             // Sub-Filters Row (All Songs, Downloaded, Liked)
             Row(

@@ -184,6 +184,16 @@ val LocalHomeHazeState = compositionLocalOf<HazeState?> { null }
  */
 val LocalSearchHazeState = compositionLocalOf<HazeState?> { null }
 
+/**
+ * The Library tab's twin of [LocalHomeHazeState] (2026-09-04: "Implement the
+ * same home page ui and behaviour for setting main page and library tab main
+ * page too"). A separate instance so the top-level routes never cross-sample
+ * during the fade-through transition; LibraryScreen tags its root Box as this
+ * blur's source and MainActivity renders the same [HomeTopFadeBlur] material
+ * over the Library top bar, whose content scrolls under it.
+ */
+val LocalLibraryHazeState = compositionLocalOf<HazeState?> { null }
+
 // ============================================================================
 // Shimmer skeletons (ported from BitChord Skeletons.kt). Grey stand-ins for
 // content still on the wire, laid out to the same metrics as the real rows

@@ -799,6 +799,10 @@
     <string name="search_recommended_artists">Recommended Artists</string>
     <string name="search_recommended_albums">Recommended Albums</string>
     <string name="search_recommended_songs">Recommended Songs</string>
+    <!-- Explore-tab fill-out (2026-09-04): the explore discovery sections. -->
+    <string name="search_trending_songs">Trending Songs</string>
+    <string name="search_new_albums">New Albums</string>
+    <string name="search_moods_genres">Moods &amp; Genres</string>
     <!-- YouTube sign-in: the browser (cookie) route and the OAuth device-code route. -->
     <string name="yt_browser_sign_in">Sign in with browser</string>
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>

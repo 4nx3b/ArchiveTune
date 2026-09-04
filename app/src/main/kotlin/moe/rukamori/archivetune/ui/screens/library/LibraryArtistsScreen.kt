@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.constants.ArtistSongSortType
 import moe.rukamori.archivetune.constants.ArtistSortDescendingKey
 import moe.rukamori.archivetune.constants.ArtistSortType
 import moe.rukamori.archivetune.constants.ArtistSortTypeKey
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.queues.ListQueue
@@ -154,14 +155,21 @@ fun LibraryArtistsScreen(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.sync() },
         modifier = Modifier.fillMaxSize(),
-        indicatorOffset = LibraryPullToRefreshIndicatorOffset,
+        // indicatorOffset intentionally omitted: the box now spans the full
+        // window (the Library root no longer pads the top inset below the
+        // bar), so the default (status bar + app bar) places the indicator
+        // just under the pinned bar.
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             contentPadding =
                 PaddingValues(
                     start = 24.dp,
-                    top = systemBarsTopPadding + LibraryHeaderContentPadding,
+                    // 2026-09-04 library redesign: the bar zone (status bar +
+                    // app bar) the Library root's windowInsetsPadding used to
+                    // provide now lives here — the grid content starts just
+                    // below the pinned bar like the Home feed.
+                    top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     end = 24.dp,
                     bottom = playerAwareBottomPadding,
                 ),

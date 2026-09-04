@@ -332,6 +332,14 @@ fun BottomSheetMenu(
         ) {
             CompositionLocalProvider(
                 LocalContentColor provides contentInk,
+                // The lyrics-popup transparent-surface fix, generalised (2026-09-04):
+                // signal menu content that it sits on live glass so section cards
+                // (MenuSurfaceSection) render transparent instead of the opaque
+                // Muzo grey that was hiding the frost (user report: "the background
+                // behind the text is still opaque"). Only provided when the kyant
+                // backdrop is actually sampling — the fallback charcoal card keeps
+                // the opaque section material for contrast.
+                LocalGlassMenuContent provides (glassModifier != null),
             ) {
                 MaterialTheme(colorScheme = glassColorScheme) {
                     Column(
