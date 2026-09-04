@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +42,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+/**
+ * True while menu content renders INSIDE the floating liquid-glass popup
+ * ([BottomSheetMenu] with a live kyant backdrop) — the exact condition the
+ * lyrics popup's `transparentSurface` flag encodes at its call site. While
+ * true, [MenuSurfaceSection] swaps its opaque Muzo card material for a
+ * transparent [Surface] of the same shape so the popup's frosted-glass blur
+ * stays visible behind the rows (user report 2026-09-04: "The background
+ * behind the text is still opaque. This issue was also present in new lyrics
+ * popup design. investigate how it fixed that issue and use the same thing
+ * for this case too" — the LyricsMenu fix was the transparent surface).
+ * Menus rendered anywhere else (plain sheets, dialogs) keep the opaque
+ * material because there is no glass to reveal.
+ */
+val LocalGlassMenuContent = staticCompositionLocalOf { false }
 
 @Composable
 fun NewActionButton(
@@ -234,6 +250,16 @@ fun MenuSurfaceSection(
     // above the sheet's own charcoal (#3A3A3C over #1C1C1E), with the
     // reference's ~16pt radius. One surface per group of rows; the rows
     // inside carry thin dividers, not individual cards.
+    //
+    // 2026-09-04: inside the floating liquid-glass popup this card is the
+    // opaque flat grey box the user reported ("the background behind the
+    // text is still opaque"). The SAME fix the new lyrics popup uses
+    // (LyricsMenu's `transparentSurface = true`): replace the card with a
+    // transparent Surface of the same shape so the popup's frosted blur
+    // shows through. Gated by [LocalGlassMenuContent], provided only while
+    // the glass popup is actually sampling a backdrop — every menu rendered
+    // through `menuState.show { ... }` gets the fix without touching any
+    // menu file, and non-glass contexts keep the original material.
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val sectionColor =
         if (dark) {
@@ -241,9 +267,10 @@ fun MenuSurfaceSection(
         } else {
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
         }
+    val onGlassPopup = LocalGlassMenuContent.current
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = sectionColor,
+        color = if (onGlassPopup) Color.Transparent else sectionColor,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)

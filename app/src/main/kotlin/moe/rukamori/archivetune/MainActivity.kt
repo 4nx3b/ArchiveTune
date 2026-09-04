@@ -799,6 +799,13 @@ class MainActivity : ComponentActivity() {
             // haze"). Separate instance so the two tabs never cross-sample
             // while both compose during the slide transition.
             val searchHazeState = remember { HazeState() }
+            // Library-tab redesign (2026-09-04: "Implement the same home page ui
+            // and behaviour for... library tab main page too"): the Library
+            // route's own haze state — LibraryScreen tags its root Box as the
+            // source and the top bar renders the SAME progressive top-fade blur
+            // over the Library route. Separate instance so the top-level tabs
+            // never cross-sample during the fade-through transition.
+            val libraryHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -2103,6 +2110,9 @@ class MainActivity : ComponentActivity() {
                         // Search-page redesign (2026-09-04): the Search route's
                         // haze twin (see searchHazeState above).
                         moe.rukamori.archivetune.ui.screens.LocalSearchHazeState provides searchHazeState,
+                        // Library-tab redesign (2026-09-04): the Library
+                        // route's haze twin (see libraryHazeState above).
+                        moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState provides libraryHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
@@ -2416,7 +2426,7 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
-                                                if ((isHomeRoute || isSearchRoute) &&
+                                                if ((isHomeRoute || isSearchRoute || isLibraryRoute) &&
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
@@ -2433,8 +2443,20 @@ class MainActivity : ComponentActivity() {
                                                     // (SearchScreen tags its root as the source) —
                                                     // replacing the flat surface gradient it used to
                                                     // fall back to.
+                                                    //
+                                                    // 2026-09-04 library redesign: the Library tab gets
+                                                    // the same treatment ("Implement the same home page
+                                                    // ui and behaviour for... library tab main page
+                                                    // too") — LibraryScreen tags its root Box as this
+                                                    // blur's source and its content scrolls under the
+                                                    // pinned bar into the progressive fade.
                                                     HomeTopFadeBlur(
-                                                        hazeState = if (isHomeRoute) homeHazeState else searchHazeState,
+                                                        hazeState =
+                                                            when {
+                                                                isHomeRoute -> homeHazeState
+                                                                isSearchRoute -> searchHazeState
+                                                                else -> libraryHazeState
+                                                            },
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
                                                     )
@@ -2502,8 +2524,13 @@ modifier =
                                                             onLongClick = {},
                                                             modifier = Modifier.padding(start = 10.dp),
                                                         ) {
+                                                            // 2026-09-04: avatar bumped 30dp -> 36dp
+                                                            // (user: "Increase the size of profile
+                                                            // picture just a bit on the home page");
+                                                            // the fallback person glyph scales with
+                                                            // it (20 -> 24dp).
                                                             Surface(
-                                                                modifier = Modifier.size(30.dp),
+                                                                modifier = Modifier.size(36.dp),
                                                                 shape = CircleShape,
                                                                 color = MaterialTheme.colorScheme.primaryContainer,
                                                             ) {
@@ -2521,7 +2548,7 @@ modifier =
                                                                         Icon(
                                                                             painter = painterResource(R.drawable.account),
                                                                             contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier.size(20.dp),
+                                                                            modifier = Modifier.size(24.dp),
                                                                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                                         )
                                                                     }
@@ -2532,29 +2559,25 @@ modifier =
                                                 },
                                                 title = {
                                                     if (isLibraryRoute) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            // On the Library tab, the top app bar's
-                                                            // title slot carries the big bold
-                                                            // "Library" header (38sp, matching the
-                                                            // LibraryMixScreen's `LibraryHeaderRow`
-                                                            // that used to live at the top of the
-                                                            // scrollable content). Per user request
-                                                            // (2026-08-28): "The Big library text
-                                                            // should be the header of the page. The
-                                                            // size should prevail and not become any
-                                                            // smaller. And since it'll be the header,
-                                                            // there should be no empty space either."
-                                                            //
-                                                            // Scroll behavior for the Library route
-                                                            // is `null` (see the `scrollBehavior =`
-                                                            // branch below), so the TopAppBar is
-                                                            // pinned and the title does NOT collapse
-                                                            // on scroll — the 38sp size prevails
-                                                            // throughout. The `LibraryHeaderRow` in
-                                                            // LibraryMixScreen is now empty (it just
-                                                            // reserves its 8.dp vertical padding slot
-                                                            // for breathing room between the
-                                                            // TopAppBar and the first category row).
+                                                        // ── Library title (2026-09-04, centered) ──
+                                                        // The Library tab follows the Home route's
+                                                        // header layout ("Implement the same home
+                                                        // page ui and behaviour for... library tab
+                                                        // main page too"): the big bold "Library"
+                                                        // text, horizontally centered in the bar.
+                                                        // The 38sp size still prevails (user
+                                                        // request 2026-08-28: "The Big library text
+                                                        // should be the header of the page. The
+                                                        // size should prevail and not become any
+                                                        // smaller") — only the alignment changes to
+                                                        // match Home. The bar stays pinned
+                                                        // (scrollBehavior = null) and the content
+                                                        // now scrolls under it into the progressive
+                                                        // top-fade blur.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
                                                             Text(
                                                                 text = stringResource(R.string.library),
                                                                 color = MaterialTheme.colorScheme.onBackground,

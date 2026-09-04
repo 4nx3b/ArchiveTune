@@ -55,8 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
+import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
@@ -190,50 +191,43 @@ fun LibraryScreen(navController: NavController) {
         }
     }
 
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
-
+    // ── Library-tab home redesign (2026-09-04) ──
+    // "Implement the same home page ui and behaviour for... library tab main
+    // page too": the root Box is now the haze source for the SAME BitChord
+    // progressive top-fade blur the Home/Search bars render (via
+    // LocalLibraryHazeState), and the Muzo atmospheric backdrop the Home
+    // feed floats on replaces the old tonal gradient wash — the two tabs
+    // read as one design language. (The Settings main page keeps its plain
+    // background per the user's instruction; Library does not.)
+    val libraryHazeState = LocalLibraryHazeState.current
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
+                .let { m -> if (libraryHazeState != null) m.hazeSource(libraryHazeState) else m }
                 .background(MaterialTheme.colorScheme.background),
     ) {
         if (!disableBlur) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(430.dp)
-                        .align(Alignment.TopCenter)
-                        .drawWithCache {
-                            val brush =
-                                Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.30f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
-                                    1f to Color.Transparent,
-                                )
-                            onDrawBehind { drawRect(brush) }
-                        },
-            )
+            HomeAtmosphereBackground()
         }
 
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // Apply ONLY Top + Horizontal insets to the root Column so the LazyColumn
-                    // inside extends to the very bottom of the screen and content visibly scrolls
-                    // BEHIND the floating navigation bar / mini player. The bottom inset (nav bar
-                    // height + mini player height + safe inset) is applied to each sub-screen's
-                    // LazyColumn contentPadding instead, so the LAST items can be scrolled above
-                    // the bar (minimum-height clearance) instead of being permanently hidden
-                    // behind it. Per user spec: "scrollable behind navigation bar too (full
-                    // screen width) and when I reach the bottom apply a minimum height so that
-                    // it doesn't get overlapped by mini player and navigation bar".
+                    // Only Top + Horizontal insets were applied here before; the
+                    // Top inset is deliberately dropped now — the pinned top bar
+                    // must sit OVER the content so every pager page scrolls under
+                    // it into the progressive blur (the Home behaviour). Each
+                    // page's LazyColumn carries the bar-zone clearance as
+                    // contentPadding instead, so items scroll THROUGH the bar
+                    // zone rather than starting below it. The bottom inset (nav
+                    // bar height + mini player height + safe inset) still goes to
+                    // each sub-screen's LazyColumn contentPadding so the last
+                    // items keep their clearance above the floating bars.
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
         ) {
