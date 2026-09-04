@@ -13,6 +13,7 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -26,18 +27,39 @@ import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.requireDensity
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
+import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -145,10 +167,167 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  * propagates those changes into the popup's blur without any manual
  * invalidation — the exact same live mechanism the lyrics popup uses.
  *
+ * 2026-09-04 (scroll-smoothness): the value is now a [Backdrop] rather than a
+ * hard [LayerBackdrop], because the recorder attached in MainActivity is a
+ * [ThrottledLayerBackdrop] — same live sampling, but the layer is only
+ * re-recorded at most every [ThrottledLayerBackdropDefaultIntervalMillis]
+ * (see its docs for why).
+ *
  * Provided by MainActivity; null when Liquid Glass is off or below
  * Android 12. [BottomSheetMenu] prefers it over [LocalLiquidGlassBackdrop].
  */
-val LocalMenuGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
+val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
+
+/**
+ * Default refresh cap for [ThrottledLayerBackdrop] — ~30 fps.
+ *
+ * User report (2026-09-04): "the scrolling in popup lags a bit sometimes
+ * when there's canvas, sometimes without canvas too". Root cause: kyant's
+ * `Modifier.layerBackdrop` re-records the ENTIRE app surface into its
+ * GraphicsLayer on EVERY draw invalidation of the recorded subtree — the
+ * mini player's progress line ticks, artwork crossfades, and above all a
+ * playing canvas (video) re-record the whole screen every single frame,
+ * stealing main-thread + GPU budget from the popup's LazyColumn scroll.
+ *
+ * Capping the RECORD rate at ~30 fps halves that cost while keeping the
+ * frost genuinely real-time: behind a 32 dp blur, a dim scrim and a
+ * translucent tint, a 30 fps frost is indistinguishable from 60 fps —
+ * the drifting artwork and the progress line still visibly move through
+ * the glass. When the recorded content is static (nothing animates behind
+ * the menu) the node's draw never re-runs, so no records happen at all
+ * and the cost is zero, exactly like the unthrottled recorder.
+ */
+internal const val ThrottledLayerBackdropDefaultIntervalMillis = 33L
+
+/**
+ * A [Backdrop] whose recorded layer refreshes at most once per
+ * [minIntervalMillis] — the throttled sibling of kyant's
+ * `rememberLayerBackdrop` + `Modifier.layerBackdrop` pair (same consumer
+ * protocol: any `Modifier.drawBackdrop(backdrop = ...)` can sample it).
+ *
+ * The recorder node draws the content TWICE per refresh — once to the
+ * screen (normal `drawContent()`) and once into [graphicsLayer] (the
+ * side-recording the frost samples) — which is exactly what kyant's
+ * `LayerBackdropNode` does, except kyant re-records on every invalidation.
+ * See [ThrottledLayerBackdropDefaultIntervalMillis] for why the cap exists.
+ */
+@Stable
+class ThrottledLayerBackdrop internal constructor(
+    val graphicsLayer: GraphicsLayer,
+    internal val minIntervalMillis: Long,
+) : Backdrop {
+
+    override val isCoordinatesDependent: Boolean get() = true
+
+    /** Coordinates of the node carrying [Modifier.throttledLayerBackdrop]. */
+    internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
+
+    override fun DrawScope.drawBackdrop(
+        density: Density,
+        coordinates: LayoutCoordinates?,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?,
+    ) {
+        val coordinates = coordinates ?: return
+        val layerCoordinates = layerCoordinates ?: return
+        withTransform({
+            // No layerBlock is ever passed by the menu/cast consumers, so the
+            // inverse-transform branch of kyant's LayerBackdrop is not needed;
+            // keep the same defensive position fallback it uses.
+            val offset =
+                try {
+                    layerCoordinates.localPositionOf(coordinates)
+                } catch (_: Exception) {
+                    coordinates.positionInWindow() - layerCoordinates.positionInWindow()
+                }
+            translate(-offset.x, -offset.y)
+        }) {
+            drawLayer(graphicsLayer)
+        }
+    }
+}
+
+/** Creates a [ThrottledLayerBackdrop] (see [ThrottledLayerBackdropDefaultIntervalMillis]). */
+@Composable
+fun rememberThrottledLayerBackdrop(
+    graphicsLayer: GraphicsLayer = rememberGraphicsLayer(),
+    minIntervalMillis: Long = ThrottledLayerBackdropDefaultIntervalMillis,
+): ThrottledLayerBackdrop = remember(graphicsLayer) {
+    ThrottledLayerBackdrop(graphicsLayer, minIntervalMillis)
+}
+
+/** Attaches the throttled recorder for [backdrop] to this modifier's node. */
+fun Modifier.throttledLayerBackdrop(backdrop: ThrottledLayerBackdrop): Modifier =
+    this then ThrottledLayerBackdropElement(backdrop)
+
+private class ThrottledLayerBackdropElement(
+    val backdrop: ThrottledLayerBackdrop,
+) : ModifierNodeElement<ThrottledLayerBackdropNode>() {
+    override fun create() = ThrottledLayerBackdropNode(backdrop)
+
+    override fun update(node: ThrottledLayerBackdropNode) {
+        if (node.backdrop !== backdrop) {
+            node.backdrop.layerCoordinates = null
+            node.backdrop = backdrop
+        }
+        node.invalidateDraw()
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "throttledLayerBackdrop"
+        properties["backdrop"] = backdrop
+        properties["minIntervalMillis"] = backdrop.minIntervalMillis
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ThrottledLayerBackdropElement) return false
+        return backdrop === other.backdrop
+    }
+
+    override fun hashCode(): Int = backdrop.hashCode()
+}
+
+private class ThrottledLayerBackdropNode(
+    var backdrop: ThrottledLayerBackdrop,
+) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
+
+    private var lastRecordUptimeMillis = 0L
+
+    override fun onAttach() {
+        super.onAttach()
+        // A fresh attach records on the very first draw instead of waiting
+        // out a stale interval window.
+        lastRecordUptimeMillis = 0L
+    }
+
+    override fun ContentDrawScope.draw() {
+        drawContent()
+        val now = SystemClock.uptimeMillis()
+        if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
+            lastRecordUptimeMillis = now
+            val density = requireDensity()
+            backdrop.graphicsLayer.record(size.toIntSize()) {
+                val previousDensity = drawContext.density
+                drawContext.density = density
+                try {
+                    drawContent()
+                } finally {
+                    drawContext.density = previousDensity
+                }
+            }
+        }
+    }
+
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        if (coordinates.isAttached) {
+            backdrop.layerCoordinates = coordinates
+        }
+    }
+
+    override fun onDetach() {
+        backdrop.layerCoordinates = null
+    }
+}
 
 /**
  * Blur radius the pill-shaped glass surfaces (header pills, icon pills,

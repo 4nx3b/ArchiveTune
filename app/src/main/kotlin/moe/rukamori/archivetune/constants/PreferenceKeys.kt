@@ -310,6 +310,19 @@ enum class DownloadSource {
     TIDAL,
 
     /**
+     * Apple Music lookup (2026-09-04, user request: "Add apple music in
+     * download source priority"). Resolves the track through the SAME
+     * Apple-Music account ring playback uses (Settings → Apple Music sign-in
+     * or Source Pool accounts), materializes the Widevine-L3 virtual stream
+     * to a local file and copies those bytes into the download cache — the
+     * exact bytes Apple playback would stream. NOT in
+     * [DownloadSourceConfig.REQUIRES_POOL]: the user's own Apple Music
+     * sign-in is enough (the ring internally includes pool accounts when
+     * available).
+     */
+    APPLE,
+
+    /**
      * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
      * stream URL. Falls back to the next source in [AUTO] order when the
      * track isn't on Deezer or the API can't resolve a full stream.
@@ -349,6 +362,7 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ,
             DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
+            DownloadSource.APPLE,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,

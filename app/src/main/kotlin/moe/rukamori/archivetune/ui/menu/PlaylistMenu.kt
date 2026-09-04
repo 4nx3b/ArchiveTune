@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.PlaylistListItem
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.telegram.TelegramChannelSync
@@ -633,7 +634,7 @@ public fun PlaylistMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -833,7 +834,7 @@ public fun PlaylistMenu(
 
         if (downloadPlaylist != true) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -911,7 +912,7 @@ public fun PlaylistMenu(
 
         if (autoPlaylist != true) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -1060,7 +1061,7 @@ public fun PlaylistMenu(
 
         playlist.playlist.shareLink?.let { shareLink ->
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {

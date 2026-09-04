@@ -193,6 +193,8 @@
     <string name="download_source_title">Download source priority</string>
     <string name="download_source_youtube_music">YouTube Music</string>
     <string name="download_source_tidal">Tidal</string>
+    <string name="download_source_apple_music">Apple Music</string>
+    <string name="download_source_apple_music_hint">Sign in to Apple Music in Settings to enable</string>
     <string name="download_source_qobuz">Qobuz</string>
     <string name="download_source_deezer">Deezer</string>
     <string name="download_source_auto">Auto (FLAC when available)</string>

@@ -276,3 +276,27 @@ fun MenuSurfaceSection(
         Column(content = content)
     }
 }
+
+/**
+ * The divider BETWEEN menu sections (2026-09-04, user report: "between some
+ * list there's no dividers and they have empty space between them too").
+ *
+ * Rows inside one [MenuSurfaceSection] have always drawn [HorizontalDivider]s
+ * between them, but the SECTIONS themselves were separated only by the 4dp
+ * gap the previous tightening left — and since [MenuSurfaceSection] renders
+ * transparent on the glass popup, there was no card boundary either: some
+ * neighbouring rows showed a divider, others just blank space. This draws
+ * the same divider the in-section rows use (start-inset to clear the icons,
+ * the theme's outlineVariant — which the glass overlay remaps to a faint
+ * white hairline), so every list boundary is a visible hairline with no
+ * blank gap.
+ */
+@Composable
+fun MenuSectionDivider(
+    modifier: Modifier = Modifier,
+) {
+    HorizontalDivider(
+        modifier = modifier.padding(start = 56.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}

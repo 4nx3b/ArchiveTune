@@ -584,18 +584,37 @@ fun BitChordPlayerContent(
     // The position the lyrics follow: the player's own, nudged by the offset.
     val lyricsPosition = (position + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
 
-    // Back out of the lyrics panel to the player, and only from the player
-    // itself out to the mini player. The sheet the player is drawn in keeps
-    // its own back handling while no panel is open (predictive-back shrink).
-    BackHandler(enabled = lyricsOpen) { lyricsOpen = false }
+    // Back out of whichever panel is up — the queue first, then the lyrics
+    // panel — and only from the player itself out to the mini player. The
+    // sheet the player is drawn in keeps its own back handling while no
+    // panel is open (predictive-back shrink).
+    // 2026-09-04: queueOpen joined the gate — with the queue up, back used to
+    // fall through to the sheet's own handler and minimize the whole player
+    // (user report, video: "Lyrics/queue should get closed not player when I
+    // use the back navigation gesture. right now it minimises the full player
+    // instead").
+    BackHandler(enabled = lyricsOpen || queueOpen) {
+        if (queueOpen) {
+            queueOpen = false
+        } else {
+            lyricsOpen = false
+        }
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val view = LocalView.current
-        DisposableEffect(view, lyricsOpen) {
-            val callback = if (lyricsOpen) {
-                OverlayBack.register(view) { lyricsOpen = false }
-            } else {
-                null
-            }
+        DisposableEffect(view, lyricsOpen, queueOpen) {
+            val callback =
+                if (lyricsOpen || queueOpen) {
+                    OverlayBack.register(view) {
+                        if (queueOpen) {
+                            queueOpen = false
+                        } else {
+                            lyricsOpen = false
+                        }
+                    }
+                } else {
+                    null
+                }
             onDispose { OverlayBack.unregister(view, callback) }
         }
     }

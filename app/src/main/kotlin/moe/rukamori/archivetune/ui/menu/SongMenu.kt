@@ -112,6 +112,7 @@ import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
 import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
@@ -750,7 +751,7 @@ fun SongMenu(
             // action set is unchanged. One unified surface, thin dividers —
             // the reference's grouped-action list.
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -847,7 +848,7 @@ fun SongMenu(
             }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         if (!isLocalSong) {
@@ -892,7 +893,7 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
         }
 
@@ -913,7 +914,7 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -949,7 +950,7 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         if (showMutationSection) {
@@ -1252,7 +1253,7 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
         }
 
@@ -1385,7 +1386,7 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {

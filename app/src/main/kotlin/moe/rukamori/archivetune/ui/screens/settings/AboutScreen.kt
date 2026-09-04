@@ -32,6 +32,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -183,7 +187,7 @@ private fun AboutScreenContent(
                 },
                 colors =
                     TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
                 scrollBehavior = scrollBehavior,
@@ -200,6 +204,16 @@ private fun AboutScreenContent(
                 WindowInsetsSides.Horizontal,
             )
 
+        // Header haze (2026-09-04, user request: "There's no haze effect and
+        // header behaviour like home page in developer options, updates and
+        // about page") — the Success branch's LazyColumn is the haze source
+        // (its top spacing is contentPadding, so content scrolls under the
+        // now-transparent header exactly like the ported settings screens);
+        // the overlay is a later sibling so it draws on top of every branch.
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+        Box(modifier = Modifier.fillMaxSize()) {
         when (state) {
             AboutScreenState.Loading -> {
                 AboutLoadingContent(
@@ -243,7 +257,9 @@ private fun AboutScreenContent(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .windowInsetsPadding(playerAwareInsets),
+                            .windowInsetsPadding(playerAwareInsets)
+                            // Haze source for the header's top-fade blur.
+                            .hazeSource(headerHaze),
                     contentPadding =
                         PaddingValues(
                             top = innerPadding.calculateTopPadding() + AboutSpacing.xs,
@@ -252,6 +268,14 @@ private fun AboutScreenContent(
                     listState = listState,
                 )
             }
+        }
+
+            // Header haze overlay — later sibling of every branch so it draws
+            // on top of the content, under the pinned pill header.
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 

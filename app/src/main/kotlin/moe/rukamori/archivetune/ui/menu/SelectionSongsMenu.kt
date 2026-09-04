@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import java.time.LocalDateTime
@@ -299,7 +300,7 @@ fun SelectionSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -438,7 +439,7 @@ fun SelectionSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -515,7 +516,7 @@ fun SelectionSongMenu(
 
         if (songPosition?.size != 0) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -601,7 +602,7 @@ fun SelectionSongMenu(
 
         if (isFromCache && onRemoveFromCache != null) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -848,7 +849,7 @@ fun SelectionMediaMetadataMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -990,7 +991,7 @@ fun SelectionMediaMetadataMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {

@@ -60,6 +60,7 @@ import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
+import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
@@ -335,6 +336,11 @@ private fun DownloadSourceOrderDialog(
             val item = sources.removeAt(from.index)
             sources.add(to.index, item)
         }
+    // Apple Music availability snapshot for the row hint (in-memory token
+    // cache — cheap, read once when the dialog opens). Apple resolves through
+    // its OWN account ring (user sign-in + pool contributions), so unlike the
+    // REQUIRES_POOL sources it is not gated by the pool toggle.
+    val appleSignedIn = AppleMusicAudioProvider.mediaUserToken() != null
 
     DefaultDialog(
         onDismiss = onDismiss,
@@ -421,6 +427,13 @@ private fun DownloadSourceOrderDialog(
                                         color = contentColor.copy(alpha = 0.7f),
                                     )
                                 }
+                                if (source == DownloadSource.APPLE && !appleSignedIn) {
+                                    Text(
+                                        text = stringResource(R.string.download_source_apple_music_hint),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f),
+                                    )
+                                }
                             }
                             Icon(
                                 painter = painterResource(R.drawable.drag_handle),
@@ -445,6 +458,7 @@ private fun DownloadSource.displayName(context: android.content.Context): String
         DownloadSource.QOBUZ -> context.getString(R.string.download_source_qobuz)
         DownloadSource.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         DownloadSource.TIDAL -> context.getString(R.string.download_source_tidal)
+        DownloadSource.APPLE -> context.getString(R.string.download_source_apple_music)
         DownloadSource.DEEZER -> context.getString(R.string.download_source_deezer)
         DownloadSource.JIOSAAVN -> context.getString(R.string.download_source_jiosaavn)
         DownloadSource.YOUTUBE_MUSIC -> context.getString(R.string.download_source_youtube_music)
@@ -456,6 +470,7 @@ private fun DownloadSource.displayName(): String =
         DownloadSource.QOBUZ -> "Qobuz"
         DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
         DownloadSource.TIDAL -> "Tidal"
+        DownloadSource.APPLE -> "Apple Music"
         DownloadSource.DEEZER -> "Deezer"
         DownloadSource.JIOSAAVN -> "JioSaavn"
         DownloadSource.YOUTUBE_MUSIC -> "YouTube Music"
@@ -467,6 +482,7 @@ private fun DownloadSource.iconRes(): Int =
         DownloadSource.QOBUZ -> R.drawable.provider_qobuz
         DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         DownloadSource.TIDAL -> R.drawable.provider_tidal
+        DownloadSource.APPLE -> R.drawable.provider_apple
         DownloadSource.DEEZER -> R.drawable.provider_deezer
         DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn
         DownloadSource.YOUTUBE_MUSIC -> R.drawable.play

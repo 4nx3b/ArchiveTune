@@ -93,6 +93,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.MuzoQuickAction
 import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
 import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
@@ -445,7 +446,7 @@ fun YouTubeSongMenu(
         // unchanged. One unified surface, thin dividers — the reference's
         // grouped-action list.
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -585,7 +586,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -653,7 +654,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
@@ -812,7 +813,7 @@ fun YouTubeSongMenu(
 
         if (splitArtists.isNotEmpty() || song.album != null) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
 
             item {
@@ -870,7 +871,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         // "Don't recommend this song again" — the counterpart of the same item in SongMenu.
@@ -937,7 +938,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {

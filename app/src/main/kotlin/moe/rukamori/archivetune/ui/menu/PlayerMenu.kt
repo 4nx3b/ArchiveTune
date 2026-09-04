@@ -145,6 +145,7 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 
 @Composable
 fun PlayerMenu(
@@ -867,7 +868,7 @@ fun PlayerMenu(
             }
         }
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
         // "Save Canvas" — list-item form. Shown only when canvas artwork is
         // available for the current song. Tapping opens the SaveCanvasDialog
@@ -901,7 +902,7 @@ fun PlayerMenu(
                 }
             }
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
         }
         // "Add to playlist" and "Pin to speed dial" — converted from
@@ -963,7 +964,7 @@ fun PlayerMenu(
             }
         }
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
         if (splitArtists.isNotEmpty() || mediaMetadata.album != null) {
             item {
@@ -1021,7 +1022,7 @@ fun PlayerMenu(
                 }
             }
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                MenuSectionDivider()
             }
         }
         if (!isLocalMedia) {

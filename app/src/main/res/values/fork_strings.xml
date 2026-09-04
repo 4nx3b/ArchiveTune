@@ -154,6 +154,7 @@
     <string name="canvas_check_running">Checking…</string>
     <string name="canvas_check_source_spotify">Spotify Canvas — your account</string>
     <string name="canvas_check_source_apple_music">Apple Music canvas API</string>
+    <string name="canvas_check_source_tidal">Tidal — account &amp; catalog</string>
     <string name="canvas_check_source_mirror">Mirror: %1$s</string>
     <string name="canvas_check_recheck">Re-check</string>
     <string name="canvas_check_probe_playing">Probing with the current song: %1$s — %2$s</string>
