@@ -55,7 +55,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -233,7 +233,20 @@ fun SpatialFlowPlayerContent(
             if (text.isNullOrBlank()) {
                 null
             } else {
-                runCatching { LyricsUtils.parseLyrics(text) }
+                // Word-synced fix (2026-09-05): plain parseLyrics() only understands line-synced
+                // LRC — it STRIPS the inline word timings and never dispatches TTML, so a
+                // word-timed track degraded to line-level highlighting here (the "word synced
+                // lyrics don't work correctly in SpatialFlow player" report). The same dispatch
+                // SimpMusicLyrics/LyricsEnhanced use: TTML through parseTtml (which keeps the
+                // per-word spans the karaoke renderer erases with), everything else through
+                // parseLyrics.
+                runCatching {
+                    if (LyricsUtils.isTtml(text)) {
+                        LyricsUtils.parseTtml(text)
+                    } else {
+                        LyricsUtils.parseLyrics(text)
+                    }
+                }
                     .getOrNull()
                     ?.takeIf { it.isNotEmpty() }
             }
@@ -338,7 +351,7 @@ fun SpatialFlowPlayerContent(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .statusBarsPadding()
+                            .padding(top = LocalStableSystemBarsTopPadding.current)
                             .navigationBarsPadding()
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,

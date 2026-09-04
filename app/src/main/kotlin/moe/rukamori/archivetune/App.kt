@@ -141,6 +141,11 @@ class App :
         }
         YtDlpJavaScriptRuntime.initialize(this)
         BotGuardTokenGenerator.initialize(this)
+        // Echo-Music stream-resolution stack (2026-09-05 port): the cipher config
+        // store + dates + SABR solver assets the Echo resolver's WebView po-token
+        // generator and n-transform need. Non-blocking (TTL-gated remote refresh
+        // happens on its own scope).
+        moe.rukamori.archivetune.echo.utils.cipher.CipherDeobfuscator.initialize(this)
         PreferenceStore.start(this)
         JapaneseLanguagePackManager.initialize(this)
         Timber.plant(Timber.DebugTree())

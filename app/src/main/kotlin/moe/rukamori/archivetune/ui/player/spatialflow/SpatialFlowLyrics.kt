@@ -24,7 +24,14 @@ package moe.rukamori.archivetune.ui.player.spatialflow
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
@@ -45,7 +52,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -53,6 +60,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +71,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -72,6 +79,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +91,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.models.MediaMetadata
 
 /**
@@ -176,7 +189,7 @@ internal fun SpatialFlowLyricsOverlay(
                     interactionSource = consumeClicks,
                     indication = null,
                     onClick = {},
-                ).statusBarsPadding()
+                ).padding(top = LocalStableSystemBarsTopPadding.current)
                 .navigationBarsPadding()
                 .padding(vertical = 12.dp),
     ) {
@@ -324,10 +337,15 @@ internal fun SpatialFlowLyricsOverlay(
 }
 
 /**
- * The synced-lyrics list — SpatialFlow's SyncedLyricsCompose metrics: active
- * line 38sp Bold in the content colour, inactive lines 20sp Medium at 35%
- * alpha, generous 28dp inter-line spacing, tap a line to seek, the list
- * auto-scrolls so the active line stays centred.
+ * The synced-lyrics list — SpatialFlow's SyncedLyricsCompose, INCLUDING the word-by-word
+ * karaoke highlighting (ported 2026-09-05 after "word synced lyrics don't work correctly in
+ * SpatialFlow player"): a karaoke line renders as a dim base Text plus a fully-lit overlay
+ * Text whose not-yet-sung characters are erased with a DstOut sweep — per character, driven
+ * by each word's own start/end timestamps, with a soft gradient at the sweep front and a
+ * 200ms linear position smoothing so the 100ms position polls sweep continuously. Lines with
+ * no word timings keep the line-level highlight (active 38sp Bold, inactive 20sp dimmed);
+ * instrumental breaks render SpatialFlow's breathing-note interlude row with a wavy progress
+ * bar. Tap a line to seek; the list auto-scrolls so the active line stays centred.
  */
 @Composable
 private fun SpatialFlowSyncedLyrics(
@@ -340,20 +358,35 @@ private fun SpatialFlowSyncedLyrics(
     val listState = rememberLazyListState()
     val dimColor = contentColor.copy(alpha = 0.35f)
 
-    val activeIndex by remember {
+    // ── Detect karaoke mode (SpatialFlow's isKaraokeMode) ────────────────────────────
+    val isKaraokeMode =
+        remember(lyrics) {
+            lyrics.any { !it.isInstrumental && LyricsUtils.hasTrueWordSync(it) }
+        }
+
+    // ── Filter out interludes when in karaoke mode ───────────────────────────────────
+    val displayItems =
+        remember(lyrics, isKaraokeMode) {
+            lyrics.mapIndexedNotNull { index, line ->
+                if (isKaraokeMode && line.isInstrumental) null else index
+            }
+        }
+
+    val activeIndex by remember(displayItems) {
         derivedStateOf {
             val position = currentPositionProvider()
             var index = -1
-            for (i in lyrics.indices) {
-                if (lyrics[i].time <= position) index = i else break
+            for (i in displayItems.indices) {
+                if (lyrics[displayItems[i]].time <= position) index = i else break
             }
             index
         }
     }
 
-    // Auto-scroll: only snap when the active line CHANGES, not every poll.
+    // Auto-scroll: only animate when the active line CHANGES, and never fight the user's
+    // own scroll (SpatialFlow's guard — animateScrollToItem cancels a drag mid-gesture).
     LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0) {
+        if (activeIndex >= 0 && !listState.isScrollInProgress) {
             listState.animateScrollToItem(
                 index = activeIndex,
                 scrollOffset = -200,
@@ -375,25 +408,322 @@ private fun SpatialFlowSyncedLyrics(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         itemsIndexed(
-            items = lyrics,
-            key = { index, line -> "$index-${line.time}" },
-        ) { index, line ->
-            val isActive = index == activeIndex
+            items = displayItems,
+            key = { displayIndex, lyricsIndex -> "$lyricsIndex-${lyrics[lyricsIndex].time}-$displayIndex" },
+        ) { displayIndex, lyricsIndex ->
+            val line = lyrics[lyricsIndex]
+            val isActive = displayIndex == activeIndex
+            if (line.isInstrumental) {
+                SpatialFlowInterludeItem(
+                    isActive = isActive,
+                    currentPositionProvider = currentPositionProvider,
+                    line = line,
+                    nextLineStartMs = lyrics.getOrNull(lyricsIndex + 1)?.time ?: (line.time + 5000L),
+                    accentColor = contentColor,
+                )
+            } else {
+                SpatialFlowLyricLineItem(
+                    line = line,
+                    isActive = isActive,
+                    currentPositionProvider = currentPositionProvider,
+                    contentColor = contentColor,
+                    onClick = { onSeekTo(line.time) },
+                )
+            }
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ─ Lyric Line Item — SpatialFlow's APPLE-MUSIC-STYLE WORD HIGHLIGHTING ───────────
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A word span mapped onto the rendered string's character range. [WordTimestamp] carries no
+ * char positions, so the spans are computed by sequentially locating each word's text inside
+ * the line's text — the same contract SpatialFlow's LyricWord.charRange serves upstream.
+ */
+private data class WordCharSpan(
+    val start: Int,
+    val endExclusive: Int,
+    val word: WordTimestamp,
+)
+
+private fun wordSpansFor(
+    text: String,
+    words: List<WordTimestamp>,
+): List<WordCharSpan> {
+    val spans = mutableListOf<WordCharSpan>()
+    var cursor = 0
+    for (word in words) {
+        val idx = text.indexOf(word.text, cursor)
+        if (idx >= 0) {
+            spans += WordCharSpan(idx, idx + word.text.length, word)
+            cursor = idx + word.text.length
+        }
+    }
+    return spans
+}
+
+@Composable
+private fun SpatialFlowLyricLineItem(
+    line: LyricsEntry,
+    isActive: Boolean,
+    currentPositionProvider: () -> Long,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    val rawWords = line.words.orEmpty().filter { it.text.isNotBlank() }
+    val spans = remember(line.text, rawWords) { wordSpansFor(line.text, rawWords) }
+    val isKaraoke = LyricsUtils.hasTrueWordSync(line) && spans.isNotEmpty()
+
+    val dimColor = contentColor.copy(alpha = 0.35f)
+    val litColor = contentColor
+
+    // 200ms linear smoothing of the playback position (SpatialFlow's SmoothKaraokePos): the
+    // position polls every ~100ms, and animating between polls is what makes the per-word
+    // sweep continuous instead of stepping.
+    val rawPos = if (isKaraoke && isActive) currentPositionProvider() else line.time
+    val smoothedPos by animateFloatAsState(
+        targetValue = rawPos.toFloat(),
+        animationSpec = tween(durationMillis = 200, easing = LinearEasing),
+        label = "SmoothKaraokePos",
+    )
+
+    val mainTextStyle =
+        MaterialTheme.typography.headlineMedium.copy(
+            fontFamily = SpatialFlowGoogleSansFlexNonRounded,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 50.sp,
+        )
+    val baseTextLayout = remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+
+    Box(
+        modifier =
+            Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        // Base dim text — for karaoke lines it stays dim and the overlay lights the sung part;
+        // for line-synced lines it carries the whole highlight when active.
+        Text(
+            text = line.text,
+            style = mainTextStyle,
+            color = if (isKaraoke || !isActive) dimColor else litColor,
+            textAlign = TextAlign.Center,
+            onTextLayout = { baseTextLayout.value = it },
+            maxLines = Int.MAX_VALUE,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        // Overlay lit text, erased ahead of the sung position (SpatialFlow's eraseFutureText).
+        if (isKaraoke && isActive) {
             Text(
                 text = line.text,
-                // SpatialFlow renders lyric lines in Google Sans Flex with the
-                // ROND axis at 0% (its GoogleSansFlexNonRounded cut) so dense
-                // text stays crisp — everything else in the style is rounded.
-                fontFamily = SpatialFlowGoogleSansFlexNonRounded,
-                fontSize = if (isActive) 38.sp else 20.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                color = if (isActive) contentColor else dimColor,
+                style = mainTextStyle,
+                color = litColor,
                 textAlign = TextAlign.Center,
+                maxLines = Int.MAX_VALUE,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onSeekTo(line.time) },
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithCache {
+                            onDrawWithContent {
+                                val layout = baseTextLayout.value
+                                drawContent()
+                                if (layout != null) {
+                                    eraseFutureText(layout, spans, smoothedPos.toLong())
+                                }
+                            }
+                        },
             )
         }
+    }
+}
+
+/**
+ * Erases the characters that have not been sung yet from an overlay text, per character:
+ * fully-sung characters stay lit, future characters are erased outright (DstOut), and the
+ * character under the sweep front is erased through a short horizontal gradient so the
+ * leading edge is soft. Port of SpatialFlow's eraseFutureText/calculateCharProgress.
+ */
+private fun DrawScope.eraseFutureText(
+    layout: androidx.compose.ui.text.TextLayoutResult,
+    spans: List<WordCharSpan>,
+    pos: Long,
+) {
+    val textLength = layout.layoutInput.text.length
+    for (charIndex in 0 until textLength) {
+        val controllingSpan = findControllingSpan(charIndex, spans)
+        val charProgress =
+            if (controllingSpan != null) {
+                calculateCharProgress(charIndex, controllingSpan, pos)
+            } else {
+                0f
+            }
+
+        if (charProgress >= 0.99f) {
+            // Fully swept character: leave it fully lit (do not erase).
+        } else if (charProgress < 0.01f) {
+            // Fully future character: erase it completely.
+            val path = layout.getPathForRange(charIndex, charIndex + 1)
+            drawPath(path, color = Color.Black, blendMode = BlendMode.DstOut)
+        } else {
+            // Partially sweeping character: soft gradient erase.
+            val path = layout.getPathForRange(charIndex, charIndex + 1)
+            val box = layout.getBoundingBox(charIndex)
+
+            val gradientWidth = box.width * 1.5f
+            val sweepCenter = box.left + (box.width * charProgress)
+
+            val brush =
+                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    0.0f to Color.Transparent,
+                    1.0f to Color.Black,
+                    startX = sweepCenter - (gradientWidth / 2f),
+                    endX = sweepCenter + (gradientWidth / 2f),
+                )
+
+            drawPath(path, brush = brush, blendMode = BlendMode.DstOut)
+        }
+    }
+}
+
+private fun findControllingSpan(
+    charIndex: Int,
+    spans: List<WordCharSpan>,
+): WordCharSpan? {
+    if (spans.isEmpty()) return null
+
+    val exactSpan = spans.find { charIndex >= it.start && charIndex < it.endExclusive }
+    if (exactSpan != null) return exactSpan
+
+    if (charIndex < spans.first().start) return spans.first()
+    if (charIndex >= spans.last().endExclusive) return spans.last()
+
+    // Between words: the word that already passed owns the gap (spaces stay lit with it).
+    return spans.lastOrNull { it.endExclusive <= charIndex } ?: spans.first()
+}
+
+private fun calculateCharProgress(
+    charIndex: Int,
+    span: WordCharSpan,
+    pos: Long,
+): Float {
+    // WordTimestamp times are SECONDS (both the TTML and QRC parsers) — milliseconds here.
+    val wordStartMs = (span.word.startTime * 1000.0).toLong()
+    val wordEndMs = (span.word.endTime * 1000.0).toLong().coerceAtLeast(wordStartMs + 120L)
+
+    val wordProgress =
+        when {
+            pos < wordStartMs -> 0f
+            pos >= wordEndMs -> 1f
+            else -> {
+                val duration = (wordEndMs - wordStartMs).toFloat().coerceAtLeast(1f)
+                ((pos - wordStartMs).toFloat() / duration).coerceIn(0f, 1f)
+            }
+        }
+
+    val easedWordProgress = easeOutCubic(wordProgress)
+
+    val wStart = span.start
+    val wEnd = span.endExclusive
+    val wordLength = (wEnd - wStart).toFloat().coerceAtLeast(1f)
+
+    val sweepWidth = 0.35f
+    val sweepPosition = easedWordProgress * (1f + sweepWidth)
+
+    val charOffsetInWord = (charIndex - wStart).toFloat()
+    val charRelativePosition = charOffsetInWord / wordLength
+
+    return when {
+        sweepPosition < charRelativePosition -> 0f
+        sweepPosition >= (charRelativePosition + sweepWidth) -> 1f
+        else -> (sweepPosition - charRelativePosition) / sweepWidth
+    }
+}
+
+private fun easeOutCubic(x: Float): Float = 1f - (1f - x) * (1f - x) * (1f - x)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ─ Interlude Item (instrumental break) ────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SpatialFlowInterludeItem(
+    isActive: Boolean,
+    currentPositionProvider: () -> Long,
+    line: LyricsEntry,
+    nextLineStartMs: Long,
+    accentColor: Color,
+) {
+    val duration = (nextLineStartMs - line.time).coerceAtLeast(1)
+    val rawProgress =
+        if (isActive) {
+            ((currentPositionProvider() - line.time).toFloat() / duration).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "InterludeProgress",
+    )
+
+    // Breathing scale for the note icon (SpatialFlow's InterludeBreathing).
+    val infiniteTransition = rememberInfiniteTransition(label = "InterludeBreathing")
+    val breatheScale by infiniteTransition.animateFloat(
+        initialValue = 0.82f,
+        targetValue = 1.18f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "BreathScale",
+    )
+    val iconAlpha by animateFloatAsState(
+        targetValue = if (isActive) 0.85f else 0.25f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "InterludeAlpha",
+    )
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.spatialflow_ic_music_note),
+            contentDescription = "Interlude",
+            tint = accentColor.copy(alpha = iconAlpha),
+            modifier =
+                Modifier
+                    .size(26.dp)
+                    .graphicsLayer {
+                        scaleX = if (isActive) breatheScale else 1f
+                        scaleY = if (isActive) breatheScale else 1f
+                    },
+        )
+
+        LinearWavyProgressIndicator(
+            progress = { animatedProgress },
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .height(11.dp),
+            color = accentColor.copy(alpha = if (isActive) 0.75f else 0.18f),
+            trackColor = accentColor.copy(alpha = 0.06f),
+            amplitude = { p -> (0.6f + p) },
+        )
     }
 }
