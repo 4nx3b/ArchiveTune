@@ -175,6 +175,7 @@ fun sendPauseRunningDownloads(
                 ExoDownloadService::class.java,
                 songId,
                 COLLECTION_PAUSE_STOP_REASON,
+                false,
             )
         }
 }
@@ -197,6 +198,7 @@ fun sendResumePausedDownloads(
                 ExoDownloadService::class.java,
                 songId,
                 DOWNLOAD_STOP_REASON_NONE,
+                false,
             )
         }
 }
