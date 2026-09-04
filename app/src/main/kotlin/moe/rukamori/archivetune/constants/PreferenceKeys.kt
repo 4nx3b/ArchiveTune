@@ -53,6 +53,14 @@ val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
  */
 val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
+/**
+ * Which lyrics surface the SimpMusic player style opens: SimpMusic's own (true) or the app's
+ * Enhanced renderer (false, the default). Only the SimpMusic style reads this — every other style
+ * follows [LyricsModeKey] — so the setting is only offered while that style is selected. Default
+ * false so choosing the style does not silently replace the lyrics view the user already had.
+ */
+val SimpMusicLyricsKey = booleanPreferencesKey("simpMusicLyrics")
+
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
@@ -1102,8 +1110,20 @@ enum class PlayerDesignStyle {
     V9,
     APPLE_MUSIC,
     V10,
+
+    /**
+     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
+     * package and share nothing with the numbered styles above.
+     *
+     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
+     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
+     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's default
+     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager. All
+     * three are views over the app's one playback engine and queue, not players of their own.
+     */
     BITCHORD,
     TIKTOK,
+    SIMPMUSIC,
 }
 
 enum class PlayerBackgroundStyle {

@@ -243,6 +243,7 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -421,7 +422,8 @@ fun BottomSheetPlayer(
         playerDesignStyle == PlayerDesignStyle.V9 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK
+            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -1009,7 +1011,8 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.V5 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK
+            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1654,7 +1657,8 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.V9 &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
-            playerDesignStyle != PlayerDesignStyle.TIKTOK
+            playerDesignStyle != PlayerDesignStyle.TIKTOK &&
+            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -2017,6 +2021,35 @@ fun BottomSheetPlayer(
                                         WindowInsets(top = LocalStableSystemBarsTopPadding.current)
                                             .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+} else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
+                    // artwork palette, the sleeve on a pager backed by the real queue, then the
+                    // info row, scrubber and transport. Like the two styles above it sizes itself
+                    // to whatever box it is given, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SimpMusicPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
@@ -2440,6 +2473,35 @@ fun BottomSheetPlayer(
                         )
                     }
 
+} else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
+                    // artwork palette, the sleeve on a pager backed by the real queue, then the
+                    // info row, scrubber and transport. Like the two styles above it sizes itself
+                    // to whatever box it is given, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SimpMusicPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
@@ -2583,7 +2645,12 @@ fun BottomSheetPlayer(
         //    (possibly light, dynamic-themed) surface. This mirrors upstream
         //    rukamori/ArchiveTune Player.kt.
         val queueOnBackgroundColor =
-            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC || useBlackBackground) {
+            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+                playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+                playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+                playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+                useBlackBackground
+            ) {
                 Color.White
             } else {
                 MaterialTheme.colorScheme.onSurface
