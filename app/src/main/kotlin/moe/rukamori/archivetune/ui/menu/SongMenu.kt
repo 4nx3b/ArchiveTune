@@ -597,7 +597,11 @@ fun SongMenu(
                         )
                     },
                     label = likedLabel,
-                    active = song.song.liked,
+                    // 2026-09-05, user request: the liked tile must stay a normal
+                    // white icon, not flip to the cyan accent — the filled heart
+                    // glyph already carries the liked state, the accent tint was
+                    // just noise. `active` stays false so the tile renders in the
+                    // menu's normal content colour.
                     onClick = {
                         val s = song.song.toggleLike()
                         database.query {

@@ -107,6 +107,7 @@ import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
+import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
@@ -1896,7 +1897,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
-        AudioSourceType.APPLE -> R.drawable.ic_music
+        AudioSourceType.APPLE -> R.drawable.provider_apple
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
@@ -1956,6 +1957,15 @@ private fun SongSourceDialog(
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
+    // Apple Music's quality badge comes from the tier the user configured in Settings
+    // (Sources → Apple Music), matching what the resolver will actually stream. Null when
+    // no Apple account is signed in — the search rows then carry no badge rather than a
+    // promise the resolver cannot deliver.
+    val appleQualityLabel =
+        remember(losslessLabel) {
+            if (AppleMusicAudioProvider.isAvailable()) losslessLabel else null
+        }
+
     // Provider filter → "search backend not yet available" empty state. These are the
     // providers with a usable list-search API: YTM, Tidal (searchCandidates), Qobuz
     // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates),
@@ -1978,6 +1988,7 @@ private fun SongSourceDialog(
             AudioSourceType.QOBUZ,
             AudioSourceType.QOBUZ_BACKUP,
             AudioSourceType.DEEZER,
+            AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
         )
     val backendMissing = sourceFilter != null && sourceFilter !in searchableSources
@@ -2000,6 +2011,7 @@ private fun SongSourceDialog(
         val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
         val searchQobuzBackup = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ_BACKUP
         val searchDeezer = sourceFilter == null || sourceFilter == AudioSourceType.DEEZER
+        val searchApple = sourceFilter == null || sourceFilter == AudioSourceType.APPLE
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
@@ -2146,6 +2158,31 @@ private fun SongSourceDialog(
                     }
             }
         }
+        if (searchApple) {
+            // 2026-09-05, user request: "Add apple music in source picker queue". The picker's
+            // search row now covers the Apple Music catalog the same way it covers Tidal/Qobuz/
+            // Deezer/JioSaavn: raw search rows, a quality badge when an account is signed in,
+            // and playback through the per-song source override (title+artist re-search in the
+            // resolver — the same contract the other non-YT rows follow).
+            withContext(Dispatchers.IO) {
+                runCatching { AppleMusicAudioProvider.searchCandidates(searchQuery, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .forEach { candidate ->
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.APPLE,
+                                trackId = candidate.songId,
+                                title = candidate.title,
+                                artist = candidate.artist.orEmpty(),
+                                thumbnailUrl = candidate.thumbnailUrl,
+                                durationMs = candidate.durationMs,
+                                qualityLabel = appleQualityLabel,
+                                songItem = null,
+                            ),
+                        )
+                    }
+            }
+        }
         if (searchSaavn) {
             withContext(Dispatchers.IO) {
                 runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
@@ -2222,6 +2259,7 @@ private fun SongSourceDialog(
                             AudioSourceType.QOBUZ to stringResource(R.string.source_qobuz),
                             AudioSourceType.QOBUZ_BACKUP to stringResource(R.string.source_qobuz_backup),
                             AudioSourceType.DEEZER to stringResource(R.string.source_deezer),
+                            AudioSourceType.APPLE to stringResource(R.string.source_apple_music),
                             AudioSourceType.JIOSAAVN to stringResource(R.string.source_jiosaavn),
                             AudioSourceType.YOUTUBE to stringResource(R.string.source_youtube),
                         ),
@@ -2234,6 +2272,7 @@ private fun SongSourceDialog(
                             AudioSourceType.QOBUZ to R.drawable.provider_qobuz,
                             AudioSourceType.QOBUZ_BACKUP to R.drawable.provider_qobuz,
                             AudioSourceType.DEEZER to R.drawable.provider_deezer,
+                            AudioSourceType.APPLE to R.drawable.provider_apple,
                             AudioSourceType.JIOSAAVN to R.drawable.provider_jiosaavn,
                             AudioSourceType.YOUTUBE to R.drawable.play,
                         ),

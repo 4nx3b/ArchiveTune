@@ -46,12 +46,6 @@ val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
-/**
- * Whether the Apple Music player style plays moving artwork — a Spotify Canvas loop, or the music
- * video when the song has one — in place of the still cover. Default true: that is how the style
- * has always behaved, and the setting exists to be able to turn it off, not to change the default.
- */
-val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
 /**
  * Which lyrics surface the SimpMusic player style opens: SimpMusic's own (true) or the app's
@@ -1376,10 +1370,6 @@ val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
  *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
-
-// When ON (default), synced lyrics render in place of the player artwork (BitChord-style
-// inline lyrics on the player screen). The lyrics button still opens the full lyrics page.
-val ShowLyricsOnPlayerKey = booleanPreferencesKey("showLyricsOnPlayer")
 
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")

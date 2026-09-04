@@ -96,7 +96,6 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
-import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
@@ -129,7 +128,6 @@ fun Thumbnail(
     sliderPositionProvider: () -> Long?,
     modifier: Modifier = Modifier,
     isPlayerExpanded: Boolean = true, // Add parameter to control swipe based on player state
-    onOpenLyrics: (() -> Unit)? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
@@ -145,25 +143,12 @@ fun Thumbnail(
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
-    // BitChord-style inline lyrics: synced lyrics replace the artwork on the player.
-    val showLyricsOnPlayer by rememberPreference(ShowLyricsOnPlayerKey, true)
-    val inlineLines = rememberInlineLyricLines(playerConnection)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V4,
     )
-    // Styles that opt out of the three-line pane, because their artwork slot is not a plain
-    // square the pane can stand in for: Editorial's (V10) bento layout gave it a box it did
-    // not fit, and it rendered broken there. (Upstream also opted out Minimal (V3), but this
-    // fork removed V3 from the enum — see PreferenceKeys.) Apple Music opted out for the
-    // same reason and never reaches this composable anyway — it draws its own artwork.
-    val inlineLyricsAvailable =
-        showLyricsOnPlayer &&
-            isPlayerExpanded &&
-            inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,
@@ -543,27 +528,6 @@ fun Thumbnail(
                                             modifier = Modifier.size(120.dp),
                                         )
                                     }
-                                } else if (inlineLyricsAvailable &&
-                                    !(
-                                        LocalVideoArtworkState.current != null &&
-                                            item.metadata?.isMusicVideo == true &&
-                                            item.mediaId == currentMediaItem?.mediaId &&
-                                            !item.mediaId.isLocalMediaId()
-                                    )
-                                ) {
-                                    // Synced lyrics live on the player (BitChord-style); the
-                                    // lyrics button still opens the full lyrics page.
-                                    PlayerInlineLyrics(
-                                        lines = inlineLines,
-                                        positionProvider = { playerConnection.player.currentPosition },
-                                        isPlaying = isPlaying,
-                                        textColor = textBackgroundColor,
-                                        artworkUrl =
-                                            item.metadata?.thumbnailUrl?.highRes()
-                                                ?: item.mediaMetadata.artworkUri?.toString(),
-                                        modifier = Modifier.fillMaxSize(),
-                                        onOpenLyrics = onOpenLyrics,
-                                    )
                                 } else {
                                     val primaryCanvasUrl = canvasArtwork?.animated
                                     val fallbackCanvasUrl = canvasArtwork?.videoUrl

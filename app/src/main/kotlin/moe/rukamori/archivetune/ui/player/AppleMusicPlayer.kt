@@ -143,7 +143,6 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
-import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
@@ -949,19 +948,13 @@ fun AppleMusicPlayerContent(
         // rather than a recomposition.
         var morphAreaHeightPx by remember { mutableIntStateOf(0) }
 
-        // "Animated artwork" — the Spotify Canvas loop and the music video that can take the
-        // cover's place. On by default, which is how this style has always behaved; the setting
-        // exists because moving artwork is not what everyone wants a player to do, and there was
-        // no way to stop it. Applied by emptying the canvas URLs rather than by branching at each
-        // of the five places they are read: a canvas that is off should be indistinguishable from
-        // a song that never had one, and that is exactly what a null URL already means here.
-        val animatedArtworkEnabled by rememberPreference(AppleMusicAnimatedArtworkKey, defaultValue = true)
-        val canvasPrimaryUrl = canvasPrimaryUrl.takeIf { animatedArtworkEnabled }
-        val canvasFallbackUrl = canvasFallbackUrl.takeIf { animatedArtworkEnabled }
+        // The Spotify Canvas loop and the music video that can take the cover's place.
+        // Always on — the "Animated artwork" toggle was removed with its setting
+        // (2026-09-05 user request); the canvas URLs arrive here untouched, and a
+        // song without a canvas is already expressed by a null URL.
 
         val videoShowing =
-            animatedArtworkEnabled &&
-                LocalVideoArtworkState.current != null &&
+            LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
                 !mediaMetadata.id.isLocalMediaId()
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
