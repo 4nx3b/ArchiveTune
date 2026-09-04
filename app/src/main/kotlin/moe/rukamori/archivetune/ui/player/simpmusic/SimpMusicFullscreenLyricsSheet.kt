@@ -29,7 +29,7 @@ package moe.rukamori.archivetune.ui.player.simpmusic
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -77,6 +77,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -102,7 +103,8 @@ import kotlin.math.sin
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
-import moe.rukamori.archivetune.extensions.highRes
+import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -178,16 +180,13 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     // ── Animated gradient background (SimpMusic's five-stop wander) ───────────────────
-    val startColor = remember { Animatable(color) }
-    val midColor1 = remember { Animatable(color.copy(alpha = 0.95f)) }
-    val midColor2 = remember { Animatable(color.copy(alpha = 0.85f)) }
-    val endColor = remember { Animatable(Color.Black) }
-    LaunchedEffect(color) {
-        startColor.animateTo(color, tween(1200, easing = FastOutSlowInEasing))
-        midColor1.animateTo(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
-        midColor2.animateTo(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
-        endColor.animateTo(Color.Black, tween(1200, easing = FastOutSlowInEasing))
-    }
+    // animateColorAsState instead of Animatable<Color>: the single-argument Animatable
+    // factory only exists for Float, and the colours here only ever ease toward the
+    // current palette anyway.
+    val startColor by animateColorAsState(color, tween(1200, easing = FastOutSlowInEasing))
+    val midColor1 by animateColorAsState(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
+    val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
+    val endColor by animateColorAsState(Color.Black, tween(1200, easing = FastOutSlowInEasing))
     val gradientTransition = rememberInfiniteTransition(label = "lyricsGradient")
     val animatedAngle by gradientTransition.animateFloat(
         initialValue = -45f,
@@ -272,11 +271,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             Brush.linearGradient(
                                 colors =
                                     listOf(
-                                        startColor.value,
-                                        midColor1.value,
-                                        midColor2.value,
-                                        endColor.value.copy(alpha = 0.9f),
-                                        endColor.value,
+                                        startColor,
+                                        midColor1,
+                                        midColor2,
+                                        endColor.copy(alpha = 0.9f),
+                                        endColor,
                                     ),
                                 start =
                                     Offset(
