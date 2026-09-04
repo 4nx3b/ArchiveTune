@@ -58,7 +58,6 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
@@ -296,9 +295,6 @@ private fun HomeContent(
                         live to other
                     }
 
-                val (homeCatalogueSwitchEnabled, _) =
-                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
-
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -319,15 +315,54 @@ private fun HomeContent(
                         )
                     }
 
-                    if (homeCatalogueSwitchEnabled) {
-                        item(
-                            key = "home_source_switcher",
-                            contentType = "source_switcher",
-                        ) {
-                            HomeSourceSwitcher(modifier = Modifier.animateItem())
-                        }
-                    }
+                    // Home feed layout policy:
+                    //
+                    //  * "Jump back in" hero is ALWAYS rendered (when there are
+                    //    hero picks) regardless of Minimal Mode, so the top of
+                    //    the home screen always has the big artwork card.
+                    //
+                    //  * When `uiState.minimalHomeMode == true`, the feed
+                    //    collapses to:
+                    //      hero -> Recently Played -> Keep Listening
+                    //      -> Speed Dial -> Live Performances
+                    //    All other shelves (category chips, remote/local quick
+                    //    picks, account playlists, forgotten favorites, similar
+                    //    recommendations, and non-Live remote sections) are
+                    //    hidden. Speed Dial is preserved in minimal mode (placed
+                    //    directly below Keep Listening) so the user keeps one-tap
+                    //    access to their pinned items.
+                    //
+                    //  * When `uiState.minimalHomeMode == false` (default, also
+                    //    matches upstream rukamori/ArchiveTune), the feed shows
+                    //    the full set:
+                    //      hero -> category chips -> remote/local quick picks
+                    //      -> Recently Played -> Speed Dial -> Keep Listening
+                    //      -> Account Playlists -> Forgotten Favourites
+                    //      -> Similar Recommendations -> ALL remote homePage
+                    //      sections (including but not limited to "Live
+                    //      performance").
+                    //
+                    //  * "Live performance" shelves are extracted from the
+                    //    remote homePage sections and rendered as a dedicated
+                    //    block IMMEDIATELY after Speed Dial in BOTH modes — so
+                    //    Live Performances always stays below Speed Dial whether
+                    //    Minimal Mode is on or off. Non-Live remote shelves
+                    //    continue to render at the bottom in full mode only.
+                    //
+                    // The hero and Recently Played sections are 4nx3b fork
+                    // additions; everything else mirrors upstream so a fresh
+                    // install (with only remote content available) sees a
+                    // populated home screen.
 
+                    val minimalMode = uiState.minimalHomeMode
+
+                    // "Jump back in" hero — large card + 2 stacked side cards.
+                    // Uses `heroPicks` (3 random songs from listening-preference
+                    // based quickPicks) instead of the last-played 3, so the hero
+                    // rotates fresh picks each visit. Mirrors the Apple Music /
+                    // Muzo home hero. Skipped entirely if the user has no
+                    // listening history yet (e.g. fresh install). PERSISTENT —
+                    // renders in both full and minimal modes.
                     if (uiState.heroPicks.isNotEmpty()) {
                         item(
                             key = "home_jump_back_in",
