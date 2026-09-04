@@ -601,7 +601,9 @@ fun SpatialFlowQueueListItem(
                 }
             }
         },
-        headlineContent = {
+        // material3 1.5: the headline is the trailing `content` lambda — the old
+        // `headlineContent` named parameter no longer exists in any overload.
+        content = {
             Text(
                 text = song.title,
                 fontWeight = if (isPlaying) FontWeight.ExtraBold else FontWeight.SemiBold,
