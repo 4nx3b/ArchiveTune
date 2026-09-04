@@ -41,6 +41,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
+import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
@@ -79,6 +80,7 @@ fun IntegrationScreen(
     // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
     // source pool, so most users never need to see raw instance/token fields.
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
+    val (appleMusicToken, _) = rememberPreference(AppleMusicMediaUserTokenKey, "")
     // …but a source the user has *already* signed into must stay reachable regardless, otherwise
     // turning the toggle back off strands the account with no way to view or sign out of it — and
     // "Check source" would keep pointing at a screen that is no longer in the list.
@@ -88,6 +90,10 @@ fun IntegrationScreen(
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
+    // Apple Music joins them: its media-user-token flow is a developer affordance like theirs,
+    // not something a normal install should be asked to complete. Still shown once a token
+    // exists, so an account already signed in never becomes unreachable.
+    val showAppleMusicGroup = manualSourceLogin || appleMusicToken.isNotBlank()
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
@@ -212,7 +218,9 @@ fun IntegrationScreen(
                         .then(positions.modifierFor("music_sources")),
                 title = stringResource(R.string.music_sources),
             ) {
-                item {
+                // PreferenceGroup renders nothing (title included) once it has no items, so
+                // hiding the only row hides the whole group — the same shape the rows below use.
+                item(visible = showAppleMusicGroup) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("applemusic"),
                         title = { Text(stringResource(R.string.applemusic_settings)) },
