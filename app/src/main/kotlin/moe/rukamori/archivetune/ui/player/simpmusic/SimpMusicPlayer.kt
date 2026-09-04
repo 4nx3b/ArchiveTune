@@ -52,6 +52,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clipToBounds
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialog
+import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.extensions.toMediaItem
 import androidx.room.withTransaction
@@ -195,6 +196,32 @@ private val Gutter = 20.dp
 
 private val MinGap = 30.dp
 
+/**
+ * Artwork width as a fraction of the screen.
+ *
+ * SimpMusic sizes its sleeve to the full width minus its gutters, which on a phone is around 90%
+ * and reads noticeably bigger than Spotify's — the complaint that prompted this. Spotify's sleeve
+ * leaves a clear margin either side; 0.84 matches it and keeps the square from crowding the title
+ * row underneath.
+ */
+private const val ARTWORK_WIDTH_FRACTION = 0.84f
+
+/**
+ * The band reserved for the current lyric line, between the artwork and the title row.
+ *
+ * Two lines of `labelMedium` plus the padding around them. It used to be nothing — the line lived
+ * inside the lower gap so the controls could not move when a line arrived — but that capped it at
+ * one line, and a long line then marqueed sideways across the player instead of wrapping. Spotify
+ * wraps to a second line, so the band is real height now and the artwork gives it up, which is also
+ * what Spotify does. Reserved only when the track HAS synced lyrics, so a track without them keeps
+ * the larger sleeve; the size therefore changes per track, never per line.
+ */
+private val LyricBandHeight = 48.dp
+
+/**
+ * The SimpMusic style. Parameters mirror the other self-contained styles so Player.kt dispatches
+ * every style the same way.
+ */
 @Composable
 fun SimpMusicPlayerContent(
     mediaMetadata: MediaMetadata,
@@ -238,6 +265,10 @@ fun SimpMusicPlayerContent(
         mediaInfo = runCatching { YouTube.getMediaInfo(mediaMetadata.id).getOrNull() }.getOrNull()
     }
 
+    // Hoisted out of SimpMusicLyricLine: the layout below has to know whether this track has synced
+    // lyrics AT ALL before it can size the artwork, and parsing is cheap and keyed on the text.
+    val lyricLines = rememberInlineLyricLines(playerConnection)
+
     val scrollState = rememberScrollState()
 
     var hasScrolled by remember { mutableStateOf(false) }
@@ -265,13 +296,17 @@ fun SimpMusicPlayerContent(
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
 
         val screenHeight = maxHeight
-
+        // A square as wide as the gutters allow — unless the screen is too SHORT for that square
+        // plus the two rows and their minimum gaps, in which case the square gives way rather than
+        // the controls sliding off the bottom. SimpMusic sizes the artwork on width alone and
+        // clips the controls on a short screen; there is no reason to reproduce that.
+        val lyricBand = if (lyricLines.isEmpty()) 0.dp else LyricBandHeight
         val artworkSide =
-            (maxWidth - Gutter * 2)
-                .coerceAtMost(screenHeight - topBarHeight - infoHeight - MinGap * 2)
+            (maxWidth * ARTWORK_WIDTH_FRACTION)
+                .coerceAtMost(screenHeight - topBarHeight - infoHeight - lyricBand - MinGap * 2)
                 .coerceAtLeast(0.dp)
         val gap =
-            ((screenHeight - topBarHeight - artworkSide - infoHeight - MinGap) / 2)
+            ((screenHeight - topBarHeight - artworkSide - lyricBand - infoHeight - MinGap) / 2)
                 .coerceAtLeast(MinGap)
         val screenHeightPx = with(density) { screenHeight.toPx() }
 
@@ -312,12 +347,17 @@ fun SimpMusicPlayerContent(
 
                     Spacer(Modifier.fillMaxWidth().height(artworkSide))
 
+                    // Its own band between the sleeve and the title row, sized by the layout above
+                    // and zero-height on a track with no synced lyrics.
                     SimpMusicLyricLine(
+                        lines = lyricLines,
                         playerConnection = playerConnection,
 
                         active = isPlaying && state.isExpanded,
-                        modifier = Modifier.fillMaxWidth().height(gap),
+                        modifier = Modifier.fillMaxWidth().height(lyricBand),
                     )
+
+                    Spacer(Modifier.height(gap))
 
                     Column(
                         modifier =
@@ -647,11 +687,11 @@ private fun SimpMusicArtwork(
 
 @Composable
 private fun SimpMusicLyricLine(
+    lines: List<LyricsEntry>,
     playerConnection: PlayerConnection,
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val lines = rememberInlineLyricLines(playerConnection)
     var line by remember(lines) { mutableStateOf("") }
 
     LaunchedEffect(lines, active) {
@@ -672,15 +712,13 @@ private fun SimpMusicLyricLine(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White,
-                maxLines = 1,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Gutter)
-                        .basicMarquee(
-                            iterations = Int.MAX_VALUE,
-                            animationMode = MarqueeAnimationMode.Immediately,
-                        ),
+                textAlign = TextAlign.Center,
+                // Wraps rather than marquees. A long line used to scroll sideways across the
+                // player, which is both harder to read than a second line and unlike every
+                // reference player; two lines is what the band above is sized for.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter),
             )
         }
     }
