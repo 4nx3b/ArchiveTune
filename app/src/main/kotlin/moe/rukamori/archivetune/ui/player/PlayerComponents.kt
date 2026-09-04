@@ -536,6 +536,7 @@ fun PlayerTopActions(
         PlayerDesignStyle.APPLE_MUSIC,
         PlayerDesignStyle.BITCHORD,
         PlayerDesignStyle.TIKTOK,
+        PlayerDesignStyle.SIMPMUSIC,
         -> {
             Unit
         }
@@ -1113,6 +1114,7 @@ fun PlayerPlaybackControls(
         PlayerDesignStyle.APPLE_MUSIC,
         PlayerDesignStyle.BITCHORD,
         PlayerDesignStyle.TIKTOK,
+        PlayerDesignStyle.SIMPMUSIC,
         -> {
             Unit
         }

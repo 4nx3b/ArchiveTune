@@ -573,6 +573,11 @@ fun Queue(
                     // the queue (every page a queue entry), and its collapsed
                     // peek height is 0dp, so this sheet never visibly collapses.
                 }
+
+                PlayerDesignStyle.SIMPMUSIC -> {
+                    // Same for the SimpMusic style: its artwork pager is a page per queue entry,
+                    // and its collapsed peek height is 0dp.
+                }
             }
 
             if (showSleepTimerDialog) {
