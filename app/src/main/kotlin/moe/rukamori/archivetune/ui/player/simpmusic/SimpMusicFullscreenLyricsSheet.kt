@@ -1,0 +1,665 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+/*
+ * SimpMusic's fullscreen lyrics page.
+ *
+ * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
+ * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
+ * background is the artwork palette colour bleeding into black through a slowly wandering
+ * five-stop linear gradient (angle ±45° over 6 s, offsets ±1500/±1000 over 8 s, the stops
+ * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
+ * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
+ * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
+ * control block — slider with the 8×18 dp thumb, time row, transport, info/queue buttons —
+ * that AUTO-HIDES after four seconds and comes back on any tap, exactly like the original.
+ *
+ * Only the SimpMusic player style reaches this: the lyrics card's "Show" affordance opens it
+ * (user request 2026-09-05 — it previously opened the app's shared LyricsScreen instead of
+ * SimpMusic's own lyrics page). The lyric DATA is the same store every other renderer reads
+ * (playerConnection.currentLyrics through SimpMusicLyrics) — real providers, no second
+ * implementation.
+ */
+
+package moe.rukamori.archivetune.ui.player.simpmusic
+
+import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.MarqueeAnimationMode
+import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import kotlin.math.cos
+import kotlin.math.sin
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.extensions.highRes
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.playback.PlayerConnection
+import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import androidx.media3.common.Player
+import androidx.navigation.NavController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.util.Locale
+
+/** SimpMusic's fullscreen-lyrics side gutter (its FULLSCREEN_LYRICS_GUTTER). */
+private val LyricsGutter = 50.dp
+
+/** How long the bottom controls stay up before auto-hiding (SimpMusic: 4 s). */
+private const val CONTROLS_AUTO_HIDE_MS = 4_000L
+
+@Composable
+internal fun SimpMusicFullscreenLyricsSheet(
+    mediaMetadata: MediaMetadata,
+    playerConnection: PlayerConnection,
+    navController: NavController,
+    bottomSheetPageState: BottomSheetPageState,
+    playerBottomSheetState: BottomSheetState,
+    color: Color,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val menuState = LocalMenuState.current
+
+    val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
+    val liked = currentSong?.song?.liked == true
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
+    val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
+    val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
+    val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+
+    val hasLyrics = currentLyricsEntity?.lyrics
+        ?.let { it.isNotBlank() && it != LYRICS_NOT_FOUND } == true
+
+    // Keep the screen awake while a lyrics page is on (SimpMusic's KeepScreenOn()).
+    DisposableEffect(view, hasLyrics) {
+        if (hasLyrics) view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
+    // ── Auto-hide controls state (SimpMusic's showControlButtons) ────────────────────
+    var showControlButtons by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(showControlButtons) {
+        if (showControlButtons) {
+            delay(CONTROLS_AUTO_HIDE_MS)
+            showControlButtons = false
+        }
+    }
+
+    // ── Position polling for the slider ───────────────────────────────────────────────
+    var sliderPosition by remember { mutableLongStateOf(-1L) }
+    var duration by remember { mutableLongStateOf(-1L) }
+    LaunchedEffect(mediaMetadata.id, isPlaying) {
+        while (isActive) {
+            val d = playerConnection.player.duration
+            if (d > 0) duration = d
+            if (sliderPosition < 0) {
+                sliderPosition = playerConnection.player.currentPosition.coerceAtLeast(0L)
+            }
+            delay(200L)
+        }
+    }
+
+    // ── Animated gradient background (SimpMusic's five-stop wander) ───────────────────
+    val startColor = remember { Animatable(color) }
+    val midColor1 = remember { Animatable(color.copy(alpha = 0.95f)) }
+    val midColor2 = remember { Animatable(color.copy(alpha = 0.85f)) }
+    val endColor = remember { Animatable(Color.Black) }
+    LaunchedEffect(color) {
+        startColor.animateTo(color, tween(1200, easing = FastOutSlowInEasing))
+        midColor1.animateTo(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
+        midColor2.animateTo(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
+        endColor.animateTo(Color.Black, tween(1200, easing = FastOutSlowInEasing))
+    }
+    val gradientTransition = rememberInfiniteTransition(label = "lyricsGradient")
+    val animatedAngle by gradientTransition.animateFloat(
+        initialValue = -45f,
+        targetValue = 45f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 6000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "lyricsGradientAngle",
+    )
+    val animatedOffsetX by gradientTransition.animateFloat(
+        initialValue = -1500f,
+        targetValue = 1500f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "lyricsGradientOffsetX",
+    )
+    val animatedOffsetY by gradientTransition.animateFloat(
+        initialValue = -1000f,
+        targetValue = 1000f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "lyricsGradientOffsetY",
+    )
+
+    // Nested sheets the header's buttons can open (SimpMusic opens its own queue / info
+    // sheets from here the same way).
+    var queueOpen by rememberSaveable { mutableStateOf(false) }
+
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val shareLyrics: () -> Unit = {
+        val text = currentLyricsEntity?.lyrics
+        if (!text.isNullOrBlank()) {
+            val body = text.lineSequence().joinToString("\n") { it.substringAfter("]") }
+            context.startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, body)
+                    },
+                    null,
+                ),
+            )
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.Black,
+        contentColor = Color.Transparent,
+        dragHandle = null,
+        scrimColor = Color.Black.copy(alpha = 0.5f),
+        shape = RectangleShape,
+        modifier =
+            Modifier
+                .fillMaxHeight()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                ) {
+                    // Show controls on tap — SimpMusic's tap-anywhere reveal.
+                    showControlButtons = true
+                },
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Animated gradient background.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(
+                                colors =
+                                    listOf(
+                                        startColor.value,
+                                        midColor1.value,
+                                        midColor2.value,
+                                        endColor.value.copy(alpha = 0.9f),
+                                        endColor.value,
+                                    ),
+                                start =
+                                    Offset(
+                                        x = animatedOffsetX + (cos(animatedAngle * Math.PI.toFloat() / 180f) * 800f),
+                                        y = animatedOffsetY + (sin(animatedAngle * Math.PI.toFloat() / 180f) * 800f),
+                                    ),
+                                end =
+                                    Offset(
+                                        x = animatedOffsetX + 2500f + (cos((animatedAngle + 180f) * Math.PI.toFloat() / 180f) * 800f),
+                                        y = animatedOffsetY + 2500f + (sin((animatedAngle + 180f) * Math.PI.toFloat() / 180f) * 800f),
+                                    ),
+                            ),
+                        ),
+            )
+
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Notch-safe insets: the top floors with the cached status-bar inset
+                        // (LocalStableSystemBarsTopPadding) so a hidden status bar can't drop
+                        // the header under the cutout; the bottom uses the nav bar.
+                        .padding(
+                            top = LocalStableSystemBarsTopPadding.current,
+                            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                        ),
+            ) {
+                // ── Header: sleeve + title/artist + like + share + more ────────────────
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 36.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        model = mediaMetadata.thumbnailUrl?.highRes(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .size(45.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            text = mediaMetadata.title,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
+                            modifier =
+                                Modifier.basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    animationMode = MarqueeAnimationMode.Immediately,
+                                ),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier =
+                                Modifier.clickable {
+                                    mediaMetadata.artists
+                                        .firstOrNull { !it.id.isNullOrBlank() }
+                                        ?.id?.let { id -> navController.navigate("artist/$id") }
+                                },
+                        ) {
+                            Text(
+                                text = mediaMetadata.artists.joinToString { it.name },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier =
+                                    Modifier.basicMarquee(
+                                        iterations = Int.MAX_VALUE,
+                                        animationMode = MarqueeAnimationMode.Immediately,
+                                    ),
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    IconButton(onClick = playerConnection::toggleLike, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (liked) R.drawable.simpmusic_favorite else R.drawable.simpmusic_favorite_border,
+                                ),
+                            contentDescription = stringResource(R.string.action_like),
+                            tint = if (liked) MaterialTheme.colorScheme.error else Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+
+                    if (hasLyrics) {
+                        IconButton(onClick = shareLyrics) {
+                            Icon(
+                                painter = painterResource(R.drawable.simpmusic_share),
+                                contentDescription = stringResource(R.string.share),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            menuState.show {
+                                PlayerMenu(
+                                    mediaMetadata = mediaMetadata,
+                                    navController = navController,
+                                    playerBottomSheetState = playerBottomSheetState,
+                                    onShowDetailsDialog = {
+                                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.simpmusic_more_vert),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+
+                // ── Lyrics — expands across the remaining height ─────────────────────
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = LyricsGutter),
+                ) {
+                    if (hasLyrics) {
+                        // The provider is null unless the user is scrubbing the sheet's own
+                        // slider, so SimpMusicLyrics self-polls the player — the same contract
+                        // the lyrics card uses.
+                        SimpMusicLyrics(
+                            sliderPositionProvider = { if (sliderPosition >= 0) sliderPosition else null },
+                            lyricsSyncOffset = 0,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.save_canvas_variant_unavailable),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+
+                // ── Slider + time row — always visible ───────────────────────────────
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp)) {
+                    val safeDuration = if (duration > 0) duration else 1L
+                    val shown = sliderPosition.coerceIn(0L, safeDuration)
+                    Slider(
+                        value = shown.toFloat() / safeDuration.toFloat(),
+                        onValueChange = { sliderPosition = (it * safeDuration).toLong() },
+                        onValueChangeFinished = {
+                            playerConnection.player.seekTo(sliderPosition)
+                            sliderPosition = -1L
+                        },
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                modifier = Modifier.height(5.dp),
+                                enabled = true,
+                                sliderState = sliderState,
+                                colors =
+                                    SliderDefaults.colors().copy(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color.White,
+                                        inactiveTrackColor = Color.Transparent,
+                                    ),
+                                thumbTrackGapSize = 0.dp,
+                                drawTick = { _, _ -> },
+                                drawStopIndicator = null,
+                            )
+                        },
+                        thumb = {
+                            SliderDefaults.Thumb(
+                                modifier = Modifier.height(18.dp).width(8.dp).padding(vertical = 4.dp),
+                                thumbSize = DpSize(8.dp, 8.dp),
+                                interactionSource = remember { MutableInteractionSource() },
+                                colors =
+                                    SliderDefaults.colors().copy(
+                                        thumbColor = Color.White,
+                                        activeTrackColor = Color.White,
+                                    ),
+                                enabled = true,
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = clockTime(shown),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Left,
+                        )
+                        Text(
+                            text = if (duration > 0) clockTime(duration) else "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.55f),
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Right,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(5.dp))
+                }
+
+                // ── Transport + bottom buttons — auto-hide after 4 s ─────────────────
+                AnimatedVisibility(
+                    visible = showControlButtons,
+                    enter = expandVertically(tween(300)),
+                    exit = shrinkVertically(tween(300)),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(96.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LyricsTransportIcon(
+                            painter = painterResource(R.drawable.simpmusic_shuffle),
+                            contentDescription = stringResource(R.string.shuffle),
+                            tint = if (shuffleEnabled) MaterialTheme.colorScheme.error else Color.White,
+                            iconSize = 32.dp,
+                            onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
+                        )
+                        LyricsTransportIcon(
+                            painter = painterResource(R.drawable.simpmusic_skip_previous),
+                            contentDescription = stringResource(R.string.widget_previous),
+                            tint = Color.White.copy(alpha = if (canSkipPrevious) 1f else 0.4f),
+                            enabled = canSkipPrevious,
+                            iconSize = 42.dp,
+                            onClick = playerConnection::seekToPrevious,
+                        )
+                        LyricsTransportIcon(
+                            painter =
+                                painterResource(
+                                    if (isPlaying) R.drawable.simpmusic_pause_circle else R.drawable.simpmusic_play_circle,
+                                ),
+                            contentDescription = stringResource(if (isPlaying) R.string.widget_pause else R.string.play),
+                            tint = Color.White,
+                            iconSize = 72.dp,
+                            onClick = { playerConnection.player.togglePlayPause() },
+                        )
+                        LyricsTransportIcon(
+                            painter = painterResource(R.drawable.simpmusic_skip_next),
+                            contentDescription = stringResource(R.string.next),
+                            tint = Color.White.copy(alpha = if (canSkipNext) 1f else 0.4f),
+                            enabled = canSkipNext,
+                            iconSize = 42.dp,
+                            onClick = playerConnection::seekToNext,
+                        )
+                        LyricsTransportIcon(
+                            painter =
+                                painterResource(
+                                    if (repeatMode == Player.REPEAT_MODE_ONE) {
+                                        R.drawable.simpmusic_repeat_one
+                                    } else {
+                                        R.drawable.simpmusic_repeat
+                                    },
+                                ),
+                            contentDescription =
+                                stringResource(
+                                    when (repeatMode) {
+                                        Player.REPEAT_MODE_ONE -> R.string.repeat_mode_one
+                                        Player.REPEAT_MODE_ALL -> R.string.repeat_mode_all
+                                        else -> R.string.repeat_mode_off
+                                    },
+                                ),
+                            tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White else MaterialTheme.colorScheme.error,
+                            iconSize = 32.dp,
+                            onClick = {
+                                playerConnection.player.repeatMode =
+                                    when (repeatMode) {
+                                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                        else -> Player.REPEAT_MODE_OFF
+                                    }
+                            },
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = showControlButtons,
+                    enter = expandVertically(tween(300)),
+                    exit = shrinkVertically(tween(300)),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .height(32.dp)
+                                .fillMaxWidth()
+                                .padding(horizontal = 40.dp),
+                    ) {
+                        IconButton(
+                            modifier = Modifier.size(24.dp).align(Alignment.CenterStart),
+                            onClick = { bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) } },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.simpmusic_info),
+                                tint = Color.White,
+                                contentDescription = stringResource(R.string.details),
+                            )
+                        }
+                        IconButton(
+                            modifier = Modifier.size(24.dp).align(Alignment.CenterEnd),
+                            onClick = { queueOpen = true },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.simpmusic_queue_music),
+                                tint = Color.White,
+                                contentDescription = stringResource(R.string.queue),
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+                if (!showControlButtons) {
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+        }
+    }
+
+    if (queueOpen) {
+        SimpMusicQueueSheet(
+            playerConnection = playerConnection,
+            navController = navController,
+            onDismiss = { queueOpen = false },
+        )
+    }
+}
+
+/** One transport control: a circular ripple cell holding a centred glyph (SimpMusicControl's shape). */
+@Composable
+private fun RowScope.LyricsTransportIcon(
+    painter: androidx.compose.ui.graphics.painter.Painter,
+    contentDescription: String,
+    tint: Color,
+    iconSize: androidx.compose.ui.unit.Dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(CircleShape)
+                .clickable(enabled = enabled, onClick = onClick),
+    ) {
+        Icon(
+            painter = painter,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/** `mm:ss`, zero-padded, the way SimpMusic's formatDuration writes it. */
+private fun clockTime(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0L)
+    return String.format(Locale.getDefault(), "%02d:%02d", total / 60, total % 60)
+}

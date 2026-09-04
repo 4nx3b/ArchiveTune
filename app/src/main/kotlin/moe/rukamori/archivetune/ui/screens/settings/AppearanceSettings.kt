@@ -169,7 +169,9 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (simpMusicLyrics, onSimpMusicLyricsChange) =
         rememberPreference(
             SimpMusicLyricsKey,
-            defaultValue = false,
+            // Default flipped (2026-09-05): the SimpMusic player style's lyrics card now
+            // previews SimpMusic's own Classic renderer out of the box, like upstream.
+            defaultValue = true,
         )
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
         rememberPreference(

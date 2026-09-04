@@ -991,6 +991,34 @@ object YTPlayerUtils {
         preferM4A: Boolean = false,
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
+
+        // Echo-Music resolution port (2026-09-05): Echo's cascade runs FIRST — the
+        // VISIONOS-first client order, NewPipe StreamInfo URL substitution and the
+        // last-byte HEAD+Range validation probe (see EchoStreamResolver). Everything
+        // below (the 13-client chain, po-token minting, auth repair, bot-detection
+        // rotation) remains the fallback, so a failure here costs one cascade and
+        // loses nothing that previously worked.
+        try {
+            val echoPlaybackData =
+                moe.rukamori.archivetune.echo.EchoStreamResolver
+                    .playerResponseForPlayback(
+                        videoId = videoId,
+                        playlistId = playlistId,
+                        audioQuality = audioQuality,
+                        connectivityManager = connectivityManager,
+                    )
+            Timber
+                .tag(logTag)
+                .i("Echo resolver produced a stream for %s (itag=%d), using it", videoId, echoPlaybackData.format.itag)
+            return echoPlaybackData
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (echoFailure: Throwable) {
+            Timber
+                .tag(logTag)
+                .w(echoFailure, "Echo stream resolution failed for %s; falling back to the local chain", videoId)
+        }
+
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
         Timber.tag(logTag).v("Signature timestamp: $signatureTimestamp")
 

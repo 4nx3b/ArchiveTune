@@ -436,14 +436,15 @@ fun AppleMusicPlayerContent(
     val autoHideDelayMs = AppleMusicLyricsControlsAutoHideDelayMs
     val playerExpanded = state.isExpanded
 
-    // Show the controls when lyrics or the queue opens, then honour the shared
-    // five-second auto-hide setting.
-    LaunchedEffect(lyricsOpen, queueOpen, showLyricsPlayerControls) {
-        if (lyricsOpen) {
-            playerControlsExpanded = showLyricsPlayerControls
-        } else {
-            playerControlsExpanded = true
-        }
+    // Reveal the controls when lyrics or the queue opens. UNCONDITIONALLY — user report
+    // 2026-09-05: "bottom controls are hidden from the beginning; they're supposed to hide
+    // after 5 seconds". A stored ShowLyricsPlayerControls=false used to suppress the reveal
+    // here (and in the countdown below), which read as the auto-hide firing instantly with no
+    // five-second window at all. The window now ALWAYS happens; the setting's new meaning is
+    // "keep the controls visible over the lyrics" (it skips the countdown instead of hiding
+    // the controls outright).
+    LaunchedEffect(lyricsOpen, queueOpen) {
+        playerControlsExpanded = true
     }
 
     // Bumping the token reveals the controls and restarts the countdown. Deliberately
@@ -508,14 +509,24 @@ fun AppleMusicPlayerContent(
         onDispose { onLyricsVisibilityChange(false) }
     }
 
-    // Auto-hide (restored 2026-09-04): show the controls for five seconds when the
-    // lyrics or queue opens, then fade them out so the lyrics own the screen. A
-    // poke (tap, scrub, volume drag — see pokePlayerControlsVisibility above and
-    // its throttled twin) re-reveals and restarts the countdown. Keyed on the
-    // reveal token so every poke restarts the timer; keyed on playerExpanded so
-    // re-expanding the sheet re-arms the reveal after a collapse (the composable
-    // survives the collapse via keepContentAlive, so lyrics/queue can still be
-    // open behind the mini player when it comes back up).
+    // Auto-hide (restored 2026-09-04, window guaranteed 2026-09-05): show the controls for
+    // five seconds when the lyrics or queue opens, then fade them out so the lyrics own the
+    // screen. A poke (tap, scrub, volume drag — see pokePlayerControlsVisibility above and
+    // its throttled twin) re-reveals and restarts the countdown.
+    //
+    // `playerControlsExpanded = true` comes FIRST, before every bail-out: setting the reveal
+    // before deciding whether to hide is what guarantees the full five-second window (the
+    // version that hid first when ShowLyricsPlayerControls was off read as "hidden from the
+    // beginning"). Bail-outs:
+    //  - neither lyrics nor queue open, or auto-hide off, or ShowLyricsPlayerControls off:
+    //    keep the controls visible and skip the countdown entirely.
+    //  - collapsed (keepContentAlive): nothing on screen to hide, and burning the window
+    //    here is exactly what caused an instant hide on re-expand.
+    //
+    // Keyed on the reveal token so every poke restarts the timer; keyed on playerExpanded so
+    // re-expanding the sheet re-arms the reveal after a collapse (the composable survives the
+    // collapse via keepContentAlive, so lyrics/queue can still be open behind the mini player
+    // when it comes back up); keyed on mediaMetadata.id so a track change re-reveals them too.
     LaunchedEffect(
         lyricsOpen,
         queueOpen,
@@ -523,16 +534,20 @@ fun AppleMusicPlayerContent(
         autoHideLyricsPlayerControls,
         showLyricsPlayerControls,
         playerExpanded,
+        mediaMetadata.id,
     ) {
+        playerControlsExpanded = true
         if (!shouldAutoHideAppleMusicControls(lyricsOpen, queueOpen, autoHideLyricsPlayerControls)) {
-            playerControlsExpanded = if (lyricsOpen) showLyricsPlayerControls else true
+            return@LaunchedEffect
+        }
+        if (!playerExpanded) {
             return@LaunchedEffect
         }
         if (lyricsOpen && !showLyricsPlayerControls) {
-            playerControlsExpanded = false
+            // "Show lyrics player controls" off — with the window guaranteed, this setting now
+            // means "keep them visible over the lyrics" rather than "hide them instantly".
             return@LaunchedEffect
         }
-        playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
@@ -1320,10 +1335,13 @@ fun AppleMusicPlayerContent(
                     // seconds after the lyrics pane or queue opens (and re-appear on
                     // any tap/scrub poke). In plain COVER state both flags keep this
                     // branch always-true, so the morph in/out stays the same shape.
+                    // (2026-09-05) showLyricsPlayerControls no longer gates the
+                    // visibility — only whether the countdown runs — so a stored
+                    // false can never read as "hidden from the beginning".
                     visible =
                         (!lyricsOpen && !queueOpen) ||
                             (queueOpen && playerControlsExpanded) ||
-                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                            (lyricsOpen && playerControlsExpanded),
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1812,10 +1830,13 @@ fun AppleMusicPlayerContent(
                     // seconds after the lyrics pane or queue opens; a tap/scrub poke
                     // re-reveals them. In plain COVER state the condition collapses
                     // to always-true so the morph in/out stays the same shape.
+                    // (2026-09-05) showLyricsPlayerControls no longer gates the
+                    // visibility — only whether the countdown runs — so a stored
+                    // false can never read as "hidden from the beginning".
                     visible =
                         (!lyricsOpen && !queueOpen) ||
                             (queueOpen && playerControlsExpanded) ||
-                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                            (lyricsOpen && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
@@ -1906,7 +1927,11 @@ fun AppleMusicPlayerContent(
                 showPlayerControlsState = showLyricsPlayerControlsState,
                 onShowPlayerControlsChange = { showControls ->
                     showLyricsPlayerControlsState.value = showControls
-                    playerControlsExpanded = showControls
+                    // (2026-09-05) the setting now skips the countdown (keep visible)
+                    // rather than hiding the controls outright — reveal on either
+                    // toggle so the change is immediately visible, and let the
+                    // countdown effect above decide the rest.
+                    playerControlsExpanded = true
                 },
                 onAutoHidePlayerControlsChange = { enabled ->
                     onAutoHideLyricsPlayerControlsChange(enabled)
