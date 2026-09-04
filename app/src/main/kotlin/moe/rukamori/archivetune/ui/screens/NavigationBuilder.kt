@@ -25,13 +25,10 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.constants.HomeScreenStyle
-import moe.rukamori.archivetune.constants.HomeScreenStyleKey
 import moe.rukamori.archivetune.constants.HomeSource
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionDetailsRoute
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
@@ -136,31 +133,20 @@ fun NavGraphBuilder.navigationBuilder(
     composable(Screens.Home.route) {
         // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
         // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
-        // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
+        // owns the tab and leaves the other one exactly as it was.
         // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
             SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
             return@composable
         }
 
-        val homeScreenStyle by rememberEnumPreference(HomeScreenStyleKey, HomeScreenStyle.DEFAULT)
-        when (homeScreenStyle) {
-            HomeScreenStyle.RUKAMORI -> {
-                RukamoriHomeScreen(
-                    navController,
-                    headerScrollConnection = homeScrollConnection,
-                    listState = homeListState,
-                )
-            }
-
-            HomeScreenStyle.DEFAULT -> {
-                HomeScreen(
-                    navController,
-                    headerScrollConnection = homeScrollConnection,
-                    listState = homeListState,
-                )
-            }
-        }
+        // The YouTube home always renders through this fork's HomeScreen; the alternative
+        // Rukamori layout and its style picker were removed (2026-09-04).
+        HomeScreen(
+            navController,
+            headerScrollConnection = homeScrollConnection,
+            listState = homeListState,
+        )
     }
     composable(
         Screens.Library.route,

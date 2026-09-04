@@ -148,3 +148,23 @@ phantom dependency left after the playback stack moved to
   these feed the fork's own Tidal/Qobuz instance discovery
   (`TidalAudioProvider`, `QobuzAudioProvider`, `PoolAccountManager`) and are
   part of the multi-source playback invariant, not Rukamori phone-home.
+
+## 8. Home layout style pickers (deleted 2026-09-04)
+
+The Appearance screen's **"Home screen style"** (`homeScreenStyle`:
+ArchiveTune / Rukamori, for the YouTube home) and **"Spotify home style"**
+(`spotifyHomeStyle`: Spotify / ArchiveTune / Rukamori, for the Spotify home)
+settings were removed along with their code:
+
+- `ui/screens/RukamoriHomeScreen.kt` — the alternative upstream-port layout
+  for the YouTube home. The YouTube home now always renders via
+  `HomeScreen.kt`.
+- `SpotifyHomeStyle` / `SpotifyHomeStyleKey` / `HomeScreenStyle` /
+  `HomeScreenStyleKey` in `constants/PreferenceKeys.kt`, the two
+  `EnumListPreference` entries in `AppearanceSettings.kt`, their
+  `SettingsDataBuilders.kt` search children, and the `home_screen_style*` /
+  `spotify_home_style*` strings. `SpotifyHomeScreen.kt` now always uses
+  Spotify's own geometry (`rememberSpotifyHomeMetrics`).
+- The `SpotifyHomeScreen` itself and the `HomeSource` YouTube/Spotify switcher
+  are **kept on purpose** — only the layout pickers went away. Stored
+  `homeScreenStyle`/`spotifyHomeStyle` preference values are simply ignored.

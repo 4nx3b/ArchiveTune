@@ -1036,14 +1036,6 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
-/** Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = upstream rukamori layout. */
-enum class HomeScreenStyle {
-    DEFAULT,
-    RUKAMORI,
-}
-
-val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
-
 /**
  * Which service the Home tab is showing. The two homes are separate pages you switch between,
  * not one feed with the other stacked into it — signing into Spotify must not cost you the
@@ -1052,10 +1044,10 @@ val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
  * SPOTIFY resolves back to YOUTUBE while [SpotifySpDcKey] is blank (see NavigationBuilder), so a
  * signed-out user can never be stranded on an empty page.
  *
- * This briefly lived as a third `HomeScreenStyle` case, which conflated "which service" with
- * "which layout" and meant the two could not be chosen independently. `toEnum` falls back to the
- * default on an unknown name, so anyone who had picked that case lands on the YouTube home and
- * finds Spotify on the switcher.
+ * This briefly lived as a third case of a layout-style enum, which conflated "which service"
+ * with "which layout" and meant the two could not be chosen independently. `toEnum` falls back
+ * to the default on an unknown name, so anyone who had picked that case lands on the YouTube
+ * home and finds Spotify on the switcher.
  */
 enum class HomeSource {
     YOUTUBE,
@@ -1063,21 +1055,6 @@ enum class HomeSource {
 }
 
 val HomeSourceKey = stringPreferencesKey("homeSource")
-
-/**
- * Layout style for the Spotify home, mirroring [HomeScreenStyle] for the YouTube one.
- *
- * SPOTIFY is the default and is the geometry Spotify itself uses — tracks two rows deep, wide
- * cards. DEFAULT and RUKAMORI render the same Spotify data in the geometry of the two YouTube
- * homes, so the page matches whichever of those the user already prefers.
- */
-enum class SpotifyHomeStyle {
-    SPOTIFY,
-    DEFAULT,
-    RUKAMORI,
-}
-
-val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
 
 enum class PlayerDesignStyle {
     /**
