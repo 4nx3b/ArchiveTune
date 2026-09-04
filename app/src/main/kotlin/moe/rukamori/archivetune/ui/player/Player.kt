@@ -2057,6 +2057,10 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            // The lyrics card's "Show" opens the full lyrics page, the same
+                            // surface every other style reaches — the card is a preview, not a
+                            // second lyrics implementation.
+                            onShowLyrics = { isLyricsScreenVisible = true },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2507,6 +2511,10 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
+                            // The lyrics card's "Show" opens the full lyrics page, the same
+                            // surface every other style reaches — the card is a preview, not a
+                            // second lyrics implementation.
+                            onShowLyrics = { isLyricsScreenVisible = true },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
