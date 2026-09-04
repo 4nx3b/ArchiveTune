@@ -938,6 +938,26 @@ object TidalAudioProvider {
         return best
     }
 
+    /**
+     * Real catalog-search probe for the Settings → Playback → Artwork →
+     * "Canvas Check" diagnostic (2026-09-04, user request: "in the canvas
+     * check there's no tidal option"). Performs the exact search the Tidal
+     * artwork path performs — the user's own HiFi/QQDL instances first,
+     * falling back to the public tidal.com/v1 catalog API — so the reported
+     * state is what Tidal artwork resolution would actually experience
+     * right now.
+     *
+     * Returns null when every endpoint failed at the network level, and the
+     * (possibly empty) result array when the catalog answered.
+     */
+    fun probeCatalogSearch(
+        term: String,
+        exactIsrc: Boolean = false,
+    ): JSONArray? = searchTracks(term, exactIsrc)
+
+    /** How many user-configured Tidal download instances are live candidates right now. */
+    fun configuredInstanceCount(): Int = orderedEndpoints().size
+
     private fun contentArtworkScore(
         track: MatchedTrack,
         query: Query,

@@ -79,25 +79,23 @@ import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
-import moe.rukamori.archivetune.constants.SpotifyHomeStyle
-import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
- * The geometry that separates the three [SpotifyHomeStyle] looks. The sections themselves are the
- * same Spotify data in the same order under every style — only how densely they are laid out
- * changes, which is also the only thing that actually differs between the two YouTube homes.
+ * The geometry of the Spotify home page. The sections themselves are the same Spotify data in
+ * the same order — this only decides how densely they are laid out.
  *
  * Holding it as one value rather than branching inside each row keeps the four section rows to a
- * single implementation apiece; three copies of each would drift the first time one is touched.
+ * single implementation apiece. The "Spotify home style" picker that offered the YouTube homes'
+ * geometry here was removed (2026-09-04); these are Spotify's own proportions, the values this
+ * screen shipped with.
  */
 @androidx.compose.runtime.Immutable
 data class SpotifyHomeMetrics(
-    /** Rows deep the track grid runs. Spotify stacks two; the Rukamori home packs four. */
+    /** Rows deep the track grid runs. Spotify stacks two. */
     val trackRows: Int,
     val trackItemWidth: Dp,
     /** Height of one row of the track grid; total grid height is this times [trackRows]. */
@@ -110,46 +108,18 @@ data class SpotifyHomeMetrics(
 )
 
 @Composable
-fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics {
-    val style by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
-    return remember(style) {
-        when (style) {
-            // Spotify's own proportions, and the values this screen shipped with.
-            SpotifyHomeStyle.SPOTIFY ->
-                SpotifyHomeMetrics(
-                    trackRows = 2,
-                    trackItemWidth = 240.dp,
-                    trackRowHeight = 128.dp,
-                    cardWidth = 150.dp,
-                    artistSize = 140.dp,
-                    contentPadding = 16.dp,
-                    itemSpacing = 12.dp,
-                )
-            // Matches HomeScreen: single-row carousels, 12dp gutters, GridThumbnailHeight cards.
-            SpotifyHomeStyle.DEFAULT ->
-                SpotifyHomeMetrics(
-                    trackRows = 1,
-                    trackItemWidth = 300.dp,
-                    trackRowHeight = 72.dp,
-                    cardWidth = 128.dp,
-                    artistSize = 128.dp,
-                    contentPadding = 12.dp,
-                    itemSpacing = 8.dp,
-                )
-            // Matches RukamoriHomeScreen: deep grids, small cards, tight gutters.
-            SpotifyHomeStyle.RUKAMORI ->
-                SpotifyHomeMetrics(
-                    trackRows = 4,
-                    trackItemWidth = 280.dp,
-                    trackRowHeight = 64.dp,
-                    cardWidth = 112.dp,
-                    artistSize = 104.dp,
-                    contentPadding = 8.dp,
-                    itemSpacing = 6.dp,
-                )
-        }
+fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics =
+    remember {
+        SpotifyHomeMetrics(
+            trackRows = 2,
+            trackItemWidth = 240.dp,
+            trackRowHeight = 128.dp,
+            cardWidth = 150.dp,
+            artistSize = 140.dp,
+            contentPadding = 16.dp,
+            itemSpacing = 12.dp,
+        )
     }
-}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable

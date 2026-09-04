@@ -98,6 +98,12 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.layout.Box
 
 /**
  * Process-lived cache of the last on-demand health-check results so that the checked status (and
@@ -555,6 +561,12 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
+    // Header haze (2026-09-04): the scrolling content is the haze
+    // source; the transparent pill header zone blurs whatever
+    // scrolls under it.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -580,9 +592,15 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -596,7 +614,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
         Column(
             Modifier
-                .padding(top = topPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal,
@@ -605,6 +622,8 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
+                .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
@@ -962,7 +981,15 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    }
+    
+        // Header haze overlay — later sibling of the scrolling
+        // content so it draws on top of it, under the pill header.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
+}
 }
 
 /**

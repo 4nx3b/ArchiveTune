@@ -80,6 +80,9 @@ import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.ui.utils.preferredThumbnailRatio
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -169,6 +172,27 @@ fun Modifier.homeFeedThumbnailBorder(shape: Shape): Modifier =
  * content) and must share the exact same state object.
  */
 val LocalHomeHazeState = compositionLocalOf<HazeState?> { null }
+
+/**
+ * The Search route's twin of [LocalHomeHazeState] (2026-09-04 search-page
+ * redesign: "Redesign the whole search page from scratch with the same
+ * behaviour and reference from Home page... search text in the middle with
+ * haze"). A separate instance from the Home one so the two routes never
+ * cross-sample during the slide transition; SearchScreen tags its root Box
+ * as this blur's source and MainActivity renders the same [HomeTopFadeBlur]
+ * material over the Search top bar.
+ */
+val LocalSearchHazeState = compositionLocalOf<HazeState?> { null }
+
+/**
+ * The Library tab's twin of [LocalHomeHazeState] (2026-09-04: "Implement the
+ * same home page ui and behaviour for setting main page and library tab main
+ * page too"). A separate instance so the top-level routes never cross-sample
+ * during the fade-through transition; LibraryScreen tags its root Box as this
+ * blur's source and MainActivity renders the same [HomeTopFadeBlur] material
+ * over the Library top bar, whose content scrolls under it.
+ */
+val LocalLibraryHazeState = compositionLocalOf<HazeState?> { null }
 
 // ============================================================================
 // Shimmer skeletons (ported from BitChord Skeletons.kt). Grey stand-ins for
@@ -400,6 +424,13 @@ private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
  * artwork with the hairline border, the title one line below, the subtitle
  * under that. Interactions (tap to open / play, hold for the menu) and the
  * active-track visuals come from the fork's existing components.
+ *
+ * [thumbnailAspectRatio] defaults to the square BitChord card, but video
+ * shelves pass the thumbnail's REAL ratio (16:9) so music-video thumbnails
+ * keep their actual breadth and width instead of being cropped into the
+ * square — and those landscape frames skip the hairline border entirely
+ * (user request 2026-09-04: "The thumbnails should have their actual breadth
+ * and width without any borders").
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -413,9 +444,13 @@ fun HomeFeedShelfCard(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     isCircular: Boolean = false,
+    thumbnailAspectRatio: Float = 1f,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (isCircular) CircleShape else RoundedCornerShape(HomeShelfCardCorner)
+    // Landscape (video) frames render borderless; square sleeves keep the
+    // hairline that keeps pale covers from dissolving into the page.
+    val isVideoFrame = !isCircular && kotlin.math.abs(thumbnailAspectRatio - 1f) > 0.001f
     Column(
         modifier =
             modifier
@@ -433,11 +468,12 @@ fun HomeFeedShelfCard(
             isActive = isActive,
             isPlaying = isPlaying,
             shape = shape,
+            thumbnailRatio = thumbnailAspectRatio,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .homeFeedThumbnailBorder(shape),
+                    .aspectRatio(thumbnailAspectRatio)
+                    .let { m -> if (!isVideoFrame) m.homeFeedThumbnailBorder(shape) else m },
         )
         Spacer(Modifier.height(10.dp))
         Row(
@@ -623,6 +659,15 @@ fun HomeFeedYTItemCard(
             is ArtistItem -> item.subscriberCountText.orEmpty()
             is PlaylistItem -> item.songCountText.orEmpty()
         }
+    // Video thumbnails keep their REAL aspect ratio (user request 2026-09-04:
+    // "The thumbnails should have their actual breadth and width without any
+    // borders") — YouTube music-video thumbnails are 16:9, so song cards from
+    // the remote shelves render as landscape cards instead of the 16:9 image
+    // being cropped into the old square frame (the earlier "white empty
+    // borders" fix's Crop behaviour, which the user rejected). Square artwork
+    // (albums, playlists) and circular avatars (artists) are unchanged.
+    val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
+    val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
     HomeFeedShelfCard(
         thumbnailUrl = item.thumbnail,
         title = item.title,
@@ -630,6 +675,7 @@ fun HomeFeedYTItemCard(
         isCircular = item is ArtistItem,
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
+        thumbnailAspectRatio = if (item is ArtistItem) 1f else resolvedThumbnailRatio,
         onClick = {
             when (item) {
                 is SongItem -> onPlaySongFromSection(item.id)

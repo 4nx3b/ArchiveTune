@@ -50,7 +50,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -94,10 +93,15 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.App.Companion.forgetAccount
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
 import moe.rukamori.archivetune.constants.AccountNameKey
@@ -116,8 +120,9 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.SavedAccount
@@ -151,7 +156,6 @@ fun AccountSettings(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val coroutineScope = rememberCoroutineScope()
-    val scrollBehavior = appBarScrollBehavior()
 
     val accountLabel = stringResource(R.string.account)
     val generalLabel = stringResource(R.string.general)
@@ -176,6 +180,7 @@ fun AccountSettings(
     // isLoggedIn below is derived from the cookie. The token is never rendered.
     val (oauthRefreshToken, _) = rememberPreference(InnerTubeOAuthRefreshTokenKey, "")
     val hasOAuthSession = oauthRefreshToken.isNotBlank()
+
     val savedAccounts =
         remember(savedAccountsJson) {
             SavedAccountCollection(decodeSavedAccounts(savedAccountsJson))
@@ -275,14 +280,20 @@ fun AccountSettings(
     }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        // Fixed (2026-09-04, user report: "There's empty space between headers
+        // and actual content in updates and account settings page"): the
+        // LargeFlexibleTopAppBar reserved its full EXPANDED height (~152dp) even
+        // with an empty title, leaving a dead band between the pill header and
+        // the first account row. A pinned single-row TopAppBar (the exact
+        // DebugSettings pattern) replaces it — same transparent colors, same
+        // FrostedHeaderPill navigation slot, no expanded state. The LazyColumn's
+        // top spacing stays in contentPadding so content still flows under the
+        // transparent bar into the header haze.
+        modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFlexibleTopAppBar(
+            androidx.compose.material3.TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -304,13 +315,17 @@ fun AccountSettings(
                         )
                     }
                 },
-                windowInsets = TopAppBarDefaults.windowInsets,
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                    TopAppBarDefaults.topAppBarColors(
+                        // Header haze (2026-09-04, user request: "Add the same
+                        // haze effect in Account page and stats page in
+                        // settings"): the bar stays transparent so the list
+                        // scrolls under it into the progressive top-fade blur,
+                        // exactly like the Home route and the other ported
+                        // settings screens (About / Updates / Developer).
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -319,6 +334,12 @@ fun AccountSettings(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
+        // Header haze (2026-09-04): the LazyColumn below is the haze source
+        // (its top spacing is contentPadding, so content scrolls under the
+        // now-transparent header); the overlay is a later sibling so it draws
+        // on top of the list, under the pinned FrostedHeaderPill.
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(
             modifier =
                 Modifier
@@ -335,7 +356,9 @@ fun AccountSettings(
                         .fillMaxHeight()
                         .widthIn(max = AccountContentMaxWidth)
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter),
+                        .align(Alignment.TopCenter)
+                        // Haze source for the header's top-fade blur.
+                        .hazeSource(headerHaze),
                 contentPadding =
                     PaddingValues(
                         start = 16.dp,
@@ -525,6 +548,13 @@ fun AccountSettings(
                     VersionStamp()
                 }
             }
+
+            // Header haze overlay — later sibling of the list so it draws on
+            // top of the scrolling content, under the pinned pill header.
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 
@@ -1375,3 +1405,5 @@ private fun TokenEditorDialog(
         },
     )
 }
+
+

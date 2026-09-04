@@ -97,9 +97,9 @@ import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.BrowseEndpoint
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
+import moe.rukamori.archivetune.innertube.pages.MoodAndGenres
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.search.SearchDiscoveryUiModel
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
@@ -107,8 +107,12 @@ import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
+import moe.rukamori.archivetune.ui.screens.HomeAtmosphereBackground
+import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
 import moe.rukamori.archivetune.ui.screens.rememberMoodAndGenresArtworkModel
 import moe.rukamori.archivetune.ui.screens.rememberMoodAndGenresArtworkUrl
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryScreenState
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryTab
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
@@ -157,10 +161,26 @@ fun SearchScreen(
         }
     }
 
+    // ── Search-page redesign (2026-09-04) ──
+    // "Redesign the whole search page from scratch with the same behaviour
+    // and reference from Home page. the only difference is that there should
+    // be search text in the middle with haze include offcourse and no app
+    // logo on the left or search icon in liquid glass on the right."
+    //
+    // The shell (MainActivity) now renders the Home route's pinned
+    // transparent top bar with the centered "Search" title and the SAME
+    // BitChord progressive top-fade blur (HomeTopFadeBlur) over this
+    // screen's haze state; this root Box is the blur's SOURCE (the exact
+    // HomeScreen pattern — the source must cover the strip under the pinned
+    // bar so the blur samples what scrolls there). The Muzo atmospheric
+    // backdrop gives the page the same deep, softly-lit base the Home feed
+    // floats on, so the two tabs read as one design language.
+    val searchHazeState = LocalSearchHazeState.current
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
+                .let { m -> if (searchHazeState != null) m.hazeSource(searchHazeState) else m }
                 .then(
                     if (headerScrollConnection != null) {
                         Modifier.nestedScroll(headerScrollConnection)
@@ -169,11 +189,7 @@ fun SearchScreen(
                     },
                 ),
     ) {
-        // Minimal: no tonal gradient backdrop — the redesigned Search page
-        // sits on the plain dark surface so the floating ArchiveTune top bar
-        // and the search field are the only chrome above the feed. This
-        // matches the redesigned Home page's reduced tonal intensity and
-        // keeps the page calm and premium.
+        HomeAtmosphereBackground()
 
         LazyColumn(
             state = lazyListState,
@@ -306,6 +322,139 @@ fun SearchScreen(
                                         onChipClick = { artist ->
                                             navController.navigate("artist/${artist.id}")
                                         },
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
+                            }
+
+                            // ── Explore tab fill-out (2026-09-04) ─────────────────
+                            // User request: "Fill up more content in search's
+                            // explore tab." Three real-data sections join the
+                            // recent + trending chips so the tab is a full
+                            // discovery page (all pulled from the SAME
+                            // SearchDiscoveryRepository feed the Suggestions
+                            // tab uses — no mock content):
+                            //   3. Trending Songs — tappable song cards that
+                            //      play on tap (long-press opens the song menu)
+                            //   4. New Albums — tappable album cards navigating
+                            //      to the album page (long-press opens the
+                            //      album menu)
+                            //   5. Moods & genres — the mood/genre cards the
+                            //      discovery model already carries (previously
+                            //      rendered nowhere) navigating to their browse
+                            //      pages.
+                            if (currentState.data.suggestedSongs.isNotEmpty()) {
+                                item(
+                                    key = "search_explore_songs",
+                                    contentType = "explore_songs",
+                                ) {
+                                    SearchSuggestionsRowSection(
+                                        title = stringResource(R.string.search_trending_songs),
+                                        items = currentState.data.suggestedSongs.take(8),
+                                        navController = navController,
+                                        modifier = Modifier.animateItem(),
+                                    ) { song ->
+                                        val playerConnection = LocalPlayerConnection.current
+                                        val menuState = LocalMenuState.current
+                                        val haptic = LocalHapticFeedback.current
+                                        val isPlayingState = playerConnection?.isPlaying?.collectAsStateWithLifecycle()
+                                        val mediaMetadataState = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()
+                                        val isPlaying = isPlayingState?.value ?: false
+                                        val isActive = song.id == mediaMetadataState?.value?.id
+                                        YouTubeGridItem(
+                                            item = song,
+                                            isActive = isActive,
+                                            isPlaying = isPlaying && isActive,
+                                            modifier =
+                                                Modifier
+                                                    .animateItem()
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            if (playerConnection != null) {
+                                                                if (isActive) {
+                                                                    playerConnection.player.togglePlayPause()
+                                                                } else {
+                                                                    playerConnection.playQueue(
+                                                                        YouTubeQueue(
+                                                                            endpoint = song.endpoint ?: WatchEndpoint(videoId = song.id),
+                                                                            preloadItem = song.toMediaMetadata(),
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            }
+                                                        },
+                                                        onLongClick = {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            menuState.show {
+                                                                YouTubeSongMenu(
+                                                                    song = song,
+                                                                    navController = navController,
+                                                                    onDismiss = menuState::dismiss,
+                                                                )
+                                                            }
+                                                        },
+                                                    ),
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (currentState.data.trendingAlbums.isNotEmpty()) {
+                                item(
+                                    key = "search_explore_albums",
+                                    contentType = "explore_albums",
+                                ) {
+                                    SearchSuggestionsRowSection(
+                                        title = stringResource(R.string.search_new_albums),
+                                        items = currentState.data.trendingAlbums.take(8),
+                                        navController = navController,
+                                        modifier = Modifier.animateItem(),
+                                    ) { album ->
+                                        val menuState = LocalMenuState.current
+                                        val haptic = LocalHapticFeedback.current
+                                        YouTubeGridItem(
+                                            item = album,
+                                            modifier =
+                                                Modifier
+                                                    .animateItem()
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            navController.navigate("album/${album.id}")
+                                                        },
+                                                        onLongClick = {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            menuState.show {
+                                                                YouTubeAlbumMenu(
+                                                                    albumItem = album,
+                                                                    navController = navController,
+                                                                    onDismiss = menuState::dismiss,
+                                                                )
+                                                            }
+                                                        },
+                                                    ),
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (currentState.data.moodAndGenres.isNotEmpty()) {
+                                item(
+                                    key = "search_explore_moods_title",
+                                    contentType = "section_title",
+                                ) {
+                                    SearchSectionHeader(
+                                        title = stringResource(R.string.search_moods_genres),
+                                        leadingIconRes = R.drawable.palette,
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
+                                item(
+                                    key = "search_explore_moods_grid",
+                                    contentType = "explore_moods",
+                                ) {
+                                    BasedOnWhatYouLikeGrid(
+                                        items = currentState.data.moodAndGenres.take(8),
+                                        navController = navController,
                                         modifier = Modifier.animateItem(),
                                     )
                                 }
@@ -780,12 +929,12 @@ private fun RecentSearchMonogram(query: String) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BasedOnWhatYouLikeGrid(
-    data: SearchDiscoveryUiModel,
+    items: List<MoodAndGenres.Item>,
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
     val columns = 2
-    val rows = (data.moodAndGenres.size + columns - 1) / columns
+    val rows = (items.size + columns - 1) / columns
 
     Column(
         modifier =
@@ -793,7 +942,7 @@ private fun BasedOnWhatYouLikeGrid(
                 .fillMaxWidth()
                 .padding(horizontal = SearchHorizontalPadding),
     ) {
-        data.moodAndGenres.chunked(columns).forEach { rowItems ->
+        items.chunked(columns).forEach { rowItems ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth(),

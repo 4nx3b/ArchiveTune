@@ -25,15 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +42,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+/**
+ * True while menu content renders INSIDE the floating liquid-glass popup
+ * ([BottomSheetMenu] with a live kyant backdrop) — the exact condition the
+ * lyrics popup's `transparentSurface` flag encodes at its call site. While
+ * true, [MenuSurfaceSection] swaps its opaque Muzo card material for a
+ * transparent [Surface] of the same shape so the popup's frosted-glass blur
+ * stays visible behind the rows (user report 2026-09-04: "The background
+ * behind the text is still opaque. This issue was also present in new lyrics
+ * popup design. investigate how it fixed that issue and use the same thing
+ * for this case too" — the LyricsMenu fix was the transparent surface).
+ * Menus rendered anywhere else (plain sheets, dialogs) keep the opaque
+ * material because there is no glass to reveal.
+ */
+val LocalGlassMenuContent = staticCompositionLocalOf { false }
 
 @Composable
 fun NewActionButton(
@@ -137,20 +151,6 @@ fun NewMenuItem(
 }
 
 @Composable
-fun NewMenuSectionHeader(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-    )
-}
-
-@Composable
 fun NewActionGrid(
     actions: List<NewAction>,
     modifier: Modifier = Modifier,
@@ -225,33 +225,6 @@ fun NewMenuContent(
 }
 
 @Composable
-fun NewIconButton(
-    icon: @Composable () -> Unit,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    backgroundColor: Color = Color.Unspecified,
-    contentColor: Color = Color.Unspecified,
-) {
-    val containerColor = if (backgroundColor.isSpecified) backgroundColor else MaterialTheme.colorScheme.surfaceContainerHigh
-    val iconContentColor = if (contentColor.isSpecified) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-
-    FilledTonalIconButton(
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        shapes = IconButtonDefaults.shapes(),
-        colors =
-            IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = containerColor,
-                contentColor = iconContentColor,
-            ),
-    ) {
-        icon()
-    }
-}
-
-@Composable
 fun NewMenuContainer(
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier,
@@ -277,6 +250,16 @@ fun MenuSurfaceSection(
     // above the sheet's own charcoal (#3A3A3C over #1C1C1E), with the
     // reference's ~16pt radius. One surface per group of rows; the rows
     // inside carry thin dividers, not individual cards.
+    //
+    // 2026-09-04: inside the floating liquid-glass popup this card is the
+    // opaque flat grey box the user reported ("the background behind the
+    // text is still opaque"). The SAME fix the new lyrics popup uses
+    // (LyricsMenu's `transparentSurface = true`): replace the card with a
+    // transparent Surface of the same shape so the popup's frosted blur
+    // shows through. Gated by [LocalGlassMenuContent], provided only while
+    // the glass popup is actually sampling a backdrop — every menu rendered
+    // through `menuState.show { ... }` gets the fix without touching any
+    // menu file, and non-glass contexts keep the original material.
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val sectionColor =
         if (dark) {
@@ -284,11 +267,36 @@ fun MenuSurfaceSection(
         } else {
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
         }
+    val onGlassPopup = LocalGlassMenuContent.current
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = sectionColor,
+        color = if (onGlassPopup) Color.Transparent else sectionColor,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)
     }
+}
+
+/**
+ * The divider BETWEEN menu sections (2026-09-04, user report: "between some
+ * list there's no dividers and they have empty space between them too").
+ *
+ * Rows inside one [MenuSurfaceSection] have always drawn [HorizontalDivider]s
+ * between them, but the SECTIONS themselves were separated only by the 4dp
+ * gap the previous tightening left — and since [MenuSurfaceSection] renders
+ * transparent on the glass popup, there was no card boundary either: some
+ * neighbouring rows showed a divider, others just blank space. This draws
+ * the same divider the in-section rows use (start-inset to clear the icons,
+ * the theme's outlineVariant — which the glass overlay remaps to a faint
+ * white hairline), so every list boundary is a visible hairline with no
+ * blank gap.
+ */
+@Composable
+fun MenuSectionDivider(
+    modifier: Modifier = Modifier,
+) {
+    HorizontalDivider(
+        modifier = modifier.padding(start = 56.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
 }

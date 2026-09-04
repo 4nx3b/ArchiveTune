@@ -275,6 +275,7 @@
     <string name="local_songs_no_matches_desc">Prueba con otra canción, otro artista u otro álbum.</string>
     <string name="sort_by_album">Álbum</string>
     <string name="lyrics_line_blur">Desenfocar letras de canciones</string>
+    <string name="show_lyrics_player_controls">Mostrar controles del reproductor</string>
     <string name="quick_picks_display_mode">Modo de visualización «Selecciones rápidas»</string>
     <string name="quick_picks_display_mode_card">Tarjeta</string>
     <string name="quick_picks_display_mode_list">Lista</string>
@@ -577,7 +578,6 @@
     <string name="music_recognition_notification_recording_failed_text">Es posible que la aplicación que se está reproduciendo esté bloqueando la captura de audio, o que la reproducción se haya detenido.</string>
     <string name="music_recognition_notification_signature_failed_text">La grabación de audio no contenía suficiente música como para permitir la identificación.</string>
     <string name="music_recognition_notification_recognition_failed_text">El servicio de reconocimiento no pudo identificar este audio. Inténtelo de nuevo en breve.</string>
-    <string name="show_lyrics_player_controls">Mostrar controles del reproductor</string>
     <string name="storage_clear_song_cache_progress">Borrando la caché de canciones... %1$d %%</string>
     <string name="storage_clear_downloads_progress">Borrando descargas... %1$d%%</string>
     <string name="storage_clear_image_cache_progress">Borrando la caché de imágenes... %1$d%%</string>

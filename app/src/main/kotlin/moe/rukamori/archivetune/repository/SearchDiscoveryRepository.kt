@@ -8,11 +8,16 @@
 package moe.rukamori.archivetune.repository
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.Artist
@@ -65,35 +70,91 @@ class SearchDiscoveryRepository
 
         private val cache = ConcurrentHashMap<String, CachedSnapshot>(1)
 
+        // ── Single-flight + stale-while-revalidate (2026-09-04) ─────────────────
+        //
+        // "Make the search tab load extremely fast": three changes that keep
+        // the perceived load at ~zero —
+        //  1. Single-flight: concurrent callers (the app-start warm-up and a
+        //     user who taps Search early) share ONE network load instead of
+        //     doubling it; the second caller waits on the mutex, then gets
+        //     the cache the first one just filled.
+        //  2. Stale-while-revalidate: an expired-but-within-grace snapshot is
+        //     served IMMEDIATELY (instant Success state on tab entry) while a
+        //     background refresh updates the cache for the next entry — the
+        //     user never waits on the network to see content again.
+        //  3. warmUp(): fired by MainActivity ~1.5 s after first composition,
+        //     so the cache is hot before the user ever taps the Search tab.
+        private val loadMutex = Mutex()
+        private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        /**
+         * App-start warm-up (2026-09-04): fills the discovery cache in the
+         * background so the first tap on the Search tab reads it instantly.
+         * Safe to call repeatedly — a load already in flight is shared, a
+         * fresh cache is a no-op.
+         */
+        fun warmUp() {
+            if (cache[CacheKey]?.expiresAtMs ?: 0L > System.currentTimeMillis()) return
+            refreshScope.launch {
+                runCatching { loadDiscovery(forceRefresh = false) }
+            }
+        }
+
         suspend fun loadDiscovery(forceRefresh: Boolean = false): Result<SearchDiscoveryData> =
             withContext(Dispatchers.IO) {
+                val now = System.currentTimeMillis()
                 if (!forceRefresh) {
                     cache[CacheKey]?.let { snapshot ->
-                        if (snapshot.expiresAtMs > System.currentTimeMillis()) {
+                        if (snapshot.expiresAtMs > now) {
+                            return@withContext Result.success(snapshot.data)
+                        }
+                        // Stale-while-revalidate: expired but still within the
+                        // grace window — serve it NOW so the tab renders
+                        // instantly, and refresh the cache in the background
+                        // for the next entry (the in-flight mutex keeps the
+                        // refresh single-flight; a concurrent forceRefresh
+                        // caller wins the mutex and this refresh then no-ops
+                        // on a fresh cache).
+                        if (snapshot.expiresAtMs > now - STALE_GRACE_MS) {
+                            refreshScope.launch {
+                                runCatching { loadDiscovery(forceRefresh = true) }
+                            }
                             return@withContext Result.success(snapshot.data)
                         }
                     }
                 }
 
-                try {
-                    val data = loadDiscoveryFromNetwork()
-                    cache[CacheKey] =
-                        CachedSnapshot(
-                            data = data,
-                            expiresAtMs = System.currentTimeMillis() + CACHE_TTL_MS,
-                        )
-                    Result.success(data)
-                } catch (throwable: Throwable) {
-                    if (throwable is CancellationException) throw throwable
-                    // On failure, serve stale cache if we still have one rather than showing
-                    // a hard error — the user is far less annoyed by slightly-old content
-                    // than by an empty state.
-                    cache[CacheKey]?.let { snapshot ->
-                        if (snapshot.expiresAtMs > System.currentTimeMillis() - STALE_GRACE_MS) {
-                            return@withContext Result.success(snapshot.data)
+                loadMutex.withLock {
+                    // Double-check after acquiring: another caller (warm-up,
+                    // concurrent entry) may have just filled the cache.
+                    if (!forceRefresh) {
+                        cache[CacheKey]?.let { snapshot ->
+                            if (snapshot.expiresAtMs > System.currentTimeMillis()) {
+                                return@withContext Result.success(snapshot.data)
+                            }
                         }
                     }
-                    Result.failure(throwable)
+
+                    try {
+                        val data = loadDiscoveryFromNetwork()
+                        cache[CacheKey] =
+                            CachedSnapshot(
+                                data = data,
+                                expiresAtMs = System.currentTimeMillis() + CACHE_TTL_MS,
+                            )
+                        Result.success(data)
+                    } catch (throwable: Throwable) {
+                        if (throwable is CancellationException) throw throwable
+                        // On failure, serve stale cache if we still have one rather than showing
+                        // a hard error — the user is far less annoyed by slightly-old content
+                        // than by an empty state.
+                        cache[CacheKey]?.let { snapshot ->
+                            if (snapshot.expiresAtMs > System.currentTimeMillis() - STALE_GRACE_MS) {
+                                return@withContext Result.success(snapshot.data)
+                            }
+                        }
+                        Result.failure(throwable)
+                    }
                 }
             }
 

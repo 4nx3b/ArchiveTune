@@ -8,34 +8,30 @@
 package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -59,22 +55,38 @@ import coil3.size.Size
 /** The reference's active/liked accent (cyan-teal, #32D2CA). */
 val MuzoMenuAccent = Color(0xFF32D2CA)
 
-/** Artwork size in the song header (reference: ~56-64pt). */
-private val MuzoMenuHeaderArtwork = 64.dp
+// ── Metric parity with the player's inner overflow menu (2026-09-04) ──
+// User report: "The overflow menu which can be accessed outside of the song's
+// full player screen has wierd spacing. Make the dimensions and spacing as
+// same as The inner overflow menu of the song which is accessed from the full
+// screen player." The inner menu (PlayerMenu) renders: a 28dp-corner
+// surfaceContainerLow header card with a 14/12-padded row and a 56dp artwork
+// (16dp corners), then a MenuSurfaceSection wrapping NewActionGrid tiles
+// (96dp min height, 28dp icon box, labelLarge SemiBold label, 12dp gaps).
+// These constants mirror those exact values so both menus read identically.
 
-/** Corner radius of the header artwork (reference: ~12pt). */
-private val MuzoMenuHeaderArtworkCorner = 12.dp
+/** Artwork size in the song header (inner menu: 56dp). */
+private val MuzoMenuHeaderArtwork = 56.dp
 
-/** Corner radius of a quick-action tile (reference: ~12-14pt). */
-private val MuzoMenuTileCorner = 14.dp
+/** Corner radius of the header artwork (inner menu: 16dp). */
+private val MuzoMenuHeaderArtworkCorner = 16.dp
 
-/** Horizontal padding of the header and tile row. */
-private val MuzoMenuHorizontalPadding = 16.dp
+/** Corner radius of the header card (inner menu: 28dp). */
+private val MuzoMenuHeaderCardCorner = 28.dp
+
+/** Row padding inside the header card (inner menu: h=14, v=12). */
+private val MuzoMenuHeaderRowPaddingHorizontal = 14.dp
+private val MuzoMenuHeaderRowPaddingVertical = 12.dp
+
+/** Horizontal padding around the action-grid section (inner menu: 12/12). */
+private val MuzoMenuGridPadding = 12.dp
 
 /**
- * The sheet's song header: square rounded artwork on the left, the bold
- * title and muted artist stacked to its right — the reference's header
- * block. Purely presentational; the caller feeds real song data.
+ * The sheet's song header, rebuilt with the inner (full-screen-player) menu's
+ * exact geometry (2026-09-04): a 28dp-corner `surfaceContainerLow` card with a
+ * 14/12-padded row — 56dp artwork at 16dp corners, 14dp gap, then the bold
+ * titleMedium title and muted bodyMedium artist stacked to its right. Purely
+ * presentational; the caller feeds real song data.
  */
 @Composable
 fun MuzoSongMenuHeader(
@@ -83,34 +95,39 @@ fun MuzoSongMenuHeader(
     artist: String?,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = MuzoMenuHorizontalPadding + 4.dp)
-                .padding(vertical = 4.dp),
+    Surface(
+        shape = RoundedCornerShape(MuzoMenuHeaderCardCorner),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = modifier.fillMaxWidth(),
     ) {
-        MuzoHeaderArtwork(artworkUrl)
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!artist.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier =
+                Modifier.padding(
+                    horizontal = MuzoMenuHeaderRowPaddingHorizontal,
+                    vertical = MuzoMenuHeaderRowPaddingVertical,
+                ),
+        ) {
+            MuzoHeaderArtwork(artworkUrl)
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = artist,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (!artist.isNullOrBlank()) {
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -165,85 +182,41 @@ class MuzoQuickAction(
 )
 
 /**
- * The reference's quick-action row: four equal tiles, each a rounded
- * translucent surface with a large icon above a small label. The caller owns
- * the actions and their real state — this only lays them out and colors the
- * active tile.
+ * The quick-action row, rebuilt as the inner menu's action grid (2026-09-04):
+ * the tiles now render inside a [MenuSurfaceSection] card with the inner
+ * menu's 12/12 section padding, using [NewActionButton] geometry — 96dp min
+ * height, 28dp icon box, labelLarge SemiBold label, 12dp inter-tile gaps —
+ * instead of the flat 4-up tile strip the outer menus used. Every action,
+ * callback and state flag stays with the caller; this only lays them out and
+ * colors the active tile with the cyan accent.
  */
 @Composable
 fun MuzoQuickActionRow(
     actions: List<MuzoQuickAction>,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+    MenuSurfaceSection(
         modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = MuzoMenuHorizontalPadding),
+            modifier.padding(
+                horizontal = MuzoMenuGridPadding,
+                vertical = MuzoMenuGridPadding,
+            ),
     ) {
-        actions.forEach { action ->
-            MuzoQuickActionTile(
-                icon = action.icon,
-                label = action.label,
-                onClick = action.onClick,
-                active = action.active,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MuzoQuickActionTile(
-    icon: @Composable () -> Unit,
-    label: String,
-    onClick: () -> Unit,
-    active: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    // The reference's tile material (#3A3A3C on the #1C1C1E sheet): a lighter
-    // translucent step above the sheet's own surface.
-    val tileColor =
-        if (dark) {
-            Color(0xFF3A3A3C).copy(alpha = 0.92f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
-        }
-    val contentColor =
-        if (active) {
-            MuzoMenuAccent
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        }
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(MuzoMenuTileCorner))
-                .background(tileColor)
-                .clickable(onClick = onClick)
-                .padding(vertical = 12.dp, horizontal = 4.dp),
-    ) {
-        CompositionLocalProvider(
-            androidx.compose.material3.LocalContentColor provides contentColor,
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(26.dp),
-            ) {
-                icon()
-            }
-        }
-        Spacer(Modifier.height(7.dp))
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        NewActionGrid(
+            actions =
+                actions.map { action ->
+                    NewAction(
+                        icon = action.icon,
+                        text = action.label,
+                        onClick = action.onClick,
+                        contentColor =
+                            if (action.active) {
+                                MuzoMenuAccent
+                            } else {
+                                Color.Unspecified
+                            },
+                    )
+                },
         )
     }
 }

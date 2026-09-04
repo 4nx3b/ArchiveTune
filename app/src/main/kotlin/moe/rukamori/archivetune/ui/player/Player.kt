@@ -185,6 +185,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -242,6 +243,8 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicPlayerContent
+import moe.rukamori.archivetune.ui.player.spatialflow.SpatialFlowPlayerContent
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -420,7 +423,9 @@ fun BottomSheetPlayer(
         playerDesignStyle == PlayerDesignStyle.V9 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK
+            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
@@ -514,6 +519,21 @@ fun BottomSheetPlayer(
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
+    // ── Spotify-account canvas (2026-09-04) ──
+    // "When users have logged in using their Spotify account the canvas
+    // should be fetched from their actual account using the Spotify tokens
+    // generated from the web auth during login." A connected session (the
+    // sp_dc cookie captured by the web-auth login sheet) enables the
+    // Spotify Canvas path on its own — the user no longer has to find the
+    // "Spotify Canvas" toggle in Player settings first. The tokens are
+    // minted from that same web-auth session by
+    // SpotifyCanvasProvider.tokenProvider (App.kt wires it to
+    // spotifyLibraryRepository.ensureAccessToken()), so the canvaz lookup
+    // runs against the user's ACTUAL account; the title/artist search is
+    // skipped entirely when the playing metadata already carries a
+    // spotifyTrackId from their session.
+    val spotifyConnected by rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyCanvasEffective = spotifyCanvasEnabled || spotifyConnected.isNotBlank()
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -993,7 +1013,9 @@ fun BottomSheetPlayer(
             playerDesignStyle == PlayerDesignStyle.V5 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
-            playerDesignStyle == PlayerDesignStyle.TIKTOK
+            playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+            playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+            playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
         ) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
@@ -1059,6 +1081,17 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
+    // The lyrics overlay belongs to the EXPANDED player: it is opened from it, drawn over it, and
+    // every way out of it — the BackHandler below, LyricsScreen's own, and the top-edge dismiss
+    // drag — is gated on `state.isExpandedOrExpanding`. Nothing tied the overlay's own lifetime to
+    // that, so collapsing the player while lyrics were open (a drag on the sheet, ON_STOP, or a
+    // restore from process death, since the flag is rememberSaveable) left the overlay covering
+    // the whole app with all three of those disabled at once: back did nothing at all and there
+    // was no way back to the player. It closes with the player it was opened from now.
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (!state.isExpandedOrExpanding) isLyricsScreenVisible = false
+    }
+
     // ISSUE 1 FIX: track Apple Music's INLINE lyrics open state separately from
     // the standalone lyrics overlay (isLyricsScreenVisible). Both feed into
     // lyricsFullScreenActive so back-stack screens suspend GPU work during ANY
@@ -1091,10 +1124,22 @@ fun BottomSheetPlayer(
         }
 
     if (!aodModeEnabled) {
+        // Root-overlay back-priority guard (2026-09-04, second report): the
+        // back gesture was still collapsing the full player out from under an
+        // open root popup (overflow menu / Cast picker / details sheet) even
+        // after the handlers were re-ordered — callback registration order is
+        // not a guarantee across predictive-back paths. While a root overlay
+        // is showing, this handler disables itself entirely so back can only
+        // reach the overlay's own dismissal handler: the popup closes first,
+        // the full player stays put (user report: "when I use back navigation
+        // gesture it should return to the full player and not close it
+        // instead"). The overlay-back layering then unwinds one press at a
+        // time: popup → queue/lyrics → collapse.
+        val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
-                queueSheetState.isExpandedOrExpanding ||
-                    state.isExpandedOrExpanding,
+                (queueSheetState.isExpandedOrExpanding ||
+                    state.isExpandedOrExpanding) && !rootOverlayActive,
         ) {
             when {
                 isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false
@@ -1398,12 +1443,12 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val shouldUseV7Canvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||
                     playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9
@@ -1445,7 +1490,8 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = next.spotifyTrackId,
                     )
                 }
             }
@@ -1494,7 +1540,8 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     v7CanvasArtwork = resolvedArtwork
@@ -1533,7 +1580,8 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEnabled,
+                        trySpotifyCanvas = spotifyCanvasEffective,
+                        spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     artworkCanvas = resolvedArtwork
@@ -1635,7 +1683,9 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.V9 &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
-            playerDesignStyle != PlayerDesignStyle.TIKTOK
+            playerDesignStyle != PlayerDesignStyle.TIKTOK &&
+            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
         ) {
             PlayerBackground(
                 playerBackground = playerBackground,
@@ -2000,6 +2050,71 @@ fun BottomSheetPlayer(
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
+} else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
+                    // fully self-contained port of its FullPlayer — artwork pager over the real
+                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
+                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
+                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
+                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
+                    // not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+} else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
+                    // artwork palette, the sleeve on a pager backed by the real queue, then the
+                    // info row, scrubber and transport. Like the two styles above it sizes itself
+                    // to whatever box it is given, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SimpMusicPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            // The lyrics card's "Show" opens the full lyrics page, the same
+                            // surface every other style reaches — the card is a preview, not a
+                            // second lyrics implementation.
+                            onShowLyrics = { isLyricsScreenVisible = true },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
@@ -2054,7 +2169,6 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.size(thumbnailSize),
                                 isPlayerExpanded = state.isExpanded,
-                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
                         Column(
@@ -2421,6 +2535,71 @@ fun BottomSheetPlayer(
                         )
                     }
 
+} else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
+                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
+                    // fully self-contained port of its FullPlayer — artwork pager over the real
+                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
+                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
+                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
+                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
+                    // not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SpatialFlowPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
+} else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
+                    // artwork palette, the sleeve on a pager backed by the real queue, then the
+                    // info row, scrubber and transport. Like the two styles above it sizes itself
+                    // to whatever box it is given, so it is not orientation-branched.
+                    enrichedMetadata?.let { metadata ->
+                        SimpMusicPlayerContent(
+                            mediaMetadata = metadata,
+                            isPlaying = isPlaying,
+                            isLoading = isLoading,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            sliderPosition = sliderPosition,
+                            position = position,
+                            duration = duration,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                            state = state,
+                            menuState = menuState,
+                            bottomSheetPageState = bottomSheetPageState,
+                            currentFormat = currentFormat,
+                            onSeek = onSliderValueChange,
+                            onSeekFinished = onSliderValueChangeFinished,
+                            // The lyrics card's "Show" opens the full lyrics page, the same
+                            // surface every other style reaches — the card is a preview, not a
+                            // second lyrics implementation.
+                            onShowLyrics = { isLyricsScreenVisible = true },
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                        )
+                    }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     enrichedMetadata?.let { metadata ->
                         AppleMusicPlayerContent(
@@ -2487,7 +2666,6 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection),
                                 isPlayerExpanded = state.isExpanded,
-                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
 
@@ -2564,7 +2742,13 @@ fun BottomSheetPlayer(
         //    (possibly light, dynamic-themed) surface. This mirrors upstream
         //    rukamori/ArchiveTune Player.kt.
         val queueOnBackgroundColor =
-            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC || useBlackBackground) {
+            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
+                playerDesignStyle == PlayerDesignStyle.BITCHORD ||
+                playerDesignStyle == PlayerDesignStyle.TIKTOK ||
+                playerDesignStyle == PlayerDesignStyle.SIMPMUSIC ||
+                playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
+                useBlackBackground
+            ) {
                 Color.White
             } else {
                 MaterialTheme.colorScheme.onSurface

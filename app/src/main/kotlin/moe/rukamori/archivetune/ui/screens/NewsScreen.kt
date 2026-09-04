@@ -109,6 +109,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 
 @Composable
 fun NewsScreen(
@@ -126,6 +127,12 @@ fun NewsScreen(
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
+    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
+    // back pill + search pill pinned over the scrolling news list, plus the
+    // header haze — replaces the normal top bar while Liquid Glass is on.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val listState = rememberLazyListState()
 
@@ -137,6 +144,10 @@ fun NewsScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
+            // In glass-header mode the normal bar is hidden (search moves to
+            // the trailing glass pill); the SearchBar still renders here while
+            // search is active so it stays reachable.
+            if (isSearchActive || !glassHeader.liquidGlassActive) {
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -242,15 +253,27 @@ fun NewsScreen(
                     )
                 }
             }
+            }
         },
     ) { innerPadding ->
+        // Glass-header mode: the topBar slot is empty so innerPadding's top
+        // is 0 — the list instead gets the pill zone as its content top
+        // padding and scrolls under the pills/haze like the History page.
+        val contentTopPadding =
+            if (glassHeader.liquidGlassActive && !isSearchActive) {
+                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
+            // pills so the glass actually samples it (2026-09-04 fix)
+            } else {
+                innerPadding.calculateTopPadding()
+            }
+        Box(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = uiState,
             transitionSpec = {
                 fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
                     fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().glassHeaderSource(glassHeader),
             label = "newsContent",
         ) { state ->
             when (state) {
@@ -307,7 +330,7 @@ fun NewsScreen(
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                             contentPadding =
                                 PaddingValues(
-                                    top = innerPadding.calculateTopPadding() + 12.dp,
+                                    top = contentTopPadding + 12.dp,
                                     bottom = innerPadding.calculateBottomPadding() + 24.dp,
                                     start = horizontalPadding,
                                     end = horizontalPadding,
@@ -348,6 +371,18 @@ fun NewsScreen(
                     }
                 }
             }
+        }
+
+        // Persistent glass pills + header haze (History-page behaviour).
+        if (glassHeader.liquidGlassActive && !isSearchActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.news),
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+                onSearch = { isSearchActive = true },
+            )
+        }
         }
     }
 }

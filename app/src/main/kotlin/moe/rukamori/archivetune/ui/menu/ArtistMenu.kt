@@ -13,12 +13,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,6 +52,7 @@ import moe.rukamori.archivetune.ui.component.ArtistListItem
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.dataStore
@@ -90,7 +88,7 @@ fun ArtistMenu(
 
     HorizontalDivider()
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -103,11 +101,11 @@ fun ArtistMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         buildList {
@@ -213,11 +211,11 @@ fun ArtistMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {

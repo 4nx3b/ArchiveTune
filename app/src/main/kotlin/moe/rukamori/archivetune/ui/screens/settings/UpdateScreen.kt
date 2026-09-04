@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +39,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import dev.chrisbanes.haze.hazeSource
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -54,7 +59,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -112,7 +117,6 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.GitCommit
@@ -134,7 +138,6 @@ fun UpdateScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val scrollBehavior = appBarScrollBehavior()
     val coroutineScope = rememberCoroutineScope()
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
     val useWideLayout =
@@ -500,16 +503,31 @@ fun UpdateScreen(
             UpdateChannel.STABLE -> stringResource(R.string.updates_subtitle_stable)
         }
 
+    // Header haze (2026-09-04, user request: "There's no haze effect and
+    // header behaviour like home page in developer options, updates and
+    // about page") — the same progressive top-fade blur the Home route and
+    // the other settings screens use: the scrolling content is the haze
+    // source, the header zone blurs whatever scrolls under it, and the bar
+    // itself stays transparent so the frost is actually visible.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
+        // Fixed (2026-09-04, user report: "There's empty space between headers
+        // and actual content in updates and account settings page"): the
+        // MediumFlexibleTopAppBar reserved its full EXPANDED height (~112dp)
+        // even with an empty title, so a dead band sat between the pill header
+        // and the first content card. A pinned single-row TopAppBar (the exact
+        // DebugSettings/ContentSettings pattern) replaces it — same transparent
+        // colors, same FrostedHeaderPill navigation slot, no expanded state to
+        // reserve. The LazyColumn keeps its contentPadding top so the content
+        // still flows under the transparent bar into the header haze.
+        modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            MediumFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -532,31 +550,41 @@ fun UpdateScreen(
                     }
                 },
                 actions = {},
-                scrollBehavior = scrollBehavior,
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
             )
         },
     ) { paddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
+        val topPadding = paddingValues.calculateTopPadding()
+        Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
-                    ),
+                    )
+                    // Haze source for the header's top-fade blur — the top
+                    // spacing lives in contentPadding so it scrolls away and
+                    // content flows under the (transparent) header, exactly
+                    // like every ported settings screen.
+                    .hazeSource(headerHaze),
             contentPadding =
                 PaddingValues(
                     start = 16.dp,
-                    top = 12.dp,
+                    top = 12.dp + topPadding,
                     end = 16.dp,
-                    bottom = SettingsDimensions.ScreenBottomPadding,
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                 ),
             verticalArrangement = Arrangement.spacedBy(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -643,6 +671,15 @@ fun UpdateScreen(
                             .widthIn(max = maximumContentWidth),
                 )
             }
+        }
+
+            // Header haze overlay — later sibling of the scrolling content
+            // so it draws on top of it, under the pinned pill header (the
+            // same placement every ported settings screen uses).
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 

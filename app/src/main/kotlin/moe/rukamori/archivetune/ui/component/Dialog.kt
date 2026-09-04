@@ -33,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -48,6 +49,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +78,41 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.R
 
+/**
+ * The app's REAL color scheme, provided by [BottomSheetMenu] around its glass
+ * [MaterialTheme] overlay (2026-09-04, user report: "Restore the old source
+ * picker popup. i never told you to add blur there").
+ *
+ * Compose dialogs open separate OS windows but still inherit the composition
+ * locals of the scope that called them — including the glass overlay's
+ * remapped `ColorScheme` (translucent `surfaceContainer*`, white ink, iOS-red
+ * error). That made every dialog spawned from a glass menu — the per-song
+ * "Play from" source picker in PlayerMenu being the one the user reported —
+ * render with a see-through surface that showed the blurred menu glass behind
+ * it, reading as "a dialog with blur".
+ *
+ * Dialogs read this local and re-wrap their content in the captured scheme,
+ * restoring the pre-glass opaque Material dialog look. Null outside a glass
+ * menu — dialogs then keep `MaterialTheme.colorScheme` as-is (a no-op wrap).
+ */
+val LocalUnglassColorScheme: ProvidableCompositionLocal<ColorScheme?> =
+    compositionLocalOf { null }
+
+/**
+ * Wraps dialog content in the app's real (pre-glass) color scheme when the
+ * dialog was spawned inside a glass menu's [MaterialTheme] overlay — see
+ * [LocalUnglassColorScheme]. Outside a glass menu this is a no-op (the
+ * current scheme is re-provided unchanged).
+ */
+@Composable
+private fun UnglassedDialogTheme(content: @Composable () -> Unit) {
+    val unglassed = LocalUnglassColorScheme.current
+    MaterialTheme(
+        colorScheme = unglassed ?: MaterialTheme.colorScheme,
+        content = content,
+    )
+}
+
 @Composable
 fun DefaultDialog(
     onDismiss: () -> Unit,
@@ -101,88 +139,93 @@ fun DefaultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Status bar must NEVER be visible — even while a dialog is showing
-        // (2026-09-01). Compose dialogs create their own OS window; when it
-        // takes focus, the system re-shows the status bar the app window had
-        // hidden, and the inset change shifts the app behind the dialog.
-        // Mirroring the hidden state onto the dialog's own window fixes both.
-        KeepStatusBarHiddenInDialog()
+        // Restore the app's real (opaque) color scheme when this dialog was
+        // spawned from inside a glass menu's theme overlay — see
+        // [LocalUnglassColorScheme]. No-op otherwise.
+        UnglassedDialogTheme {
+            // Status bar must NEVER be visible — even while a dialog is showing
+            // (2026-09-01). Compose dialogs create their own OS window; when it
+            // takes focus, the system re-shows the status bar the app window had
+            // hidden, and the inset change shifts the app behind the dialog.
+            // Mirroring the hidden state onto the dialog's own window fixes both.
+            KeepStatusBarHiddenInDialog()
 
-        BoxWithConstraints(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .imePadding()
+                        .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = modifier.padding(24.dp),
+                Surface(
+                    modifier = Modifier.heightIn(max = maxHeight),
+                    // Material 3 Expressive: extra-large rounded corners +
+                    // elevated tonal surface for a more modern dialog look.
+                    shape = AlertDialogDefaults.shape,
+                    color = AlertDialogDefaults.containerColor,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    shadowElevation = 6.dp,
                 ) {
-                    val bodyModifier =
-                        when {
-                            contentScrollable ->
-                                Modifier
-                                    .weight(1f, fill = false)
-                                    .verticalScroll(rememberScrollState())
-                            constrainContentHeight -> Modifier.weight(1f, fill = false)
-                            else -> Modifier
-                        }
-
                     Column(
-                        horizontalAlignment = horizontalAlignment,
-                        modifier = bodyModifier,
+                        modifier = modifier.padding(24.dp),
                     ) {
-                        if (icon != null) {
-                            CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.iconContentColor) {
-                                Box(
-                                    Modifier.align(Alignment.CenterHorizontally),
-                                ) {
-                                    icon()
-                                }
+                        val bodyModifier =
+                            when {
+                                contentScrollable ->
+                                    Modifier
+                                        .weight(1f, fill = false)
+                                        .verticalScroll(rememberScrollState())
+                                constrainContentHeight -> Modifier.weight(1f, fill = false)
+                                else -> Modifier
                             }
 
-                            Spacer(Modifier.height(16.dp))
-                        }
-                        if (title != null) {
-                            CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.titleContentColor) {
-                                ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
+                        Column(
+                            horizontalAlignment = horizontalAlignment,
+                            modifier = bodyModifier,
+                        ) {
+                            if (icon != null) {
+                                CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.iconContentColor) {
                                     Box(
-                                        Modifier.align(if (icon == null) Alignment.Start else Alignment.CenterHorizontally),
+                                        Modifier.align(Alignment.CenterHorizontally),
                                     ) {
-                                        title()
+                                        icon()
                                     }
                                 }
+
+                                Spacer(Modifier.height(16.dp))
+                            }
+                            if (title != null) {
+                                CompositionLocalProvider(LocalContentColor provides AlertDialogDefaults.titleContentColor) {
+                                    ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
+                                        Box(
+                                            Modifier.align(if (icon == null) Alignment.Start else Alignment.CenterHorizontally),
+                                        ) {
+                                            title()
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(16.dp))
                             }
 
-                            Spacer(Modifier.height(16.dp))
+                            content()
                         }
 
-                        content()
-                    }
+                        if (buttons != null) {
+                            Spacer(Modifier.height(24.dp))
 
-                    if (buttons != null) {
-                        Spacer(Modifier.height(24.dp))
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) flowRowScope@{
-                            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
-                                ProvideTextStyle(
-                                    value = MaterialTheme.typography.labelLarge,
-                                ) {
-                                    this@flowRowScope.buttons()
+                            FlowRow(
+                                horizontalArrangement = Arrangement.End,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) flowRowScope@{
+                                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.primary) {
+                                    ProvideTextStyle(
+                                        value = MaterialTheme.typography.labelLarge,
+                                    ) {
+                                        this@flowRowScope.buttons()
+                                    }
                                 }
                             }
                         }
@@ -218,82 +261,87 @@ fun ActionPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Status bar must NEVER be visible — even while a dialog is showing
-        // (2026-09-01). Compose dialogs create their own OS window; when it
-        // takes focus, the system re-shows the status bar the app window had
-        // hidden, and the inset change shifts the app behind the dialog.
-        // Mirroring the hidden state onto the dialog's own window fixes both.
-        KeepStatusBarHiddenInDialog()
+        // Restore the app's real (opaque) color scheme when this dialog was
+        // spawned from inside a glass menu's theme overlay — see
+        // [LocalUnglassColorScheme]. No-op otherwise.
+        UnglassedDialogTheme {
+            // Status bar must NEVER be visible — even while a dialog is showing
+            // (2026-09-01). Compose dialogs create their own OS window; when it
+            // takes focus, the system re-shows the status bar the app window had
+            // hidden, and the inset change shifts the app behind the dialog.
+            // Mirroring the hidden state onto the dialog's own window fixes both.
+            KeepStatusBarHiddenInDialog()
 
-        BoxWithConstraints(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .imePadding()
+                        .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
+                Surface(
+                    modifier = Modifier.heightIn(max = maxHeight),
+                    // Material 3 Expressive: extra-large rounded corners +
+                    // elevated tonal surface for a more modern dialog look.
+                    shape = AlertDialogDefaults.shape,
+                    color = AlertDialogDefaults.containerColor,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    shadowElevation = 6.dp,
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        // title
-                        if (titleBar != null) {
-                            Row {
-                                titleBar()
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            // title
+                            if (titleBar != null) {
+                                Row {
+                                    titleBar()
+                                }
+                            } else if (title != null) {
+                                Text(
+                                    text = title,
+                                    overflow = TextOverflow.Ellipsis,
+                                    maxLines = 1,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                )
+                                Spacer(Modifier.height(16.dp))
                             }
-                        } else if (title != null) {
-                            Text(
-                                text = title,
-                                overflow = TextOverflow.Ellipsis,
-                                maxLines = 1,
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
-                            Spacer(Modifier.height(16.dp))
+
+                            content() // body
                         }
 
-                        content() // body
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        if (onReset != null) {
-                            Row(modifier = Modifier.weight(1f)) {
-                                TextButton(
-                                    onClick = { onReset() },
-                                    shapes = ButtonDefaults.shapes(),
-                                ) {
-                                    Text(stringResource(R.string.reset))
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (onReset != null) {
+                                Row(modifier = Modifier.weight(1f)) {
+                                    TextButton(
+                                        onClick = { onReset() },
+                                        shapes = ButtonDefaults.shapes(),
+                                    ) {
+                                        Text(stringResource(R.string.reset))
+                                    }
                                 }
                             }
-                        }
 
-                        if (onCancel != null) {
+                            if (onCancel != null) {
+                                TextButton(
+                                    onClick = { onCancel() },
+                                    shapes = ButtonDefaults.shapes(),
+                                ) {
+                                    Text(stringResource(android.R.string.cancel))
+                                }
+                            }
+
                             TextButton(
-                                onClick = { onCancel() },
+                                onClick = { onConfirm() },
                                 shapes = ButtonDefaults.shapes(),
                             ) {
-                                Text(stringResource(android.R.string.cancel))
+                                Text(stringResource(android.R.string.ok))
                             }
-                        }
-
-                        TextButton(
-                            onClick = { onConfirm() },
-                            shapes = ButtonDefaults.shapes(),
-                        ) {
-                            Text(stringResource(android.R.string.ok))
                         }
                     }
                 }
@@ -322,36 +370,41 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Status bar must NEVER be visible — even while a dialog is showing
-        // (2026-09-01). Compose dialogs create their own OS window; when it
-        // takes focus, the system re-shows the status bar the app window had
-        // hidden, and the inset change shifts the app behind the dialog.
-        // Mirroring the hidden state onto the dialog's own window fixes both.
-        KeepStatusBarHiddenInDialog()
+        // Restore the app's real (opaque) color scheme when this dialog was
+        // spawned from inside a glass menu's theme overlay — see
+        // [LocalUnglassColorScheme]. No-op otherwise.
+        UnglassedDialogTheme {
+            // Status bar must NEVER be visible — even while a dialog is showing
+            // (2026-09-01). Compose dialogs create their own OS window; when it
+            // takes focus, the system re-shows the status bar the app window had
+            // hidden, and the inset change shifts the app behind the dialog.
+            // Mirroring the hidden state onto the dialog's own window fixes both.
+            KeepStatusBarHiddenInDialog()
 
-        BoxWithConstraints(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
+                        .imePadding()
+                        .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = modifier.padding(vertical = 24.dp),
+                Surface(
+                    modifier = Modifier.heightIn(max = maxHeight),
+                    // Material 3 Expressive: extra-large rounded corners +
+                    // elevated tonal surface for a more modern dialog look.
+                    shape = AlertDialogDefaults.shape,
+                    color = AlertDialogDefaults.containerColor,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                    shadowElevation = 6.dp,
                 ) {
-                    LazyColumn(content = content)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = modifier.padding(vertical = 24.dp),
+                    ) {
+                        LazyColumn(content = content)
+                    }
                 }
             }
         }

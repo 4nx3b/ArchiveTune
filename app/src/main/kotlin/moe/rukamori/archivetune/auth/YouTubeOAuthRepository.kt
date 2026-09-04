@@ -42,9 +42,13 @@ import java.util.concurrent.TimeUnit
  * on that one client and nothing else — while browse, search and metadata keep using WEB_REMIX.
  * Wiring the Bearer into everything is the obvious next step and is the wrong one.
  *
- * Nothing here needs microG/GmsCore. The device flow is plain HTTPS against Google's OAuth
- * endpoints; the "GmsCore support" framing in the original plan conflated this with ReVanced's
- * APK-patching work, which does not apply to a source-built app.
+ * This flow needs no microG — it is plain HTTPS against Google's OAuth endpoints, and works on a
+ * device with no Google software at all. A sign-in through microG's account authenticator was tried
+ * alongside it and removed: on any device that also has real Play Services, Play Services owns the
+ * `com.google` account type and refuses to mint a first-party-scope token for an app that is not a
+ * registered OAuth client, and the microG forks that coexist with it would not serve an unpatched
+ * caller either. It never worked on a real device, so it is gone rather than left as a route that
+ * fails differently on every phone.
  */
 object YouTubeOAuthRepository {
     private const val TAG = "YouTubeOAuth"

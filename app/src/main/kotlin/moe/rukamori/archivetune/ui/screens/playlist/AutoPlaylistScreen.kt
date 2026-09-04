@@ -119,6 +119,8 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -507,15 +509,27 @@ fun AutoPlaylistScreen(
                                         },
                                     contentColor = Color.White,
                                     onClick = {
-                                        when (downloadState) {
+                                        val headerState = downloadState
+                                        when (headerState) {
                                             HeaderDownloadState.Completed -> {
                                                 showRemoveDownloadDialog = true
                                             }
                                             is HeaderDownloadState.Partial -> {
-                                                sendRemoveDownloads(
-                                                    context = context,
-                                                    songIds = songs.map { it.song.id },
-                                                )
+                                                // Pause/Resume (2026-09-05): pending-only, the
+                                                // already-downloaded songs stay untouched.
+                                                if (headerState.paused) {
+                                                    sendResumePausedDownloads(
+                                                        context = context,
+                                                        songIds = songs.map { it.song.id },
+                                                        downloads = downloads,
+                                                    )
+                                                } else {
+                                                    sendPauseRunningDownloads(
+                                                        context = context,
+                                                        songIds = songs.map { it.song.id },
+                                                        downloads = downloads,
+                                                    )
+                                                }
                                             }
                                             HeaderDownloadState.None -> {
                                                 sendAddMissingDownloads(
@@ -705,12 +719,22 @@ fun AutoPlaylistScreen(
         //  - Songs are loaded (non-empty) so the search/more pills have
         //    meaningful targets. When songs is empty, only the back pill
         //    renders — the empty placeholder already explains the state.
-        if (layerBackdropActive && !selection && !isSearching) {
+        //
+        // Fixed (2026-09-04, user report: "When I select songs in history page
+        // the liquid glass pills disappear and opaque rounded pill appears.
+        // Fix this. Fix the same thing for other screens too"): selection mode
+        // NO LONGER hides the glass pills. The back pill morphs in place —
+        // close (X) icon + the "N songs" count, tap to clear the selection —
+        // and the trailing pill swaps to the select-all / deselect toggle and
+        // the ⋯ that opens SelectionSongMenu, the exact actions the opaque
+        // selection bar offered.
+        if (layerBackdropActive && !isSearching) {
             // iOS-inspired back pill: persistent translucent liquid-glass
             // capsule containing a left-pointing chevron followed by the
             // text "Library", matching the user's reference screenshot.
             // Tapping it pops back to the previous destination; long-pressing
-            // it jumps straight to the Home tab.
+            // it jumps straight to the Home tab. In selection mode it becomes
+            // the selection header: close (X), the count, tap to clear.
             LiquidGlassActionPill(
                 backdrop = backdrop,
                 interactive = true,
@@ -720,18 +744,37 @@ fun AutoPlaylistScreen(
                         .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 IconButton(
-                    onClick = { navController.navigateUp() },
-                    onLongClick = { navController.backToMain() },
+                    onClick = {
+                        if (selection) {
+                            selection = false
+                            wrappedSongs.forEach { it.isSelected = false }
+                        } else {
+                            navController.navigateUp()
+                        }
+                    },
+                    onLongClick = {
+                        if (!selection) {
+                            navController.backToMain()
+                        }
+                    },
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.arrow_back),
+                        painter =
+                            painterResource(
+                                if (selection) R.drawable.close else R.drawable.arrow_back,
+                            ),
                         contentDescription = stringResource(R.string.library),
                         tint = liquidGlassContentColor(),
                     )
                 }
                 Text(
-                    text = playlist,
+                    text =
+                        if (selection) {
+                            pluralStringResource(R.plurals.n_song, selectedCount, selectedCount)
+                        } else {
+                            playlist
+                        },
                     color = liquidGlassContentColor(),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -746,6 +789,56 @@ fun AutoPlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                if (selection) {
+                    // Selection actions in glass (2026-09-04): select-all /
+                    // deselect toggle + the ⋯ that opens SelectionSongMenu —
+                    // the exact actions the opaque selection bar carried.
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.IconButton(
+                            onClick = {
+                                if (selectedCount == wrappedSongs.size) {
+                                    wrappedSongs.forEach { it.isSelected = false }
+                                    selection = false
+                                } else {
+                                    wrappedSongs.forEach { it.isSelected = true }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (selectedCount == wrappedSongs.size) R.drawable.deselect else R.drawable.select_all,
+                                    ),
+                                contentDescription = null,
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    androidx.compose.material3.IconButton(onClick = {
+                        menuState.show {
+                            SelectionSongMenu(
+                                songSelection =
+                                    wrappedSongs
+                                        .filter { it.isSelected }
+                                        .map { it.item },
+                                onDismiss = menuState::dismiss,
+                                clearAction = {
+                                    selection = false
+                                    wrappedSongs.forEach { it.isSelected = false }
+                                },
+                            )
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_vert),
+                            contentDescription = null,
+                            tint = liquidGlassContentColor(),
+                        )
+                    }
+                } else {
                 // Search
                 Box(
                     modifier = Modifier.size(48.dp),
@@ -782,15 +875,15 @@ fun AutoPlaylistScreen(
                         }
                     }
                 }
+                } // end non-selection branch of the trailing pill (2026-09-04)
             }
         }
 
-        // Top App Bar: shown when Liquid Glass is disabled, OR in selection
-        // mode, OR when searching. When Liquid Glass is active and not in
-        // selection mode and not searching, the persistent Liquid Glass
-        // buttons above handle navigation and actions, so the TopAppBar is
-        // hidden entirely.
-        if (!liquidGlassHeaderActive || selection || isSearching) {
+        // Top App Bar (2026-09-04 revision): shown when Liquid Glass is
+        // disabled OR when searching. Selection mode is handled by the glass
+        // pills above when glass is on, so the opaque bar only renders for
+        // the non-glass case — no more opaque pill swap mid-selection.
+        if (!liquidGlassHeaderActive || isSearching) {
         TopAppBar(
             scrollBehavior = scrollBehavior,
             windowInsets =

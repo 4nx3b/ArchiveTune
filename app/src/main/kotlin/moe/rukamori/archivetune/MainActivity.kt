@@ -300,6 +300,9 @@ import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
+import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
+import moe.rukamori.archivetune.ui.component.NewMenuItem
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
@@ -320,6 +323,10 @@ import moe.rukamori.archivetune.ui.component.FontSizeRange
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
+import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.NetworkStatusBanner
 import moe.rukamori.archivetune.ui.component.StarDialog
@@ -329,6 +336,10 @@ import moe.rukamori.archivetune.ui.component.TvNavigationRail
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.menu.CastRoutePickerRootOverlay
+import moe.rukamori.archivetune.cast.CastViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
@@ -390,6 +401,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var syncUtils: SyncUtils
+
+    @Inject
+    lateinit var searchDiscoveryRepository: moe.rukamori.archivetune.repository.SearchDiscoveryRepository
 
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
@@ -679,6 +693,37 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // ── High-refresh smoothness (2026-09-04) ──
+        // User request: "Make the app use more gpu/cpu power so it's more
+        // smooth." Many OEMs run non-game apps at 60 Hz even on 90/120 Hz
+        // panels unless the window explicitly asks for a higher mode. Pin
+        // the window to the display's fastest mode at the CURRENT
+        // resolution — every Compose animation (player morphs, lyrics
+        // sweeps, popup springs, scroll flings) then renders at the panel's
+        // full rate instead of 60 fps, which is the single biggest
+        // "smoothness" lever available without touching content code.
+        // Battery cost is accepted by the request. Guarded per API level
+        // and best-effort: on failure the window keeps the default mode.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val display =
+                    display ?: @Suppress("DEPRECATION") windowManager.defaultDisplay
+                val current = display.mode
+                val best =
+                    display.supportedModes
+                        .filter { mode ->
+                            mode.physicalWidth == current.physicalWidth &&
+                                mode.physicalHeight == current.physicalHeight
+                        }.maxByOrNull { mode -> mode.refreshRate }
+                if (best != null && best.modeId != current.modeId) {
+                    window.attributes =
+                        window.attributes.apply {
+                            preferredDisplayModeId = best.modeId
+                        }
+                }
+            }
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
@@ -733,6 +778,17 @@ class MainActivity : ComponentActivity() {
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
+
+            LaunchedEffect(Unit) {
+                // Search-tab warm-up (2026-09-04, user request: "Make the
+                // search tab load extremely fast"): kick the discovery
+                // prefetch ~1.5 s after the first composition — late enough
+                // not to compete with cold-start frames, early enough that
+                // the cache is hot before the user taps Search. Single-flight
+                // in the repository shares this with any concurrent entry.
+                delay(1500)
+                searchDiscoveryRepository.warmUp()
+            }
 
             LaunchedEffect(Unit) {
                 while (playerConnection == null) {
@@ -792,6 +848,20 @@ class MainActivity : ComponentActivity() {
             // the haze source; the top bar renders the blurred strip (see the
             // topBar slot). Provided to the tree via LocalHomeHazeState.
             val homeHazeState = remember { HazeState() }
+            // Search-page redesign (2026-09-04): the Search route's own haze
+            // state — SearchScreen tags its root Box as the source and the top
+            // bar renders the SAME progressive top-fade blur over the Search
+            // route ("the same behaviour and reference from Home page... with
+            // haze"). Separate instance so the two tabs never cross-sample
+            // while both compose during the slide transition.
+            val searchHazeState = remember { HazeState() }
+            // Library-tab redesign (2026-09-04: "Implement the same home page ui
+            // and behaviour for... library tab main page too"): the Library
+            // route's own haze state — LibraryScreen tags its root Box as the
+            // source and the top bar renders the SAME progressive top-fade blur
+            // over the Library route. Separate instance so the top-level tabs
+            // never cross-sample during the fade-through transition.
+            val libraryHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -1422,6 +1492,106 @@ class MainActivity : ComponentActivity() {
                         } else {
                             null
                         }
+
+                    // Dedicated live backdrop for the floating liquid-glass
+                    // overflow menu (BottomSheetMenu). Unlike
+                    // [liquidGlassBackdrop] (which records only the NavHost
+                    // content slot), this one is attached to the container
+                    // wrapping the ENTIRE app surface — rail + Scaffold (top
+                    // bar, pages, mini player, nav bar) — and only while the
+                    // menu is open, so the popup's frost samples everything
+                    // actually behind it and follows the mini player's
+                    // animated content in real time (2026-09-04: "The liquid
+                    // glass blur behind the song popup is static. it should
+                    // render in real time just like new lyrics popup").
+                    //
+                    // 2026-09-04 (scroll smoothness, "the scrolling in popup
+                    // lags a bit sometimes when there's canvas"): the recorder
+                    // is now a ThrottledLayerBackdrop — the layer is re-
+                    // recorded at most every ~33ms instead of on every draw
+                    // invalidation, so a playing canvas video (which
+                    // invalidates the whole screen every frame) no longer
+                    // steals the frame budget from the popup's scroll. The
+                    // frost still updates live at ~30fps — indistinguishable
+                    // behind the 32dp blur + scrim.
+                    val menuGlassBackdrop: ThrottledLayerBackdrop? =
+                        if (liquidGlassActive) {
+                            rememberThrottledLayerBackdrop()
+                        } else {
+                            null
+                        }
+
+                    // The route picker (Cast) glass popup is rendered at this
+                    // root level (CastRoutePickerRootOverlay below) and samples
+                    // the SAME menu-glass backdrop, so its recorder has to stay
+                    // attached while the cast popup is open too — even though
+                    // the overflow menu that launched it has already closed
+                    // (2026-09-04: "When I click on cast the songs overflow
+                    // popup should automatically close").
+                    // The CastViewModel is activity-scoped and shared with the
+                    // menu/player cast actions (the repository is flavor-split,
+                    // so this is safe on foss too — the picker just never
+                    // becomes visible there).
+                    val castViewModel: CastViewModel = viewModel()
+                    val castRoutePickerVisible by castViewModel.isRoutePickerVisible.collectAsState()
+
+                    // Keep the recorder attached slightly past the menu's own
+                    // close (the popup plays a ~200ms exit fade while
+                    // menuState.isVisible is already false); detaching the
+                    // recorder clears the layer coordinates instantly, which
+                    // would blank the frost mid-fade. The cast picker keeps the
+                    // layer attached the whole time it is visible.
+                    var menuGlassRecordingActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(menuState.isVisible, castRoutePickerVisible) {
+                        if (menuState.isVisible || castRoutePickerVisible) {
+                            menuGlassRecordingActive = true
+                        } else {
+                            delay(260)
+                            menuGlassRecordingActive = false
+                        }
+                    }
+
+                    // ── Glass-pipeline pre-warm (2026-09-04) ──
+                    // User report: "When I open the songs overflow popup for
+                    // the first few seconds after opening the app, the
+                    // scrolling in the popup is a bit laggy." The first popup
+                    // open in a process pays three cold costs — the AGSL
+                    // vibrancy shader + blur RenderEffect compile, the
+                    // recorder's first full-screen GraphicsLayer record, and
+                    // the menu rows' JIT. Warm all three ONCE ~2 s after
+                    // launch (after startup settles, before the user has
+                    // usually opened anything): attach the throttled recorder
+                    // for ~450 ms and draw a 1dp invisible strip that samples
+                    // it with the real vibrancy + 32dp blur recipe, with two
+                    // real menu rows composed inside so the row machinery is
+                    // warm too. The first REAL popup open then composes into
+                    // warm pipelines instead of compiling inside its first
+                    // scroll frames.
+                    var glassPrewarmActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        delay(2000)
+                        glassPrewarmActive = true
+                        delay(450)
+                        glassPrewarmActive = false
+                    }
+
+                    // ── Root-overlay back-priority guard (2026-09-04) ──
+                    // True while ANY root-level overlay is showing over the app
+                    // surface: the overflow glass menu, the Cast route picker's
+                    // root glass card, or the details BottomSheetPage — plus the
+                    // 260 ms exit-fade tail (menuGlassRecordingActive already
+                    // tracks exactly that window for the frost recorder).
+                    // Provided to the tree as LocalRootOverlayActive; both
+                    // player-collapse BackHandlers gate on it so the back
+                    // gesture can never minimize the player out from under an
+                    // open popup — it closes the popup instead (user report
+                    // 2026-09-04: "when I use back navigation gesture it should
+                    // return to the full player and not close it instead").
+                    val rootOverlayActive by remember {
+                        derivedStateOf {
+                            menuGlassRecordingActive || bottomSheetPageState.isVisible
+                        }
+                    }
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
@@ -2093,14 +2263,64 @@ class MainActivity : ComponentActivity() {
                         // between HomeScreen's hazeSource and the top bar's progressive
                         // fade blur over the Home route.
                         moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
+                        // Search-page redesign (2026-09-04): the Search route's
+                        // haze twin (see searchHazeState above).
+                        moe.rukamori.archivetune.ui.screens.LocalSearchHazeState provides searchHazeState,
+                        // Library-tab redesign (2026-09-04): the Library
+                        // route's haze twin (see libraryHazeState above).
+                        moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState provides libraryHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+                        moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
+                        // Root-overlay back-priority guard (2026-09-04): gates
+                        // every player-collapse BackHandler while a root popup
+                        // is open so back closes the popup, not the player.
+                        moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                     ) {
+                        // ── Player-collapse BACK FALLBACK (2026-09-04, moved) ──
+                        // This used to be composed AFTER the app-surface Row,
+                        // which made it the LAST-registered (highest-priority)
+                        // back callback — it consumed the back gesture even
+                        // while the player's queue sheet / lyrics panel /
+                        // BitChord queue overlay was open, minimizing the whole
+                        // player instead of closing the overlay (user report
+                        // 2026-09-04, video: "Lyrics/queue should get closed
+                        // not player when I use the back navigation gesture.
+                        // right now it minimises the full player instead").
+                        // Compose dispatches back callbacks LIFO, so composing
+                        // it FIRST — before the Row whose subtree contains
+                        // every player-internal overlay BackHandler — makes it
+                        // the LOWEST-priority callback: the player's own
+                        // handlers (queue collapse, lyrics close, AOD, inline
+                        // video) all win, and this only fires when the player
+                        // is expanded with no overlay handling back — the pure
+                        // "collapse to mini player" case it was written for.
+                        //
+                        // 2026-09-04 (second report, same symptom after the
+                        // move): registration order alone turned out not to be
+                        // a reliable guarantee across predictive-back paths —
+                        // the gesture still collapsed the player out from
+                        // under an open popup. The handler now also DISABLES
+                        // itself via the root-overlay guard while any root
+                        // popup (overflow menu / Cast picker / details sheet)
+                        // is showing, so back can only reach the popup's own
+                        // dismissal handler: the popup closes, the full
+                        // player stays.
+                        BackHandler(
+                            enabled =
+                                playerBottomSheetState.isExpanded &&
+                                    !isPlayerLyricsFullScreen &&
+                                    !aodModeEnabled &&
+                                    !rootOverlayActive,
+                        ) {
+                            playerBottomSheetState.collapseSoft()
+                        }
+
                         // ── Muzo sheet frosted glass (2026-09-04, revised) ──
                         // The song-overflow sheet's "blurred glass" now lives on
                         // the SHEET ITSELF, not on the app behind it: the
@@ -2113,7 +2333,39 @@ class MainActivity : ComponentActivity() {
                         // popup to be blurred but the popup itself should be
                         // blurred") — the area around the sheet only gets the
                         // dialog's plain dim scrim.
-                        Row {
+                        //
+                        // 2026-09-04 (real-time menu glass): this Row is the
+                        // ONLY container that wraps the entire visible app
+                        // surface — the navigation rail, the Scaffold's top
+                        // bar, the NavHost pages AND the bottom-bar slot with
+                        // the mini player + navigation bar. While the overflow
+                        // menu (or the root-level cast route picker) is open,
+                        // the menu-glass backdrop records this whole subtree
+                        // (the recording itself is draw-phase only, so
+                        // attaching/detaching the modifier never re-lays-out
+                        // the app). The floating menu popup and the cast glass
+                        // popup are composed as SIBLINGS below (never inside
+                        // this Row), so they can safely sample the layer with
+                        // kyant drawBackdrop — the non-reentrant case. The
+                        // conditional attach keeps the cost at zero whenever no
+                        // glass popup is showing; while attached the layer stays
+                        // live (throttled to ~30fps), so the popups' frost
+                        // follows the mini player's animated progress line /
+                        // artwork crossfades and anything else moving behind
+                        // them, exactly like the lyrics popup's frost follows
+                        // the player's drifting artwork.
+                        Row(
+                            modifier =
+                                Modifier.let { base ->
+                                    if (menuGlassBackdrop != null &&
+                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                    ) {
+                                        base.throttledLayerBackdrop(menuGlassBackdrop)
+                                    } else {
+                                        base
+                                    }
+                                },
+                        ) {
                             AnimatedVisibility(
                                 visible =
                                     useRail &&
@@ -2343,11 +2595,18 @@ class MainActivity : ComponentActivity() {
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
-                                        // BitChord home redesign (2026-09-03): the Home route's bar is
-                                        // pinned — content scrolls under it into a progressive blur —
-                                        // while its bar title fades in only once the list is scrolled
-                                        // (the big in-list greeting owns the title at rest).
+                                        // Home keeps its bar pinned so content scrolls under it into
+                                        // the progressive blur. The title stays put with it — see the
+                                        // note on AutoResizeText below for why the fade that came with
+                                        // this design was wrong here.
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
+                                        // Search-page redesign (2026-09-04): the Search route follows
+                                        // the Home route's behaviour exactly — pinned transparent
+                                        // bar, content scrolling under it into the progressive
+                                        // top-fade blur, centered page title. ("Redesign the whole
+                                        // search page from scratch with the same behaviour and
+                                        // reference from Home page.")
+                                        val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
                                         val homeBarScrolled by remember(isHomeRoute) {
                                             derivedStateOf {
                                                 homeScrollBehavior.state.collapsedFraction > 0.05f
@@ -2387,10 +2646,11 @@ class MainActivity : ComponentActivity() {
                                                     // cached while the user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
-                                                            if (isLibraryRoute || isHomeRoute) {
-                                                                // Library and Home both keep the bar
-                                                                // pinned: Home's content scrolls under
-                                                                // it into the progressive blur.
+                                                            if (isLibraryRoute || isHomeRoute || isSearchRoute) {
+                                                                // Library, Home and Search all keep the
+                                                                // bar pinned: Home's and Search's
+                                                                // content scrolls under it into the
+                                                                // progressive blur.
                                                                 0f
                                                             } else {
                                                                 currentScrollBehavior.state.heightOffset
@@ -2398,7 +2658,7 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
-                                                if (isHomeRoute &&
+                                                if ((isHomeRoute || isSearchRoute || isLibraryRoute) &&
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
@@ -2409,8 +2669,26 @@ class MainActivity : ComponentActivity() {
                                                     // content with. A modest readability scrim sits over
                                                     // the blur so the bar's glyphs keep a floor whatever
                                                     // scrolls beneath them.
+                                                    //
+                                                    // 2026-09-04 search redesign: the Search route gets
+                                                    // the EXACT same material over its own HazeState
+                                                    // (SearchScreen tags its root as the source) —
+                                                    // replacing the flat surface gradient it used to
+                                                    // fall back to.
+                                                    //
+                                                    // 2026-09-04 library redesign: the Library tab gets
+                                                    // the same treatment ("Implement the same home page
+                                                    // ui and behaviour for... library tab main page
+                                                    // too") — LibraryScreen tags its root Box as this
+                                                    // blur's source and its content scrolls under the
+                                                    // pinned bar into the progressive fade.
                                                     HomeTopFadeBlur(
-                                                        hazeState = homeHazeState,
+                                                        hazeState =
+                                                            when {
+                                                                isHomeRoute -> homeHazeState
+                                                                isSearchRoute -> searchHazeState
+                                                                else -> libraryHazeState
+                                                            },
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
                                                     )
@@ -2426,7 +2704,7 @@ modifier =
                                                                 // blur background overlay under
                                                                 // the top app bar.
                                                                 .graphicsLayer {
-                                                                    if (!isLibraryRoute && !isHomeRoute) {
+                                                                    if (!isLibraryRoute && !isHomeRoute && !isSearchRoute) {
                                                                         val raw = currentScrollBehavior.state.heightOffset
                                                                         val clamped = raw.coerceAtLeast(-appBarHeightPx)
                                                                         translationY = clamped - raw
@@ -2478,8 +2756,13 @@ modifier =
                                                             onLongClick = {},
                                                             modifier = Modifier.padding(start = 10.dp),
                                                         ) {
+                                                            // 2026-09-04: avatar bumped 30dp -> 36dp
+                                                            // (user: "Increase the size of profile
+                                                            // picture just a bit on the home page");
+                                                            // the fallback person glyph scales with
+                                                            // it (20 -> 24dp).
                                                             Surface(
-                                                                modifier = Modifier.size(30.dp),
+                                                                modifier = Modifier.size(36.dp),
                                                                 shape = CircleShape,
                                                                 color = MaterialTheme.colorScheme.primaryContainer,
                                                             ) {
@@ -2497,7 +2780,7 @@ modifier =
                                                                         Icon(
                                                                             painter = painterResource(R.drawable.account),
                                                                             contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier.size(20.dp),
+                                                                            modifier = Modifier.size(24.dp),
                                                                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                                         )
                                                                     }
@@ -2508,29 +2791,25 @@ modifier =
                                                 },
                                                 title = {
                                                     if (isLibraryRoute) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            // On the Library tab, the top app bar's
-                                                            // title slot carries the big bold
-                                                            // "Library" header (38sp, matching the
-                                                            // LibraryMixScreen's `LibraryHeaderRow`
-                                                            // that used to live at the top of the
-                                                            // scrollable content). Per user request
-                                                            // (2026-08-28): "The Big library text
-                                                            // should be the header of the page. The
-                                                            // size should prevail and not become any
-                                                            // smaller. And since it'll be the header,
-                                                            // there should be no empty space either."
-                                                            //
-                                                            // Scroll behavior for the Library route
-                                                            // is `null` (see the `scrollBehavior =`
-                                                            // branch below), so the TopAppBar is
-                                                            // pinned and the title does NOT collapse
-                                                            // on scroll — the 38sp size prevails
-                                                            // throughout. The `LibraryHeaderRow` in
-                                                            // LibraryMixScreen is now empty (it just
-                                                            // reserves its 8.dp vertical padding slot
-                                                            // for breathing room between the
-                                                            // TopAppBar and the first category row).
+                                                        // ── Library title (2026-09-04, centered) ──
+                                                        // The Library tab follows the Home route's
+                                                        // header layout ("Implement the same home
+                                                        // page ui and behaviour for... library tab
+                                                        // main page too"): the big bold "Library"
+                                                        // text, horizontally centered in the bar.
+                                                        // The 38sp size still prevails (user
+                                                        // request 2026-08-28: "The Big library text
+                                                        // should be the header of the page. The
+                                                        // size should prevail and not become any
+                                                        // smaller") — only the alignment changes to
+                                                        // match Home. The bar stays pinned
+                                                        // (scrollBehavior = null) and the content
+                                                        // now scrolls under it into the progressive
+                                                        // top-fade blur.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
                                                             Text(
                                                                 text = stringResource(R.string.library),
                                                                 color = MaterialTheme.colorScheme.onBackground,
@@ -2568,6 +2847,35 @@ modifier =
                                                                 overflow = TextOverflow.Ellipsis,
                                                             )
                                                         }
+                                                    } else if (isSearchRoute) {
+                                                        // ── Search title (2026-09-04 redesign) ──
+                                                        // The Search route follows the Home
+                                                        // route's header exactly: just the
+                                                        // "Search" text, horizontally centered
+                                                        // in the bar, always visible — with NO
+                                                        // app logo on the left and NO trailing
+                                                        // icon (user request 2026-09-04:
+                                                        // "the only difference is that there
+                                                        // should be search text in the middle
+                                                        // with haze include offcourse and no
+                                                        // app logo on the left or search icon
+                                                        // in liquid glass on the right"). The
+                                                        // search entry stays the in-feed
+                                                        // SearchEntryField; this bar only owns
+                                                        // the page identity + the haze.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.search),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                                             // app icon — visible on every non-Home
@@ -2598,108 +2906,86 @@ modifier =
                                                     }
                                                 },
                                                 actions = {
+                                                    // The settings-update badge is computed once
+                                                    // for BOTH consumers: the small dot on the
+                                                    // Home route's liquid-glass settings icon
+                                                    // and (previously) the profile popup's
+                                                    // Settings row. Settings is now reachable
+                                                    // from the Home top-end icon only.
+                                                    val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
+                                                        latestUpdateChannel == effectiveUpdateChannel &&
+                                                        Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                     if (isHomeRoute) {
-                                                        // ── Home header search (2026-09-04, re-revised) ──
-                                                        // The search icon in a REAL liquid glass
-                                                        // pill (user request 2026-09-04: "place
-                                                        // the search icon on the home page inside
-                                                        // liquid glass pill") — the same
-                                                        // LiquidGlassIconButton the playlist
-                                                        // screens' circular back buttons use,
-                                                        // sampling the app-wide NavHost backdrop
-                                                        // (the top bar is a SIBLING of the
-                                                        // layer-capturing NavHost Box, so this is
-                                                        // the safe non-reentrant sample). Search
-                                                        // opens the app's existing Search tab.
-                                                        // When Liquid Glass is off (or pre-S),
-                                                        // it falls back to the frosted pill.
+                                                        // ── Home header settings (2026-09-04) ──
+                                                        // The ONLY top-end action on the Home
+                                                        // route is the settings icon in a
+                                                        // liquid-glass pill (user request
+                                                        // 2026-09-04: "instead of search icon
+                                                        // on the top right on home page there
+                                                        // should only be settings icon in
+                                                        // liquid glass"). The search entry
+                                                        // point stays the Search tab in the
+                                                        // bottom navigation. The small accent
+                                                        // dot on the icon carries over the
+                                                        // update-available badge that the
+                                                        // profile popup's Settings row used to
+                                                        // show, so no functionality is lost.
                                                         val liquidGlassBackdrop =
                                                             LocalLiquidGlassBackdrop.current
                                                         if (liquidGlassBackdrop != null) {
-                                                            LiquidGlassIconButton(
-                                                                backdrop = liquidGlassBackdrop,
-                                                                painter = painterResource(R.drawable.search),
-                                                                contentDescription = stringResource(R.string.search),
-                                                                modifier =
-                                                                    Modifier.padding(end = 10.dp),
-                                                                onClick = {
-                                                                    navController.navigate("search") {
-                                                                        popUpTo(navController.graph.startDestinationId) {
-                                                                            saveState = true
-                                                                        }
-                                                                        launchSingleTop = true
-                                                                        restoreState = true
-                                                                    }
-                                                                },
-                                                            )
+                                                            Box(
+                                                                modifier = Modifier.padding(end = 10.dp),
+                                                            ) {
+                                                                LiquidGlassIconButton(
+                                                                    backdrop = liquidGlassBackdrop,
+                                                                    painter = painterResource(R.drawable.settings),
+                                                                    contentDescription = stringResource(R.string.settings),
+                                                                    onClick = {
+                                                                        navController.navigate("settings")
+                                                                    },
+                                                                )
+                                                                if (showSettingsBadge) {
+                                                                    Box(
+                                                                        modifier =
+                                                                            Modifier
+                                                                                .align(Alignment.TopEnd)
+                                                                                .offset(x = 2.dp, y = 2.dp)
+                                                                                .size(10.dp)
+                                                                                .graphicsLayer { alpha = 0.95f }
+                                                                                .background(
+                                                                                    MaterialTheme.colorScheme.error,
+                                                                                    CircleShape,
+                                                                                ),
+                                                                    )
+                                                                }
+                                                            }
                                                         } else {
                                                             FrostedHeaderPill(
                                                                 modifier = Modifier.padding(end = 6.dp),
                                                             ) {
                                                                 IconButton(
                                                                     onClick = {
-                                                                        navController.navigate("search") {
-                                                                            popUpTo(navController.graph.startDestinationId) {
-                                                                                saveState = true
-                                                                            }
-                                                                            launchSingleTop = true
-                                                                            restoreState = true
-                                                                        }
+                                                                        navController.navigate("settings")
                                                                     },
                                                                     onLongClick = {},
                                                                 ) {
                                                                     Icon(
-                                                                        painter = painterResource(R.drawable.search),
-                                                                        contentDescription = stringResource(R.string.search),
+                                                                        painter = painterResource(R.drawable.settings),
+                                                                        contentDescription = stringResource(R.string.settings),
                                                                         modifier = Modifier.size(20.dp),
                                                                     )
                                                                 }
                                                             }
                                                         }
-                                                    } else {
-                                                        Box(
-                                                            modifier = Modifier.padding(end = 4.dp),
-                                                        ) {
-                                                            IconButton(
-                                                                onClick = { profileMenuExpanded = true },
-                                                                colors = IconButtonDefaults.iconButtonColors(
-                                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                                        .copy(alpha = TopAppBarIconButtonContainerAlpha),
-                                                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                                ),
-                                                            ) {
-                                                                Surface(
-                                                                    modifier = Modifier.size(28.dp),
-                                                                    shape = CircleShape,
-                                                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                                                ) {
-                                                                    if (!accountImageUrl.isNullOrBlank()) {
-                                                                        AsyncImage(
-                                                                            model = accountImageUrl,
-                                                                            contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier
-                                                                                .fillMaxSize()
-                                                                                .clip(CircleShape),
-                                                                            contentScale = ContentScale.Crop,
-                                                                        )
-                                                                    } else {
-                                                                        Box(contentAlignment = Alignment.Center) {
-                                                                            Icon(
-                                                                                painter = painterResource(R.drawable.account),
-                                                                                contentDescription = stringResource(R.string.account),
-                                                                                modifier = Modifier.size(20.dp),
-                                                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
                                                     }
+                                                    // Non-Home routes (Search / Library) no
+                                                    // longer render a profile avatar in the
+                                                    // top bar (user request 2026-09-04:
+                                                    // "Remove the profile icons on the top
+                                                    // from search and library page"). The
+                                                    // profile menu remains reachable from the
+                                                    // Home tab's avatar.
                                                     if (profileMenuExpanded) {
-                                                        val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
-                                                            latestUpdateChannel == effectiveUpdateChannel &&
-                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                         ProfileMenuDialog(
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
@@ -2749,15 +3035,11 @@ modifier =
                                                                         navController.navigate("settings/music_together")
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.settings,
-                                                                    label = stringResource(R.string.settings),
-                                                                    showBadge = showSettingsBadge,
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings")
-                                                                    },
-                                                                ),
+                                                                // Settings entry removed (user request 2026-09-04:
+                                                                // "remove settings from profile popup") — the
+                                                                // Home route's top-end settings icon in
+                                                                // liquid glass is now the sole entry point,
+                                                                // and it carries the update-available badge.
                                                             ),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
@@ -3368,12 +3650,56 @@ modifier =
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
-                            playerBottomSheetState.collapseSoft()
-                        }
+                        // (The player-collapse back handler used to live here —
+                        // it moved ABOVE the app-surface Row so the player's
+                        // internal overlay handlers outrank it. See the comment
+                        // at its new position.)
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+
+                        // Glass-pipeline pre-warm strip (2026-09-04): while
+                        // active, a 1dp / 2%-alpha strip samples the throttled
+                        // recorder with the real vibrancy + 32dp blur recipe
+                        // and composes two real menu rows — compiling the
+                        // shaders, running the first full-screen record and
+                        // JIT-ing the row machinery BEFORE the user ever
+                        // opens a popup (user report: first-seconds popup
+                        // scroll lag). Composed AFTER BottomSheetMenu so it
+                        // draws above it (it is invisible either way).
+                        GlassPipelinePrewarm(
+                            backdrop = menuGlassBackdrop,
+                            active = glassPrewarmActive,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        ) {
+                            MenuSurfaceSection {
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                            }
+                        }
+
+                        // Root-level real-time liquid-glass Cast route picker
+                        // (2026-09-04, user report: "The cast doesn't have any
+                        // realtime liquid glass blur. Fix it."). Rendered AFTER
+                        // BottomSheetMenu so it draws on top of the overflow
+                        // menu's exit fade and its BackHandler outranks the
+                        // menu's (back closes the cast popup first). Samples
+                        // the SAME menu-glass recorder as the song popup — the
+                        // full live app surface — so the frost is real-time on
+                        // EVERY trigger path (mini player menu, any player
+                        // style's more-menu, the Apple-Music output chip, the
+                        // expanded player). gms renders the floating glass card;
+                        // foss ships a no-op stub (no Cast support).
+                        CastRoutePickerRootOverlay(
+                            backdrop = menuGlassBackdrop,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
 

@@ -13,6 +13,7 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -26,17 +27,40 @@ import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.requireDensity
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
+import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -44,6 +68,8 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.graphics.graphicsLayer
 
 /** Alias so call sites can refer to a stable type name regardless of the backdrop impl. */
 typealias PlatformBackdrop = LayerBackdrop
@@ -121,6 +147,212 @@ fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBac
 val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
+ * Dedicated [LayerBackdrop] for the floating liquid-glass overflow menu
+ * ([BottomSheetMenu]) — the song/artist/album popup (2026-09-04, user report:
+ * "The liquid glass blur behind the song popup is static. it should render in
+ * real time just like new lyrics popup").
+ *
+ * The app-wide [LocalLiquidGlassBackdrop] only records the NavHost content
+ * slot, which excludes the bottom-bar slot — the mini player and the
+ * navigation bar — exactly the region the floating popup hovers over. While
+ * the menu is open nothing in the NavHost changes (the scrim blocks
+ * interaction), so sampling that layer renders a frozen smear: the "static"
+ * glass the user reported. The lyrics popup renders in real time because it
+ * samples the full player surface behind it, whose drifting artwork and
+ * progress continuously re-record the layer.
+ *
+ * This backdrop is attached (conditionally, only while the menu is visible)
+ * to the container that wraps the ENTIRE app surface — the rail row plus the
+ * Scaffold with its top bar, NavHost pages, mini player and navigation bar —
+ * so the popup's frost samples everything actually behind it. The mini
+ * player's animated progress line and artwork crossfades re-record the layer
+ * every frame they change, and the kyant GraphicsLayer reference chain
+ * propagates those changes into the popup's blur without any manual
+ * invalidation — the exact same live mechanism the lyrics popup uses.
+ *
+ * 2026-09-04 (scroll-smoothness): the value is now a [Backdrop] rather than a
+ * hard [LayerBackdrop], because the recorder attached in MainActivity is a
+ * [ThrottledLayerBackdrop] — same live sampling, but the layer is only
+ * re-recorded at most every [ThrottledLayerBackdropDefaultIntervalMillis]
+ * (see its docs for why).
+ *
+ * Provided by MainActivity; null when Liquid Glass is off or below
+ * Android 12. [BottomSheetMenu] prefers it over [LocalLiquidGlassBackdrop].
+ */
+val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
+
+/**
+ * Default refresh cap for [ThrottledLayerBackdrop] — ~30 fps.
+ *
+ * User report (2026-09-04): "the scrolling in popup lags a bit sometimes
+ * when there's canvas, sometimes without canvas too". Root cause: kyant's
+ * `Modifier.layerBackdrop` re-records the ENTIRE app surface into its
+ * GraphicsLayer on EVERY draw invalidation of the recorded subtree — the
+ * mini player's progress line ticks, artwork crossfades, and above all a
+ * playing canvas (video) re-record the whole screen every single frame,
+ * stealing main-thread + GPU budget from the popup's LazyColumn scroll.
+ *
+ * Capping the RECORD rate at ~30 fps halves that cost while keeping the
+ * frost genuinely real-time: behind a 32 dp blur, a dim scrim and a
+ * translucent tint, a 30 fps frost is indistinguishable from 60 fps —
+ * the drifting artwork and the progress line still visibly move through
+ * the glass. When the recorded content is static (nothing animates behind
+ * the menu) the node's draw never re-runs, so no records happen at all
+ * and the cost is zero, exactly like the unthrottled recorder.
+ */
+internal const val ThrottledLayerBackdropDefaultIntervalMillis = 33L
+
+/**
+ * A [Backdrop] whose recorded layer refreshes at most once per
+ * [minIntervalMillis] — the throttled sibling of kyant's
+ * `rememberLayerBackdrop` + `Modifier.layerBackdrop` pair (same consumer
+ * protocol: any `Modifier.drawBackdrop(backdrop = ...)` can sample it).
+ *
+ * The recorder node draws the content TWICE per refresh — once to the
+ * screen (normal `drawContent()`) and once into [graphicsLayer] (the
+ * side-recording the frost samples) — which is exactly what kyant's
+ * `LayerBackdropNode` does, except kyant re-records on every invalidation.
+ * See [ThrottledLayerBackdropDefaultIntervalMillis] for why the cap exists.
+ */
+@Stable
+class ThrottledLayerBackdrop internal constructor(
+    val graphicsLayer: GraphicsLayer,
+    internal val minIntervalMillis: Long,
+) : Backdrop {
+
+    override val isCoordinatesDependent: Boolean get() = true
+
+    /** Coordinates of the node carrying [Modifier.throttledLayerBackdrop]. */
+    internal var layerCoordinates: LayoutCoordinates? by mutableStateOf(null)
+
+    override fun DrawScope.drawBackdrop(
+        density: Density,
+        coordinates: LayoutCoordinates?,
+        layerBlock: (GraphicsLayerScope.() -> Unit)?,
+    ) {
+        val coordinates = coordinates ?: return
+        val layerCoordinates = layerCoordinates ?: return
+        withTransform({
+            // No layerBlock is ever passed by the menu/cast consumers, so the
+            // inverse-transform branch of kyant's LayerBackdrop is not needed;
+            // keep the same defensive position fallback it uses.
+            val offset =
+                try {
+                    layerCoordinates.localPositionOf(coordinates)
+                } catch (_: Exception) {
+                    coordinates.positionInWindow() - layerCoordinates.positionInWindow()
+                }
+            translate(-offset.x, -offset.y)
+        }) {
+            drawLayer(graphicsLayer)
+        }
+    }
+}
+
+/** Creates a [ThrottledLayerBackdrop] (see [ThrottledLayerBackdropDefaultIntervalMillis]). */
+@Composable
+fun rememberThrottledLayerBackdrop(
+    graphicsLayer: GraphicsLayer = rememberGraphicsLayer(),
+    minIntervalMillis: Long = ThrottledLayerBackdropDefaultIntervalMillis,
+): ThrottledLayerBackdrop = remember(graphicsLayer) {
+    ThrottledLayerBackdrop(graphicsLayer, minIntervalMillis)
+}
+
+/** Attaches the throttled recorder for [backdrop] to this modifier's node. */
+fun Modifier.throttledLayerBackdrop(backdrop: ThrottledLayerBackdrop): Modifier =
+    this then ThrottledLayerBackdropElement(backdrop)
+
+private class ThrottledLayerBackdropElement(
+    val backdrop: ThrottledLayerBackdrop,
+) : ModifierNodeElement<ThrottledLayerBackdropNode>() {
+    override fun create() = ThrottledLayerBackdropNode(backdrop)
+
+    override fun update(node: ThrottledLayerBackdropNode) {
+        if (node.backdrop !== backdrop) {
+            node.backdrop.layerCoordinates = null
+            node.backdrop = backdrop
+        }
+        node.invalidateDraw()
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "throttledLayerBackdrop"
+        properties["backdrop"] = backdrop
+        properties["minIntervalMillis"] = backdrop.minIntervalMillis
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ThrottledLayerBackdropElement) return false
+        return backdrop === other.backdrop
+    }
+
+    override fun hashCode(): Int = backdrop.hashCode()
+}
+
+private class ThrottledLayerBackdropNode(
+    var backdrop: ThrottledLayerBackdrop,
+) : DrawModifierNode, GlobalPositionAwareModifierNode, Modifier.Node() {
+
+    private var lastRecordUptimeMillis = 0L
+
+    override fun onAttach() {
+        super.onAttach()
+        // A fresh attach records on the very first draw instead of waiting
+        // out a stale interval window.
+        lastRecordUptimeMillis = 0L
+    }
+
+    override fun ContentDrawScope.draw() {
+        drawContent()
+        val now = SystemClock.uptimeMillis()
+        if (now - lastRecordUptimeMillis >= backdrop.minIntervalMillis) {
+            lastRecordUptimeMillis = now
+            val density = requireDensity()
+            backdrop.graphicsLayer.record(size.toIntSize()) {
+                val previousDensity = drawContext.density
+                drawContext.density = density
+                try {
+                    // Explicit receiver: GraphicsLayer.record's block is a plain
+                    // DrawScope, so the ContentDrawScope member needs to be named
+                    // (kyant's LayerBackdropNode does the same via this@draw).
+                    this@draw.drawContent()
+                } finally {
+                    drawContext.density = previousDensity
+                }
+            }
+        }
+    }
+
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        if (coordinates.isAttached) {
+            backdrop.layerCoordinates = coordinates
+        }
+    }
+
+    override fun onDetach() {
+        backdrop.layerCoordinates = null
+    }
+}
+
+/**
+ * Blur radius the pill-shaped glass surfaces (header pills, icon pills,
+ * action pills) sample the backdrop at (2026-09-04, user report: "The pills
+ * have opaque background. it should be blurred.").
+ *
+ * The original 8dp resting blur — ported from SimpMusic — reads as a flat
+ * tint whenever the sampled band behind the pill is short on detail, which
+ * made the header pills look like opaque chips. 18dp makes the frost
+ * unmistakably glass: whatever sits behind the pill (list content, artwork,
+ * the lens-refracted card edges) visibly smears through the surface.
+ *
+ * Scoped to the PILL composables only — the navigation bar, the mini player
+ * and the other full-width surfaces keep the default 8dp so the look the
+ * user already approved there is untouched.
+ */
+val LiquidGlassPillBlurRadius = 18.dp
+
+/**
  * Light-mode ink color for content (icons / labels) drawn on top of a Liquid
  * Glass surface.
  *
@@ -174,15 +406,15 @@ fun liquidGlassContentColor(): Color =
  * loop that crashes the RuntimeShader.
  *
  * **Performance note:** The modifier chain is wrapped in `remember` keyed on
- * [backdrop], [shape], [interactive], [baseColor] and the current dark-theme
- * state. This is the single biggest lever for the "lag when switching pages"
- * symptom: without memoization, every recomposition of the host screen
- * (which can happen many times per second during scroll) rebuilt the entire
- * `drawBackdrop` modifier chain — re-allocating the kyant effect stack and
- * re-installing the RuntimeShader on the GraphicsLayer. Memoizing it means
- * the chain is built ONCE per (backdrop, shape, dark-theme) tuple and
- * reused across recompositions, so scroll-driven recompositions no longer
- * trigger per-frame GPU setup cost.
+ * [backdrop], [shape], [interactive], [baseColor], [blurRadius] and the
+ * current dark-theme state. This is the single biggest lever for the "lag
+ * when switching pages" symptom: without memoization, every recomposition of
+ * the host screen (which can happen many times per second during scroll)
+ * rebuilt the entire `drawBackdrop` modifier chain — re-allocating the kyant
+ * effect stack and re-installing the RuntimeShader on the GraphicsLayer.
+ * Memoizing it means the chain is built ONCE per (backdrop, shape,
+ * dark-theme) tuple and reused across recompositions, so scroll-driven
+ * recompositions no longer trigger per-frame GPU setup cost.
  *
  * @param baseColor Optional OPAQUE color drawn UNDER the backdrop sample
  *   (via the kyant `onDrawBehind` callback). When the backdrop has content
@@ -201,6 +433,7 @@ fun Modifier.liquidGlass(
     shape: Shape = CircleShape,
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
+    blurRadius: Dp = 8.dp,
 ): Modifier {
     // Theme-aware dark/light surface overlay (part of the 2026-09-03 light-mode
     // black-pills fix). This used to read isSystemInDarkTheme(), which follows
@@ -219,7 +452,7 @@ fun Modifier.liquidGlass(
     // RuntimeShader on the GraphicsLayer, which was the dominant cause of the "lag
     // when switching pages" symptom (the new page's first frames all paid that GPU
     // setup cost while the user was already trying to scroll).
-    return remember(backdrop, shape, interactive, baseColor, isDark) {
+    return remember(backdrop, shape, interactive, baseColor, blurRadius, isDark) {
         this.drawBackdrop(
             backdrop = backdrop,
             effects = {
@@ -227,9 +460,9 @@ fun Modifier.liquidGlass(
                 vibrancy()
                 blur(
                     if (l > 0f) {
-                        lerp(8f.dp.toPx(), 16f.dp.toPx(), l)
+                        lerp(blurRadius.toPx() * 2f, blurRadius.toPx() * 4f, l)
                     } else {
-                        lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
+                        blurRadius.toPx()
                     },
                 )
                 lens(24f.dp.toPx(), size.minDimension / 4f, false)
@@ -277,11 +510,12 @@ fun LiquidGlassContainer(
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
     interactive: Boolean = false,
+    blurRadius: Dp = LiquidGlassPillBlurRadius,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
-        modifier = modifier.liquidGlass(backdrop, shape, interactive),
+        modifier = modifier.liquidGlass(backdrop, shape, interactive, blurRadius = blurRadius),
         contentAlignment = contentAlignment,
         content = content,
     )
@@ -307,6 +541,7 @@ fun LiquidGlassActionPill(
     backdrop: PlatformBackdrop,
     modifier: Modifier = Modifier,
     interactive: Boolean = false,
+    blurRadius: Dp = LiquidGlassPillBlurRadius,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -317,6 +552,7 @@ fun LiquidGlassActionPill(
                     backdrop = backdrop,
                     shape = RoundedCornerShape(24.dp),
                     interactive = interactive,
+                    blurRadius = blurRadius,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -399,5 +635,58 @@ fun LiquidGlassIconButton(
                 tint = resolvedTint,
             )
         }
+    }
+}
+
+/**
+ * ── Glass-pipeline pre-warm (2026-09-04) ─────────────────────────────────────
+ *
+ * User report: "When I open the songs overflow popup for the first few
+ * seconds after opening the app, the scrolling in the popup is a bit laggy."
+ *
+ * The first time a glass popup opens in a process, three things are COLD:
+ *  1. the AGSL vibrancy shader + the blur RenderEffect (compiled lazily on
+ *     first use — on the popup's own first frames);
+ *  2. the [ThrottledLayerBackdrop] recorder (its first full-screen
+ *     [GraphicsLayer] record allocates the layer and runs the whole record
+ *     path for the first time);
+ *  3. the menu row composables themselves (JIT).
+ *
+ * This composable runs all three ONCE, ~2 s after launch, while nothing is
+ * on screen: a 1 dp, ~2%-alpha strip (invisible, but still DRAWN — alpha 0
+ * would skip drawing and warm nothing) that samples [backdrop] with the
+ * exact vibrancy + 32 dp blur recipe the real popups use, with an optional
+ * [content] slot for composing a couple of real menu rows. The caller also
+ * keeps the throttled recorder attached for the warm-up window so the first
+ * full-screen record happens here, not inside the popup's first scroll.
+ *
+ * Costs one Record + a couple of frames of 1-dp blur, once per process.
+ */
+@Composable
+fun GlassPipelinePrewarm(
+    backdrop: Backdrop?,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {},
+) {
+    if (!active || backdrop == null) return
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                // NOT alpha 0: a zero-alpha layer is skipped entirely and
+                // warms nothing. 2% over one strip of pixels is invisible.
+                .graphicsLayer { alpha = 0.02f }
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { androidx.compose.ui.graphics.RectangleShape },
+                    effects = {
+                        vibrancy()
+                        blur(32.dp.toPx())
+                    },
+                ),
+    ) {
+        content()
     }
 }

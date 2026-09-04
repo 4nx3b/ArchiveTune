@@ -203,6 +203,32 @@ val LocalVideoSelectedHeight = compositionLocalOf<Int?> { null }
 val LocalIsInPipMode = compositionLocalOf { false }
 
 /**
+ * Back-priority guard (2026-09-04): true while any ROOT-level overlay is
+ * showing over the app surface — the song-overflow glass popup
+ * ([BottomSheetMenu]), the Cast route picker's root glass card, or the
+ * details [BottomSheetPage] — including the ~260 ms exit-fade tail after
+ * the popup's visibility flag has already flipped false.
+ *
+ * Provided by [MainActivity]. Read by BOTH player-collapse back handlers
+ * (MainActivity's root fallback and Player.kt's internal lyrics→queue→
+ * collapse handler): while a root overlay is open they disable themselves,
+ * so the back gesture can only ever reach the overlay's own dismissal
+ * handler — back closes the popup and the full player stays exactly where
+ * it was, instead of the gesture racing ahead and minimizing the player
+ * (user report 2026-09-04: "when I use back navigation gesture it should
+ * return to the full player and not close it instead. Right now whenever I
+ * open these popups the navigation bar gesture first closes the main player
+ * and minimises it. Second time using the gesture closes the popup").
+ *
+ * Gating the collapse handlers explicitly makes the outcome independent of
+ * back-callback registration order, which is not a guarantee worth relying
+ * on across Compose/activity versions and predictive-back paths.
+ *
+ * Default: false (no provider — e.g. in previews or non-Activity hosts).
+ */
+val LocalRootOverlayActive = compositionLocalOf { false }
+
+/**
  * Tracks whether the full-screen lyrics overlay (MikoLyricsTransition) is
  * currently visible on top of the player.
  *

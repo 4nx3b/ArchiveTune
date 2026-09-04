@@ -60,6 +60,7 @@ import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
+import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
@@ -76,6 +77,14 @@ import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
 import androidx.compose.foundation.layout.asPaddingValues
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 @Composable
 fun DownloadsSettings(
@@ -146,6 +155,12 @@ fun DownloadsSettings(
         )
     }
 
+    // Header haze (2026-09-04): the scrolling content is the haze
+    // source; the transparent pill header zone blurs whatever
+    // scrolls under it.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -171,9 +186,15 @@ fun DownloadsSettings(
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -187,11 +208,12 @@ fun DownloadsSettings(
 
         Column(
             Modifier
-                .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
+                .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
@@ -288,7 +310,15 @@ fun DownloadsSettings(
                 }
             }
         }
-    }
+    
+        // Header haze overlay — later sibling of the scrolling
+        // content so it draws on top of it, under the pill header.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
+}
 }
 
 @Composable
@@ -306,6 +336,11 @@ private fun DownloadSourceOrderDialog(
             val item = sources.removeAt(from.index)
             sources.add(to.index, item)
         }
+    // Apple Music availability snapshot for the row hint (in-memory token
+    // cache — cheap, read once when the dialog opens). Apple resolves through
+    // its OWN account ring (user sign-in + pool contributions), so unlike the
+    // REQUIRES_POOL sources it is not gated by the pool toggle.
+    val appleSignedIn = AppleMusicAudioProvider.mediaUserToken() != null
 
     DefaultDialog(
         onDismiss = onDismiss,
@@ -392,6 +427,13 @@ private fun DownloadSourceOrderDialog(
                                         color = contentColor.copy(alpha = 0.7f),
                                     )
                                 }
+                                if (source == DownloadSource.APPLE && !appleSignedIn) {
+                                    Text(
+                                        text = stringResource(R.string.download_source_apple_music_hint),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f),
+                                    )
+                                }
                             }
                             Icon(
                                 painter = painterResource(R.drawable.drag_handle),
@@ -416,6 +458,7 @@ private fun DownloadSource.displayName(context: android.content.Context): String
         DownloadSource.QOBUZ -> context.getString(R.string.download_source_qobuz)
         DownloadSource.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         DownloadSource.TIDAL -> context.getString(R.string.download_source_tidal)
+        DownloadSource.APPLE -> context.getString(R.string.download_source_apple_music)
         DownloadSource.DEEZER -> context.getString(R.string.download_source_deezer)
         DownloadSource.JIOSAAVN -> context.getString(R.string.download_source_jiosaavn)
         DownloadSource.YOUTUBE_MUSIC -> context.getString(R.string.download_source_youtube_music)
@@ -427,6 +470,7 @@ private fun DownloadSource.displayName(): String =
         DownloadSource.QOBUZ -> "Qobuz"
         DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
         DownloadSource.TIDAL -> "Tidal"
+        DownloadSource.APPLE -> "Apple Music"
         DownloadSource.DEEZER -> "Deezer"
         DownloadSource.JIOSAAVN -> "JioSaavn"
         DownloadSource.YOUTUBE_MUSIC -> "YouTube Music"
@@ -438,6 +482,7 @@ private fun DownloadSource.iconRes(): Int =
         DownloadSource.QOBUZ -> R.drawable.provider_qobuz
         DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         DownloadSource.TIDAL -> R.drawable.provider_tidal
+        DownloadSource.APPLE -> R.drawable.provider_apple
         DownloadSource.DEEZER -> R.drawable.provider_deezer
         DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn
         DownloadSource.YOUTUBE_MUSIC -> R.drawable.play

@@ -22,12 +22,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.SongListItem
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
@@ -367,7 +365,7 @@ fun AlbumMenu(
 
     HorizontalDivider()
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -380,11 +378,11 @@ fun AlbumMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         buildList {
@@ -471,11 +469,11 @@ fun AlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.play_next)) },
@@ -572,11 +570,11 @@ fun AlbumMenu(
 
         if (!isLocalAlbum) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                MenuSectionDivider()
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     when (downloadState) {
                         STATE_COMPLETED -> {
                             ListItem(
@@ -663,11 +661,11 @@ fun AlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },

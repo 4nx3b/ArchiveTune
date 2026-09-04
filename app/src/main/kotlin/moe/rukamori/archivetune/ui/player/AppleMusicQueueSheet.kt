@@ -142,7 +142,6 @@ fun AppleMusicQueueSheet(
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     val localPlayer = playerConnection.localPlayer
@@ -346,30 +345,34 @@ fun AppleMusicQueueSheet(
             val activeColor = adaptivePrimary.copy(alpha = 0.25f)
             val inactiveColor = adaptivePrimary.copy(alpha = 0.1f)
 
-            // Infinity pill — uses the Material "all_inclusive" (∞) drawable.
-            // Semantics: "infinite playback" — clicking it fetches radio /
-            // related songs via startRadioSeamlessly() and appends them to
-            // the queue so playback continues indefinitely. This fixes the
-            // "search → play → empty queue" issue: when the queue is empty
-            // (only the current song), tapping ∞ populates it with related
-            // songs without interrupting playback.
-            // The pill is a one-shot action button (not a toggle), so it
-            // always uses the inactive color.
+            // Shuffle pill (2026-09-05, user request: "i wanna play my playlist
+            // songs on shuffle. But clicking on the infinite queue icon ... it
+            // randomize the queue but also add other songs in queue which are
+            // not from playlist").
+            //
+            // This pill used to carry the ∞ "infinite playback" radio action —
+            // startRadioSeamlessly() — which REMOVED the rest of the playlist
+            // and refilled the queue with automix/radio songs, i.e. exactly the
+            // "adds songs that are not from my playlist" behaviour reported.
+            // It is now a plain shuffle toggle over the queue as it stands:
+            // randomise the (playlist) order, add nothing, remove nothing.
+            // The radio action is still reachable from the player menu's
+            // "Start radio".
             Box(
                 modifier =
                     Modifier
                         .weight(1f)
                         .height(QueuePillHeight)
-                        .background(inactiveColor, pillShape)
+                        .background(if (shuffleModeEnabled) activeColor else inactiveColor, pillShape)
                         .clip(pillShape)
                         .clickable {
-                            mediaMetadata?.let { playerConnection.startRadio(it) }
+                            playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                         },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.all_inclusive),
-                    contentDescription = "Start radio",
+                    painter = painterResource(R.drawable.shuffle),
+                    contentDescription = "Shuffle",
                     tint = adaptivePrimary,
                     modifier = Modifier.size(24.dp),
                 )

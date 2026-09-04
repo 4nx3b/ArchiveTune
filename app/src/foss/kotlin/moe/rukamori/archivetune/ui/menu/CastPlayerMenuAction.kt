@@ -8,7 +8,33 @@
 package moe.rukamori.archivetune.ui.menu
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import com.kyant.backdrop.Backdrop
 import moe.rukamori.archivetune.ui.component.NewAction
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 
 @Composable
-fun rememberCastPlayerMenuAction(): NewAction? = null
+fun rememberCastPlayerMenuAction(@Suppress("UNUSED_PARAMETER") renderSheet: Boolean = true): NewAction? = null
+
+/**
+ * Foss flavor stub for the gms real-time liquid-glass Cast route picker —
+ * the foss build ships no Cast support, so there is nothing to render.
+ */
+@Composable
+fun CastRoutePickerGlassOverlay(
+    @Suppress("UNUSED_PARAMETER") backdrop: PlatformBackdrop?,
+    @Suppress("UNUSED_PARAMETER") eligible: Boolean,
+) {
+}
+
+/**
+ * Foss flavor stub for the gms ROOT-level real-time liquid-glass Cast route
+ * picker (gms renders the floating glass card from MainActivity, sampling the
+ * menu-glass recorder). The foss build ships no Cast support — no-op.
+ */
+@Composable
+fun CastRoutePickerRootOverlay(
+    @Suppress("UNUSED_PARAMETER") backdrop: Backdrop?,
+    @Suppress("UNUSED_PARAMETER") modifier: Modifier = Modifier,
+) {
+}

@@ -92,11 +92,6 @@ import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
-import moe.rukamori.archivetune.constants.HomeScreenStyle
-import moe.rukamori.archivetune.constants.HomeScreenStyleKey
-import moe.rukamori.archivetune.constants.SpotifyHomeStyle
-import moe.rukamori.archivetune.constants.SpotifyHomeStyleKey
-import moe.rukamori.archivetune.ui.screens.rememberHomeSourceAvailable
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -111,6 +106,7 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
+import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -134,6 +130,14 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,6 +165,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
+        )
+    val (simpMusicLyrics, onSimpMusicLyricsChange) =
+        rememberPreference(
+            SimpMusicLyricsKey,
+            defaultValue = false,
         )
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
         rememberPreference(
@@ -266,10 +275,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(HideScrollbarKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
-    val (homeScreenStyle, onHomeScreenStyleChange) =
-        rememberEnumPreference(HomeScreenStyleKey, defaultValue = HomeScreenStyle.DEFAULT)
-    var spotifyHomeStyle by rememberEnumPreference(SpotifyHomeStyleKey, defaultValue = SpotifyHomeStyle.SPOTIFY)
-    val spotifySignedIn = rememberHomeSourceAvailable()
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -441,6 +446,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
+    // Header haze (2026-09-04): the scrolling content is the haze
+    // source; the transparent pill header zone blurs whatever
+    // scrolls under it.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -466,9 +477,15 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -482,11 +499,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
         Column(
             Modifier
-                .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
+                .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
@@ -786,8 +804,29 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                         stringResource(R.string.player_design_bitchord)
                                     PlayerDesignStyle.TIKTOK ->
                                         stringResource(R.string.player_design_tiktok)
+                                    PlayerDesignStyle.SIMPMUSIC ->
+                                        stringResource(R.string.player_design_simpmusic)
+                                    PlayerDesignStyle.SPATIALFLOW ->
+                                        stringResource(R.string.player_design_spatialflow)
                                 }
                             },
+                        )
+                    }
+                }
+
+                // The SimpMusic style is the only one that carries a second
+                // lyrics surface of its own, so the choice between that and the app's Enhanced
+                // renderer means nothing under any other style. Sits directly under the style
+                // picker, where the style it belongs to was just chosen.
+                if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("simpmusic_lyrics"),
+                            title = { Text(stringResource(R.string.simpmusic_lyrics)) },
+                            description = stringResource(R.string.simpmusic_lyrics_desc),
+                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                            checked = simpMusicLyrics,
+                            onCheckedChange = onSimpMusicLyricsChange,
                         )
                     }
                 }
@@ -1061,52 +1100,13 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // The three settings that decide what the Home tab shows were scattered through
+            // The settings that decide what the Home tab shows were scattered through
             // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
             // one decision — which home you get — so they read as one group.
             PreferenceGroup(
                 modifier = positions.modifierFor("home_screen"),
                 title = stringResource(R.string.home),
             ) {
-                item {
-                    EnumListPreference(
-                        modifier = positions.modifierFor("home_screen_style"),
-                        title = { Text(stringResource(R.string.home_screen_style)) },
-                        description = stringResource(R.string.home_screen_style_desc),
-                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
-                        selectedValue = homeScreenStyle,
-                        onValueSelected = onHomeScreenStyleChange,
-                        valueText = {
-                            when (it) {
-                                HomeScreenStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
-                                HomeScreenStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
-                            }
-                        },
-                    )
-                }
-
-                // Only worth showing once there is a Spotify home to style. Same three-way choice
-                // as above so the two pages can be set independently — the point of splitting them.
-                if (spotifySignedIn) {
-                    item {
-                        EnumListPreference(
-                            modifier = positions.modifierFor("spotify_home_style"),
-                            title = { Text(stringResource(R.string.spotify_home_style)) },
-                            description = stringResource(R.string.spotify_home_style_desc),
-                            icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
-                            selectedValue = spotifyHomeStyle,
-                            onValueSelected = { spotifyHomeStyle = it },
-                            valueText = {
-                                when (it) {
-                                    SpotifyHomeStyle.SPOTIFY -> stringResource(R.string.home_screen_style_spotify)
-                                    SpotifyHomeStyle.DEFAULT -> stringResource(R.string.home_screen_style_default)
-                                    SpotifyHomeStyle.RUKAMORI -> stringResource(R.string.home_screen_style_rukamori)
-                                }
-                            },
-                        )
-                    }
-                }
-
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("minimal_home_mode"),
@@ -1196,7 +1196,15 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    }
+    
+        // Header haze overlay — later sibling of the scrolling
+        // content so it draws on top of it, under the pill header.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
+}
 }
 
 @Composable

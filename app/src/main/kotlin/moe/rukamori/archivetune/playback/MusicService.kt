@@ -327,6 +327,9 @@ import moe.rukamori.archivetune.together.toTogetherRoomState
 import moe.rukamori.archivetune.together.toTogetherTrack
 import moe.rukamori.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzManager
+import moe.rukamori.archivetune.moriextractor.ArchiveTuneExtractorException
+import moe.rukamori.archivetune.moriextractor.InMemoryBearerTokenRepository
+import moe.rukamori.archivetune.moriextractor.StreamingExtractionManager
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
 import moe.rukamori.archivetune.utils.CoilBitmapLoader
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
@@ -476,6 +479,28 @@ class MusicService :
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
+
+    // ─── ArchiveTune Extractor (moriextractor backend) ─────────────────────────
+    // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR playback client
+    // resolves signed stream URLs through the moriextractor backend instead of the
+    // InnerTube client chain. The bearer token is baked in at build time
+    // (BuildConfig.EXTRACTOR_BEARER) and can be refreshed at runtime via
+    // [updateExtractorBearerToken].
+    private val extractorPlaybackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
+    private val extractorTokenRepository by lazy {
+        InMemoryBearerTokenRepository(moe.rukamori.archivetune.BuildConfig.EXTRACTOR_BEARER)
+    }
+    private val _extractorAuthenticationEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val extractorAuthenticationEvents = _extractorAuthenticationEvents.asSharedFlow()
+    private val streamingExtractionManagerDelegate =
+        lazy {
+            StreamingExtractionManager(
+                tokenRepository = extractorTokenRepository,
+                authenticationCallback = { notifyExtractorAuthenticationRequired() },
+            )
+        }
+    private val streamingExtractionManager by streamingExtractionManagerDelegate
+
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -526,6 +551,21 @@ class MusicService :
                         ).build(),
                 )
             }.build()
+    }
+
+    // Ported from vossgraves/ArchiveTune: extractor media flows through its own
+    // OkHttp client — no proxy, no client-profile header rewriting. The backend
+    // serves already-signed URLs on its own origin; StreamClientUtils' UA/origin
+    // patching would corrupt them.
+    private val extractorMediaOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient
+            .Builder()
+            .proxy(Proxy.NO_PROXY)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 
     private var currentQueue: Queue = EmptyQueue
@@ -3136,6 +3176,12 @@ class MusicService :
     ): Boolean {
         val outgoingPlayer = localPlayer
         val oldSessionPlayer = player
+        // Whether playback should still be running once ownership has moved. Captured BEFORE the
+        // session player is rebuilt below: that rebuild constructs a fresh wrapper around the
+        // promoted ExoPlayer, and a fresh wrapper does not inherit playWhenReady. Nothing used to
+        // re-assert it, so the promoted player came up paused and the incoming song stopped a few
+        // seconds in — right at the end of the fade, which is what made it look random.
+        val shouldKeepPlaying = crossfadePlaybackRequested || incomingPlayer.playWhenReady || oldSessionPlayer.playWhenReady
         crossfadeHandoffInProgress = true
         return try {
             incomingPlayer.removeListener(secondaryCrossfadeListener)
@@ -3185,6 +3231,13 @@ class MusicService :
             // 4. MediaSession + observable player state.
             mediaSession.player = player
             _playerFlow.value = player
+
+            // The rebuilt wrapper starts with playWhenReady=false regardless of what the promoted
+            // ExoPlayer was doing, so the intent captured before the rebuild is re-applied here —
+            // before the metadata replay below, so listeners never observe a spurious pause.
+            if (shouldKeepPlaying && !player.playWhenReady) {
+                player.playWhenReady = true
+            }
 
             // 5. Audio effects follow the promoted player's audio session.
             rebindAudioEffectSession(localPlayer.audioSessionId)
@@ -3853,7 +3906,12 @@ class MusicService :
         val failedUrl = responseException.dataSpec.uri.toString()
         val requestProfile = StreamClientUtils.resolveRequestProfile(failedUrl)
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
+        // Ported from vossgraves/ArchiveTune: the extractor cache lives beside the
+        // InnerTube one and fails by the same rules — its fingerprint is prefixed so
+        // a signed backend URL can never validate against the InnerTube cache.
+        val extractorAuthFingerprint = ArchiveTuneExtractorCacheFingerprintPrefix + authFingerprint
         val cachedFailedUrl = playbackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
+        val cachedExtractorFailedUrl = extractorPlaybackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
         val failedExpiredUrl =
             YTPlayerUtils.isExpiredOrNearExpiredStreamUrl(failedUrl) ||
                 (
@@ -3863,11 +3921,20 @@ class MusicService :
                             minimumRemainingMs = YTPlayerUtils.STREAM_URL_EXPIRY_SAFETY_MS,
                         )
                     } == true
+                ) ||
+                (
+                    cachedExtractorFailedUrl?.let {
+                        !it.isValidFor(
+                            authFingerprint = extractorAuthFingerprint,
+                            minimumRemainingMs = 0L,
+                        )
+                    } == true
                 )
 
         playbackUrlCache.remove(mediaId)
+        extractorPlaybackUrlCache.remove(mediaId)
         YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
-        if (!failedExpiredUrl && requestProfile.clientKey.isNotEmpty()) {
+        if (!failedExpiredUrl && cachedExtractorFailedUrl == null && requestProfile.clientKey.isNotEmpty()) {
             YTPlayerUtils.markStreamClientFailed(mediaId, requestProfile.clientKey, responseException.responseCode)
         }
 
@@ -3885,6 +3952,59 @@ class MusicService :
         player.prepare()
         if (shouldResume) player.play()
         return true
+    }
+
+    /**
+     * Ported from vossgraves/ArchiveTune: HTTP failures on extractor-origin URLs are
+     * backend protocol events, not YouTube client failures — 401 means the bearer
+     * token was rejected (clear it and surface the auth event), 403 a tampered signed
+     * URL, 410 an expired one worth one retry.
+     */
+    private fun handleExtractorStreamHttpFailure(
+        mediaId: String,
+        isFullyDownloadedMedia: Boolean,
+        responseException: androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException,
+    ): Boolean {
+        if (isFullyDownloadedMedia || !isExtractorPlaybackUri(responseException.dataSpec.uri)) return false
+
+        return when (responseException.responseCode) {
+            401 -> {
+                Timber.tag(TAG).w("Extractor bearer token was rejected during playback")
+                notifyExtractorAuthenticationRequired()
+                stopOnError()
+                true
+            }
+
+            403 -> {
+                Timber.tag(TAG).w("Extractor rejected a tampered or invalid signed playback URL")
+                stopOnError()
+                true
+            }
+
+            410 -> {
+                val retryStarted =
+                    retryPlaybackAfterStreamFailure(
+                        mediaId = mediaId,
+                        isFullyDownloadedMedia = false,
+                        responseException = responseException,
+                    )
+                if (!retryStarted) stopOnError()
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    private fun notifyExtractorAuthenticationRequired() {
+        extractorTokenRepository.clearToken()
+        extractorPlaybackUrlCache.clear()
+        _extractorAuthenticationEvents.tryEmit(Unit)
+    }
+
+    fun updateExtractorBearerToken(token: String) {
+        extractorTokenRepository.updateToken(token)
+        extractorPlaybackUrlCache.clear()
     }
 
     private fun updateInitialBufferRecovery(@Player.State playbackState: Int) {
@@ -7670,31 +7790,36 @@ class MusicService :
                             return@runCatching
                         }
                     }
-                    // Fall back to YouTube stream URL prefetch.
-
-                    val result =
-                        retryWithoutPlaybackLoginContext {
-                            YTPlayerUtils.playerResponseForPlayback(
+                    // Fall back to YouTube stream URL prefetch. Ported from
+                    // vossgraves/ArchiveTune: skip it while the ARCHIVETUNE_EXTRACTOR
+                    // client is preferred — that path resolves through the backend
+                    // only, so an InnerTube prefetch would cache a URL the resolver
+                    // would never use.
+                    if (preferredStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
+                        val result =
+                            retryWithoutPlaybackLoginContext {
+                                YTPlayerUtils.playerResponseForPlayback(
+                                    mediaId,
+                                    audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
+                                    connectivityManager = connectivityManager,
+                                    preferredStreamClient = preferredStreamClient,
+                                    networkMetered = lowData,
+                                )
+                            }
+                        result.onSuccess { playbackData ->
+                            val expiresAtMs = System.currentTimeMillis() +
+                                (playbackData.streamExpiresInSeconds.coerceAtLeast(1) * 1000L)
+                            playbackUrlCache[mediaId] = AuthScopedCacheValue(
+                                url = playbackData.streamUrl,
+                                expiresAtMs = expiresAtMs,
+                                authFingerprint = playbackData.authFingerprint,
+                            )
+                            Timber.tag(TAG).d(
+                                "Prefetch: YouTube stream URL cached for %s (expires in %ds)",
                                 mediaId,
-                                audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
-                                connectivityManager = connectivityManager,
-                                preferredStreamClient = preferredStreamClient,
-                                networkMetered = lowData,
+                                playbackData.streamExpiresInSeconds,
                             )
                         }
-                    result.onSuccess { playbackData ->
-                        val expiresAtMs = System.currentTimeMillis() +
-                            (playbackData.streamExpiresInSeconds.coerceAtLeast(1) * 1000L)
-                        playbackUrlCache[mediaId] = AuthScopedCacheValue(
-                            url = playbackData.streamUrl,
-                            expiresAtMs = expiresAtMs,
-                            authFingerprint = playbackData.authFingerprint,
-                        )
-                        Timber.tag(TAG).d(
-                            "Prefetch: YouTube stream URL cached for %s (expires in %ds)",
-                            mediaId,
-                            playbackData.streamExpiresInSeconds,
-                        )
                     }
                 }.onFailure { error ->
                     if (error is kotlinx.coroutines.CancellationException) throw error
@@ -8269,6 +8394,12 @@ class MusicService :
 
         val streamHttpFailure = findStreamHttpFailure(error)
         if (streamHttpFailure != null) {
+            // Ported from vossgraves/ArchiveTune: extractor-origin failures (401
+            // bearer rejected / 403 tampered signature / 410 expired) get their own
+            // handling before the generic retryable-code path.
+            if (handleExtractorStreamHttpFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)) {
+                return
+            }
             if (streamHttpFailure.responseCode in RETRYABLE_STREAM_RESPONSE_CODES &&
                 retryPlaybackAfterStreamFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)
             ) {
@@ -8676,6 +8807,14 @@ class MusicService :
                 this,
                 OkHttpDataSource.Factory(mediaOkHttpClient),
             )
+        // Ported from vossgraves/ArchiveTune: extractor media gets its own factory on
+        // the no-proxy client so signed backend URLs never pass through the YouTube
+        // UA/origin interceptor.
+        val extractorMediaFactory =
+            DefaultDataSource.Factory(
+                this,
+                OkHttpDataSource.Factory(extractorMediaOkHttpClient),
+            )
         // Resolved source URIs pass through this factory a second time after the outer resolver has
         // selected a provider. Route those private schemes here instead of asking DefaultDataSource
         // to handle an unknown `deezer://` or `tidal-dash://` URI.
@@ -8685,6 +8824,8 @@ class MusicService :
                     defaultFactory = youtubeMediaFactory,
                     deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
                     tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                    extractorFactory = extractorMediaFactory,
+                    shouldUseExtractorFactory = ::isExtractorPlaybackUri,
                 )
             }
 
@@ -10543,6 +10684,16 @@ class MusicService :
             return sourceDataSpec
         }
 
+        // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR playback client
+        // bypasses the InnerTube client chain entirely and asks the moriextractor
+        // backend for a signed stream URL.
+        if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
+            return resolveArchiveTuneExtractorDataSpec(
+                dataSpec = dataSpec,
+                mediaId = mediaId,
+            )
+        }
+
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
         playbackUrlCache[mediaId]
             ?.takeUnless { lowDataModeActive }
@@ -10734,7 +10885,119 @@ class MusicService :
         } ?: resolvedDataSpec
     }
 
+    // ─── ArchiveTune Extractor resolution (ported from vossgraves/ArchiveTune) ──
 
+    /**
+     * Resolves [mediaId] through the moriextractor backend and returns a DataSpec
+     * pointed at the backend's signed stream URL. Ported verbatim from
+     * vossgraves/ArchiveTune: cache entries are keyed by the prefixed auth
+     * fingerprint, PO tokens / cookies / GVS tokens from the current playback
+     * auth state are forwarded as query parameters, and the signed URL's expiry
+     * is enforced with a 30 s safety margin.
+     */
+    private fun resolveArchiveTuneExtractorDataSpec(
+        dataSpec: DataSpec,
+        mediaId: String,
+    ): DataSpec {
+        val authState = YouTube.currentPlaybackAuthState()
+        val authFingerprint = ArchiveTuneExtractorCacheFingerprintPrefix + authState.fingerprint
+        extractorPlaybackUrlCache[mediaId]
+            ?.takeIf {
+                it.isValidFor(
+                    authFingerprint = authFingerprint,
+                    minimumRemainingMs = ArchiveTuneExtractorExpirySafetyMs,
+                )
+            }?.let { cached ->
+                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                return dataSpec.withUri(cached.url.toUri())
+            }
+
+        val extraction =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    streamingExtractionManager.extractAudio(
+                        videoUrl = mediaId.toYouTubeWatchUrl(),
+                        userPoToken = authState.resolveExtractorPoToken(),
+                        cookies = authState.resolveExtractorCookies(),
+                        userGvsToken = authState.resolveExtractorGvsToken(),
+                    )
+                }
+            }.getOrElse { throwable ->
+                when {
+                    throwable.isNetworkConnectionFailure() -> {
+                        throw PlaybackException(
+                            getString(R.string.error_no_internet),
+                            throwable,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                        )
+                    }
+
+                    throwable.isRequestTimeout() -> {
+                        throw PlaybackException(
+                            getString(R.string.error_timeout),
+                            throwable,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                        )
+                    }
+
+                    throwable is ArchiveTuneExtractorException -> {
+                        throw PlaybackException(
+                            getString(R.string.error_no_stream),
+                            throwable,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+
+                    throwable is PlaybackException -> {
+                        throw throwable
+                    }
+
+                    else -> {
+                        throw PlaybackException(
+                            getString(R.string.error_unknown),
+                            throwable,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+                }
+            }
+
+        val streamUrl = extraction.streamUrl
+        extractorPlaybackUrlCache[mediaId] =
+            AuthScopedCacheValue(
+                url = streamUrl,
+                expiresAtMs = extraction.streamExpiresAt.coerceAtMost(Long.MAX_VALUE / 1_000L) * 1_000L,
+                authFingerprint = authFingerprint,
+            )
+        scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+        return dataSpec.withUri(streamUrl.toUri())
+    }
+
+    private fun PlaybackAuthState.resolveExtractorPoToken(): String? = poTokenPlayer.normalizeExtractorRequestValue()
+
+    private fun PlaybackAuthState.resolveExtractorGvsToken(): String? =
+        resolveGvsPoToken().normalizeExtractorRequestValue()
+            ?: poTokenGvs.normalizeExtractorRequestValue()
+            ?: poToken.normalizeExtractorRequestValue()
+
+    private fun PlaybackAuthState.resolveExtractorCookies(): String? = cookie.normalizeExtractorRequestValue()
+
+    private fun String?.normalizeExtractorRequestValue(): String? {
+        val trimmed = this?.trim()
+        return trimmed?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+    }
+
+    private fun String.toYouTubeWatchUrl(): String = "https://music.youtube.com/watch?v=$this"
+
+    private fun isExtractorPlaybackUri(uri: Uri): Boolean {
+        val url = uri.toString()
+        return extractorPlaybackUrlCache.values.any { it.url == url } ||
+            (
+                uri.scheme.equals("https", ignoreCase = true) &&
+                    uri.host.equals(ArchiveTuneExtractorHost, ignoreCase = true) &&
+                    uri.path?.startsWith("/api/play/") == true
+            )
+    }
 
     private fun resolveCachedDataSpec(
         dataSpec: DataSpec,
@@ -11157,6 +11420,10 @@ class MusicService :
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
+        // Ported from vossgraves/ArchiveTune: extractor-origin URLs (the moriextractor
+        // backend's signed /api/play/ links) get the dedicated no-proxy OkHttp client.
+        private val extractorFactory: DataSource.Factory,
+        private val shouldUseExtractorFactory: (Uri) -> Boolean,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -11167,12 +11434,16 @@ class MusicService :
         }
 
         override fun open(dataSpec: DataSpec): Long {
-            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
             val factory =
-                when (scheme) {
-                    DeezerCrypto.SCHEME -> deezerFactory
-                    TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
-                    else -> defaultFactory
+                if (shouldUseExtractorFactory(dataSpec.uri)) {
+                    extractorFactory
+                } else {
+                    val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
+                    when (scheme) {
+                        DeezerCrypto.SCHEME -> deezerFactory
+                        TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                        else -> defaultFactory
+                    }
                 }
             val selected = factory.createDataSource()
             transferListeners.forEach(selected::addTransferListener)
@@ -11991,9 +12262,15 @@ class MusicService :
         const val ALBUM = "album"
         const val PLAYLIST = "playlist"
         const val SPOTIFY_PLAYLIST = "spotify_playlist"
+        const val SPOTIFY_LIKED = "spotify_liked"
         const val ONLINE_PLAYLIST = "online_playlist"
 
         private const val TAG = "MusicService"
+        // ─── ArchiveTune Extractor (moriextractor backend) — ported from
+        // vossgraves/ArchiveTune ───
+        private const val ArchiveTuneExtractorHost = "moriextractor.koyeb.app"
+        private const val ArchiveTuneExtractorCacheFingerprintPrefix = "archivetune_extractor:"
+        private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
         private const val AUDIO_EFFECT_INITIALIZATION_MAX_ATTEMPTS = 4
         private const val AUDIO_EFFECT_INITIALIZATION_RETRY_DELAY_MS = 250L
         private const val INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES = 3
