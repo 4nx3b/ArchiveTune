@@ -2169,7 +2169,6 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.size(thumbnailSize),
                                 isPlayerExpanded = state.isExpanded,
-                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
                         Column(
@@ -2667,7 +2666,6 @@ fun BottomSheetPlayer(
                                 sliderPositionProvider = { sliderPosition },
                                 modifier = Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection),
                                 isPlayerExpanded = state.isExpanded,
-                                onOpenLyrics = { isLyricsScreenVisible = true },
                             )
                         }
 

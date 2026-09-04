@@ -111,6 +111,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -150,7 +151,6 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
@@ -211,6 +211,7 @@ fun SimpMusicPlayerContent(
     val density = LocalDensity.current
     val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
+    val queueTitle by playerConnection.queueTitle.collectAsStateWithLifecycle()
 
     val artUrl =
         remember(mediaMetadata.id, mediaMetadata.thumbnailUrl) {
@@ -247,6 +248,9 @@ fun SimpMusicPlayerContent(
     var topBarHeight by remember { mutableStateOf(0.dp) }
     var infoHeight by remember { mutableStateOf(0.dp) }
 
+    // The whole style renders in SimpMusic's own Poppins Medium typography — the same
+    // metrics its ui/theme/Typo.kt defines. Colors stay the ambient theme's.
+    MaterialTheme(typography = SimpMusicTypography) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         // The viewport, captured OUTSIDE the scrolling Column: inside it the height constraint is
         // Infinity, so this is the only place the screen height can be read.
@@ -351,7 +355,7 @@ fun SimpMusicPlayerContent(
                 }
 
                 SimpMusicTopBar(
-                    title = mediaMetadata.title,
+                    playlistName = queueTitle ?: mediaMetadata.album?.title ?: "",
                     onCollapse = state::collapseSoft,
                     onMenu = {
                         menuState.show {
@@ -424,18 +428,17 @@ fun SimpMusicPlayerContent(
         }
 
         if (queueOpen) {
-            // Scrim first: the sheet's own rows are translucent, so without something behind them
-            // the player's artwork and controls read straight through the queue.
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))) {
-                AppleMusicQueueSheet(
-                    navController = navController,
-                    playerBottomSheetState = state,
-                    onClose = { queueOpen = false },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            // SimpMusic's own queue sheet (its ModalBottomSheet.kt QueueBottomSheet):
+            // full-height dark surface, NOW PLAYING header over the playlist name, a
+            // current-song row, then the queue list with a per-item move/remove menu.
+            SimpMusicQueueSheet(
+                playerConnection = playerConnection,
+                navController = navController,
+                onDismiss = { queueOpen = false },
+            )
         }
     }
+    } // close the SimpMusicTypography MaterialTheme scope
 }
 
 /**
@@ -478,10 +481,11 @@ private fun Modifier.simpMusicHeroWash(
         )
     }
 
-/** Collapse chevron, "NOW PLAYING" over the track title, and the overflow menu. */
+/** Collapse chevron, "NOW PLAYING" over the playlist name, and the overflow menu — SimpMusic's
+ *  CenterAlignedTopAppBar title block, on its own icons. */
 @Composable
 private fun SimpMusicTopBar(
-    title: String,
+    playlistName: String,
     onCollapse: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
@@ -495,7 +499,7 @@ private fun SimpMusicTopBar(
     ) {
         IconButton(onClick = onCollapse) {
             Icon(
-                painter = painterResource(R.drawable.player_expand_more),
+                painter = painterResource(R.drawable.simpmusic_keyboard_arrow_down),
                 contentDescription = stringResource(R.string.collapse),
                 tint = Color.White,
             )
@@ -506,22 +510,31 @@ private fun SimpMusicTopBar(
         ) {
             Text(
                 text = stringResource(R.string.now_playing).uppercase(Locale.getDefault()),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.7f),
-                maxLines = 1,
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color.White,
                 maxLines = 1,
+            )
+            // SimpMusic marquee-scrolls the playlist name under the header; a plain ellipsis
+            // is the closest a one-line non-scrolling title gets when the name is short.
+            Text(
+                text = playlistName,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            animationMode = MarqueeAnimationMode.Immediately,
+                        ),
             )
         }
         IconButton(onClick = onMenu) {
             Icon(
-                painter = painterResource(R.drawable.player_more_vert),
+                painter = painterResource(R.drawable.simpmusic_more_vert),
                 contentDescription = stringResource(R.string.more_options),
                 tint = Color.White,
             )
@@ -602,7 +615,12 @@ private fun SimpMusicArtworkPager(
     }
 }
 
-/** One [side]-square sleeve, placed at [topInset] so it lands on the space the hero reserved. */
+/**
+ * One [side]-square sleeve, placed at [topInset] so it lands on the space the hero reserved.
+ *
+ * SimpMusic's exact artwork frame: a 3dp-elevation shadow with an 8dp rounded shape and a
+ * palette-tinted spot color, the image inset 3dp inside it so the shadow reads as a card edge.
+ */
 @Composable
 private fun SimpMusicArtwork(
     metadata: MediaMetadata,
@@ -610,14 +628,35 @@ private fun SimpMusicArtwork(
     side: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
+    // The shadow's spot colour leans on the sleeve's own palette so the card edge reads
+    // as part of the artwork (SimpMusic does the same with its extracted dominant).
+    val sleevePalette = rememberMeshPalette(metadata.thumbnailUrl?.highRes())
+    val spotColor = sleevePalette.colors.firstOrNull() ?: Color.Black
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(topInset))
-        AsyncImage(
-            model = metadata.thumbnailUrl?.highRes(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(side).clip(RoundedCornerShape(8.dp)),
-        )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier =
+                Modifier
+                    .size(side)
+                    .shadow(
+                        elevation = 3.dp,
+                        shape = RoundedCornerShape(8.dp),
+                        spotColor = spotColor.copy(alpha = 0.6f),
+                        ambientColor = Color.Transparent,
+                    ),
+        ) {
+            AsyncImage(
+                model = metadata.thumbnailUrl?.highRes(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(3.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+            )
+        }
     }
 }
 

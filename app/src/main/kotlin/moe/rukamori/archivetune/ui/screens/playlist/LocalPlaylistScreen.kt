@@ -156,6 +156,8 @@ import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
@@ -807,15 +809,31 @@ fun LocalPlaylistScreen(
                                                     },
                                                 contentColor = Color.White,
                                                 onClick = {
-                                                    when (downloadState) {
+                                                    val headerState = downloadState
+                                                    when (headerState) {
                                                         HeaderDownloadState.Completed -> {
                                                             showRemoveDownloadDialog = true
                                                         }
                                                         is HeaderDownloadState.Partial -> {
-                                                            sendRemoveDownloads(
-                                                                context = context,
-                                                                songIds = songs.map { it.song.id },
-                                                            )
+                                                            // Pause/Resume (2026-09-05): the icon used to
+                                                            // REMOVE every download of the playlist here —
+                                                            // the 90 already-downloaded songs included,
+                                                            // which is exactly what was reported. Now it
+                                                            // only pauses the pending downloads; resuming
+                                                            // picks them back up; nothing is removed.
+                                                            if (headerState.paused) {
+                                                                sendResumePausedDownloads(
+                                                                    context = context,
+                                                                    songIds = songs.map { it.song.id },
+                                                                    downloads = downloads,
+                                                                )
+                                                            } else {
+                                                                sendPauseRunningDownloads(
+                                                                    context = context,
+                                                                    songIds = songs.map { it.song.id },
+                                                                    downloads = downloads,
+                                                                )
+                                                            }
                                                         }
                                                         HeaderDownloadState.None -> {
                                                             sendAddMissingDownloads(

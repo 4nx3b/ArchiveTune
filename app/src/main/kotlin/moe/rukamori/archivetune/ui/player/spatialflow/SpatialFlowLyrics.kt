@@ -381,6 +381,10 @@ private fun SpatialFlowSyncedLyrics(
             val isActive = index == activeIndex
             Text(
                 text = line.text,
+                // SpatialFlow renders lyric lines in Google Sans Flex with the
+                // ROND axis at 0% (its GoogleSansFlexNonRounded cut) so dense
+                // text stays crisp — everything else in the style is rounded.
+                fontFamily = SpatialFlowGoogleSansFlexNonRounded,
                 fontSize = if (isActive) 38.sp else 20.sp,
                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                 color = if (isActive) contentColor else dimColor,

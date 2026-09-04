@@ -59,8 +59,6 @@ import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
-import moe.rukamori.archivetune.constants.AudioQuality
-import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -70,7 +68,6 @@ import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
-import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -93,7 +90,6 @@ import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
@@ -106,7 +102,6 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -143,8 +138,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             AudioNormalizationKey,
             defaultValue = true,
         )
-    val (audioQuality, onAudioQualityChange) =
-        rememberEnumPreference(AudioQualityKey, AudioQuality.AUTO)
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
@@ -161,11 +154,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             EnableVideoPlaybackKey,
             defaultValue = false,
-        )
-    val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
-        rememberPreference(
-            ShowLyricsOnPlayerKey,
-            defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
         rememberPreference(
@@ -411,18 +399,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 title = stringResource(R.string.video_playback),
             ) {
                 item {
-                    Column(modifier = positions.modifierFor("show_lyrics_on_player")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.show_lyrics_on_player)) },
-                            description = stringResource(R.string.show_lyrics_on_player_desc),
-                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = showLyricsOnPlayer,
-                            onCheckedChange = onShowLyricsOnPlayerChange,
-                        )
-                    }
-                }
-
-                item {
                     Column(modifier = positions.modifierFor("enable_video_playback")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.enable_video_playback)) },
@@ -524,26 +500,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
-                item {
-                    Column(modifier = positions.modifierFor("audio_quality")) {
-                        EnumListPreference(
-                            title = { Text(stringResource(R.string.audio_quality)) },
-                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                            description = stringResource(R.string.audio_quality_description),
-                            selectedValue = audioQuality,
-                            onValueSelected = onAudioQualityChange,
-                            valueText = {
-                                when (it) {
-                                    AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
-                                    AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
-                                    AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
-                                    AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
-                                }
-                            },
-                        )
-                    }
-                }
-
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.audio_offload)) },

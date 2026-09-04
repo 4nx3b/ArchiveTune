@@ -119,6 +119,8 @@ import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
@@ -201,7 +203,7 @@ fun SpotifyPlaylistScreen(
         removeCompleted: Boolean = true,
     ) {
         val songIds = items.map(SpotifyDownloadItem::id)
-        when (headerDownloadState(songIds, latestDownloads)) {
+        when (val headerState = headerDownloadState(songIds, latestDownloads)) {
             HeaderDownloadState.Completed -> {
                 if (removeCompleted) {
                     sendRemoveDownloads(
@@ -212,10 +214,21 @@ fun SpotifyPlaylistScreen(
             }
 
             is HeaderDownloadState.Partial -> {
-                sendRemoveDownloads(
-                    context = navController.context,
-                    songIds = songIds,
-                )
+                // Pause/Resume (2026-09-05): pending-only, the
+                // already-downloaded songs stay untouched.
+                if (headerState.paused) {
+                    sendResumePausedDownloads(
+                        context = navController.context,
+                        songIds = songIds,
+                        downloads = latestDownloads,
+                    )
+                } else {
+                    sendPauseRunningDownloads(
+                        context = navController.context,
+                        songIds = songIds,
+                        downloads = latestDownloads,
+                    )
+                }
             }
 
             HeaderDownloadState.None -> {
