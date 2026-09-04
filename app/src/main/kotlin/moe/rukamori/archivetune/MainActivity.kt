@@ -2482,10 +2482,10 @@ class MainActivity : ComponentActivity() {
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
-                                        // BitChord home redesign (2026-09-03): the Home route's bar is
-                                        // pinned — content scrolls under it into a progressive blur —
-                                        // while its bar title fades in only once the list is scrolled
-                                        // (the big in-list greeting owns the title at rest).
+                                        // Home keeps its bar pinned so content scrolls under it into
+                                        // the progressive blur. The title stays put with it — see the
+                                        // note on AutoResizeText below for why the fade that came with
+                                        // this design was wrong here.
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
                                         // Search-page redesign (2026-09-04): the Search route follows
                                         // the Home route's behaviour exactly — pinned transparent
@@ -2625,7 +2625,9 @@ modifier =
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
+<<<<<<< HEAD
                                                 // ── Home header (2026-09-04, re-revised) ──
+                                                                        // ── Home header (2026-09-04, re-revised) ──
                                                 // Plain profile avatar, no pill around
                                                 // it (user request 2026-09-04: "The
                                                 // profile picture is surrounded in a
@@ -2638,8 +2640,7 @@ modifier =
                                                 // on the Home route.
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
-                                                        IconButton(
-                                                            onClick = { profileMenuExpanded = true },
+lick = { profileMenuExpanded = true },
                                                             onLongClick = {},
                                                             modifier = Modifier.padding(start = 10.dp),
                                                         ) {
