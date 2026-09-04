@@ -12,12 +12,22 @@ package moe.rukamori.archivetune.ui.menu
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -28,6 +38,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -44,11 +55,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,20 +77,57 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.cast.CastUiState
 import moe.rukamori.archivetune.cast.CastViewModel
+import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
+import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.NewAction
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import com.kyant.backdrop.Backdrop
 
+/**
+ * The player's Cast action ("Cast" row / AirPlay-style output button).
+ *
+ * 2026-09-04: the real-time liquid-glass route picker now renders at the
+ * ROOT level (see [CastRoutePickerRootOverlay], composed by MainActivity)
+ * sampling the same whole-app menu-glass recorder the song popup uses, so
+ * EVERY trigger path gets the realtime frost — the mini player's overflow
+ * menu, any player style's more-menu, and the Apple-Music output chip alike
+ * (user report: "The cast doesn't have any realtime liquid glass blur.
+ * Fix it.").
+ *
+ * Consequences:
+ *  * When the menu-glass backdrop is available (Liquid Glass on, API 31+),
+ *    clicking Cast also CLOSES the overflow menu that launched it (user
+ *    report: "When I click on cast the songs overflow popup should
+ *    automatically close") — the root overlay replaces the menu instead of
+ *    stacking on top of it, and the back gesture closes the cast popup first
+ *    (its BackHandler is composed after the menu's).
+ *  * [renderSheet] now only matters when the glass recorder is UNAVAILABLE
+ *    (Liquid Glass off / pre-Android-12): the instance that owns the sheet
+ *    keeps rendering the plain Material ModalBottomSheet fallback, exactly
+ *    as before. When glass is on the sheet is never composed from here — the
+ *    root overlay owns the popup — so no two popups can ever stack over the
+ *    shared CastViewModel state.
+ */
 @Composable
-fun rememberCastPlayerMenuAction(): NewAction? {
+fun rememberCastPlayerMenuAction(renderSheet: Boolean = true): NewAction? {
     val context = LocalContext.current
     val viewModel: CastViewModel = viewModel()
     val routePickerViewModel: CastRoutePickerViewModel = viewModel()
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val isRoutePickerVisible by viewModel.isRoutePickerVisible.collectAsStateWithLifecycle()
     val routePickerState by routePickerViewModel.screenState.collectAsStateWithLifecycle()
+    val menuState = LocalMenuState.current
+    // The root-level glass overlay handles the picker whenever MainActivity
+    // provides the menu-glass recorder; otherwise this instance falls back to
+    // the plain ModalBottomSheet below.
+    val rootGlassHandlesPicker = LocalMenuGlassBackdrop.current != null
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -80,7 +137,7 @@ fun rememberCastPlayerMenuAction(): NewAction? {
     val castState = (screenState as? CastScreenState.Success)?.uiState ?: return null
     if (!castState.isAvailable) return null
 
-    if (isRoutePickerVisible) {
+    if (renderSheet && !rootGlassHandlesPicker && isRoutePickerVisible) {
         CastRoutePickerBottomSheet(
             castState = castState,
             screenState = routePickerState,
@@ -108,8 +165,17 @@ fun rememberCastPlayerMenuAction(): NewAction? {
     val text = stringResource(R.string.cast)
     val castIconRes = if (castState.isConnected) R.drawable.cast_connected else R.drawable.cast
     val onCastClick =
-        remember(context, permissionLauncher, viewModel) {
+        remember(context, permissionLauncher, viewModel, menuState, rootGlassHandlesPicker) {
             {
+                // When the root glass overlay will present the picker, close
+                // the overflow menu that launched it — the cast popup replaces
+                // the menu instead of stacking on top of it (and the menu's
+                // remaining exit animation no longer blocks the picker). With
+                // glass unavailable the in-menu ModalBottomSheet path below
+                // NEEDS this composition alive, so the menu stays open there.
+                if (rootGlassHandlesPicker) {
+                    menuState.dismiss()
+                }
                 val permission = castDiscoveryPermission()
                 if (
                     permission == null ||
@@ -550,3 +616,306 @@ private fun CastRoutePickerScreenState.statusText(): String =
         is CastRoutePickerScreenState.Error -> stringResource(messageResId)
         is CastRoutePickerScreenState.Success -> stringResource(R.string.cast_available_device_count, routes.size)
     }
+
+/**
+ * ── Real-time liquid-glass Cast route picker (2026-09-04) ───────────────────
+ *
+ * User request: "use the same kind of real time liquid glass blur for cast
+ * popup".
+ *
+ * 2026-09-04 (root-level unification): this composable is no longer called
+ * from AppleMusicPlayer — [CastRoutePickerRootOverlay] (composed by
+ * MainActivity, next to [BottomSheetMenu]) renders the SAME floating glass
+ * card at the root level for EVERY trigger path, sampling the whole-app
+ * menu-glass recorder. It is kept compiled for any future inline use; the
+ * sheet it renders ([CastRoutePickerGlassSheet]) is shared with the root
+ * overlay.
+ */
+@Composable
+fun CastRoutePickerGlassOverlay(
+    backdrop: PlatformBackdrop?,
+    eligible: Boolean,
+) {
+    // No glass without a backdrop (pre-Android-12 / Liquid Glass off) — the
+    // ModalBottomSheet path covers those cases instead.
+    if (backdrop == null) return
+    val viewModel: CastViewModel = viewModel()
+    val routePickerViewModel: CastRoutePickerViewModel = viewModel()
+    val screenState by viewModel.screenState.collectAsStateWithLifecycle()
+    val isRoutePickerVisible by viewModel.isRoutePickerVisible.collectAsStateWithLifecycle()
+    val routePickerState by routePickerViewModel.screenState.collectAsStateWithLifecycle()
+    val castState = (screenState as? CastScreenState.Success)?.uiState ?: return
+
+    CastRoutePickerGlassSheet(
+        visible = isRoutePickerVisible && eligible,
+        backdrop = backdrop,
+        castState = castState,
+        screenState = routePickerState,
+        onDismissRequest = viewModel::hideRoutePicker,
+        onStartDiscovery = routePickerViewModel::startDiscovery,
+        onStopDiscovery = routePickerViewModel::stopDiscovery,
+        onRouteClick =
+            remember(routePickerViewModel, viewModel) {
+                { routeId: String ->
+                    if (routePickerViewModel.selectRoute(routeId)) {
+                        viewModel.hideRoutePicker()
+                    }
+                }
+            },
+        onDisconnect =
+            remember(viewModel) {
+                {
+                    viewModel.disconnect()
+                    viewModel.hideRoutePicker()
+                }
+            },
+    )
+}
+
+/**
+ * ── ROOT-level real-time liquid-glass Cast route picker (2026-09-04) ────────
+ *
+ * User report: "The cast doesn't have any realtime liquid glass blur. Fix
+ * it." The previous glass picker only existed inline in the Apple-Music
+ * player (and only while it was expanded with no menu open), so cast opened
+ * from the mini player's overflow menu / any other player style fell back
+ * to the plain Material ModalBottomSheet — no frost at all.
+ *
+ * This overlay is composed by MainActivity right AFTER [BottomSheetMenu]
+ * (so it draws on top and its BackHandler outranks the menu's — back closes
+ * the cast popup first) and renders [CastRoutePickerGlassSheet] whenever the
+ * SHARED activity-scoped CastViewModel says the picker is visible. It
+ * samples [backdrop] — the same whole-app menu-glass recorder the song popup
+ * samples — so the frost is real-time on every trigger path: the mini
+ * player's menu, any player style's more-menu, the Apple-Music output chip
+ * and the expanded player alike. The recorder stays attached for the whole
+ * time the picker is visible (see MainActivity's
+ * menuGlassRecordingActive).
+ *
+ * When [backdrop] is null (Liquid Glass off / pre-Android-12) nothing renders
+ * here — [rememberCastPlayerMenuAction]'s ModalBottomSheet fallback owns the
+ * popup in that case, exactly as before.
+ */
+@Composable
+fun CastRoutePickerRootOverlay(
+    backdrop: Backdrop?,
+    modifier: Modifier = Modifier,
+) {
+    if (backdrop == null) return
+    val viewModel: CastViewModel = viewModel()
+    val routePickerViewModel: CastRoutePickerViewModel = viewModel()
+    val screenState by viewModel.screenState.collectAsStateWithLifecycle()
+    val isRoutePickerVisible by viewModel.isRoutePickerVisible.collectAsStateWithLifecycle()
+    val routePickerState by routePickerViewModel.screenState.collectAsStateWithLifecycle()
+    val castState = (screenState as? CastScreenState.Success)?.uiState ?: return
+
+    Box(modifier = modifier) {
+        CastRoutePickerGlassSheet(
+            visible = isRoutePickerVisible,
+            backdrop = backdrop,
+            castState = castState,
+            screenState = routePickerState,
+            onDismissRequest = viewModel::hideRoutePicker,
+            onStartDiscovery = routePickerViewModel::startDiscovery,
+            onStopDiscovery = routePickerViewModel::stopDiscovery,
+            onRouteClick =
+                remember(routePickerViewModel, viewModel) {
+                    { routeId: String ->
+                        if (routePickerViewModel.selectRoute(routeId)) {
+                            viewModel.hideRoutePicker()
+                        }
+                    }
+                },
+            onDisconnect =
+                remember(viewModel) {
+                    {
+                        viewModel.disconnect()
+                        viewModel.hideRoutePicker()
+                    }
+                },
+        )
+    }
+}
+
+private val CastGlassSheetShape = RoundedCornerShape(28.dp)
+
+/**
+ * The floating glass card + scrim container for the Cast route picker — the
+ * same material as the song-overflow popup ([BottomSheetMenu]): detached
+ * card anchored above the navigation-bar inset with 16dp side margins, 28dp
+ * corners, kyant drawBackdrop (vibrancy + 32dp blur) under a dark charcoal
+ * tint, a plain dim scrim OUTSIDE the card, no-bounce spring slide-up enter
+ * and a reversed 200ms exit, back-button dismissal, and taps inside the card
+ * consumed so they never dismiss accidentally.
+ *
+ * All the CONTENT (header, connection status, route list, error / empty /
+ * loading states) is the exact existing composables the ModalBottomSheet
+ * path uses — re-themed via a [MaterialTheme] overlay so their Material color
+ * reads render the lyrics-popup glass material (white ink, translucent
+ * containers, iOS System Red for the error card).
+ */
+@Composable
+private fun CastRoutePickerGlassSheet(
+    visible: Boolean,
+    backdrop: Backdrop,
+    castState: CastUiState,
+    screenState: CastRoutePickerScreenState,
+    onDismissRequest: () -> Unit,
+    onStartDiscovery: () -> Unit,
+    onStopDiscovery: () -> Unit,
+    onRouteClick: (String) -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+
+    // Render state: true from entering composition until the exit animation
+    // completes — `visible` flipping false only REQUESTS dismissal.
+    var renderState by remember { mutableStateOf(false) }
+    val enterProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            renderState = true
+            enterProgress.snapTo(0f)
+            enterProgress.animateTo(
+                targetValue = 1f,
+                animationSpec =
+                    spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+            )
+        } else if (renderState) {
+            enterProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 200),
+            )
+            focusManager.clearFocus()
+            renderState = false
+        }
+    }
+
+    BackHandler(enabled = renderState) {
+        onDismissRequest()
+    }
+
+    if (!renderState) return
+
+    val alpha = enterProgress.value
+    val density = LocalDensity.current
+
+    // Memoized drawBackdrop chain — the same recipe the lyrics overflow
+    // popup and the song-overflow popup use (vibrancy + 32dp strong blur).
+    val glassModifier =
+        remember(backdrop) {
+            Modifier.drawBackdrop(
+                backdrop = backdrop,
+                effects = {
+                    vibrancy()
+                    blur(32f.dp.toPx())
+                },
+                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                shape = { CastGlassSheetShape },
+            )
+        }
+
+    // Glass theme overlay: remap the Material roles the picker's content
+    // composables read so they render the dark-glass material on the frost.
+    val glassColorScheme =
+        MaterialTheme.colorScheme.copy(
+            onSurface = Color.White,
+            onBackground = Color.White,
+            onSurfaceVariant = Color.White.copy(alpha = 0.72f),
+            surfaceContainerLow = Color.Transparent,
+            surfaceContainer = Color.Transparent,
+            surfaceContainerHigh = Color.White.copy(alpha = 0.08f),
+            surfaceContainerHighest = Color.White.copy(alpha = 0.14f),
+            primaryContainer = Color.White.copy(alpha = 0.14f),
+            onPrimaryContainer = Color.White,
+            secondaryContainer = Color.White.copy(alpha = 0.18f),
+            onSecondaryContainer = Color.White,
+            primary = Color.White,
+            errorContainer = Color(0xFFFF453A).copy(alpha = 0.28f),
+            onErrorContainer = Color.White,
+            outlineVariant = Color.White.copy(alpha = 0.12f),
+        )
+
+    val scrimInteractionSource = remember { MutableInteractionSource() }
+    val cardInteractionSource = remember { MutableInteractionSource() }
+
+    // Discovery runs while the sheet is actually rendered (enter through
+    // exit-complete), mirroring the ModalBottomSheet path's DisposableEffect.
+    DisposableEffect(onStartDiscovery, onStopDiscovery) {
+        onStartDiscovery()
+        onDispose(onStopDiscovery)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Plain dim scrim — the blur lives on the card itself.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { this.alpha = alpha }
+                    .background(Color.Black.copy(alpha = 0.50f))
+                    .clickable(
+                        interactionSource = scrimInteractionSource,
+                        indication = null,
+                    ) {
+                        onDismissRequest()
+                    },
+        )
+
+        // The floating glass card.
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    .navigationBarsPadding()
+                    .widthIn(max = 640.dp)
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        translationY = with(density) { (1f - alpha) * 48.dp.toPx() }
+                    }
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = CastGlassSheetShape,
+                        clip = false,
+                    )
+                    .then(glassModifier)
+                    .background(Color(0x8C1C1C1E))
+                    .clip(CastGlassSheetShape)
+                    .clickable(
+                        interactionSource = cardInteractionSource,
+                        indication = null,
+                    ) {
+                        // Consume taps inside the card.
+                    },
+        ) {
+            MaterialTheme(colorScheme = glassColorScheme) {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .imePadding()
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 4.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    CastRoutePickerHeader(onDismissRequest = onDismissRequest)
+                    CastRoutePickerStatus(
+                        castState = castState,
+                        screenState = screenState,
+                        onDisconnect = onDisconnect,
+                    )
+                    CastRoutePickerContent(
+                        screenState = screenState,
+                        onRouteClick = onRouteClick,
+                    )
+                }
+            }
+        }
+    }
+}

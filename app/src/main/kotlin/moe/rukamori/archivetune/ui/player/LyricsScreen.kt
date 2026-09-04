@@ -160,6 +160,7 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.db.entities.FormatEntity
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 
@@ -189,7 +190,7 @@ private val LyricsSwipeDismissThreshold = 96.dp
  * LazyListState internally) to [LyricsScreen] without changing every signature along the way.
  *
  * Default value is a no-op. [LyricsScreen] supplies a real setter that flips
- * `isUserScrollingLyrics`, which is OR'd into `controlsVisible` / `controlsExpanded` so the
+ * `isUserScrollingLyrics`, which the controls no longer consume — they are always visible now.
  * bottom controls slide in when the user scrolls lyrics — even when the
  * "Show lyrics player controls" preference is OFF.
  */
@@ -245,64 +246,13 @@ fun LyricsScreen(
     val density = LocalDensity.current
     val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
-    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
-    // Lyrics settings UI by user request. The standalone lyrics page now ALWAYS shows
-    // the bottom transport controls and ALWAYS auto-hides them after 5 s. The original
-    // preferences are not read at all — they're left in PreferenceKeys.kt purely so
-    // existing DataStore entries don't cause migration errors on upgrade.
-    //
-    // The state hoisting follows the pattern from the b0da4f969 fix on dev: `remember`
-    // with NO keys so the closure survives track changes, and a single countdown
-    // LaunchedEffect with every reveal trigger as a key (instead of a pair where one
-    // bumped the tick that the other used as its timer key, which relaunched across two
-    // frames). Setting `playerControlsExpanded = true` unconditionally at the top means
-    // any key change reveals the controls FIRST and only then decides whether to start
-    // hiding them — that is what guarantees the full five second window.
-    val showPlayerControlsEnabled = true
-    val autoHidePlayerControls = true
-    var playerControlsExpanded by remember { mutableStateOf(true) }
-    var controlsRevealToken by remember { mutableIntStateOf(0) }
-    val autoHideDelayMs = 5_000L
-    // Tracks whether the user is actively scrolling the lyrics list. Hoisted up from
-    // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
-    // controls can slide in on scroll.
+    // The lyrics controls used to hide themselves after five seconds and be re-summoned by a
+    // tap, behind two preferences. They no longer hide at all: the bar carries the scrubber, the
+    // quality badge and the lyrics provider, none of which is worth playing hide-and-seek with,
+    // and a control you have to poke the screen to see is worse than one that is simply there.
+    // isUserScrollingLyrics is still collected because LyricsEnhanced / LyricsV2 report it through
+    // LocalLyricsScrollListener; nothing downstream needs it now.
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
-    val onShowPlayerControlsChange: (Boolean) -> Unit = { _ ->
-        // No-op: setting was removed from the UI; behavior is hardcoded on.
-    }
-    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { _ ->
-        // No-op: setting was removed from the UI; behavior is hardcoded on.
-    }
-
-    // Bumping the token reveals the controls and restarts the countdown below.
-    //
-    // Deliberately remembered with NO keys, and the state it writes is likewise unkeyed:
-    // the root `pointerInput` that calls this only restarts on its own keys, so it holds
-    // this closure across track changes. When the state above was
-    // remember(mediaMetadata.id, showPlayerControlsEnabled) and this was a plain local fun,
-    // that captured closure kept writing to the MutableState discarded by the track change
-    // and tap-to-reveal silently stopped working. The countdown effect takes
-    // mediaMetadata.id and the preferences as keys instead, so those events still re-reveal
-    // the controls without swapping the state objects underneath.
-    val pokePlayerControlsVisibility: () -> Unit = remember { { controlsRevealToken++ } }
-
-    // Single countdown, with every reveal trigger as a key. Setting
-    // `playerControlsExpanded = true` unconditionally at the top means any key change
-    // reveals the controls FIRST and only then decides whether to start hiding them, which
-    // is what guarantees the full five second window. This replaced a pair of effects where
-    // one bumped the tick that the other used as its timer key, so the countdown was
-    // launched, cancelled and relaunched across two frames.
-    LaunchedEffect(
-        autoHidePlayerControls,
-        showPlayerControlsEnabled,
-        controlsRevealToken,
-        mediaMetadata.id,
-    ) {
-        playerControlsExpanded = true
-        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@LaunchedEffect
-        kotlinx.coroutines.delay(autoHideDelayMs)
-        playerControlsExpanded = false
-    }
 
     val hapticClick =
         remember(enableHapticFeedback, view) {
@@ -568,30 +518,24 @@ fun LyricsScreen(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
                 onDismiss = menuState::dismiss,
-                showControlsToggles = false,
             )
         }
     }
 
+    // Feeds the quality badge in the controls bar, the same source the players read.
+    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
+
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
     // Reveal the bottom controls when the user is scrolling lyrics, regardless of the
-    // "Show lyrics player controls" toggle. `controlsExpanded` follows the same rule so the
-    // transport row (play/pause/skip) shows up too — without it, only the slider would appear.
-    val controlsVisible = showPlayerControlsEnabled || isUserScrollingLyrics
-    val controlsExpanded =
-        showPlayerControlsEnabled && (!autoHidePlayerControls || playerControlsExpanded) ||
-            isUserScrollingLyrics
+    // Always shown, always expanded — see the note where the old visibility state used to live.
+    val controlsVisible = true
+    val controlsExpanded = true
     val onControlsPositionChange: (Long) -> Unit = {
-        pokePlayerControlsVisibility()
         sliderPosition = it
     }
     val onControlsPositionChangeFinished: () -> Unit = {
-        pokePlayerControlsVisibility()
         sliderPosition?.let { targetPosition ->
             player.seekTo(targetPosition)
             positionState.longValue = targetPosition
@@ -599,21 +543,17 @@ fun LyricsScreen(
         sliderPosition = null
     }
     val onControlsVolumeChange: (Float) -> Unit = {
-        pokePlayerControlsVisibility()
         onVolumeChange(it)
     }
     val onControlsPreviousClick = {
-        pokePlayerControlsVisibility()
         hapticClick()
         playerConnection.seekToPrevious()
     }
     val onControlsPlayPauseClick = {
-        pokePlayerControlsVisibility()
         hapticClick()
         player.togglePlayPause()
     }
     val onControlsNextClick = {
-        pokePlayerControlsVisibility()
         hapticClick()
         playerConnection.seekToNext()
     }
@@ -628,23 +568,15 @@ fun LyricsScreen(
                 // behaviour). This handler sits on the ROOT container so it is an ancestor of
                 // every hit path: Compose delivers pointer events to the hit node and its
                 // ancestors, so taps land here even when the lyrics LazyColumn consumes them
-                // for scrolling. The previous implementation was a sibling Box UNDER the
-                // content — hit-testing stops at the topmost hit sibling (the lyrics list),
-                // so the poke only ever fired in the padding gutters, which is why the
-                // tappable area felt so small.
+                // for scrolling. It used to also re-summon the auto-hiding controls; those no
+                // longer hide, so all that remains is the edge-swipe dismiss.
                 .pointerInput(
-                    showPlayerControlsEnabled,
-                    autoHidePlayerControls,
                     swipeStartRegionPx,
                     swipeDismissThresholdPx,
                     onBackClick,
                 ) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        if (showPlayerControlsEnabled && autoHidePlayerControls) {
-                            pokePlayerControlsVisibility()
-                        }
-
                         if (down.position.y <= swipeStartRegionPx) {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -760,8 +692,13 @@ fun LyricsScreen(
                                     onPreviousClick = onControlsPreviousClick,
                                     onPlayPauseClick = onControlsPlayPauseClick,
                                     onNextClick = onControlsNextClick,
-                                    onControlsInteraction = { pokePlayerControlsVisibility() },
+                                    onControlsInteraction = {},
                                     foregroundColor = foregroundColor,
+                                    currentFormat = currentFormat,
+                                    lyricsProviderName = currentLyrics?.providerName.orEmpty(),
+                                    hasLyrics = currentLyrics != null,
+                                    onOverflowClick = showLyricsMenu,
+                                    onCloseClick = onBackClick,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -813,8 +750,13 @@ fun LyricsScreen(
                         onPreviousClick = onControlsPreviousClick,
                         onPlayPauseClick = onControlsPlayPauseClick,
                         onNextClick = onControlsNextClick,
-                        onControlsInteraction = { pokePlayerControlsVisibility() },
+                        onControlsInteraction = {},
                         foregroundColor = foregroundColor,
+                        currentFormat = currentFormat,
+                        lyricsProviderName = currentLyrics?.providerName.orEmpty(),
+                        hasLyrics = currentLyrics != null,
+                        onOverflowClick = showLyricsMenu,
+                        onCloseClick = onBackClick,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -1433,6 +1375,11 @@ private fun AppleMusicControls(
     onNextClick: () -> Unit,
     onControlsInteraction: () -> Unit,
     foregroundColor: Color,
+    currentFormat: FormatEntity?,
+    lyricsProviderName: String,
+    hasLyrics: Boolean,
+    onOverflowClick: () -> Unit,
+    onCloseClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val position = positionProvider()
@@ -1466,22 +1413,29 @@ private fun AppleMusicControls(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = makeTimeString(currentPosition),
-                style = MaterialTheme.typography.labelMedium,
-                color = foregroundColor.copy(alpha = 0.54f),
-            )
-            Text(
-                text = if (hasDuration) "-${makeTimeString(remainingPosition)}" else "",
-                style = MaterialTheme.typography.labelMedium,
-                color = foregroundColor.copy(alpha = 0.54f),
+        Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = makeTimeString(currentPosition),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = foregroundColor.copy(alpha = 0.54f),
+                )
+                Text(
+                    text = if (hasDuration) "-${makeTimeString(remainingPosition)}" else "",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = foregroundColor.copy(alpha = 0.54f),
+                )
+            }
+            // Centred on the row rather than placed between the two timestamps: that gap changes
+            // width by a digit every time a minute rolls over, and a badge that shifts with the
+            // clock reads as a glitch.
+            LosslessOrStats(
+                isLoading = isLoading,
+                format = currentFormat,
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
             )
         }
 
@@ -1580,6 +1534,54 @@ private fun AppleMusicControls(
                         contentDescription = stringResource(R.string.maximum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(19.dp),
+                    )
+                }
+
+                // The credit, and beside it the way out. Ported from the BitChord style, where
+                // this row already sat under the scrubber, so every lyrics style now names its
+                // provider and offers the lyric actions in the same place.
+                Row(
+                    modifier = Modifier.padding(top = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(foregroundColor.copy(alpha = 0.10f))
+                                .clickable(onClick = onOverflowClick)
+                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text =
+                                when {
+                                    lyricsProviderName.isNotBlank() ->
+                                        stringResource(R.string.lyrics_from_source, lyricsProviderName)
+                                    hasLyrics -> stringResource(R.string.lyrics)
+                                    else -> stringResource(R.string.lyrics_not_found)
+                                },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = foregroundColor.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    AppleMusicTransportButton(
+                        iconRes = R.drawable.more_horiz,
+                        contentDescription = stringResource(R.string.more_options),
+                        iconSize = 20.dp,
+                        touchSize = 40.dp,
+                        foregroundColor = foregroundColor.copy(alpha = 0.75f),
+                        onClick = onOverflowClick,
+                    )
+                    AppleMusicTransportButton(
+                        iconRes = R.drawable.close,
+                        contentDescription = stringResource(R.string.close),
+                        iconSize = 20.dp,
+                        touchSize = 40.dp,
+                        foregroundColor = foregroundColor.copy(alpha = 0.75f),
+                        onClick = onCloseClick,
                     )
                 }
             }

@@ -59,8 +59,6 @@ import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
-import moe.rukamori.archivetune.constants.AudioQuality
-import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -70,7 +68,6 @@ import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
-import moe.rukamori.archivetune.constants.ShowLyricsOnPlayerKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -93,7 +90,6 @@ import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
@@ -106,11 +102,18 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -135,8 +138,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             AudioNormalizationKey,
             defaultValue = true,
         )
-    val (audioQuality, onAudioQualityChange) =
-        rememberEnumPreference(AudioQualityKey, AudioQuality.AUTO)
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
@@ -153,11 +154,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             EnableVideoPlaybackKey,
             defaultValue = false,
-        )
-    val (showLyricsOnPlayer, onShowLyricsOnPlayerChange) =
-        rememberPreference(
-            ShowLyricsOnPlayerKey,
-            defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
         rememberPreference(
@@ -312,6 +308,12 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
+    // Header haze (2026-09-04): the scrolling content is the haze
+    // source; the transparent pill header zone blurs whatever
+    // scrolls under it.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -337,9 +339,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+
         val playerAwareBottomPadding =
             LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom)
@@ -353,11 +361,12 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
 
         Column(
             Modifier
-                .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
+                .hazeSource(headerHaze)
+                .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             // "Sources" group: music source + lyrics settings now live on the Playback page
@@ -389,18 +398,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("enable_video_playback"),
                 title = stringResource(R.string.video_playback),
             ) {
-                item {
-                    Column(modifier = positions.modifierFor("show_lyrics_on_player")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.show_lyrics_on_player)) },
-                            description = stringResource(R.string.show_lyrics_on_player_desc),
-                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = showLyricsOnPlayer,
-                            onCheckedChange = onShowLyricsOnPlayerChange,
-                        )
-                    }
-                }
-
                 item {
                     Column(modifier = positions.modifierFor("enable_video_playback")) {
                         SwitchPreference(
@@ -504,26 +501,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
                 item {
-                    Column(modifier = positions.modifierFor("audio_quality")) {
-                        EnumListPreference(
-                            title = { Text(stringResource(R.string.audio_quality)) },
-                            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                            description = stringResource(R.string.audio_quality_description),
-                            selectedValue = audioQuality,
-                            onValueSelected = onAudioQualityChange,
-                            valueText = {
-                                when (it) {
-                                    AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
-                                    AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
-                                    AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
-                                    AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
-                                }
-                            },
-                        )
-                    }
-                }
-
-                item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.audio_offload)) },
                         description = stringResource(R.string.audio_offload_desc),
@@ -604,12 +581,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // Per-source audio quality pickers were removed from this page
-            // (2026-09-01, user request): they duplicated Settings → Sources and
-            // cluttered the playback page. The pickers live on in the full
-            // Sources page (PlaybackSourceSections) and each source's own
-            // settings screen; nothing was removed from the data layer.
-
             PreferenceGroup(
                 modifier = positions.modifierFor("archive_tune_canvas"),
                 title = stringResource(R.string.tidal_artwork),
@@ -678,6 +649,32 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                     ),
                                 )
                             },
+                        )
+                    }
+                }
+
+                item {
+                    // Canvas Check (2026-09-04, user request: "Add an option
+                    // under artwork header in playback settings named Canvas
+                    // Check which tells me all the mirrors, my own accounts,
+                    // APIs or endpoints for canvas are working or not") — a
+                    // live diagnostic over every canvas source: the official
+                    // Spotify canvaz endpoint through the user's own session,
+                    // the Apple Music canvas API, and each configured
+                    // resolver mirror.
+                    var showCanvasCheckDialog by remember { mutableStateOf(false) }
+                    Column(modifier = positions.modifierFor("canvas_check")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.canvas_check)) },
+                            description = stringResource(R.string.canvas_check_description),
+                            icon = { Icon(painterResource(R.drawable.solar_check_circle_linear), null) },
+                            onClick = { showCanvasCheckDialog = true },
+                        )
+                    }
+                    if (showCanvasCheckDialog) {
+                        CanvasCheckDialog(
+                            resolverEndpointsRaw = canvasResolverEndpointsRaw,
+                            onDismiss = { showCanvasCheckDialog = false },
                         )
                     }
                 }
@@ -921,7 +918,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    }
+    
+        // Header haze overlay — later sibling of the scrolling
+        // content so it draws on top of it, under the pill header.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
+}
 }
 
 internal fun PreferredArtworkProvider.displayName(): String =

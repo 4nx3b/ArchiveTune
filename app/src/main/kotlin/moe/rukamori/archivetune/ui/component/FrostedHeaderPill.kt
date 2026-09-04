@@ -135,7 +135,9 @@ fun FrostedHeaderPill(
         // by `Modifier.layerBackdrop(backdrop)` applied to a sibling composable
         // (typically the LazyColumn carrying the scrolling content beneath this
         // header). MUST be a sibling — nesting inside the source crashes the
-        // RuntimeShader.
+        // RuntimeShader. Uses the pill-grade blur radius so the frost reads as
+        // glass (2026-09-04: "The pills have opaque background. it should be
+        // blurred.") rather than a flat tinted chip.
         Row(
             modifier =
                 modifier
@@ -144,6 +146,7 @@ fun FrostedHeaderPill(
                         backdrop = backdrop,
                         shape = pillShape,
                         interactive = false,
+                        blurRadius = LiquidGlassPillBlurRadius,
                     )
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,

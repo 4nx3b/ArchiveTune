@@ -198,6 +198,7 @@
     <string name="lyrics_share_background_blur">Desfoque do fundo</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>
     <string name="lyrics_line_blur">Desfocar linhas da letra</string>
+    <string name="show_lyrics_player_controls">Mostrar controles do player</string>
     <string name="lyrics_share_background_dim">Escurecimento do fundo</string>
     <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="lyrics_share_show_cover">Mostrar capa do álbum</string>
@@ -598,7 +599,6 @@
     <string name="music_recognition_notification_recording_failed_text">O aplicativo em execução pode estar bloqueando a captura de áudio, ou a reprodução pode ter sido interrompida.</string>
     <string name="music_recognition_notification_signature_failed_text">O áudio capturado não continha música suficiente para ser identificado.</string>
     <string name="music_recognition_notification_recognition_failed_text">O serviço de reconhecimento não conseguiu identificar este áudio. Tente novamente daqui a pouco.</string>
-    <string name="show_lyrics_player_controls">Mostrar controles do player</string>
     <string name="block_artist">Bloquear artista</string>
     <string name="unblock_artist">Desbloquear artista</string>
     <string name="stats_top_songs">Top músicas</string>

@@ -46,8 +46,8 @@ internal const val MIN_SWEEP_MS = 180L
  * clipped to the same sweep edge.
  *
  * Extracted verbatim from upstream vossgraves/dev LyricsV2.kt (2026-08-31 window port)
- * so [moe.rukamori.archivetune.ui.player.PlayerInlineLyrics] can render word-synced
- * lyrics on the expanded player without pulling in the rest of the V2 renderer.
+ * so word-synced lyric renderers can sweep each word without pulling in the rest of
+ * the V2 renderer.
  */
 @Composable
 internal fun SpotifyWord(

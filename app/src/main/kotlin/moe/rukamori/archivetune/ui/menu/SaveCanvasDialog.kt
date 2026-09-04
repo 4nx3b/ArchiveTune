@@ -117,6 +117,15 @@ fun SaveCanvasDialog(
 
     AlertDialog(
         onDismissRequest = { onDismiss() },
+        // Restored opaque container (2026-09-04, user report: "Restore the old
+        // opaque Save Canvas popup. Right now it's transparent"): this dialog is
+        // composed inside PlayerMenu, which renders inside BottomSheetMenu's
+        // glass MaterialTheme overlay — where AlertDialog's default container
+        // (surfaceContainerHigh) is remapped to an ~8%-alpha translucent glass
+        // tint. An explicit opaque surface color bypasses the overlay so the
+        // dialog reads as a solid card again, exactly as it did before the
+        // glass theming landed.
+        containerColor = MaterialTheme.colorScheme.surface,
         title = { Text(text = stringResource(R.string.save_canvas_dialog_title)) },
         text = {
             Box(modifier = Modifier.fillMaxWidth()) {

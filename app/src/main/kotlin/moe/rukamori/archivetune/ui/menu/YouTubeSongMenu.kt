@@ -20,13 +20,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -96,6 +93,7 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.MuzoQuickAction
 import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
 import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
@@ -305,7 +303,11 @@ fun YouTubeSongMenu(
                         )
                     },
                     label = likedLabel,
-                    active = librarySong?.song?.liked == true,
+                    // 2026-09-05, user request: the liked tile must stay a normal
+                    // white icon, not flip to the cyan accent — the filled heart
+                    // glyph already carries the liked state, the accent tint was
+                    // just noise. `active` stays false so the tile renders in the
+                    // menu's normal content colour.
                     onClick = {
                         database.transaction {
                             librarySong.let { librarySong ->
@@ -426,20 +428,16 @@ fun YouTubeSongMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
+        // ── Muzo quick-action tile row (2026-09-04, metric parity) ──
+        // Rendered through the same MenuSurfaceSection + NewActionGrid
+        // geometry as the full-screen player's inner overflow menu, straight
+        // under the song header — no extra top spacer or per-row padding
+        // (the section card carries its own 12/12 padding now).
         item {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        // ── Muzo quick-action tile row (2026-09-04) ──
-        // The reference's four tiles, straight under the song header.
-        item {
-            MuzoQuickActionRow(
-                actions = quickActions,
-                modifier = Modifier.padding(vertical = 6.dp),
-            )
+            MuzoQuickActionRow(actions = quickActions)
         }
 
         // ── The actions the reference doesn't show as tiles ──
@@ -448,11 +446,11 @@ fun YouTubeSongMenu(
         // unchanged. One unified surface, thin dividers — the reference's
         // grouped-action list.
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = startRadioText) },
@@ -522,7 +520,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -588,11 +586,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
@@ -656,11 +654,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     when (download?.state) {
                         Download.STATE_COMPLETED -> {
@@ -815,11 +813,11 @@ fun YouTubeSongMenu(
 
         if (splitArtists.isNotEmpty() || song.album != null) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                MenuSectionDivider()
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     Column {
                         if (splitArtists.isNotEmpty()) {
                             ListItem(
@@ -873,7 +871,7 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         // "Don't recommend this song again" — the counterpart of the same item in SongMenu.
@@ -881,7 +879,7 @@ fun YouTubeSongMenu(
         // search, related), which is exactly where a recommendation the user wants gone
         // comes from. SongMenu only ever opens for rows that are already in the library.
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {
@@ -940,11 +938,11 @@ fun YouTubeSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.download_cover)) },

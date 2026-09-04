@@ -154,6 +154,22 @@ object StreamClientUtils {
         return "$url${separator}pot=$poToken"
     }
 
+    /**
+     * Patch the `cver` (client version) parameter in a stream URL to match the actual
+     * client version we used, preventing version mismatch 403 errors.
+     *
+     * @param url           the original stream URL
+     * @param clientVersion the client version string that was used for the player request
+     * @return the patched URL, or the original URL if no patching was needed
+     */
+    fun patchClientVersion(
+        url: String,
+        clientVersion: String,
+    ): String {
+        if (!url.contains("cver=")) return url
+        return url.replace(Regex("cver=[^&]+"), "cver=$clientVersion")
+    }
+
     private fun resolveClient(
         requestedClientName: String,
         requestedClientVersion: String,

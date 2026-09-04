@@ -132,6 +132,11 @@ class PlayerConnection(
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
 
+    // Ported from vossgraves/ArchiveTune: surfaces the moriextractor backend's
+    // bearer-token rejections (401 during playback) so the UI can prompt for a
+    // refreshed token; updateExtractorBearerToken pushes a new one into the service.
+    val extractorAuthenticationEvents = service.extractorAuthenticationEvents
+
     private val canvasArtworkRefetchMutex = Mutex()
     private val _isCanvasArtworkRefetching = MutableStateFlow(false)
     internal val isCanvasArtworkRefetching = _isCanvasArtworkRefetching.asStateFlow()
@@ -430,6 +435,10 @@ class PlayerConnection(
     fun dismissPlaybackError() {
         dismissedPlaybackError = error.value ?: player.playerError
         error.value = null
+    }
+
+    fun updateExtractorBearerToken(token: String) {
+        service.updateExtractorBearerToken(token)
     }
 
     fun seekToNext() {

@@ -30,8 +30,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,7 +39,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -129,10 +126,10 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ai.AiLyricsDocumentParser
 import moe.rukamori.archivetune.ai.AiLyricsSegment
 import moe.rukamori.archivetune.constants.AiApiKeyKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
 import moe.rukamori.archivetune.constants.AiCustomEndpointKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
@@ -173,12 +170,15 @@ fun LyricsMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    // The control preferences are optional because the standalone lyrics screen owns their state;
-    // callers that do not provide callbacks keep the menu focused on lyric actions only.
+    // Restored (2026-09-04): the control preferences are optional because the standalone
+    // lyrics screen owns its own state; callers that do not provide callbacks keep the menu
+    // focused on lyric actions only. The Apple Music player's anchored popup passes them so
+    // the two "Show / Auto-hide player controls" toggles appear again (they were removed by
+    // the Sept 3→4 upstream port together with the auto-hide behaviour itself).
     showPlayerControlsState: State<Boolean>? = null,
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
-    showControlsToggles: Boolean = true,
+    showControlsToggles: Boolean = false,
     // When true, the outer `MenuSurfaceSection` card (which is otherwise an
     // OPAQUE `surfaceContainerLow` Surface) is replaced with a TRANSPARENT
     // Surface of the same shape. Used by `AnchoredLyricsOverflowMenu` so the
@@ -190,9 +190,11 @@ fun LyricsMenu(
     transparentSurface: Boolean = false,
 ) {
     val context = LocalContext.current
+    // Restored (2026-09-04): shared auto-hide preference, so the toggle row in
+    // this menu and the Lyrics settings entry write the same DataStore value.
     val showPlayerControls = showPlayerControlsState?.value ?: true
     val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
+        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
 
     var showEditDialog by rememberSaveable {
         mutableStateOf(false)
@@ -460,7 +462,7 @@ fun LyricsMenu(
         }
     }
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -781,7 +783,7 @@ fun LyricsMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
         item {
@@ -976,15 +978,42 @@ fun LyricsMenu(
                                 )
                             }
                         }
+                        // Restored (2026-09-04): "Show player controls" / "Auto-hide
+                        // player controls" toggles inside the Apple Music anchored
+                        // lyrics popup — the exact rows the Sept 3→4 upstream port
+                        // deleted together with the five-second auto-hide. Rendered
+                        // as AppleMusicLyricsMenuRow-styled rows with a Switch in the
+                        // trailing slot instead of an icon.
+                        if (showControlsToggles) {
+                            HorizontalDivider(
+                                color = Color.White.copy(alpha = 0.12f),
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            AppleMusicLyricsMenuToggleRow(
+                                label = stringResource(R.string.show_lyrics_player_controls),
+                                checked = showPlayerControls,
+                                onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
+                            )
+                            HorizontalDivider(
+                                color = Color.White.copy(alpha = 0.12f),
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            AppleMusicLyricsMenuToggleRow(
+                                label = stringResource(R.string.auto_hide_lyrics_player_controls),
+                                checked = autoHidePlayerControls,
+                                enabled = showPlayerControls,
+                                onCheckedChange = { v ->
+                                    onAutoHidePlayerControlsPreferenceChange(v)
+                                    onAutoHidePlayerControlsChange(v)
+                                },
+                            )
+                        }
                     }
-                    // The anchored popup call site always passes
-                    // showControlsToggles = false (the toggles were suspected of
-                    // contributing to the lyrics animation stutter), so the
-                    // switches intentionally live only in the bottom-sheet branch
-                    // below — matching the pre-batch-10 structure.
                 }
             } else {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     NewActionGrid(
                         actions =
                             menuItems.map { item ->
@@ -1004,62 +1033,6 @@ fun LyricsMenu(
                             },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                     )
-                    // "Show player controls" / "Auto-hide player controls" toggles
-                    // are gated behind showControlsToggles. The Apple Music in-place
-                    // lyrics view passes false because those toggles were suspected
-                    // of contributing to the lyrics animation stutter; the standalone
-                    // LyricsScreen still renders them.
-                    if (showControlsToggles) {
-                        NewMenuItem(
-                            headlineContent = {
-                                Text(stringResource(R.string.show_lyrics_player_controls))
-                            },
-                            trailingContent = {
-                                Switch(
-                                    checked = showPlayerControls,
-                                    onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
-                                )
-                            },
-                            onClick = {
-                                onShowPlayerControlsChange?.invoke(!showPlayerControls)
-                            },
-                            modifier =
-                                Modifier.padding(
-                                    start = 8.dp,
-                                    end = 8.dp,
-                                ),
-                        )
-                        NewMenuItem(
-                            headlineContent = {
-                                Text(stringResource(R.string.auto_hide_lyrics_player_controls))
-                            },
-                            supportingContent = {
-                                Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
-                            },
-                            trailingContent = {
-                                Switch(
-                                    checked = autoHidePlayerControls,
-                                    onCheckedChange = {
-                                        onAutoHidePlayerControlsPreferenceChange(it)
-                                        onAutoHidePlayerControlsChange(it)
-                                    },
-                                    enabled = showPlayerControls,
-                                )
-                            },
-                            enabled = showPlayerControls,
-                            onClick = {
-                                val nextValue = !autoHidePlayerControls
-                                onAutoHidePlayerControlsPreferenceChange(nextValue)
-                                onAutoHidePlayerControlsChange(nextValue)
-                            },
-                            modifier =
-                                Modifier.padding(
-                                    start = 8.dp,
-                                    end = 8.dp,
-                                    bottom = 8.dp,
-                                ),
-                        )
-                    }
                 }
             }
         }
@@ -2003,6 +1976,51 @@ private fun AppleMusicLyricsMenuRow(
 }
 
 /**
+ * Restored (2026-09-04): a settings row for the Apple Music anchored lyrics
+ * popup — same geometry/material as [AppleMusicLyricsMenuRow] (44dp min height,
+ * 16dp horizontal padding, white 16sp Medium label) but with a [Switch] in the
+ * trailing slot instead of an icon. Backs the restored "Show player controls" /
+ * "Auto-hide player controls" toggles for the five-second auto-hide.
+ */
+@Composable
+private fun AppleMusicLyricsMenuToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = ripple(),
+                    enabled = enabled,
+                ) {
+                    if (enabled) onCheckedChange(!checked)
+                }
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color.White else Color.White.copy(alpha = 0.4f),
+            fontWeight = FontWeight.Medium,
+            fontSize = 16.sp,
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+    }
+}
+
+/**
  * Apple-Music-style anchored overflow popup for the lyrics screen.
  *
  * Renders the SAME menu content as [LyricsMenu] (Edit / Refetch / Translate /
@@ -2109,11 +2127,14 @@ fun AnchoredLyricsOverflowMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
+    backdrop: PlatformBackdrop? = null,
+    // Restored (2026-09-04): the player-control preference hooks, passed
+    // straight through to [LyricsMenu] so the two restored toggles render
+    // inside this popup. Only the Apple Music player supplies them.
     showPlayerControlsState: State<Boolean>? = null,
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
-    showControlsToggles: Boolean = true,
-    backdrop: PlatformBackdrop? = null,
+    showControlsToggles: Boolean = false,
 ) {
     // Local dismissal state — set to true when the user requests dismissal
     // (tap on scrim / a menu item that closes). Drives the exit animation
@@ -2438,11 +2459,11 @@ fun AnchoredLyricsOverflowMenu(
                     if (!dismissed) dismissed = true
                 },
                 viewModel = viewModel,
+                transparentSurface = true,
                 showPlayerControlsState = showPlayerControlsState,
                 onShowPlayerControlsChange = onShowPlayerControlsChange,
                 onAutoHidePlayerControlsChange = onAutoHidePlayerControlsChange,
                 showControlsToggles = showControlsToggles,
-                transparentSurface = true,
             )
         }
     }

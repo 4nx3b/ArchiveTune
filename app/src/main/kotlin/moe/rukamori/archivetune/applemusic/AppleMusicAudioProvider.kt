@@ -179,6 +179,123 @@ object AppleMusicAudioProvider {
     )
 
     /**
+     * One catalog row for the per-song "Play from" source picker: everything the search
+     * result list needs to render a row (and nothing more). The resolver re-searches by
+     * title + artist when the row is picked — the same contract Tidal/JioSaavn/Deezer rows
+     * follow — so the [songId] is informational, not an address.
+     */
+    data class AppleMusicCandidate(
+        val songId: String,
+        val title: String,
+        val artist: String?,
+        val thumbnailUrl: String?,
+        val durationMs: Long?,
+    )
+
+    /**
+     * Catalog search for the source picker (2026-09-05, user request: "Add apple music in
+     * source picker queue"). Same endpoint and auth as [resolveCandidates] — dev token,
+     * the sticky account ring with 401/403 rotation — but returns the raw search rows
+     * rather than resolving each to a playable stream. Empty when no tokens are configured,
+     * every account in the ring is dead, or the query has no hits.
+     */
+    suspend fun searchCandidates(
+        query: String,
+        limit: Int = 8,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            if (query.isBlank()) return@withContext emptyList()
+            val devToken = devToken() ?: return@withContext emptyList()
+            val ringEntries = accountRing()
+            if (ringEntries.isEmpty()) return@withContext emptyList()
+
+            for (attempt in ringEntries.indices) {
+                val index = (ringIndex + attempt) % ringEntries.size
+                val entry = ringEntries[index]
+                val rows =
+                    runCatching {
+                        searchCatalogRows(query, limit, entry.token, devToken)
+                    }.getOrElse { error ->
+                        if (error !is AuthException) {
+                            Log.w(TAG, "search failed: ${error.message}")
+                            return@withContext emptyList()
+                        }
+                        Log.w(TAG, "media-user-token rejected — rotating account ${index + 1}/${ringEntries.size}")
+                        if (entry.poolId != null) {
+                            PoolAccountManager.report(
+                                service = "apple-music",
+                                kind = "account",
+                                id = entry.poolId,
+                                reportType = "dead",
+                            )
+                        }
+                        null
+                    }
+                if (rows != null) {
+                    ringIndex = index // sticky winner — same policy as resolveCandidates
+                    return@withContext rows
+                }
+            }
+            emptyList()
+        }
+
+    /** Raw catalog search with one specific token; AuthException propagates to the rotation. */
+    private suspend fun searchCatalogRows(
+        query: String,
+        limit: Int,
+        mediaToken: String,
+        devToken: String,
+    ): List<AppleMusicCandidate> =
+        withContext(Dispatchers.IO) {
+            val storefront = resolveStorefront()
+            val url =
+                "$AMP_BASE/v1/catalog/$storefront/search".toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("term", query)
+                    .addQueryParameter("types", "songs")
+                    .addQueryParameter("limit", limit.coerceAtMost(25).toString())
+                    .build()
+            val request =
+                Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $devToken")
+                    .header("Media-User-Token", mediaToken)
+                    .header("Origin", "https://music.apple.com")
+                    .header("Referer", "https://music.apple.com/")
+                    .header("User-Agent", UA)
+                    .get()
+                    .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 401 || response.code == 403) throw AuthException()
+                    Log.w(TAG, "search failed: %d".format(response.code))
+                    return@withContext emptyList()
+                }
+                val root = json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                val songs =
+                    root["results"]?.jsonObject?.get("songs")?.jsonObject?.get("data")?.jsonArray
+                        ?: return@withContext emptyList()
+                songs.mapNotNull { element ->
+                    val song = element.jsonObject
+                    val attributes = song["attributes"]?.jsonObject ?: return@mapNotNull null
+                    val songId = song["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    val name = attributes["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                    AppleMusicCandidate(
+                        songId = songId,
+                        title = name,
+                        artist = attributes["artistName"]?.jsonPrimitive?.contentOrNull,
+                        thumbnailUrl =
+                            attributes["artwork"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
+                                ?.replace("{w}", "300")
+                                ?.replace("{h}", "300"),
+                        durationMs =
+                            attributes["durationInMillis"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                    )
+                }
+            }
+        }
+
+    /**
      * Search the catalog and resolve every plausible candidate to a playable stream. The
      * caller applies the shared metadata-match gate ([moe.rukamori.archivetune.audiosource
      * .TitleMatch]) to pick the winner, so candidates are returned in search-rank order.

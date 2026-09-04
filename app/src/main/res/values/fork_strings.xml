@@ -64,17 +64,6 @@
          The hero is always shown regardless of this toggle. -->
     <string name="minimal_home_mode">Minimal mode</string>
     <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible.</string>
-    <string name="home_screen_style">Home screen style</string>
-    <string name="home_screen_style_desc">Layout of the home feed</string>
-    <string name="home_screen_style_default">ArchiveTune</string>
-    <string name="home_screen_style_rukamori">Rukamori</string>
-    <string name="paste_list_title">Community paste lists</string>
-    <string name="paste_list_urls_title">Paste list URLs</string>
-    <string name="paste_list_desc">One URL per line: pages that tabulate shared tokens/ARLs in markdown tables. Parsed credentials merge into the source pool accounts and rotate automatically; nothing is reported back and nothing leaves the device except the fetch.</string>
-    <string name="paste_list_refresh_title">Refresh paste lists now</string>
-    <string name="paste_list_refresh_done">Paste lists refreshed: %1$d Tidal, %2$d Qobuz, %3$d Deezer, %4$d Apple account(s)</string>
-    <string name="show_lyrics_on_player">Lyrics on player</string>
-    <string name="show_lyrics_on_player_desc">Show word-synced lyrics in place of the artwork on the expanded player. Tap them to open the full lyrics page.</string>
 
     <!-- Download source priority (fork-only — JioSaavn added). -->
     <string name="download_source_jiosaavn">JioSaavn</string>
@@ -151,6 +140,18 @@
     <string name="canvas_resolvers_description">Extra Spotify Canvas resolver endpoints, one per line. Tried in order after Spotify\'s own Canvas endpoint. Each must answer GET &lt;base&gt;?id=&lt;youtube video id&gt; with JSON containing a canvas video URL.</string>
     <string name="canvas_resolvers_count">%1$d configured</string>
     <string name="canvas_resolvers_none">Built-in resolver only</string>
+
+    <!-- Canvas source health check (Settings → Playback → Artwork) -->
+    <string name="canvas_check">Canvas Check</string>
+    <string name="canvas_check_description">Check whether every canvas source — your Spotify account, the Apple Music canvas API and your configured mirrors — is working right now.</string>
+    <string name="canvas_check_running">Checking…</string>
+    <string name="canvas_check_source_spotify">Spotify Canvas — your account</string>
+    <string name="canvas_check_source_apple_music">Apple Music canvas API</string>
+    <string name="canvas_check_source_tidal">Tidal — account &amp; catalog</string>
+    <string name="canvas_check_source_mirror">Mirror: %1$s</string>
+    <string name="canvas_check_recheck">Re-check</string>
+    <string name="canvas_check_probe_playing">Probing with the current song: %1$s — %2$s</string>
+    <string name="canvas_check_probe_fallback">Nothing is playing — probing with Blinding Lights (The Weeknd)</string>
 
     <!-- Paxsenix endpoint check -->
     <string name="paxsenix_check_endpoints">Check Paxsenix endpoints</string>

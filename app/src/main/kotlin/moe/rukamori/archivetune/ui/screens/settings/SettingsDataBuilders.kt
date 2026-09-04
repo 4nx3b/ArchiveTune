@@ -35,7 +35,6 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
@@ -58,6 +57,8 @@ import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsScrollKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
@@ -73,7 +74,6 @@ import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
 import moe.rukamori.archivetune.constants.ShowLyricsKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.constants.SkipSilenceKey
@@ -190,8 +190,6 @@ fun buildSettingsGroups(
                 SettingsChild("Customized background", "customized_background", listOf("customized background", "custom background", "background image", "wallpaper")),
                 SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")),
                 SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")),
-                SettingsChild("Home screen style", "home_screen_style", listOf("home style", "home screen", "youtube home", "home layout")),
-                SettingsChild("Spotify home style", "spotify_home_style", listOf("spotify home", "spotify style", "spotify layout", "spotify home screen")),
                 SettingsChild("Change default library chip", "default_lib_chips", listOf("library chip", "default chip", "library filter", "default library tab")),
                 SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "header glass", "mini player glass")),
                 SettingsChild("Theme creator", "theme_creator", listOf("theme creator", "create theme", "custom theme", "make theme")),
@@ -312,7 +310,6 @@ fun buildSettingsGroups(
                 SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")) { SearchResultSwitch(WakelockKey, false) },
                 SettingsChild("Artist separators", "artist_separators", listOf("artist", "separator", "split", "featuring")),
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
-                SettingsChild("Audio quality", "audio_quality", listOf("audio quality", "quality", "bitrate", "sound quality", "streaming quality", "high quality")),
                 SettingsChild("Artwork priority", "artwork_priority", listOf("artwork priority", "artwork order", "cover priority", "artwork provider order", "artwork source order")),
                 SettingsChild("Preferred sources", "preferred_sources", listOf("preferred sources", "source priority", "source order", "audio source order", "which source first")),
                 SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")),
@@ -423,8 +420,10 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics romanize other languages", "lyrics_romanize_other", listOf("romanize", "other languages", "arabic", "thai", "cyrillic")),
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
+                // Restored (2026-09-04): search entries for the two control preferences
+                // that returned with the Apple Music auto-hide.
                 SettingsChild("Show lyrics player controls", "show_lyrics_player_controls", listOf("player controls", "lyrics controls")) { SearchResultSwitch(ShowLyricsPlayerControlsKey, true) },
-                SettingsChild("Auto-hide lyrics controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "lyrics controls", "controls timeout", "5 seconds")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, true) },
+                SettingsChild("Auto-hide lyrics player controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "autohide", "hide controls", "controls fade")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, true) },
                 SettingsChild("Preload queue lyrics", "preload_queue_lyrics", listOf("preload", "preload lyrics", "queue lyrics", "preload count", "queue lyrics count", "preload amount", "preload size")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("BetterLyrics", "betterlyrics", listOf("betterlyrics", "better lyrics", "better lyrics provider")),

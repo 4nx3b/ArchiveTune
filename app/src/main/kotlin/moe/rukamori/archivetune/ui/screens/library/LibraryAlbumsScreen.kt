@@ -75,6 +75,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AlbumFilter
 import moe.rukamori.archivetune.constants.AlbumFilterKey
@@ -82,6 +83,7 @@ import moe.rukamori.archivetune.constants.AlbumSortDescendingKey
 import moe.rukamori.archivetune.constants.AlbumSortType
 import moe.rukamori.archivetune.constants.AlbumSortTypeKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
@@ -146,17 +148,32 @@ fun LibraryAlbumsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
+    // Stable status-bar + cutout top inset (see LibraryArtistsScreen for the
+    // notch rationale) — combined with AppBarHeight it forms the bar-zone
+    // clearance this screen now owns since the Library root went full-bleed.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.sync() },
         modifier = Modifier.fillMaxSize(),
-        indicatorOffset = LibraryPullToRefreshIndicatorOffset,
+        // indicatorOffset intentionally omitted: the box now spans the full
+        // window (the Library root no longer pads the top inset below the
+        // bar), so the default (status bar + app bar) places the indicator
+        // just under the pinned bar.
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(top = LibraryHeaderContentPadding),
+                    // 2026-09-04 library redesign: the bar zone (status bar +
+                    // app bar) the Library root's windowInsetsPadding used to
+                    // provide now lives here — the sub-header controls start
+                    // just below the pinned bar, matching the Home feed's
+                    // spacing.
+                    .padding(
+                        top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
+                    ),
         ) {
             // Sub-header controls (Sort dropdown, genres/filters, list/grid toggle)
             Row(

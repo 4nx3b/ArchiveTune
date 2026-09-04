@@ -22,13 +22,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -91,6 +88,7 @@ import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
+import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.fileExtension
@@ -114,6 +112,7 @@ import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
 import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
@@ -205,6 +204,12 @@ fun SongMenu(
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, false)
+    // Spotify-account canvas (2026-09-04): a connected web-auth session
+    // enables the Spotify source on its own — same rule the player uses —
+    // so a logged-in user can save their account's canvas without finding
+    // the Player-settings toggle first.
+    val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
+    val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(song.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = song.id) }
     val isInSpeedDial =
@@ -363,7 +368,7 @@ fun SongMenu(
                         byUrl[url] = CanvasSourceOption("ArchiveTune / Apple Music", artwork)
                     }
                 }
-                if (spotifyCanvasEnabled && !song.song.isLocal) {
+                if (spotifyCanvasAvailable && !song.song.isLocal) {
                     runCatching {
                         SpotifyCanvasProvider.getByVideoId(
                             videoId = song.id,
@@ -592,7 +597,11 @@ fun SongMenu(
                         )
                     },
                     label = likedLabel,
-                    active = song.song.liked,
+                    // 2026-09-05, user request: the liked tile must stay a normal
+                    // white icon, not flip to the cyan accent — the filled heart
+                    // glyph already carries the liked state, the accent tint was
+                    // just noise. `active` stays false so the tile renders in the
+                    // menu's normal content colour.
                     onClick = {
                         val s = song.song.toggleLike()
                         database.query {
@@ -708,7 +717,7 @@ fun SongMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 12.dp,
             ),
     ) {
         // When the user taps "Sleep timer", replace the menu body with the
@@ -727,17 +736,13 @@ fun SongMenu(
                 )
             }
         } else {
+            // ── Muzo quick-action tile row (2026-09-04, metric parity) ──
+            // Rendered through the same MenuSurfaceSection + NewActionGrid
+            // geometry as the full-screen player's inner overflow menu, straight
+            // under the song header — no extra top spacer or per-row padding
+            // (the section card carries its own 12/12 padding now).
             item {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            // ── Muzo quick-action tile row (2026-09-04) ──
-            // The reference's four tiles, straight under the song header.
-            item {
-                MuzoQuickActionRow(
-                    actions = quickActions,
-                    modifier = Modifier.padding(vertical = 6.dp),
-                )
+                MuzoQuickActionRow(actions = quickActions)
             }
 
             // ── The actions the reference doesn't show as tiles ──
@@ -746,11 +751,11 @@ fun SongMenu(
             // action set is unchanged. One unified surface, thin dividers —
             // the reference's grouped-action list.
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                MenuSectionDivider()
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     Column {
                         if (!isLocalSong && !isTelegramSong) {
                             ListItem(
@@ -843,12 +848,12 @@ fun SongMenu(
             }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         if (!isLocalSong) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = {
                             Text(
@@ -888,12 +893,12 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                MenuSectionDivider()
             }
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = { Text(text = addToPlaylistText) },
                     leadingContent = {
@@ -909,11 +914,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(4.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -945,12 +950,12 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         if (showMutationSection) {
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     val dividerModifier = Modifier.padding(start = 56.dp)
                     Column {
                         if (event != null) {
@@ -1248,12 +1253,12 @@ fun SongMenu(
             }
 
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                MenuSectionDivider()
             }
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
@@ -1331,7 +1336,7 @@ fun SongMenu(
         if (!song.song.isLocal) item {
             val blockedSongIds by database.blockedSongIds().collectAsState(initial = emptyList())
             val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {
@@ -1381,11 +1386,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            MenuSectionDivider()
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {

@@ -266,6 +266,19 @@ fun LibraryMixScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
+    // ── Scroll-under clearance (2026-09-04 library redesign) ──
+    // The Library tab now scrolls under its pinned top bar into the
+    // progressive top-fade blur (the Home behaviour). The bar zone
+    // (status bar + 64dp app bar) moves from the screen root's
+    // windowInsetsPadding into this LazyColumn's contentPadding so items
+    // scroll THROUGH the zone instead of starting below it — the exact
+    // pattern HomeScreen uses (`contentPadding =
+    // LocalPlayerAwareWindowInsets.current.asPaddingValues()`).
+    val playerAwareTopPadding =
+        LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateTopPadding()
+
     val listState = rememberLazyListState()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -273,14 +286,17 @@ fun LibraryMixScreen(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.syncAllLibrary() },
             modifier = Modifier.fillMaxSize(),
-            indicatorOffset = LibraryPullToRefreshIndicatorOffset,
+            // indicatorOffset intentionally omitted: the default (status bar +
+            // app bar, from LocalPlayerAwareWindowInsets) now that the box
+            // spans the full window — the indicator no longer hides under the
+            // pinned bar the way the old explicit 0dp offset would.
         ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding =
                     PaddingValues(
-                        top = LibraryHeaderTopPadding,
+                        top = playerAwareTopPadding + LibraryHeaderTopPadding,
                         bottom = playerAwareBottomPadding,
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),

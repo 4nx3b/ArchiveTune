@@ -143,7 +143,9 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -220,11 +222,26 @@ private val AmBackdropBlurRadius = 64.dp
 
 private const val AppleMusicLyricsContentDeferMs = 160L
 
+// Restored (2026-09-04): the five-second window before the bottom controls fade out while
+// the Apple Music lyrics pane or queue is open. Matches Apple Music's lyrics view, where the
+// controls clear after five seconds so the lyrics own the full screen. Tunable via the
+// AutoHideLyricsPlayerControlsKey Lyrics setting (on/off, not duration).
+private const val AppleMusicLyricsControlsAutoHideDelayMs = 5_000L
+
 // Minimum spacing between auto-hide-timer pokes coming from a CONTINUOUS gesture (seekbar
 // scrub, volume drag). See pokePlayerControlsVisibilityThrottled in AppleMusicPlayerContent:
 // each poke recomposes the player, so an unthrottled per-delta poke would spend the lyrics
 // view's frame budget on composition. Well under the five second window it keeps alive.
 private const val ControlsGesturePokeThrottleMs = 1_000L
+
+// Restored (2026-09-04): the auto-hide countdown only runs while a morph target is open AND
+// the shared AutoHideLyricsPlayerControlsKey setting is on. In plain COVER state the controls
+// are always visible — Apple Music's lyrics view is what hides them, not the player itself.
+private fun shouldAutoHideAppleMusicControls(
+    lyricsOpen: Boolean,
+    queueOpen: Boolean,
+    autoHideEnabled: Boolean,
+): Boolean = (lyricsOpen || queueOpen) && autoHideEnabled
 
 // How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
 // still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
@@ -359,14 +376,6 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
-    // Lyrics settings UI by user request. The Apple Music lyrics view now ALWAYS shows
-    // the bottom transport controls while lyrics/queue is open and ALWAYS auto-hides
-    // them after 5 s. The preferences are still read so legacy installs (where the user
-    // previously set them to false) get upgraded to the new "always on" behavior — i.e.
-    // we ignore their stored value and treat both as `true`.
-    val showLyricsPlayerControls = true
-    val autoHideLyricsPlayerControls = true
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -408,15 +417,34 @@ fun AppleMusicPlayerContent(
     // the lyrics will automatically start showing on the full screen." Tapping
     // anywhere brings them back (see the pointerInput on the content Column/Row).
     //
+    // RESTORED (2026-09-04): the Sept 3→4 upstream port deleted the five-second
+    // countdown ("controls never hide"); the user asked for the Apple Music auto-hide
+    // back, so the two Lyrics-settings preferences and the fade-out itself return.
+    //
     // The player sheet is composed with keepContentAlive = true (see [BottomSheet]), so
     // collapsing to the mini player only sets alpha = 0 — this composable is never
     // unmounted, and `lyricsOpen` / `playerControlsExpanded` survive the collapse. The
     // reveal therefore has to key off "the lyrics view is actually on screen", not off the
     // `lyricsOpen` transition alone. See the countdown below.
+    val showLyricsPlayerControlsState = rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val showLyricsPlayerControls by showLyricsPlayerControlsState
+    val (autoHideLyricsPlayerControls, onAutoHideLyricsPlayerControlsChange) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
+
     var playerControlsExpanded by remember { mutableStateOf(true) }
     var controlsRevealToken by remember { mutableIntStateOf(0) }
-    val autoHideDelayMs = 5_000L
+    val autoHideDelayMs = AppleMusicLyricsControlsAutoHideDelayMs
     val playerExpanded = state.isExpanded
+
+    // Show the controls when lyrics or the queue opens, then honour the shared
+    // five-second auto-hide setting.
+    LaunchedEffect(lyricsOpen, queueOpen, showLyricsPlayerControls) {
+        if (lyricsOpen) {
+            playerControlsExpanded = showLyricsPlayerControls
+        } else {
+            playerControlsExpanded = true
+        }
+    }
 
     // Bumping the token reveals the controls and restarts the countdown. Deliberately
     // remembered with NO keys: the lambda closes over the token state and nothing else, so
@@ -479,48 +507,32 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide timer: show the controls, then hide them after 5s. Fires for both lyrics
-    // and queue, but ONLY when the Auto-hide controls preference is on. Turning the
-    // preference off restores the controls and keeps them.
-    //
-    // ONE countdown, with every reveal trigger as a key. This used to be three effects:
-    // two that bumped a tick which the third used as its timer key, so the countdown was
-    // launched, cancelled and relaunched across two frames and the ordering was
-    // load-bearing. Setting `playerControlsExpanded = true` unconditionally at the top
-    // means any key change reveals the controls FIRST and only then decides whether to
-    // start hiding them — that is what guarantees the full five second window.
-    //
-    // `playerExpanded` is a key because of the keepContentAlive note above: re-expanding
-    // the player from the mini player used to restore the lyrics view with the controls
-    // already hidden by the PREVIOUS visit's expired timer — no five second window at all,
-    // just an instant hide, with a tap as the only way to get them back.
-    // `mediaMetadata.id` is a key so a track change re-reveals them too.
-    //
-    // `showLyricsPlayerControls` is a key, and the countdown bails out while it is off,
-    // because the visibility condition below ANDs it with `playerControlsExpanded`: with the
-    // timer running behind a hidden view, the five second window was silently burned in the
-    // background, so switching "Show player controls" back on in the Apple Music player
-    // revealed nothing at all — the setting looked dead and only a tap brought the controls
-    // back. Holding the flag expanded while the controls are suppressed means the toggle
-    // both shows them immediately and grants the full five seconds. Queue mode is not
-    // gated: the preference is lyrics-only, and its controls stay on the auto-hide cycle.
+
+    // Auto-hide (restored 2026-09-04): show the controls for five seconds when the
+    // lyrics or queue opens, then fade them out so the lyrics own the screen. A
+    // poke (tap, scrub, volume drag — see pokePlayerControlsVisibility above and
+    // its throttled twin) re-reveals and restarts the countdown. Keyed on the
+    // reveal token so every poke restarts the timer; keyed on playerExpanded so
+    // re-expanding the sheet re-arms the reveal after a collapse (the composable
+    // survives the collapse via keepContentAlive, so lyrics/queue can still be
+    // open behind the mini player when it comes back up).
     LaunchedEffect(
         lyricsOpen,
         queueOpen,
-        playerExpanded,
-        mediaMetadata.id,
         controlsRevealToken,
         autoHideLyricsPlayerControls,
         showLyricsPlayerControls,
+        playerExpanded,
     ) {
+        if (!shouldAutoHideAppleMusicControls(lyricsOpen, queueOpen, autoHideLyricsPlayerControls)) {
+            playerControlsExpanded = if (lyricsOpen) showLyricsPlayerControls else true
+            return@LaunchedEffect
+        }
+        if (lyricsOpen && !showLyricsPlayerControls) {
+            playerControlsExpanded = false
+            return@LaunchedEffect
+        }
         playerControlsExpanded = true
-        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
-        // Collapsed: there is nothing on screen to auto-hide, and burning the window here
-        // is exactly what caused the instant hide on re-expand.
-        if (!playerExpanded) return@LaunchedEffect
-        if (!autoHideLyricsPlayerControls) return@LaunchedEffect
-        // Lyrics with the controls suppressed: nothing on screen to hide, same reasoning.
-        if (lyricsOpen && !queueOpen && !showLyricsPlayerControls) return@LaunchedEffect
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
@@ -709,6 +721,7 @@ fun AppleMusicPlayerContent(
     // user taps the overflow "more" button).
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
+
     // ─── Automatic AI translation ───────────────────────────────────────
     // Mirrors the same LaunchedEffect in LyricsScreen.kt. The Apple Music
     // player uses an inline LyricsV2/LyricsEnhanced view (not LyricsScreen),
@@ -862,6 +875,16 @@ fun AppleMusicPlayerContent(
     // The "AirPlay" slot opens the Cast route picker on flavors that ship Cast (gms). This also
     // renders the route-picker bottom sheet when it becomes visible. On flavors without Cast (foss)
     // rememberCastPlayerMenuAction() returns null and we fall back to the system output switcher.
+    //
+    // 2026-09-04 (root-level glass picker): the real-time liquid-glass route
+    // picker now renders at the ROOT level for EVERY trigger path (see
+    // CastRoutePickerRootOverlay in MainActivity) — including this player's
+    // output chip — sampling the whole-app menu-glass recorder. This instance
+    // therefore keeps the DEFAULT renderSheet = true so the plain
+    // ModalBottomSheet still composes here when Liquid Glass is off (the root
+    // overlay renders nothing in that case); when glass is on the sheet is
+    // skipped inside rememberCastPlayerMenuAction and the root overlay owns
+    // the popup — no double render.
     val castAction = rememberCastPlayerMenuAction()
     val onOutputClick: () -> Unit = castAction?.onClick ?: {
         // Cast-less flavors (foss): open the system media-output switcher panel.
@@ -924,6 +947,11 @@ fun AppleMusicPlayerContent(
         // bottom controls begin. Read only from a draw-phase lambda, so a change costs a redraw
         // rather than a recomposition.
         var morphAreaHeightPx by remember { mutableIntStateOf(0) }
+
+        // The Spotify Canvas loop and the music video that can take the cover's place.
+        // Always on — the "Animated artwork" toggle was removed with its setting
+        // (2026-09-05 user request); the canvas URLs arrive here untouched, and a
+        // song without a canvas is already expressed by a null URL.
 
         val videoShowing =
             LocalVideoArtworkState.current != null &&
@@ -1288,9 +1316,14 @@ fun AppleMusicPlayerContent(
                             .fillMaxHeight(),
                 )
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) ||
-                        (queueOpen && playerControlsExpanded) ||
-                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                    // Restored auto-hide (2026-09-04): the controls fade out five
+                    // seconds after the lyrics pane or queue opens (and re-appear on
+                    // any tap/scrub poke). In plain COVER state both flags keep this
+                    // branch always-true, so the morph in/out stays the same shape.
+                    visible =
+                        (!lyricsOpen && !queueOpen) ||
+                            (queueOpen && playerControlsExpanded) ||
+                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1775,6 +1808,10 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
+                    // Restored auto-hide (2026-09-04): the controls fade out five
+                    // seconds after the lyrics pane or queue opens; a tap/scrub poke
+                    // re-reveals them. In plain COVER state the condition collapses
+                    // to always-true so the morph in/out stays the same shape.
                     visible =
                         (!lyricsOpen && !queueOpen) ||
                             (queueOpen && playerControlsExpanded) ||
@@ -1861,14 +1898,31 @@ fun AppleMusicPlayerContent(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
                 onDismiss = { showAnchoredLyricsMenu = false },
-                showControlsToggles = false,
                 backdrop = popupBackdrop,
+                // Restored (2026-09-04): the two control-preference toggles ride the
+                // anchored popup again, writing both the shared DataStore value and
+                // the live reveal state so the countdown reacts immediately.
+                showPlayerControlsState = showLyricsPlayerControlsState,
+                onShowPlayerControlsChange = { showControls ->
+                    showLyricsPlayerControlsState.value = showControls
+                    playerControlsExpanded = showControls
+                },
+                onAutoHidePlayerControlsChange = { enabled ->
+                    onAutoHideLyricsPlayerControlsChange(enabled)
+                    playerControlsExpanded = true
+                    if (enabled) pokePlayerControlsVisibility()
+                },
+                showControlsToggles = true,
             )
         }
+
+        // (2026-09-04) The real-time liquid-glass Cast route picker that used
+        // to render here was unified into the ROOT-level
+        // CastRoutePickerRootOverlay composed by MainActivity — it samples the
+        // whole-app menu-glass recorder (which records the expanded player
+        // too), so the frost is identical and every trigger path now shares
+        // the same glass popup. Nothing to render inline anymore.
     }
 }
 

@@ -46,6 +46,15 @@ val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
+
+/**
+ * Which lyrics surface the SimpMusic player style opens: SimpMusic's own (true) or the app's
+ * Enhanced renderer (false, the default). Only the SimpMusic style reads this — every other style
+ * follows [LyricsModeKey] — so the setting is only offered while that style is selected. Default
+ * false so choosing the style does not silently replace the lyrics view the user already had.
+ */
+val SimpMusicLyricsKey = booleanPreferencesKey("simpMusicLyrics")
+
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
@@ -310,6 +319,19 @@ enum class DownloadSource {
     TIDAL,
 
     /**
+     * Apple Music lookup (2026-09-04, user request: "Add apple music in
+     * download source priority"). Resolves the track through the SAME
+     * Apple-Music account ring playback uses (Settings → Apple Music sign-in
+     * or Source Pool accounts), materializes the Widevine-L3 virtual stream
+     * to a local file and copies those bytes into the download cache — the
+     * exact bytes Apple playback would stream. NOT in
+     * [DownloadSourceConfig.REQUIRES_POOL]: the user's own Apple Music
+     * sign-in is enough (the ring internally includes pool accounts when
+     * available).
+     */
+    APPLE,
+
+    /**
      * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
      * stream URL. Falls back to the next source in [AUTO] order when the
      * track isn't on Deezer or the API can't resolve a full stream.
@@ -349,6 +371,7 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ,
             DownloadSource.QOBUZ_BACKUP,
             DownloadSource.TIDAL,
+            DownloadSource.APPLE,
             DownloadSource.DEEZER,
             DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,
@@ -597,6 +620,7 @@ val AutoChoosePlaybackClientKey = booleanPreferencesKey("autoChoosePlaybackClien
 enum class PlayerStreamClient {
     ANDROID_VR,
     WEB_REMIX,
+    ARCHIVETUNE_EXTRACTOR,
     HI_RES_LOSSLESS,
     IOS,
     TVHTML5,
@@ -1036,14 +1060,6 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
-/** Home screen layout style. DEFAULT = this fork's feed; RUKAMORI = upstream rukamori layout. */
-enum class HomeScreenStyle {
-    DEFAULT,
-    RUKAMORI,
-}
-
-val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
-
 /**
  * Which service the Home tab is showing. The two homes are separate pages you switch between,
  * not one feed with the other stacked into it — signing into Spotify must not cost you the
@@ -1052,10 +1068,10 @@ val HomeScreenStyleKey = stringPreferencesKey("homeScreenStyle")
  * SPOTIFY resolves back to YOUTUBE while [SpotifySpDcKey] is blank (see NavigationBuilder), so a
  * signed-out user can never be stranded on an empty page.
  *
- * This briefly lived as a third `HomeScreenStyle` case, which conflated "which service" with
- * "which layout" and meant the two could not be chosen independently. `toEnum` falls back to the
- * default on an unknown name, so anyone who had picked that case lands on the YouTube home and
- * finds Spotify on the switcher.
+ * This briefly lived as a third case of a layout-style enum, which conflated "which service"
+ * with "which layout" and meant the two could not be chosen independently. `toEnum` falls back
+ * to the default on an unknown name, so anyone who had picked that case lands on the YouTube
+ * home and finds Spotify on the switcher.
  */
 enum class HomeSource {
     YOUTUBE,
@@ -1063,21 +1079,6 @@ enum class HomeSource {
 }
 
 val HomeSourceKey = stringPreferencesKey("homeSource")
-
-/**
- * Layout style for the Spotify home, mirroring [HomeScreenStyle] for the YouTube one.
- *
- * SPOTIFY is the default and is the geometry Spotify itself uses — tracks two rows deep, wide
- * cards. DEFAULT and RUKAMORI render the same Spotify data in the geometry of the two YouTube
- * homes, so the page matches whichever of those the user already prefers.
- */
-enum class SpotifyHomeStyle {
-    SPOTIFY,
-    DEFAULT,
-    RUKAMORI,
-}
-
-val SpotifyHomeStyleKey = stringPreferencesKey("spotifyHomeStyle")
 
 enum class PlayerDesignStyle {
     /**
@@ -1104,8 +1105,24 @@ enum class PlayerDesignStyle {
     V9,
     APPLE_MUSIC,
     V10,
+
+    /**
+     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
+     * package and share nothing with the numbered styles above.
+     *
+     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
+     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
+     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's default
+     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager.
+     * [SPATIALFLOW] is the SpatialFlow player (github.com/MythicalSHUB/SpatialFlow, GPL-3.0) —
+     * artwork pager, pill-chip control row, wavy seek bar, M3 Expressive transport, embedded
+     * sliding queue drawer, circular-reveal lyrics overlay and music haptics. All four are views
+     * over the app's one playback engine and queue, not players of their own.
+     */
     BITCHORD,
     TIKTOK,
+    SIMPMUSIC,
+    SPATIALFLOW,
 }
 
 enum class PlayerBackgroundStyle {
@@ -1207,6 +1224,13 @@ enum class LyricsAnimationStyle {
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
+
+// Restored (2026-09-04): the Sept 3→4 upstream port removed these together with the
+// five-second auto-hide of the Apple Music player's bottom controls ("controls never
+// hide"). The user asked for the auto-hide back, so both keys return with the same
+// names/defaults they always had — previously-saved values keep applying.
+// ShowLyricsPlayerControlsKey: whether the controls appear at all over the AM lyrics/queue.
+// AutoHideLyricsPlayerControlsKey: whether they fade out again after five seconds.
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
@@ -1293,6 +1317,7 @@ val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshT
 
 /** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
 val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
+
 val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
@@ -1345,14 +1370,6 @@ val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
  *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
-// Newline-separated community "paste list" URLs (rentry/gist pages tabulating shared
-// ARLs/tokens). Parsed by PasteListPoolSource and merged into the pool account caches
-// with id=null so playback reports are never sent for them. Opt-in: empty by default.
-val PasteListUrlsKey = stringPreferencesKey("pasteListUrls")
-
-// When ON (default), synced lyrics render in place of the player artwork (BitChord-style
-// inline lyrics on the player screen). The lyrics button still opens the full lyrics page.
-val ShowLyricsOnPlayerKey = booleanPreferencesKey("showLyricsOnPlayer")
 
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")

@@ -63,7 +63,6 @@ import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
 import moe.rukamori.archivetune.home.HomeUiState
-import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -340,36 +339,10 @@ private fun HomeContent(
                         live to other
                     }
 
-                // ── Muzo hero-section data (2026-09-04 redesign, revised) ──
-                // The "Popular Albums" shelf is built from the real YouTube
-                // Music home feed: every album the current feed carries,
-                // de-duplicated. "See all" routes through the section's own
-                // browse endpoint (the same navigation the section headers
-                // already use), falling back to the app's real catalogue
-                // pages. The "Trending Playlist" stack was REMOVED per the
-                // user request 2026-09-04 ("Remove the Trending playlist
-                // section from home page"), so its data prep is gone too.
-                val popularAlbums =
-                    remember(allRemoteSections) {
-                        allRemoteSections
-                            .flatMap { it.items }
-                            .filterIsInstance<AlbumItem>()
-                            .distinctBy { it.id }
-                            .take(12)
-                    }
-                val popularAlbumsSeeAllRoute =
-                    remember(allRemoteSections) {
-                        allRemoteSections
-                            .firstOrNull { section -> section.items.any { it is AlbumItem } }
-                            ?.endpoint
-                            ?.browseId
-                            ?.let { browseId -> "browse/$browseId" }
-                            ?: "new_release"
-                    }
-
-                // Catalogue switch (2026-09-04): hoisted OUT of the LazyColumn
-                // scope (LazyListScope is not a composable scope, so the
-                // preference read has to happen here). The YouTube ⇄ Spotify
+                // ── Catalogue switch (2026-09-04) ──
+                // Hoisted OUT of the LazyColumn scope (LazyListScope is not
+                // a composable scope, so the preference read has to happen
+                // here). The YouTube ⇄ Spotify
                 // home switcher no longer renders on the page by default
                 // (user request: "remove the switch text between youtube and
                 // Spotify catalogue on the home page"). It comes back only
@@ -491,31 +464,6 @@ private fun HomeContent(
                     // rotates fresh picks each visit. Mirrors the Apple Music /
                     // (Moved to the top of the feed, directly below the welcome
                     // header — see the item above.)
-
-                    // ── Popular Albums (Muzo glass card shelf, 2026-09-04) ──
-                    // Tall glass cards with the artwork as the hero and the
-                    // circular play button over it; three fit in the viewport
-                    // at the reference's proportions. Sits directly below the
-                    // catalogue switch / jump-back-in hero at the top of the
-                    // feed.
-                    if (popularAlbums.isNotEmpty()) {
-                        item(
-                            key = "home_popular_albums",
-                            contentType = "muzo_popular_albums",
-                        ) {
-                            PopularAlbumsSection(
-                                albums = popularAlbums,
-                                seeAllRoute = popularAlbumsSeeAllRoute,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
 
                     if (!minimalMode && uiState.showCategoryChips) {
                         item(

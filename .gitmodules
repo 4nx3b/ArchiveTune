@@ -10,3 +10,6 @@
 [submodule "morideobfuscator"]
         path = morideobfuscator
         url = https://github.com/rukamori/morideobfuscator.git
+[submodule "moriextractor"]
+	path = moriextractor
+	url = https://github.com/rukamori/moriextractor

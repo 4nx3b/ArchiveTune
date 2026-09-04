@@ -346,8 +346,24 @@
     <string name="player_design_v7">Immersive</string>
     <string name="player_design_v9">Material Extended</string>
     <string name="player_design_v10">Editorial</string>
+    <string name="spotify_liked_songs">Liked Songs</string>
     <string name="player_design_bitchord">BitChord</string>
     <string name="player_design_tiktok">TikTok</string>
+<string name="simpmusic_move_up">Move up</string>
+    <string name="simpmusic_move_down">Move down</string>
+    <string name="player_design_simpmusic">SimpMusic</string>
+    <string name="player_design_spatialflow">SpatialFlow</string>
+    <string name="rich_synced">Rich Synced</string>
+    <string name="line_synced">Line Synced</string>
+    <string name="unsynced">Unsynced</string>
+    <string name="show">Show</string>
+    <string name="lyrics_provided_by">Lyrics provided by %1$s</string>
+    <string name="collapse">Collapse</string>
+    <string name="published_on">Published on %1$s</string>
+    <string name="view_count_value">%1$s views</string>
+    <string name="like_and_dislike">%1$s like(s), %2$s dislike(s)</string>
+    <string name="simpmusic_lyrics">SimpMusic lyrics</string>
+    <string name="simpmusic_lyrics_desc">Use SimpMusic’s lyrics view instead of Enhanced.</string>
     <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
@@ -545,8 +561,11 @@
     <string name="player_stream_client_tvhtml5">TV HTML5</string>
     <string name="player_stream_client_android_music">Android Music</string>
     <string name="player_stream_client_hi_res_lossless">Hi-Res Lossless</string>
+    <string name="player_stream_client_archivetune_extractor">ArchiveTune Extractor</string>
     <string name="player_stream_client_android_vr_desc">Fast startup with no signature decryption. A good default.</string>
     <string name="player_stream_client_web_remix_desc">Extended format support at the cost of speed. JavaScript signature decryption introduces a ~5–10 second startup delay.</string>
+    <string name="player_stream_client_archivetune_extractor_desc">Uses the ArchiveTune backend extractor for playback streams. Prefer Auto High Quality Audio.</string>
+    <string name="player_stream_client_archivetune_extractor_login_required">You Must Login Using Google Account and PoToken in Settings to use this</string>
     <string name="player_stream_client_ios_desc">The iOS app client. Stable, but may limit bitrate on some tracks.</string>
     <string name="player_stream_client_tvhtml5_desc">The TV client. Try this when other clients are throttled.</string>
     <string name="player_stream_client_android_music_desc">The YouTube Music app client. Balances speed and compatibility.</string>
@@ -799,6 +818,10 @@
     <string name="search_recommended_artists">Recommended Artists</string>
     <string name="search_recommended_albums">Recommended Albums</string>
     <string name="search_recommended_songs">Recommended Songs</string>
+    <!-- Explore-tab fill-out (2026-09-04): the explore discovery sections. -->
+    <string name="search_trending_songs">Trending Songs</string>
+    <string name="search_new_albums">New Albums</string>
+    <string name="search_moods_genres">Moods &amp; Genres</string>
     <!-- YouTube sign-in: the browser (cookie) route and the OAuth device-code route. -->
     <string name="yt_browser_sign_in">Sign in with browser</string>
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>

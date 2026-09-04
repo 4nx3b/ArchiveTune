@@ -126,6 +126,8 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseRunningDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumePausedDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AlbumUiState
@@ -461,7 +463,8 @@ fun AlbumScreen(
                                         },
                                     contentColor = contentColor,
                                     onClick = {
-                                        when (downloadState) {
+                                        val headerState = downloadState
+                                        when (headerState) {
                                             HeaderDownloadState.Completed -> {
                                                 sendRemoveDownloads(
                                                     context = context,
@@ -470,10 +473,21 @@ fun AlbumScreen(
                                             }
 
                                             is HeaderDownloadState.Partial -> {
-                                                sendRemoveDownloads(
-                                                    context = context,
-                                                    songIds = albumWithSongs.songs.map { it.id },
-                                                )
+                                                // Pause/Resume (2026-09-05): pending-only, the
+                                                // already-downloaded songs stay untouched.
+                                                if (headerState.paused) {
+                                                    sendResumePausedDownloads(
+                                                        context = context,
+                                                        songIds = albumWithSongs.songs.map { it.id },
+                                                        downloads = downloads,
+                                                    )
+                                                } else {
+                                                    sendPauseRunningDownloads(
+                                                        context = context,
+                                                        songIds = albumWithSongs.songs.map { it.id },
+                                                        downloads = downloads,
+                                                    )
+                                                }
                                             }
 
                                             HeaderDownloadState.None -> {

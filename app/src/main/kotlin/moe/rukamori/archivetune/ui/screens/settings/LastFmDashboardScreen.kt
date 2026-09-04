@@ -106,6 +106,10 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.screens.GlassScreenHeaderOverlay
+import moe.rukamori.archivetune.ui.screens.glassHeaderSource
+import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.LastFmPreferYtThumbnailsKey
@@ -536,6 +540,12 @@ fun LastFmDashboardScreen(
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
+    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
+    // back pill + search pill pinned over the dashboard, plus the header
+    // haze — replaces the normal header bar while Liquid Glass is on.
+    val glassHeader = rememberGlassScreenHeader()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     fun refresh() {
         val username = current?.username?.takeIf { it.isNotBlank() } ?: return
         if (!isLoggedIn) return
@@ -635,6 +645,7 @@ fun LastFmDashboardScreen(
         containerColor = theme.pageBackground,
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
+            if (!glassHeader.liquidGlassActive) {
             LastFmDashboardHeader(
                 searchVisible = searchVisible,
                 searchQuery = searchQuery,
@@ -648,6 +659,7 @@ fun LastFmDashboardScreen(
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
             )
+            }
         },
     ) { innerPadding ->
         if (current == null) {
@@ -801,14 +813,32 @@ fun LastFmDashboardScreen(
         // the header pills and hero card along with the tracks; the
         // reference design keeps them fixed above the list, which also
         // gives the list its own card-like visual grouping.
+        //
+        // (Glass header) The Box wrapper carries the haze/backdrop source so
+        // the pinned glass pills can sample the dashboard, and hosts the
+        // GlassScreenHeaderOverlay as a sibling drawn on top.
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(
                     playerAwareInsets.only(WindowInsetsSides.Horizontal),
-                ),
+                ).glassHeaderSource(glassHeader),
         ) {
-            Spacer(Modifier.height(innerPadding.calculateTopPadding()))
+            // Glass-header mode: the topBar is hidden so innerPadding's top is
+            // just the status bar — the spacer instead reserves the pill zone
+            // (status bar + pills + breathing room) so the dashboard scrolls
+            // under the pinned glass pills / haze like the History page.
+            Spacer(
+                Modifier.height(
+                    if (glassHeader.liquidGlassActive) {
+                        systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
+            // pills so the glass actually samples it (2026-09-04 fix)
+                    } else {
+                        innerPadding.calculateTopPadding()
+                    },
+                ),
+            )
 
             // Hide hero card while the scrobble-search overlay is open —
             // the user is searching, not browsing stats, so we collapse
@@ -982,6 +1012,23 @@ fun LastFmDashboardScreen(
                     }
                 }
             }
+        }
+
+        // Persistent glass pills + header haze (History-page behaviour). The
+        // search pill drives the SAME scrobble-search overlay the normal
+        // header's search icon toggles, so the feature is fully preserved.
+        if (glassHeader.liquidGlassActive) {
+            GlassScreenHeaderOverlay(
+                header = glassHeader,
+                title = stringResource(R.string.stats),
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
+                onSearch = {
+                    searchVisible = !searchVisible
+                    if (!searchVisible) searchQuery = ""
+                },
+            )
+        }
         }
 
         // (Task 5c) Dismiss the bottom sheet FIRST, then surface the

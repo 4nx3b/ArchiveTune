@@ -504,6 +504,22 @@ fun TikTokPlayerContent(
             // what is on screen. Harmless either way in practice: the lyrics
             // popup and the inline queue are mutually exclusive owners of
             // the feed's face (opening the queue closes the lyrics pane).
+            //
+            // PERF (2026-09-04, "the TikTok style lags while exiting the
+            // player or vice versa for the first few seconds"): the
+            // layerBackdrop used to record the pager into the popup's
+            // GraphicsLayer on EVERY frame — during the sheet enter/exit
+            // animation, during every page swipe, and throughout the mesh
+            // drift — a full-screen layer record per frame that the popup
+            // never consumed. It now records ONLY while the lyrics overflow
+            // popup is actually open (lyricsOpen && showLyricsMenu — the
+            // same condition that renders the popup below). The modifier
+            // attaches in the same recomposition that shows the popup, and
+            // the kyant record happens during the pager's draw pass in that
+            // frame — BEFORE the popup (a later sibling) draws and samples
+            // it — so the popup still gets a correct sample on its very
+            // first frame. Zero visual change; the enter/exit/swipe/drift
+            // frames stop paying the record cost.
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -511,7 +527,7 @@ fun TikTokPlayerContent(
                         if (feedBlur > 0.dp) base.blur(feedBlur) else base
                     }
                     .let { base ->
-                        if (popupBackdrop != null) {
+                        if (popupBackdrop != null && lyricsOpen && showLyricsMenu) {
                             base.layerBackdrop(popupBackdrop)
                         } else {
                             base
@@ -728,11 +744,7 @@ fun TikTokPlayerContent(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
                 onDismiss = { showLyricsMenu = false },
-                showControlsToggles = false,
                 backdrop = popupBackdrop,
             )
         }

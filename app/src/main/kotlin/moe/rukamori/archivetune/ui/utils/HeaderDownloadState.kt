@@ -144,6 +144,65 @@ fun sendRemoveDownloads(
     }
 }
 
+/**
+ * Pause (2026-09-05, user request: "There should be a proper Pause/Resume Download option that
+ * only pauses the currently pending downloads without affecting the songs that are already
+ * downloaded") — stops every RUNNING download of [songIds] with the collection pause stop reason.
+ *
+ * Completed downloads are not downloads that can stop — [DownloadManager] keeps them completed
+ * whatever the stop reason — but they are filtered out anyway so the intent is explicit: only
+ * the pending ones are touched. Paused (STATE_STOPPED) downloads keep their stop reason.
+ */
+fun sendPauseRunningDownloads(
+    context: Context,
+    songIds: List<String>,
+    downloads: Map<String, Download>,
+) {
+    songIds
+        .distinct()
+        .filter { songId ->
+            when (downloads[songId]?.state) {
+                Download.STATE_QUEUED,
+                Download.STATE_DOWNLOADING,
+                Download.STATE_RESTARTING,
+                -> true
+
+                else -> false
+            }
+        }.forEach { songId ->
+            DownloadService.sendSetStopReason(
+                context,
+                ExoDownloadService::class.java,
+                songId,
+                COLLECTION_PAUSE_STOP_REASON,
+                false,
+            )
+        }
+}
+
+/** Resume the downloads this collection paused — stop reason back to none restarts them. */
+fun sendResumePausedDownloads(
+    context: Context,
+    songIds: List<String>,
+    downloads: Map<String, Download>,
+) {
+    songIds
+        .distinct()
+        .filter { songId ->
+            val download = downloads[songId]
+            download?.state == Download.STATE_STOPPED &&
+                download.stopReason == COLLECTION_PAUSE_STOP_REASON
+        }.forEach { songId ->
+            DownloadService.sendSetStopReason(
+                context,
+                ExoDownloadService::class.java,
+                songId,
+                DOWNLOAD_STOP_REASON_NONE,
+                false,
+            )
+        }
+}
+
 private fun Int?.shouldRequestDownload(): Boolean =
     when (this) {
         Download.STATE_COMPLETED,

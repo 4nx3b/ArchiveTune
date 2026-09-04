@@ -18,9 +18,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.aicontentfilter.FilterAiContentUseCase
 import moe.rukamori.archivetune.aicontentfilter.LoadAiContentFilterPolicyUseCase
@@ -457,10 +459,20 @@ class HomeViewModel
             val primaryPicks = primary.toQuickPickSample()
             if (primaryPicks.isNotEmpty()) return primaryPicks
 
-            val recentPicks = database.recentSongs(limit = 60).first().toQuickPickSample()
+            // Each fallback is individually guarded: a transient DB error (cold
+            // start, WAL checkpoint, migration) in one fallback must not kill the
+            // collector that drives the "Jump back in" hero (user report
+            // 2026-09-04: "sometimes the jump back in carousel doesn't load and
+            // I've to manually refresh the page to see it" — a throw here used
+            // to escape observeQuickPicks' .catch block itself, leaving the
+            // hero empty until a manual refresh).
+            val recentPicks =
+                runCatching { database.recentSongs(limit = 60).first().toQuickPickSample() }
+                    .getOrDefault(emptyList())
             if (recentPicks.isNotEmpty()) return recentPicks
 
-            return database.allSongs().first().toQuickPickSample()
+            return runCatching { database.allSongs().first().toQuickPickSample() }
+                .getOrDefault(emptyList())
         }
 
         private fun lastListenQuickPicksFlow(): Flow<List<Song>> =
@@ -488,32 +500,58 @@ class HomeViewModel
 
         private fun observeQuickPicks() {
             viewModelScope.launch(Dispatchers.IO) {
-                quickPicksMode
-                    .flatMapLatest { mode ->
-                        when (mode) {
-                            QuickPicks.QUICK_PICKS -> {
-                                database
-                                    .quickPicks()
-                                    .distinctUntilSongIdsChanged()
-                                    .map { songs -> quickPicksWithFallback(songs) }
-                            }
+                // The collector must survive ANY transient failure — it is the
+                // only reactive source of the "Jump back in" hero picks. A
+                // dead collector meant the hero stayed empty until the user
+                // manually pulled to refresh (user report 2026-09-04). A small
+                // capped retry loop relaunches the whole pipeline; each retry
+                // re-reads current DB state so it converges without the user.
+                var attempts = 0
+                while (true) {
+                    try {
+                        quickPicksMode
+                            .flatMapLatest { mode ->
+                                when (mode) {
+                                    QuickPicks.QUICK_PICKS -> {
+                                        database
+                                            .quickPicks()
+                                            .distinctUntilSongIdsChanged()
+                                            .map { songs -> quickPicksWithFallback(songs) }
+                                    }
 
-                            QuickPicks.LAST_LISTEN -> {
-                                lastListenQuickPicksFlow()
-                            }
+                                    QuickPicks.LAST_LISTEN -> {
+                                        lastListenQuickPicksFlow()
+                                    }
 
-                            QuickPicks.DONT_SHOW -> {
-                                flowOf(null)
+                                    QuickPicks.DONT_SHOW -> {
+                                        flowOf(null)
+                                    }
+                                }
+                            }.collect { picks ->
+                                attempts = 0
+                                quickPicks.value = picks
+                                refreshHeroPicks(picks.orEmpty())
+                                updateAllLocalItems()
                             }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (t: Throwable) {
+                        attempts++
+                        reportException(t)
+                        // Best-effort recovery so the hero has SOMETHING to show
+                        // while the retry is pending; quickPicksWithFallback is
+                        // internally guarded so this cannot throw.
+                        runCatching {
+                            quickPicks.value = quickPicksWithFallback(emptyList())
+                            refreshHeroPicks(quickPicks.value.orEmpty())
                         }
-                    }.catch { throwable ->
-                        reportException(throwable)
-                        emit(quickPicksWithFallback(emptyList()))
-                    }.collect { picks ->
-                        quickPicks.value = picks
-                        refreshHeroPicks(picks.orEmpty())
-                        updateAllLocalItems()
+                        if (attempts > 5) {
+                            delay(10_000L)
+                        } else {
+                            delay(1_000L)
+                        }
                     }
+                }
             }
         }
 
@@ -626,14 +664,22 @@ class HomeViewModel
                         // from without over-fetching. (The "Jump back in" hero
                         // at the top of the home page now uses `heroPicks` —
                         // random songs from listening preference — instead of
-                        // the top 3 of this list.)
-                        recentlyPlayed.value =
+                        // the top 3 of this list.) Also re-seeds the hero when
+                        // it is still empty — the quickPicks observer can lose
+                        // the race against this launch on a cold start, and
+                        // without this re-check the hero could stay empty until
+                        // a manual refresh (user report 2026-09-04).
+                        val recent =
                             database
                                 .recentSongs(limit = 30)
                                 .first()
                                 .filter { song -> song.artists.none { it.blockedAt != null } }
                                 .distinctBy { it.id }
                                 .take(30)
+                        recentlyPlayed.value = recent
+                        if (heroPicks.value.isEmpty() && quickPicks.value.isNullOrEmpty()) {
+                            refreshHeroPicks(recent)
+                        }
                     }
 
                     launch {
@@ -641,15 +687,31 @@ class HomeViewModel
                         // quickPicks pool (or recentlyPlayed fallback). On
                         // subsequent manual refreshes, refresh() re-shuffles
                         // again so the hero rotates fresh picks each visit.
-                        val pool = quickPicks.value.orEmpty()
-                        val source = if (pool.isNotEmpty()) {
-                            pool
-                        } else {
-                            // Wait briefly for recentlyPlayed to populate so
-                            // we don't fall back to empty on a cold start.
-                            kotlinx.coroutines.delay(100L)
-                            recentlyPlayed.value.orEmpty()
-                        }
+                        //
+                        // The old 100ms-delay race meant a slow cold start
+                        // (DataStore read + Room queries still in flight) fell
+                        // through to an EMPTY hero with nothing left to recover
+                        // it (user report 2026-09-04: "sometimes the jump back
+                        // in carousel doesn't load and I've to manually refresh
+                        // the page to see it"). Instead we now actively AWAIT the
+                        // first useful pool — quickPicks first (bounded wait so
+                        // a stuck pipeline can't hang the load), then
+                        // recentlyPlayed — and only then fall back to a direct
+                        // DB query as the last resort.
+                        val awaitedPool =
+                            withTimeoutOrNull(2_000L) {
+                                quickPicks.filter { !it.isNullOrEmpty() }.first()
+                            } ?: withTimeoutOrNull(2_000L) {
+                                recentlyPlayed.filter { !it.isNullOrEmpty() }.first()
+                            }
+                        val source =
+                            when {
+                                !awaitedPool.isNullOrEmpty() -> awaitedPool
+                                else ->
+                                    runCatching {
+                                        database.recentSongs(limit = 20).first()
+                                    }.getOrDefault(emptyList())
+                            }
                         refreshHeroPicks(source)
                     }
 
