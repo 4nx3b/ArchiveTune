@@ -1289,7 +1289,6 @@ fun LocalPlaylistScreen(
                                     selectedSongMapIds = visibleSongMapIds
                                 }
                             },
-                            onLongClick = {},
                         ) {
                             Icon(
                                 painter =

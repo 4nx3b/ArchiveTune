@@ -655,16 +655,32 @@ private fun StatsStatusScreen(
 ) {
     Scaffold(
         topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.stats)) },
+            // Pinned transparent single-row bar — same shape the main stats screen
+            // uses; the old LargeFlexibleTopAppBar reserved its full expanded height
+            // behind an empty title (dead band) and no longer exists in this fork.
+            TopAppBar(
+                title = {},
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    FrostedHeaderPill(plain = true) {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                        }
+                        Text(
+                            text = stringResource(R.string.stats),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
             )
         },
     ) { contentPadding ->
