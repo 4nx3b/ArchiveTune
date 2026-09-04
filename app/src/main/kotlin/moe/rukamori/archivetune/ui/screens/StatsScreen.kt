@@ -90,7 +90,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.constants.StatPeriod
 import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.db.entities.ListeningBySlot
@@ -113,6 +115,8 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.ArtistMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -283,6 +287,14 @@ fun StatsScreen(
             )
         },
     ) { scaffoldPadding ->
+        // Header haze (2026-09-04, user request: "Add the same haze effect
+        // in Account page and stats page in settings"): the LazyColumn is
+        // the haze source and scrolls under the now-transparent collapsing
+        // top bar into the progressive top-fade blur — the same material the
+        // Home route and the ported settings screens use. The overlay is a
+        // later sibling of the list so it draws on top of it.
+        val headerHaze = rememberScreenHeaderHaze()
+        val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 contentPadding =
@@ -295,7 +307,9 @@ fun StatsScreen(
                         .fillMaxHeight()
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .padding(top = scaffoldPadding.calculateTopPadding()),
+                        .padding(top = scaffoldPadding.calculateTopPadding())
+                        // Haze source for the header's top-fade blur.
+                        .hazeSource(headerHaze),
             ) {
                 item(key = "rangeControls", contentType = "controls") {
                     StatsFilterPanel(modifier = Modifier.animateItem()) {
@@ -591,6 +605,13 @@ fun StatsScreen(
                     onDismiss = viewModel::dismissYearPicker,
                 )
             }
+
+            // Header haze overlay — later sibling of the list so it draws on
+            // top of the scrolling content, under the pinned top bar.
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 }
