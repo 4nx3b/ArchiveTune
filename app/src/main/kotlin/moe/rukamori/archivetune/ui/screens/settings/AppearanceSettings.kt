@@ -91,6 +91,8 @@ import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.ChipSortTypeKey
+import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -138,9 +140,105 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 
+/**
+ * The three pages Appearance is split across.
+ *
+ * The screen used to be one list of about sixty rows under six headers — the "too cluttered"
+ * complaint, and a page nobody could scan. Splitting it also means each page opens with a
+ * fraction of the work, which is what makes the enter animation visible again.
+ *
+ * All three share one implementation rather than three copies. The alternative was moving a
+ * thousand lines into three functions and re-deriving which of the forty hoisted preferences each
+ * one needs; the cost of this is that every page reads all forty, which is cheap — they all come
+ * from one in-memory Preferences object — against a real risk of losing a wire in the move.
+ */
+enum class AppearanceSection { THEME, PLAYER, INTERFACE }
+
+/**
+ * Appearance itself: three links, nothing else. Every row that used to be here lives on one of the
+ * sub-pages, and the settings search index points at whichever one owns it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.appearance)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
+        val positions = rememberPreferencePositions()
+        val listState = rememberLazyListState()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+
+        LazyColumn(
+            state = listState,
+            contentPadding =
+                PaddingValues(
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
+                ),
+            modifier =
+                Modifier
+                    .padding(top = innerPadding.calculateTopPadding())
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                    .then(positions.containerModifier()),
+        ) {
+            preferenceGroup {
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("appearance_theme"),
+                        title = { Text(stringResource(R.string.appearance_theme)) },
+                        description = stringResource(R.string.appearance_theme_desc),
+                        icon = { Icon(painterResource(R.drawable.palette), null) },
+                        onClick = { navController.navigate("settings/appearance/theme") },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("appearance_player"),
+                        title = { Text(stringResource(R.string.appearance_player)) },
+                        description = stringResource(R.string.appearance_player_desc),
+                        icon = { Icon(painterResource(R.drawable.play), null) },
+                        onClick = { navController.navigate("settings/appearance/player") },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("appearance_interface"),
+                        title = { Text(stringResource(R.string.appearance_interface)) },
+                        description = stringResource(R.string.appearance_interface_desc),
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        onClick = { navController.navigate("settings/appearance/interface") },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppearanceSectionSettings(
+    navController: NavController,
+    section: AppearanceSection,
+    scrollTo: String? = null,
+) {
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
     val (wallpaperExtractionFailed) =
@@ -275,6 +373,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(HideScrollbarKey, defaultValue = false)
     val (minimalHomeMode, onMinimalHomeModeChange) =
         rememberPreference(MinimalHomeModeKey, defaultValue = false)
+
+    val (defaultChip, onDefaultChipChange) =
+        rememberEnumPreference(
+            key = ChipSortTypeKey,
+            defaultValue = LibraryFilter.LIBRARY,
+        )
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -441,7 +545,17 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(
+                        stringResource(
+                            when (section) {
+                                AppearanceSection.THEME -> R.string.appearance_theme
+                                AppearanceSection.PLAYER -> R.string.appearance_player
+                                AppearanceSection.INTERFACE -> R.string.appearance_interface
+                            },
+                        ),
+                    )
+                },
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
                         IconButton(
@@ -486,6 +600,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         // Read here rather than in the group calls: the LazyColumn builder is a plain lambda, so
         // stringResource cannot be called from inside it.
         val themeTitle = stringResource(R.string.theme)
+        val liquidGlassTitle = stringResource(R.string.liquid_glass)
         val playerTitle = stringResource(R.string.player)
         val albumPageTitle = stringResource(R.string.album_page)
         val homeTitle = stringResource(R.string.home)
@@ -511,31 +626,58 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     // so the frosted header keeps its blur across the same content.
                     .hazeSource(headerHaze),
         ) {
-            preferenceGroup(
-                modifier = positions.modifierFor("dynamic_theme"),
-                title = themeTitle,
-            ) {
-
-                item {
-                    Column(modifier = positions.modifierFor("liquid_glass_effects")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.liquid_glass_effects)) },
-                            description = stringResource(R.string.liquid_glass_effects_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = liquidGlassEnabled,
-                            onCheckedChange = onLiquidGlassEnabledChange,
-                        )
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassEnabled) {
-                            Text(
-                                text = stringResource(R.string.liquid_glass_effects_unsupported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+            // Liquid Glass gets a header of its own. The master switch used to be the first row
+            // under "Theme", the navigation bar's glass toggle is a page away under Interface, and
+            // the mini player's is a value buried in a background-style picker — three places, with
+            // nothing to say they were one feature. The switch and a link to the navigation bar's
+            // own glass options sit together here; the mini player's stays where it is, because it
+            // is one choice among several backgrounds rather than a glass setting that wandered.
+            if (section == AppearanceSection.THEME) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("liquid_glass"),
+                    title = liquidGlassTitle,
+                ) {
+                    item {
+                        Column(modifier = positions.modifierFor("liquid_glass_effects")) {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.liquid_glass_effects)) },
+                                description = stringResource(R.string.liquid_glass_effects_desc),
+                                icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                                checked = liquidGlassEnabled,
+                                onCheckedChange = onLiquidGlassEnabledChange,
                             )
+                            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassEnabled) {
+                                Text(
+                                    text = stringResource(R.string.liquid_glass_effects_unsupported),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                                )
+                            }
                         }
                     }
-                }
 
+                    item {
+                        PreferenceEntry(
+                            modifier = positions.modifierFor("liquid_glass_nav_bar_link"),
+                            title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
+                            description = stringResource(R.string.liquid_glass_nav_bar_desc),
+                            icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                            onClick = {
+                                navController.navigate(
+                                    "settings/appearance/navigation_bar?scrollTo=liquid_glass_nav_bar",
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            if (section == AppearanceSection.THEME) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("dynamic_theme"),
+                    title = themeTitle,
+                ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_dynamic_theme)) },
@@ -777,41 +919,43 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         onClick = pickCustomFont,
                     )
                 }
+                }
             }
 
-            preferenceGroup(
-                modifier = positions.modifierFor("disable_blur"),
-                title = playerTitle,
-            ) {
-                item {
-                    Column(modifier = positions.modifierFor("player_design_style")) {
-                        EnumListPreference(
-                            title = { Text(stringResource(R.string.player_design_style)) },
-                            icon = { Icon(painterResource(R.drawable.palette), null) },
-                            selectedValue = playerDesignStyle,
-                            onValueSelected = onPlayerDesignStyleChange,
-                            valueText = {
-                                when (it) {
-                                    PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
-                                    PlayerDesignStyle.V5 -> stringResource(R.string.player_design_v5)
-                                    PlayerDesignStyle.V7 -> stringResource(R.string.player_design_v7)
-                                    PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
-                                    PlayerDesignStyle.APPLE_MUSIC ->
-                                        stringResource(R.string.player_design_apple_music)
-                                    PlayerDesignStyle.V10 ->
-                                        stringResource(R.string.player_design_v10)
-                                    PlayerDesignStyle.BITCHORD ->
-                                        stringResource(R.string.player_design_bitchord)
-                                    PlayerDesignStyle.TIKTOK ->
-                                        stringResource(R.string.player_design_tiktok)
-                                    PlayerDesignStyle.SIMPMUSIC ->
-                                        stringResource(R.string.player_design_simpmusic)
-                                    PlayerDesignStyle.SPATIALFLOW ->
-                                        stringResource(R.string.player_design_spatialflow)
-                                }
-                            },
-                        )
-                    }
+            if (section == AppearanceSection.PLAYER) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("disable_blur"),
+                    title = playerTitle,
+                ) {
+                    item {
+                        Column(modifier = positions.modifierFor("player_design_style")) {
+                            EnumListPreference(
+                                title = { Text(stringResource(R.string.player_design_style)) },
+                                icon = { Icon(painterResource(R.drawable.palette), null) },
+                                selectedValue = playerDesignStyle,
+                                onValueSelected = onPlayerDesignStyleChange,
+                                valueText = {
+                                    when (it) {
+                                        PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
+                                        PlayerDesignStyle.V5 -> stringResource(R.string.player_design_v5)
+                                        PlayerDesignStyle.V7 -> stringResource(R.string.player_design_v7)
+                                        PlayerDesignStyle.V9 -> stringResource(R.string.player_design_v9)
+                                        PlayerDesignStyle.APPLE_MUSIC ->
+                                            stringResource(R.string.player_design_apple_music)
+                                        PlayerDesignStyle.V10 ->
+                                            stringResource(R.string.player_design_v10)
+                                        PlayerDesignStyle.BITCHORD ->
+                                            stringResource(R.string.player_design_bitchord)
+                                        PlayerDesignStyle.TIKTOK ->
+                                            stringResource(R.string.player_design_tiktok)
+                                        PlayerDesignStyle.SIMPMUSIC ->
+                                            stringResource(R.string.player_design_simpmusic)
+                                        PlayerDesignStyle.SPATIALFLOW ->
+                                            stringResource(R.string.player_design_spatialflow)
+                                    }
+                                },
+                            )
+                        }
                 }
 
                 if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
@@ -1066,31 +1210,35 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
+                }
             }
 
-            preferenceGroup(
-                modifier = positions.modifierFor("album_page"),
-                title = albumPageTitle,
-            ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("album_canvas_enabled"),
-                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
-                        description = stringResource(R.string.album_canvas_enabled_desc),
-                        icon = { Icon(painterResource(R.drawable.album), null) },
-                        checked = albumCanvasEnabled,
-                        onCheckedChange = onAlbumCanvasEnabledChange,
-                    )
+            if (section == AppearanceSection.PLAYER) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("album_page"),
+                    title = albumPageTitle,
+                ) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("album_canvas_enabled"),
+                            title = { Text(stringResource(R.string.album_canvas_enabled)) },
+                            description = stringResource(R.string.album_canvas_enabled_desc),
+                            icon = { Icon(painterResource(R.drawable.album), null) },
+                            checked = albumCanvasEnabled,
+                            onCheckedChange = onAlbumCanvasEnabledChange,
+                        )
+                }
                 }
             }
 
             // The three settings that decide what the Home tab shows were scattered through
             // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
             // one decision — which home you get — so they read as one group.
-            preferenceGroup(
-                modifier = positions.modifierFor("home_screen"),
-                title = homeTitle,
-            ) {
+            if (section == AppearanceSection.INTERFACE) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("home_screen"),
+                    title = homeTitle,
+                ) {
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("minimal_home_mode"),
@@ -1119,21 +1267,23 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
+                }
             }
 
-            preferenceGroup(
-                modifier = positions.modifierFor("app_language"),
-                title = miscTitle,
-            ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("tablet_mode"),
-                        title = { Text(stringResource(R.string.tablet_mode)) },
-                        description = stringResource(R.string.tablet_mode_desc),
-                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
-                        checked = tabletModeEnabled,
-                        onCheckedChange = onTabletModeEnabledChange,
-                    )
+            if (section == AppearanceSection.INTERFACE) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("app_language"),
+                    title = miscTitle,
+                ) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("tablet_mode"),
+                            title = { Text(stringResource(R.string.tablet_mode)) },
+                            description = stringResource(R.string.tablet_mode_desc),
+                            icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
+                            checked = tabletModeEnabled,
+                            onCheckedChange = onTabletModeEnabledChange,
+                        )
                 }
 
                 item {
@@ -1158,19 +1308,49 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
+                item {
+                    ListPreference(
+                        modifier = positions.modifierFor("default_lib_chips"),
+                        title = { Text(stringResource(R.string.default_lib_chips)) },
+                        icon = { Icon(painterResource(R.drawable.tab), null) },
+                        selectedValue = defaultChip,
+                        values =
+                            listOf(
+                                LibraryFilter.LIBRARY,
+                                LibraryFilter.PLAYLISTS,
+                                LibraryFilter.SONGS,
+                                LibraryFilter.ALBUMS,
+                                LibraryFilter.ARTISTS,
+                            ),
+                        valueText = {
+                            when (it) {
+                                LibraryFilter.SONGS -> stringResource(R.string.songs)
+                                LibraryFilter.ARTISTS -> stringResource(R.string.artists)
+                                LibraryFilter.ALBUMS -> stringResource(R.string.albums)
+                                LibraryFilter.PLAYLISTS -> stringResource(R.string.playlists)
+                                LibraryFilter.SPOTIFY -> stringResource(R.string.spotify_playlists)
+                                LibraryFilter.LIBRARY -> stringResource(R.string.filter_library)
+                            }
+                        },
+                        onValueSelected = onDefaultChipChange,
+                    )
+                }
+                }
             }
 
-            preferenceGroup(
-                modifier = positions.modifierFor("extras"),
-                title = extrasTitle,
-            ) {
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.extras)) },
-                        description = stringResource(R.string.settings_extras_subtitle),
-                        icon = { Icon(painterResource(R.drawable.discover_tune), null) },
-                        onClick = { navController.navigate("settings/appearance/extras") },
-                    )
+            if (section == AppearanceSection.INTERFACE) {
+                preferenceGroup(
+                    modifier = positions.modifierFor("extras"),
+                    title = extrasTitle,
+                ) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.extras)) },
+                            description = stringResource(R.string.settings_extras_subtitle),
+                            icon = { Icon(painterResource(R.drawable.discover_tune), null) },
+                            onClick = { navController.navigate("settings/appearance/extras") },
+                        )
+                }
                 }
             }
         }
