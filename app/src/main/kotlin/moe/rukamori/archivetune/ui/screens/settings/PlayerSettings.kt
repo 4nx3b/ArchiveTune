@@ -704,6 +704,32 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
+                    // Canvas Check (2026-09-04, user request: "Add an option
+                    // under artwork header in playback settings named Canvas
+                    // Check which tells me all the mirrors, my own accounts,
+                    // APIs or endpoints for canvas are working or not") — a
+                    // live diagnostic over every canvas source: the official
+                    // Spotify canvaz endpoint through the user's own session,
+                    // the Apple Music canvas API, and each configured
+                    // resolver mirror.
+                    var showCanvasCheckDialog by remember { mutableStateOf(false) }
+                    Column(modifier = positions.modifierFor("canvas_check")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.canvas_check)) },
+                            description = stringResource(R.string.canvas_check_description),
+                            icon = { Icon(painterResource(R.drawable.solar_check_circle_linear), null) },
+                            onClick = { showCanvasCheckDialog = true },
+                        )
+                    }
+                    if (showCanvasCheckDialog) {
+                        CanvasCheckDialog(
+                            resolverEndpointsRaw = canvasResolverEndpointsRaw,
+                            onDismiss = { showCanvasCheckDialog = false },
+                        )
+                    }
+                }
+
+                item {
                     Column(modifier = positions.modifierFor("tidal_artwork_fallback")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.tidal_artwork_fallback)) },

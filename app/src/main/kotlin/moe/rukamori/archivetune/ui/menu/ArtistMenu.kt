@@ -87,7 +87,7 @@ fun ArtistMenu(
 
     HorizontalDivider()
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -104,7 +104,7 @@ fun ArtistMenu(
             ),
     ) {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         buildList {
@@ -210,11 +210,11 @@ fun ArtistMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = {

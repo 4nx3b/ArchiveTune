@@ -386,4 +386,120 @@ object SpotifyCanvasProvider {
             videoUrlVertical = videoUrl,
         )
     }
+
+    // ── Health diagnostics (Settings → Playback → Artwork → Canvas Check) ─────
+
+    /**
+     * Checks Spotify's own Canvas endpoint using the user's actual Spotify
+     * session (the same [tokenProvider] / [trackUriResolver] hooks the
+     * playback path uses) — a REAL canvaz request for [spotifyTrackUri], or
+     * for the track resolved from [songTitle]/[artistName] when no direct URI
+     * is known.
+     */
+    suspend fun diagnoseOfficialEndpoint(
+        songTitle: String?,
+        artistName: String?,
+        spotifyTrackUri: String? = null,
+    ): CanvasSourceDiagnosis {
+        val provideToken =
+            tokenProvider
+                ?: return CanvasSourceDiagnosis.Skipped("No Spotify session is wired up in this build.")
+        val token =
+            try {
+                provideToken()?.takeIf { it.isNotBlank() }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                return CanvasSourceDiagnosis.Skipped("Spotify session error: ${throwable.message}")
+            } ?: return CanvasSourceDiagnosis.Skipped("Not signed in to Spotify — the official Canvas endpoint needs your account.")
+        val trackUri =
+            spotifyTrackUri?.takeIf { it.isNotBlank() }
+                ?: try {
+                    trackUriResolver?.invoke("canvas-check-probe", songTitle, artistName)?.takeIf { it.isNotBlank() }
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    null
+                }
+                ?: return CanvasSourceDiagnosis.Skipped("Signed in, but the probe song couldn't be identified on Spotify — try again while it plays.")
+        return try {
+            val response =
+                spotifyClient.post(CANVAZ_URL) {
+                    header("Authorization", "Bearer $token")
+                    header("Accept", "application/x-protobuf")
+                    header("Content-Type", "application/x-protobuf")
+                    header("User-Agent", "ArchiveTune-Android")
+                    setBody(SpotifyCanvazProtocol.encodeRequest(listOf(trackUri)))
+                }
+            when {
+                response.status == HttpStatusCode.OK -> {
+                    val entries = SpotifyCanvazProtocol.decodeResponse(response.body<ByteArray>())
+                    val canvasUrl =
+                        entries.firstOrNull { it.entityUri == trackUri && !it.url.isNullOrBlank() }?.url
+                            ?: entries.firstNotNullOfOrNull { entry -> entry.url?.takeIf { it.isNotBlank() } }
+                    if (canvasUrl != null) {
+                        CanvasSourceDiagnosis.Ok(canvasFound = true, "Answered with a canvas for the probe track.")
+                    } else {
+                        CanvasSourceDiagnosis.Ok(canvasFound = false, "Answered — endpoint and your account work (this track just has no canvas).")
+                    }
+                }
+                response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden ->
+                    CanvasSourceDiagnosis.Rejected(
+                        httpStatus = response.status.value,
+                        detail = "Spotify rejected your token (HTTP ${response.status.value}) — re-login to Spotify.",
+                    )
+                else ->
+                    CanvasSourceDiagnosis.Rejected(
+                        httpStatus = response.status.value,
+                        detail = "Answered HTTP ${response.status.value} — the endpoint refused the request.",
+                    )
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            CanvasSourceDiagnosis.Unreachable("Unreachable: ${throwable.message ?: throwable::class.simpleName}")
+        }
+    }
+
+    /**
+     * Checks ONE user-configured resolver mirror by issuing the exact GET the
+     * playback fallback issues (`<endpoint>?id=<probeVideoId>`) and applying
+     * the same JSON-content-type validation — a body that arrives as HTML
+     * (dead/repurposed domain, rate-limit wall) is reported as dead, not as
+     * "no canvas".
+     */
+    suspend fun diagnoseResolverEndpoint(
+        endpoint: String,
+        probeVideoId: String,
+    ): CanvasSourceDiagnosis {
+        return try {
+            val response =
+                client.get(endpoint) {
+                    parameter("id", probeVideoId)
+                }
+            val contentType =
+                response.headers[io.ktor.http.HttpHeaders.ContentType]
+                    ?.lowercase()
+                    .orEmpty()
+            if (!contentType.contains("json")) {
+                CanvasSourceDiagnosis.Rejected(
+                    httpStatus = null,
+                    detail = "Dead endpoint — answered non-JSON ($contentType).",
+                )
+            } else if (response.status == HttpStatusCode.OK) {
+                val body: JsonObject = response.body()
+                val canvas = parseCanvasArtwork(body, probeVideoId)
+                if (canvas != null) {
+                    CanvasSourceDiagnosis.Ok(canvasFound = true, "Answered with a canvas for the probe track.")
+                } else {
+                    CanvasSourceDiagnosis.Ok(canvasFound = false, "Working — answered, no canvas for the probe track.")
+                }
+            } else {
+                CanvasSourceDiagnosis.Ok(
+                    canvasFound = false,
+                    detail = "Working — reachable and answered HTTP ${response.status.value} (no canvas for the probe track).",
+                )
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            CanvasSourceDiagnosis.Unreachable("Unreachable: ${throwable.message ?: throwable::class.simpleName}")
+        }
+    }
 }

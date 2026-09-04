@@ -624,7 +624,7 @@ public fun PlaylistMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions = primaryActions,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -633,11 +633,11 @@ public fun PlaylistMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     playlist.playlist.browseId?.let { browseId ->
                         ListItem(
@@ -833,11 +833,11 @@ public fun PlaylistMenu(
 
         if (downloadPlaylist != true) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     when (downloadState) {
                         Download.STATE_COMPLETED -> {
                             ListItem(
@@ -911,11 +911,11 @@ public fun PlaylistMenu(
 
         if (autoPlaylist != true) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     val isTelegramPlaylist = playlist.playlist.id.startsWith("LPtg")
                     if (isTelegramPlaylist) {
                         val losslessOnly by rememberPreference(TelegramLosslessOnlyKey, defaultValue = false)
@@ -1060,11 +1060,11 @@ public fun PlaylistMenu(
 
         playlist.playlist.shareLink?.let { shareLink ->
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = { Text(text = shareText) },
                         leadingContent = {

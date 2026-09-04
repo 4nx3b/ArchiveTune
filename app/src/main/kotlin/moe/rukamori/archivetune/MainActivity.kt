@@ -1437,6 +1437,39 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
+                    // Dedicated live backdrop for the floating liquid-glass
+                    // overflow menu (BottomSheetMenu). Unlike
+                    // [liquidGlassBackdrop] (which records only the NavHost
+                    // content slot), this one is attached to the container
+                    // wrapping the ENTIRE app surface — rail + Scaffold (top
+                    // bar, pages, mini player, nav bar) — and only while the
+                    // menu is open, so the popup's frost samples everything
+                    // actually behind it and follows the mini player's
+                    // animated content in real time (2026-09-04: "The liquid
+                    // glass blur behind the song popup is static. it should
+                    // render in real time just like new lyrics popup").
+                    val menuGlassBackdrop: LayerBackdrop? =
+                        if (liquidGlassActive) {
+                            rememberLayerBackdrop()
+                        } else {
+                            null
+                        }
+
+                    // Keep the recorder attached slightly past the menu's own
+                    // close (the popup plays a ~200ms exit fade while
+                    // menuState.isVisible is already false); detaching the
+                    // kyant recorder clears the layer coordinates instantly,
+                    // which would blank the frost mid-fade.
+                    var menuGlassRecordingActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(menuState.isVisible) {
+                        if (menuState.isVisible) {
+                            menuGlassRecordingActive = true
+                        } else {
+                            delay(260)
+                            menuGlassRecordingActive = false
+                        }
+                    }
+
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
@@ -2117,6 +2150,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+                        moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                         moe.rukamori.archivetune.ui.player.LocalMiniPlayerDocked provides false,
@@ -2133,7 +2167,35 @@ class MainActivity : ComponentActivity() {
                         // popup to be blurred but the popup itself should be
                         // blurred") — the area around the sheet only gets the
                         // dialog's plain dim scrim.
-                        Row {
+                        //
+                        // 2026-09-04 (real-time menu glass): this Row is the
+                        // ONLY container that wraps the entire visible app
+                        // surface — the navigation rail, the Scaffold's top
+                        // bar, the NavHost pages AND the bottom-bar slot with
+                        // the mini player + navigation bar. While the overflow
+                        // menu is open, the menu-glass backdrop records this whole
+                        // subtree (the recording itself is draw-phase only, so
+                        // attaching/detaching the modifier never re-lays-out
+                        // the app). The floating menu popup is composed as a
+                        // SIBLING below (never inside this Row), so it can
+                        // safely sample the layer with kyant drawBackdrop —
+                        // the non-reentrant case. The conditional attach keeps
+                        // the cost at zero whenever no menu is showing; while
+                        // attached the layer stays live, so the popup's frost
+                        // follows the mini player's animated progress line /
+                        // artwork crossfades and anything else moving behind
+                        // it, exactly like the lyrics popup's frost follows
+                        // the player's drifting artwork.
+                        Row(
+                            modifier =
+                                Modifier.let { base ->
+                                    if (menuGlassBackdrop != null && menuGlassRecordingActive) {
+                                        base.layerBackdrop(menuGlassBackdrop)
+                                    } else {
+                                        base
+                                    }
+                                },
+                        ) {
                             AnimatedVisibility(
                                 visible =
                                     useRail &&

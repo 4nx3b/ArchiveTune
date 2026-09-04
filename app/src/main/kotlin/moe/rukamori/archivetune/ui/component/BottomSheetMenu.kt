@@ -182,11 +182,21 @@ fun BottomSheetMenu(
     val alpha = enterProgress.value
 
     // ── Liquid glass surface (same recipe as the lyrics overflow popup) ──
-    // The NavHost-layer backdrop is recorded by MainActivity and shared via
-    // CompositionLocal; this popup is a SIBLING of the layer-capturing NavHost
-    // Box (both live in the activity's root Box), so sampling it here is the
-    // safe non-reentrant case.
-    val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
+    // 2026-09-04 (REAL-TIME, user report: "The liquid glass blur behind the
+    // song popup is static. it should render in real time just like new
+    // lyrics popup"): prefer the dedicated menu backdrop — MainActivity
+    // attaches its recorder to the container wrapping the ENTIRE app surface
+    // (top bar, pages, mini player, navigation bar) while this menu is open,
+    // so the frost samples everything actually behind the popup and follows
+    // the mini player's animated content live, exactly like the lyrics
+    // popup follows the player's drifting artwork. The old app-wide
+    // NavHost-only backdrop (still captured for the nav bar / mini player
+    // glass) records nothing that changes while the menu is open — that is
+    // why the frost used to read as a frozen image. Fall back to it only when
+    // the dedicated recorder is unavailable (e.g. a menu composed outside
+    // MainActivity's provider).
+    val menuGlassBackdrop = LocalMenuGlassBackdrop.current
+    val liquidGlassBackdrop = menuGlassBackdrop ?: LocalLiquidGlassBackdrop.current
     val glassModifier =
         remember(liquidGlassBackdrop) {
             if (liquidGlassBackdrop != null && background.isUnspecified) {
@@ -330,6 +340,17 @@ fun BottomSheetMenu(
                         // the scrim and dismiss the menu accidentally.
                     },
         ) {
+            // The color scheme OUTSIDE this popup's glass overlay — dialogs
+            // spawned from the menu content (DefaultDialog & co.) are
+            // separate OS windows that still inherit this composition's
+            // locals, so without an explicit restore they would pick up the
+            // glass overlay's translucent container colors and render as
+            // see-through "blurred" dialogs (user report 2026-09-04:
+            // "Restore the old source picker popup. i never told you to add
+            // blur there"). Dialogs read this via [LocalUnglassColorScheme]
+            // and re-wrap themselves in the app's real, opaque scheme.
+            val unglassedColorScheme = MaterialTheme.colorScheme
+
             CompositionLocalProvider(
                 LocalContentColor provides contentInk,
                 // The lyrics-popup transparent-surface fix, generalised (2026-09-04):
@@ -340,6 +361,8 @@ fun BottomSheetMenu(
                 // backdrop is actually sampling — the fallback charcoal card keeps
                 // the opaque section material for contrast.
                 LocalGlassMenuContent provides (glassModifier != null),
+                // The pre-glass scheme for dialogs (see comment above).
+                LocalUnglassColorScheme provides unglassedColorScheme,
             ) {
                 MaterialTheme(colorScheme = glassColorScheme) {
                     Column(

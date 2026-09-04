@@ -328,7 +328,7 @@ fun YouTubeAlbumMenu(
 
     HorizontalDivider()
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -345,7 +345,7 @@ fun YouTubeAlbumMenu(
             ),
     ) {
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         listOf(
@@ -415,11 +415,11 @@ fun YouTubeAlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.play_next)) },
@@ -545,11 +545,11 @@ fun YouTubeAlbumMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 when (downloadState) {
                     Download.STATE_COMPLETED -> {
                         ListItem(
@@ -638,11 +638,11 @@ fun YouTubeAlbumMenu(
 
         if (albumItem.artists != null) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                         leadingContent = {

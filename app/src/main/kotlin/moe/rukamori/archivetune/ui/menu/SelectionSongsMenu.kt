@@ -232,7 +232,7 @@ fun SelectionSongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         listOf(
@@ -299,11 +299,11 @@ fun SelectionSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
@@ -438,11 +438,11 @@ fun SelectionSongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 when (downloadState) {
                     Download.STATE_COMPLETED -> {
                         ListItem(
@@ -515,11 +515,11 @@ fun SelectionSongMenu(
 
         if (songPosition?.size != 0) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = {
                             Text(
@@ -601,11 +601,11 @@ fun SelectionSongMenu(
 
         if (isFromCache && onRemoveFromCache != null) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection {
                     ListItem(
                         headlineContent = {
                             Text(
@@ -781,7 +781,7 @@ fun SelectionMediaMetadataMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 NewActionGrid(
                     actions =
                         listOf(
@@ -848,11 +848,11 @@ fun SelectionMediaMetadataMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 Column {
                     if (onRemoveFromHistory != null) {
                         ListItem(
@@ -990,11 +990,11 @@ fun SelectionMediaMetadataMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection {
                 when (downloadState) {
                     Download.STATE_COMPLETED -> {
                         ListItem(

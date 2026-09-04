@@ -500,6 +500,84 @@ object AppleMusicProvider {
         return result
     }
 
+    /**
+     * Health check for the Apple Music canvas path (Settings → Playback →
+     * Artwork → Canvas Check): performs the REAL AMP catalog search the
+     * playback path performs (token → storefront → `/search?types=songs`) and
+     * reports whether the API answered, plus whether the probe song actually
+     * carries editorial-video (canvas) motion artwork.
+     */
+    suspend fun diagnose(
+        song: String,
+        artist: String,
+    ): CanvasSourceDiagnosis {
+        val token =
+            try {
+                ensureTokenFresh()
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                return CanvasSourceDiagnosis.Skipped("Token error: ${throwable.message}")
+            } ?: return CanvasSourceDiagnosis.Skipped("Couldn't obtain an Apple Music API token — music.apple.com may be unreachable or blocked.")
+        return try {
+            val effectiveStorefront = resolveStorefront()
+            val query = if (song.contains(artist, ignoreCase = true)) song else "$artist $song"
+            val response =
+                client.get("$AMP_BASE_URL/v1/catalog/$effectiveStorefront/search") {
+                    header("Authorization", "Bearer $token")
+                    mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { mt -> header("Media-User-Token", mt) }
+                    header("Origin", "https://music.apple.com")
+                    header("Referer", "https://music.apple.com/")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
+                    parameter("term", query)
+                    parameter("types", "songs")
+                    parameter("limit", "10")
+                    parameter("extend", "editorialVideo")
+                    parameter("include", "albums")
+                }
+            when {
+                response.status == HttpStatusCode.OK -> {
+                    val root = response.body<JsonObject>()
+                    val data =
+                        root["results"]
+                            ?.jsonObject
+                            ?.get("songs")
+                            ?.jsonObject
+                            ?.get("data")
+                            ?.jsonArray
+                            .orEmpty()
+                    val hasCanvas =
+                        data.any { item ->
+                            val ev = item.jsonObject["attributes"]?.jsonObject?.get("editorialVideo")?.jsonObject
+                            if (ev == null) {
+                                false
+                            } else {
+                                val urls = extractEditorialVideoUrls(ev)
+                                !urls.animated.isNullOrBlank() || !urls.animatedVertical.isNullOrBlank()
+                            }
+                        }
+                    if (hasCanvas) {
+                        CanvasSourceDiagnosis.Ok(canvasFound = true, "Answered — canvas motion artwork found for the probe track.")
+                    } else {
+                        CanvasSourceDiagnosis.Ok(canvasFound = false, "Working — API answered, the probe track has no canvas motion artwork.")
+                    }
+                }
+                response.status == HttpStatusCode.Unauthorized || response.status == HttpStatusCode.Forbidden ->
+                    CanvasSourceDiagnosis.Rejected(
+                        httpStatus = response.status.value,
+                        detail = "API rejected the token (HTTP ${response.status.value}).",
+                    )
+                else ->
+                    CanvasSourceDiagnosis.Rejected(
+                        httpStatus = response.status.value,
+                        detail = "Answered HTTP ${response.status.value}.",
+                    )
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            CanvasSourceDiagnosis.Unreachable("Unreachable: ${throwable.message ?: throwable::class.simpleName}")
+        }
+    }
+
     // ── Core Logic ───────────────────────────────────────────────────────────────────
 
     /**
