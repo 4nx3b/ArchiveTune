@@ -77,6 +77,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LibrarySource
 import moe.rukamori.archivetune.constants.AlbumFilter
 import moe.rukamori.archivetune.constants.AlbumFilterKey
 import moe.rukamori.archivetune.constants.AlbumSortDescendingKey
@@ -101,6 +102,14 @@ fun LibraryAlbumsScreen(
     onDeselect: () -> Unit,
     viewModel: LibraryAlbumsViewModel = hiltViewModel(),
 ) {
+    // The Spotify half of this section is a remote list with none of the sorting, filtering
+    // or multi-select below it, so it is its own screen rather than a branch threaded through
+    // this one. Both render the pills.
+    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
+        LibrarySpotifyAlbumsScreen()
+        return
+    }
+
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -164,7 +173,9 @@ fun LibraryAlbumsScreen(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),
         ) {
+            LibrarySourcePills()
 
+            // Sub-header controls (Sort dropdown, genres/filters, list/grid toggle)
             Row(
                 modifier =
                     Modifier
