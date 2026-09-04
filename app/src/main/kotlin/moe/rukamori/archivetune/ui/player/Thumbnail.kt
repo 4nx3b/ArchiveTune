@@ -155,16 +155,15 @@ fun Thumbnail(
         defaultValue = PlayerDesignStyle.V4,
     )
     // Styles that opt out of the three-line pane, because their artwork slot is not a plain
-    // square the pane can stand in for: Editorial's (V10) bento layout and Minimal's (V3)
-    // compact one both gave it a box it did not fit, and it rendered broken in both. Apple
-    // Music opted out for the same reason and never reaches this composable anyway — it draws
-    // its own artwork.
+    // square the pane can stand in for: Editorial's (V10) bento layout gave it a box it did
+    // not fit, and it rendered broken there. (Upstream also opted out Minimal (V3), but this
+    // fork removed V3 from the enum — see PreferenceKeys.) Apple Music opted out for the
+    // same reason and never reaches this composable anyway — it draws its own artwork.
     val inlineLyricsAvailable =
         showLyricsOnPlayer &&
             isPlayerExpanded &&
             inlineLines.isNotEmpty() &&
-            playerDesignStyle != PlayerDesignStyle.V10 &&
-            playerDesignStyle != PlayerDesignStyle.V3
+            playerDesignStyle != PlayerDesignStyle.V10
     val (maxCanvasCacheSize, _) =
         rememberPreference(
             key = MaxCanvasCacheSizeKey,

@@ -181,11 +181,7 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
-import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
-import moe.rukamori.archivetune.ui.component.LyricsV2
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Headphones
@@ -1298,9 +1294,13 @@ fun BitChordPlayerContent(
                     // one. Routing to the shared renderer fixes both, and drops ~450 lines of a
                     // second implementation of scrolling, follow, tap-to-seek and romanisation.
                     //
+                    // (Fork note: this fork removed the LyricsMode picker — LyricsEnhanced is
+                    // the sole renderer everywhere — so upstream's V2/SPOTIFY branches, which
+                    // call a LyricsV2 composable this tree never had, collapse into the one
+                    // Enhanced call below.)
+                    //
                     // The one-line strip on the collapsed player keeps BitChord's sweep: it shows a
                     // single line with no list around it, which is what that treatment was for.
-                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
                     val panelModifier = Modifier
                         .fillMaxSize()
                         .padding(top = HEADER_HEIGHT + 10.dp)
@@ -1315,32 +1315,12 @@ fun BitChordPlayerContent(
                     // Null unless the user is scrubbing, matching LyricsScreen: the renderers run
                     // their own frame clock off the player, and a polled position would step.
                     val lyricsPositionProvider = remember { { null as Long? } }
-                    when (lyricsMode) {
-                        LyricsMode.ENHANCED ->
-                            LyricsEnhanced(
-                                sliderPositionProvider = lyricsPositionProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = panelModifier,
-                                textColorOverride = Color.White,
-                            )
-
-                        LyricsMode.SPOTIFY ->
-                            LyricsV2(
-                                sliderPositionProvider = lyricsPositionProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = panelModifier,
-                                textColorOverride = Color.White,
-                                spotifyStyle = true,
-                            )
-
-                        LyricsMode.V2 ->
-                            LyricsV2(
-                                sliderPositionProvider = lyricsPositionProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = panelModifier,
-                                textColorOverride = Color.White,
-                            )
-                    }
+                    LyricsEnhanced(
+                        sliderPositionProvider = lyricsPositionProvider,
+                        lyricsSyncOffset = lyricsSyncOffset,
+                        modifier = panelModifier,
+                        textColorOverride = Color.White,
+                    )
                 }
 
                 // Toggles and the queue arrive after the sleeve has finished
