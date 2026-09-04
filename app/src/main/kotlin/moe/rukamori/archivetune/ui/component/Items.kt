@@ -1712,8 +1712,17 @@ fun ItemThumbnail(
     ) {
         val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
         val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
-        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
-        val resolvedContentScale = contentScale ?: if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit
+        val isSquareFrame = kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
+        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && isSquareFrame
+        // YouTube video thumbnails are 16:9 while the frame here is square; with
+        // ContentScale.Fit they letterbox, leaving the empty bands the user
+        // reported as "white empty borders of the music videos" (2026-09-04).
+        // Crop fills the square instead — a no-op for the square artwork songs
+        // and albums use, and local/non-YouTube artwork keeps Fit so the
+        // user's own images are never cut off.
+        val resolvedContentScale =
+            contentScale
+                ?: if (shouldApplySquareCrop || (isYouTubeThumb && isSquareFrame)) ContentScale.Crop else ContentScale.Fit
         val widthPx = if (maxWidth == Dp.Infinity) null else with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
         val heightPx = if (maxHeight == Dp.Infinity) null else with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
 

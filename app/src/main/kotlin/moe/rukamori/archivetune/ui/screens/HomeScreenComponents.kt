@@ -1046,66 +1046,6 @@ fun HomePageSectionTitle(
 // ============================================================
 
 /**
- * Personalized greeting header — "Good morning/afternoon/evening, [name]".
- *
- * Mirrors the Apple Music / Muzo-style home header: a single line with a
- * large bold greeting and the user's name highlighted in the primary accent
- * color. The time-of-day prefix is computed from the system clock at
- * composition time so it stays correct without needing to observe a flow.
- */
-@Composable
-fun HomeGreetingHeader(
-    accountName: String,
-    modifier: Modifier = Modifier,
-) {
-    val hour = remember {
-        java.util.Calendar
-            .getInstance()
-            .get(java.util.Calendar.HOUR_OF_DAY)
-    }
-    val greetingRes =
-        when (hour) {
-            in 5..11 -> R.string.greeting_morning
-            in 12..16 -> R.string.greeting_afternoon
-            in 17..21 -> R.string.greeting_evening
-            else -> R.string.greeting_night
-        }
-    val greeting = stringResource(greetingRes)
-    val displayName = accountName.ifBlank { stringResource(R.string.greeting_default_name) }
-    val accent = MaterialTheme.colorScheme.primary
-    val foreground = MaterialTheme.colorScheme.onSurface
-
-    val text =
-        remember(greeting, displayName, accent, foreground) {
-            buildAnnotatedString {
-                withStyle(SpanStyle(color = foreground, fontWeight = FontWeight.Bold)) {
-                    append("$greeting, ")
-                }
-                withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) {
-                    append(displayName)
-                }
-            }
-        }
-
-    Text(
-        text = text,
-        // BitChord displayLarge (2026-09-03 redesign): 34sp W800 with tight
-        // -0.8 tracking — the page-title scale the big in-list header owns.
-        fontSize = 34.sp,
-        fontWeight = FontWeight.W800,
-        letterSpacing = (-0.8).sp,
-        color = foreground,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = HomeFeedGutter)
-                .padding(vertical = 8.dp),
-    )
-}
-
-/**
  * "Jump back in" hero shelf — the BitChord lead-shelf treatment (2026-09-03
  * redesign): near-page-width cards (70% of the row, capped at 320dp, 0.92
  * aspect, 18dp corners) that page sideways, with the title/artist caption
