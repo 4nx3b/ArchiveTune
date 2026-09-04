@@ -165,7 +165,6 @@ import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
@@ -366,14 +365,6 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    // The "Show player controls" and "Auto-hide controls" toggles were removed from the
-    // Lyrics settings UI by user request. The Apple Music lyrics view now ALWAYS shows
-    // the bottom transport controls while lyrics/queue is open and ALWAYS auto-hides
-    // them after 5 s. The preferences are still read so legacy installs (where the user
-    // previously set them to false) get upgraded to the new "always on" behavior — i.e.
-    // we ignore their stored value and treat both as `true`.
-    val showLyricsPlayerControls = true
-    val autoHideLyricsPlayerControls = true
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -486,51 +477,9 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide timer: show the controls, then hide them after 5s. Fires for both lyrics
-    // and queue, but ONLY when the Auto-hide controls preference is on. Turning the
-    // preference off restores the controls and keeps them.
-    //
-    // ONE countdown, with every reveal trigger as a key. This used to be three effects:
-    // two that bumped a tick which the third used as its timer key, so the countdown was
-    // launched, cancelled and relaunched across two frames and the ordering was
-    // load-bearing. Setting `playerControlsExpanded = true` unconditionally at the top
-    // means any key change reveals the controls FIRST and only then decides whether to
-    // start hiding them — that is what guarantees the full five second window.
-    //
-    // `playerExpanded` is a key because of the keepContentAlive note above: re-expanding
-    // the player from the mini player used to restore the lyrics view with the controls
-    // already hidden by the PREVIOUS visit's expired timer — no five second window at all,
-    // just an instant hide, with a tap as the only way to get them back.
-    // `mediaMetadata.id` is a key so a track change re-reveals them too.
-    //
-    // `showLyricsPlayerControls` is a key, and the countdown bails out while it is off,
-    // because the visibility condition below ANDs it with `playerControlsExpanded`: with the
-    // timer running behind a hidden view, the five second window was silently burned in the
-    // background, so switching "Show player controls" back on in the Apple Music player
-    // revealed nothing at all — the setting looked dead and only a tap brought the controls
-    // back. Holding the flag expanded while the controls are suppressed means the toggle
-    // both shows them immediately and grants the full five seconds. Queue mode is not
-    // gated: the preference is lyrics-only, and its controls stay on the auto-hide cycle.
-    LaunchedEffect(
-        lyricsOpen,
-        queueOpen,
-        playerExpanded,
-        mediaMetadata.id,
-        controlsRevealToken,
-        autoHideLyricsPlayerControls,
-        showLyricsPlayerControls,
-    ) {
-        playerControlsExpanded = true
-        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
-        // Collapsed: there is nothing on screen to auto-hide, and burning the window here
-        // is exactly what caused the instant hide on re-expand.
-        if (!playerExpanded) return@LaunchedEffect
-        if (!autoHideLyricsPlayerControls) return@LaunchedEffect
-        // Lyrics with the controls suppressed: nothing on screen to hide, same reasoning.
-        if (lyricsOpen && !queueOpen && !showLyricsPlayerControls) return@LaunchedEffect
-        delay(autoHideDelayMs)
-        playerControlsExpanded = false
-    }
+    // The controls used to hide after five seconds and be re-summoned by a tap. They no longer
+    // hide: the bar carries the scrubber, the quality badge and the lyrics provider, and a control
+    // you have to poke the screen to find is worse than one that is simply there.
 
     // Deferred canvas-visible state: when lyrics opens, the canvas
     // TextureView teardown (visible = false) + ExoPlayer pause are delayed so
@@ -1317,9 +1266,9 @@ fun AppleMusicPlayerContent(
                             .fillMaxHeight(),
                 )
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) ||
-                        (queueOpen && playerControlsExpanded) ||
-                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                    // Controls no longer auto-hide, so this is always visible; kept as an
+                    // AnimatedVisibility so the morph in and out stays the same shape.
+                    visible = true,
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1804,10 +1753,9 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible =
-                        (!lyricsOpen && !queueOpen) ||
-                            (queueOpen && playerControlsExpanded) ||
-                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                    // Controls no longer auto-hide, so this is always visible; kept as an
+                    // AnimatedVisibility so the morph in and out stays the same shape.
+                    visible = true,
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
@@ -1890,11 +1838,7 @@ fun AppleMusicPlayerContent(
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                showPlayerControlsState = null,
-                onShowPlayerControlsChange = null,
-                onAutoHidePlayerControlsChange = {},
                 onDismiss = { showAnchoredLyricsMenu = false },
-                showControlsToggles = false,
                 backdrop = popupBackdrop,
             )
         }
