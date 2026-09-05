@@ -306,7 +306,7 @@ object Spotify {
         for (attempt in 0 until maxRetries) {
             log(
                 "D",
-                "REST GET $endpoint (token: ${token.take(8)}...)" +
+                "REST GET $endpoint" +
                     if (attempt > 0) " [retry $attempt]" else "",
             )
             val response =
@@ -718,6 +718,7 @@ object Spotify {
                 total = totalCount,
                 limit = pagingInfo?.int("limit") ?: limit,
                 offset = pagingInfo?.int("offset") ?: offset,
+                rawItemCount = libraryData.arr("items")?.size ?: 0,
             )
         }
 
@@ -806,6 +807,7 @@ object Spotify {
                 total = totalCount,
                 limit = pagingInfo?.int("limit") ?: limit,
                 offset = pagingInfo?.int("offset") ?: offset,
+                rawItemCount = libraryData.arr("items")?.size ?: 0,
             )
         }
 
@@ -896,6 +898,7 @@ object Spotify {
                 total = content.int("totalCount") ?: 0,
                 limit = limit,
                 offset = offset,
+                rawItemCount = content.arr("items")?.size ?: 0,
             )
         }
 
@@ -1035,6 +1038,7 @@ object Spotify {
                 total = tracksData.int("totalCount") ?: 0,
                 limit = limit,
                 offset = offset,
+                rawItemCount = tracksData.arr("items")?.size ?: 0,
             )
         }
 
@@ -1127,6 +1131,8 @@ object Spotify {
                 parameter("limit", limit)
             }
         }
+
+    // ── Search (GQL: searchDesktop) ────────────────���────────────────────
 
     suspend fun search(
         query: String,
