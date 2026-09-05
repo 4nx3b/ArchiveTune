@@ -1921,24 +1921,11 @@ fun AppleMusicPlayerContent(
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                 onDismiss = { showAnchoredLyricsMenu = false },
                 backdrop = popupBackdrop,
-                // Restored (2026-09-04): the two control-preference toggles ride the
-                // anchored popup again, writing both the shared DataStore value and
-                // the live reveal state so the countdown reacts immediately.
-                showPlayerControlsState = showLyricsPlayerControlsState,
-                onShowPlayerControlsChange = { showControls ->
-                    showLyricsPlayerControlsState.value = showControls
-                    // (2026-09-05) the setting now skips the countdown (keep visible)
-                    // rather than hiding the controls outright — reveal on either
-                    // toggle so the change is immediately visible, and let the
-                    // countdown effect above decide the rest.
-                    playerControlsExpanded = true
-                },
-                onAutoHidePlayerControlsChange = { enabled ->
-                    onAutoHideLyricsPlayerControlsChange(enabled)
-                    playerControlsExpanded = true
-                    if (enabled) pokePlayerControlsVisibility()
-                },
-                showControlsToggles = true,
+                // [2026-09-05] The two control-preference toggles no longer ride
+                // the popup (removed per user request: "Remove the Auto hide and
+                // show player toggles from new lyrics overflow menu"). The
+                // show/auto-hide preferences they wrote still drive the countdown
+                // effect above — they are just no longer editable from this menu.
             )
         }
 

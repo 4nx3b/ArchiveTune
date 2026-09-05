@@ -91,6 +91,12 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import android.os.Build
 import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
@@ -207,6 +213,18 @@ private fun LogcatScreenContent(
         }
     val listState = rememberLazyListState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in ... debug logs".
+    // HistoryScreen pattern — real kyant glass pill when the Liquid Glass
+    // master toggle is on (Android 12+), translucent frosted fallback pill
+    // otherwise.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val logcatSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(logcatSurfaceColor)
+
     val logUserScrollConnection =
         remember(onPauseAutoScroll) {
             object : NestedScrollConnection {
@@ -237,6 +255,7 @@ private fun LogcatScreenContent(
                 onShare = onShare,
                 onExport = onExport,
                 scrollBehavior = scrollBehavior,
+                backdrop = backdrop.takeIf { liquidGlassHeaderActive },
             )
         },
         floatingActionButton = {
@@ -272,6 +291,16 @@ private fun LogcatScreenContent(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
+                    )
+                    // Records the log content into `backdrop` so the frosted
+                    // header pill can blur it (haze effect). No-op while the
+                    // Liquid Glass master toggle is off.
+                    .then(
+                        if (liquidGlassHeaderActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
                     ),
             contentAlignment = Alignment.TopCenter,
         ) {
@@ -341,11 +370,12 @@ private fun LogcatTopBar(
     onShare: () -> Unit,
     onExport: () -> Unit,
     scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
+    backdrop: PlatformBackdrop? = null,
 ) {
     MediumFlexibleTopAppBar(
         title = {},
         navigationIcon = {
-            FrostedHeaderPill(plain = true) {
+            FrostedHeaderPill(backdrop = backdrop) {
                 ArchiveTuneIconButton(
                     onClick = onNavigateBack,
                     onLongClick = onNavigateBackLongClick,

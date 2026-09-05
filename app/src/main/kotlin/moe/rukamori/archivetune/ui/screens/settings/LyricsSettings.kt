@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,6 +77,7 @@ import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
@@ -95,6 +97,8 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -197,9 +201,30 @@ fun LyricsSettings(
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in lyrics settings in
+    // player and audio". HistoryScreen pattern — real kyant glass pill when
+    // the Liquid Glass master toggle is on (Android 12+), translucent
+    // frosted fallback pill otherwise.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(lyricsSurfaceColor)
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+            // Records the scrolling content into `backdrop` so the frosted
+            // header pill can blur it (haze effect). No-op while the Liquid
+            // Glass master toggle is off.
+            .then(
+                if (liquidGlassHeaderActive) {
+                    Modifier.layerBackdrop(backdrop)
+                } else {
+                    Modifier
+                },
+            )
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
@@ -516,7 +541,7 @@ fun LyricsSettings(
     TopAppBar(
         title = {},
         navigationIcon = {
-            FrostedHeaderPill(plain = true) {
+            FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
                 IconButton(
                     onClick = navController::navigateUp,
                     onLongClick = navController::backToMain,

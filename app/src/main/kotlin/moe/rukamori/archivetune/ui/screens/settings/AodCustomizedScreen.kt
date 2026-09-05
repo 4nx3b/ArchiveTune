@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -103,6 +104,7 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -111,6 +113,8 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -155,6 +159,22 @@ fun AodCustomizedScreen(
     scrollTo: String? = null,
 ) {
     val scrollBehavior = appBarScrollBehavior()
+
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in AOD customisation".
+    // This screen previously used `FrostedHeaderPill(plain = true)` — a bare
+    // Row with no glass. It now follows the HistoryScreen pattern: when the
+    // Liquid Glass master toggle is ON (and Android 12+), the pill samples
+    // the LazyColumn content recorded by `Modifier.layerBackdrop(backdrop)`
+    // and renders real kyant glass (vibrancy + blur + lens); when OFF it
+    // falls back to the translucent frosted `surfaceContainerHigh` pill that
+    // History/Library pages show.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val aodSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(aodSurfaceColor)
+
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
             AodThumbnailShapeKey,
@@ -276,7 +296,7 @@ fun AodCustomizedScreen(
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
+                    FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
@@ -322,6 +342,18 @@ fun AodCustomizedScreen(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
+                    )
+                    // Records the scrolling content into `backdrop` so the
+                    // frosted header pill above can blur it (haze effect).
+                    // Only active when the Liquid Glass master toggle is on;
+                    // otherwise the pill renders its translucent fallback and
+                    // this modifier is a no-op (zero recording cost).
+                    .then(
+                        if (liquidGlassHeaderActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
                     )
                     // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
                     .then(positions.containerModifier()),
