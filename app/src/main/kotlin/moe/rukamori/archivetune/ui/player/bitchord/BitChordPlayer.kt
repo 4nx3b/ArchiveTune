@@ -142,7 +142,14 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
+import moe.rukamori.archivetune.ui.player.MeshBackdrop
+import moe.rukamori.archivetune.ui.player.rememberMeshPalette
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.MutableFloatState
@@ -990,12 +997,41 @@ fun BitChordPlayerContent(
                         }
 
                     val lyricsPositionProvider = remember { { null as Long? } }
-                    LyricsEnhanced(
-                        sliderPositionProvider = lyricsPositionProvider,
-                        lyricsSyncOffset = lyricsSyncOffset,
-                        modifier = panelModifier,
-                        textColorOverride = Color.White,
-                    )
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    when (lyricsMode) {
+                        LyricsMode.ENHANCED ->
+                            LyricsEnhanced(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                            )
+
+                        LyricsMode.SPOTIFY ->
+                            LyricsV2(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                                spotifyStyle = true,
+                            )
+
+                        LyricsMode.SIMPMUSIC ->
+                            SimpMusicLyrics(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                            )
+
+                        LyricsMode.V2 ->
+                            LyricsV2(
+                                sliderPositionProvider = lyricsPositionProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = panelModifier,
+                                textColorOverride = Color.White,
+                            )
+                    }
                 }
 
                 if (!lyricsOpen && queueProgress > 0.01f) {

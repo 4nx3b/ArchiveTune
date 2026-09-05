@@ -41,8 +41,6 @@ val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
 
-val SimpMusicLyricsKey = booleanPreferencesKey("simpMusicLyrics")
-
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
@@ -961,6 +959,14 @@ enum class LyricsMode {
     V2,
     ENHANCED,
     SPOTIFY,
+
+    /**
+     * SimpMusic's renderer. Used to be a boolean of its own that only the SimpMusic player style's
+     * lyrics CARD read, so picking it changed a 300dp preview and left the actual lyrics page on
+     * whatever this enum said — "it just shows the same one". It is one of the modes now, so it
+     * applies wherever lyrics are drawn, under any player style.
+     */
+    SIMPMUSIC,
 }
 
 val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
@@ -1047,6 +1053,8 @@ val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
+
+// Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 
 val TidalVerifiedInstancesKey = stringPreferencesKey("tidalVerifiedInstances")

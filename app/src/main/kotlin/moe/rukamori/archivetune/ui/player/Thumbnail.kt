@@ -527,6 +527,10 @@ fun Thumbnail(
                                         )
                                     }
                                 } else {
+                                    // Synced lyrics used to replace the artwork here, with the
+                                    // player's own scrubber and transport still around them —
+                                    // lyrics wearing the player as a frame. The lyrics page is the
+                                    // lyrics surface now, for every style; the artwork stays put.
                                     val primaryCanvasUrl = canvasArtwork?.animated
                                     val fallbackCanvasUrl = canvasArtwork?.videoUrl
 

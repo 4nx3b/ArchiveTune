@@ -157,6 +157,7 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -997,6 +998,13 @@ fun AppleMusicPlayerContent(
                         if (lyricsContentReady) {
 
                             LyricsEnhanced(
+                                sliderPositionProvider = lyricsPosProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = lyricsHorizontalPadding),
+                            )
+                            LyricsMode.SIMPMUSIC -> SimpMusicLyrics(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
