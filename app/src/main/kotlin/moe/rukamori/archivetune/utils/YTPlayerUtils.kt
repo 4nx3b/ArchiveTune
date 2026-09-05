@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REM
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.simpstream.ITAG
 import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
+import moe.rukamori.archivetune.simpstream.SimpStreamLog
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.potoken.PoTokenResult
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -241,6 +242,21 @@ object YTPlayerUtils {
 
     /** Per-video backoff for the SimpMusic resolution (see simpMusicStreamResolution). */
     private val simpMusicFailedUntil = ConcurrentHashMap<String, Long>()
+
+    init {
+        // Bridge :core's simpstream logger (a pure JVM module — no Timber there,
+        // it only publishes an Android AAR) into Timber so the SimpMusic
+        // resolution's logs show up with the rest of the playback logs.
+        SimpStreamLog.sink =
+            SimpStreamLog.Sink { level, tag, message, error ->
+                when (level) {
+                    SimpStreamLog.DEBUG -> Timber.tag(tag).d(message)
+                    SimpStreamLog.INFO -> Timber.tag(tag).i(message)
+                    SimpStreamLog.WARN -> Timber.tag(tag).w(error, message)
+                    else -> Timber.tag(tag).e(error, message)
+                }
+            }
+    }
 
     @Volatile private var lastSuccessfulClientKey: String? = null
 
