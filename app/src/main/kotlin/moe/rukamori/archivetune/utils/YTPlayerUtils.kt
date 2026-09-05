@@ -1132,21 +1132,27 @@ object YTPlayerUtils {
      */
     private fun withSimpMusicTrackingHosts(
         tracking: PlayerResponse.PlaybackTracking,
-    ): PlayerResponse.PlaybackTracking =
-        tracking.copy(
+    ): PlayerResponse.PlaybackTracking {
+        // Locals first: the URL objects are cross-module properties, which Kotlin
+        // cannot smart-cast inside the ?.copy() chains.
+        val videostatsPlayback = tracking.videostatsPlaybackUrl
+        val atr = tracking.atrUrl
+        val watchtime = tracking.videostatsWatchtimeUrl
+        return tracking.copy(
             videostatsPlaybackUrl =
-                tracking.videostatsPlaybackUrl?.copy(
-                    baseUrl = tracking.videostatsPlaybackUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                videostatsPlayback?.copy(
+                    baseUrl = videostatsPlayback.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
                 ),
             atrUrl =
-                tracking.atrUrl?.copy(
-                    baseUrl = tracking.atrUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                atr?.copy(
+                    baseUrl = atr.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
                 ),
             videostatsWatchtimeUrl =
-                tracking.videostatsWatchtimeUrl?.copy(
-                    baseUrl = tracking.videostatsWatchtimeUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                watchtime?.copy(
+                    baseUrl = watchtime.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
                 ),
         )
+    }
 
     /**
      * ArchiveTune's AudioQuality -> SimpMusic's QUALITY itag.
