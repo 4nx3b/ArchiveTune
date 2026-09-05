@@ -1038,6 +1038,9 @@ val LibrarySourceKey = stringPreferencesKey("library_source")
  * a big left-aligned title with pink accent pills, in place of the artwork backdrop.
  */
 val AppleMusicExperienceKey = booleanPreferencesKey("apple_music_experience")
+
+/** The player design style [AppleMusicExperienceKey] displaced, so switching it off can restore it. */
+val StyleBeforeAppleMusicKey = stringPreferencesKey("style_before_apple_music")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
 val SpotifyHiddenPlaylistIdsKey = stringSetPreferencesKey("spotify_hidden_playlist_ids")
