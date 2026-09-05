@@ -186,6 +186,28 @@ class App :
                 ?: PoolAccountManager.appleMusicAccounts().firstOrNull()?.mediaUserToken
         }
 
+        // Every log() call inside the Spotify client — the whole GraphQL and REST layer — went
+        // nowhere: Spotify.logger was declared and never assigned, so the token refreshes, the
+        // home-feed parse counts and the "unhandled __typename" diagnostics all evaluated their
+        // message strings and dropped them. Routed into GlobalLog like every other provider, so
+        // the Spotify layer can actually be debugged from a log dump.
+        Spotify.logger = { level, message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(
+                when (level) {
+                    "E" -> android.util.Log.ERROR
+                    "W" -> android.util.Log.WARN
+                    else -> android.util.Log.DEBUG
+                },
+                "Spotify",
+                message,
+            )
+        }
+
+        // Spotify Canvas. The canvas module deliberately has no dependency on the
+        // app's Spotify code, so it takes the access token and the song → Spotify
+        // track mapping as injected callbacks. Both yield null when the user has
+        // no Spotify session, in which case the provider falls back to the
+        // kouzu.in resolver on its own.
         SpotifyCanvasProvider.logger = { message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(
                 android.util.Log.INFO,
