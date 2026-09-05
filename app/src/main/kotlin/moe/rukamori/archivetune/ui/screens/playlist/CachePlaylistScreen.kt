@@ -103,6 +103,7 @@ import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -662,18 +663,13 @@ fun CachePlaylistScreen(
                         tint = liquidGlassContentColor(),
                     )
                 }
-                Text(
+                GlassPillTitleText(
                     text =
                         if (selection) {
                             pluralStringResource(R.plurals.n_song, selectedCount, selectedCount)
                         } else {
                             cachedLabel
                         },
-                    color = liquidGlassContentColor(),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
             LiquidGlassActionPill(

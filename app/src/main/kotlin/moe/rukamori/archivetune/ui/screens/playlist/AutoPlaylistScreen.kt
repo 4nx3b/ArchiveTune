@@ -99,6 +99,7 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
@@ -769,18 +770,13 @@ fun AutoPlaylistScreen(
                         tint = liquidGlassContentColor(),
                     )
                 }
-                Text(
+                GlassPillTitleText(
                     text =
                         if (selection) {
                             pluralStringResource(R.plurals.n_song, selectedCount, selectedCount)
                         } else {
                             playlist
                         },
-                    color = liquidGlassContentColor(),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
             LiquidGlassActionPill(
