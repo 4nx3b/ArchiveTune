@@ -82,7 +82,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -137,6 +136,7 @@ import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.extensions.metadata
@@ -241,6 +241,13 @@ fun SimpMusicPlayerContent(
     }
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = queueOpen) { queueOpen = false }
+
+    // SimpMusic's own fullscreen lyrics page (its FullscreenLyricsSheet) — opened by the
+    // lyrics card's "Show" affordance (user request 2026-09-05: the SimpMusic style used to
+    // open the app's shared LyricsScreen instead of SimpMusic's lyrics page). Back closes
+    // it before the queue / the player sheet.
+    var lyricsFullscreenOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
 
     // Measured, not guessed — see the file header. Held in dp so the gap survives a rotation.
     // Only the two rows whose height depends on their CONTENT are measured; the artwork is derived
@@ -389,7 +396,7 @@ fun SimpMusicPlayerContent(
                     // visibility, so without this a karaoke loop ran permanently, from the moment
                     // the player opened, for a card nobody had scrolled to.
                     renderLyrics = hasScrolled,
-                    onShowLyrics = onShowLyrics,
+                    onShowLyrics = { lyricsFullscreenOpen = true },
                     modifier = Modifier.padding(top = 10.dp),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -435,6 +442,20 @@ fun SimpMusicPlayerContent(
                 playerConnection = playerConnection,
                 navController = navController,
                 onDismiss = { queueOpen = false },
+            )
+        }
+
+        if (lyricsFullscreenOpen) {
+            // SimpMusic's fullscreen lyrics page: the wandering gradient, the AM-style header,
+            // the Classic renderer full-screen, and the 4-second auto-hiding control block.
+            SimpMusicFullscreenLyricsSheet(
+                mediaMetadata = mediaMetadata,
+                playerConnection = playerConnection,
+                navController = navController,
+                bottomSheetPageState = bottomSheetPageState,
+                playerBottomSheetState = state,
+                color = startColor,
+                onDismiss = { lyricsFullscreenOpen = false },
             )
         }
     }
@@ -493,7 +514,7 @@ private fun SimpMusicTopBar(
     Row(
         modifier =
             modifier
-                .padding(WindowInsets.statusBars.asPaddingValues())
+                .padding(top = LocalStableSystemBarsTopPadding.current)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1061,7 +1082,10 @@ private fun SimpMusicLyricsCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = false)
+    // Default flipped to true (2026-09-05, user report: "the lyrics page is still the one from
+    // my app"): out of the box the SimpMusic style now previews SimpMusic's own Classic
+    // renderer in the card, as upstream does — the setting still switches it to Enhanced.
+    val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = true)
     val lyricsPositionProvider = remember { { null as Long? } }
 
     // A renderer with nothing to render still fills its 300dp box, so without this the card was a
@@ -1305,7 +1329,7 @@ private fun SimpMusicStickyToolbar(
         Row(
             modifier =
                 Modifier
-                    .padding(WindowInsets.statusBars.asPaddingValues())
+                    .padding(top = LocalStableSystemBarsTopPadding.current)
                     .padding(start = Gutter, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

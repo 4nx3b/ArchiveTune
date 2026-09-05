@@ -82,16 +82,28 @@ dependencyResolutionManagement {
                 // Used by AudioTagger to write title/artist/album/year/artwork tags onto
                 // exported downloaded songs.
                 includeGroup("com.github.RouHim")
-                // MetrolistExtractor — maintained fork of NewPipeExtractor used by :core
-                // for YouTube stream resolution (incl. captions + signature decryption).
-                // Same `org.schabi.newpipe.extractor` package namespace as upstream.
-                // Note: MetrolistExtractor is a multi-module Gradle project on JitPack,
-                // so its sub-modules (extractor, timeago-parser, ...) are published under
-                // the `com.github.MetrolistGroup.MetrolistExtractor` group — that group
-                // must also be allow-listed here, otherwise the parent POM resolves but
-                // every sub-module artifact fails to download.
-                includeGroup("com.github.MetrolistGroup")
-                includeGroup("com.github.MetrolistGroup.MetrolistExtractor")
+                // HlsDownloader — BravePipeExtractor's transitive dependency
+                // (com.github.evermind-zz:hlsdownloader:1.0.0, a standalone
+                // no-dependency artifact on JitPack). Without this allow-list
+                // entry the JitPack exclusiveContent filter blocks it and the
+                // APK builds fail with "Could not find
+                // com.github.evermind-zz:hlsdownloader:1.0.0".
+                includeGroup("com.github.evermind-zz")
+                // SimpMusic stream-resolution extractors (2026-09-05 port):
+                // PipePipeExtractor (tier 1/2, dev.maxrave.pipepipe.extractor namespace)
+                // and BravePipeExtractor (tier 3 + NewPipeUtils, org.schabi.newpipe
+                // namespace) — both pinned at maxrave-dev commits matching SimpMusic's
+                // version catalog. BravePipe REPLACED MetrolistExtractor (same
+                // org.schabi.newpipe.extractor namespace — both on the classpath would
+                // duplicate classes).
+                // Both are multi-module Gradle projects on JitPack, so their sub-modules
+                // (extractor, timeago-parser, ...) are published under the
+                // `com.github.maxrave-dev.<RepoName>` groups — those groups must also be
+                // allow-listed here, otherwise the parent POM resolves but every
+                // sub-module artifact fails to download.
+                includeGroup("com.github.maxrave-dev")
+                includeGroup("com.github.maxrave-dev.PipePipeExtractor")
+                includeGroup("com.github.maxrave-dev.BravePipeExtractor")
             }
         }
     }
@@ -124,18 +136,6 @@ include(":morideobfuscator")
 include(":jiosaavn")
 include(":moriextractor")
 
-// Use a local copy of MetrolistExtractor by uncommenting the lines below.
-// We assume, that ArchiveTune and MetrolistExtractor have the same parent directory.
-// If this is not the case, please change the path in includeBuild().
-//
-// For this to work you also need to change the implementation in core/build.gradle.kts
-// to one which does not specify a version.
-// From:
-//      implementation(libs.metrolist.extractor)
-// To:
-//      implementation("com.github.MetrolistGroup:MetrolistExtractor")
-// includeBuild("../MetrolistExtractor") {
-//    dependencySubstitution {
-//        substitute(module("com.github.MetrolistGroup:MetrolistExtractor")).using(project(":extractor"))
-//    }
-// }
+// MetrolistExtractor local-include support removed (2026-09-05): :core now uses
+// BravePipeExtractor + PipePipeExtractor (SimpMusic's exact extractors) instead
+// of MetrolistExtractor.

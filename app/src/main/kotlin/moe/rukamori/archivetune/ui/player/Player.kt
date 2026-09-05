@@ -2079,7 +2079,13 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                    // Notch fix (2026-09-05): horizontal system-bars padding so
+                                    // the style's edge-to-edge content clears a landscape
+                                    // side cutout; the top inset is handled inside the style via
+                                    // LocalStableSystemBarsTopPadding.
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
@@ -2112,7 +2118,13 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                    // Notch fix (2026-09-05): horizontal system-bars padding so
+                                    // the style's edge-to-edge content clears a landscape
+                                    // side cutout; the top inset is handled inside the style via
+                                    // LocalStableSystemBarsTopPadding.
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
@@ -2564,7 +2576,13 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                    // Notch fix (2026-09-05): horizontal system-bars padding so
+                                    // the style's edge-to-edge content clears a landscape
+                                    // side cutout; the top inset is handled inside the style via
+                                    // LocalStableSystemBarsTopPadding.
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
@@ -2597,7 +2615,13 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(state.preUpPostDownNestedScrollConnection),
+                                    // Notch fix (2026-09-05): horizontal system-bars padding so
+                                    // the style's edge-to-edge content clears a landscape
+                                    // side cutout; the top inset is handled inside the style via
+                                    // LocalStableSystemBarsTopPadding.
+                                    .windowInsetsPadding(
+                                        WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                    ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
