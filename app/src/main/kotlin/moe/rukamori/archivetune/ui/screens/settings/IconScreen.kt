@@ -49,11 +49,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -68,7 +67,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -93,12 +91,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AppIconSortOrder
 import moe.rukamori.archivetune.viewmodels.AppIconUiModel
@@ -196,39 +195,36 @@ private fun IconScreenContent(
     onDismissSortMenu: () -> Unit,
     onSortOrderChange: (AppIconSortOrder) -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
-    // ── Haze / frosted-glass header (2026-09-05) ──
-    // Per user request: "haze effect is not available in app icon change
-    // settings". HistoryScreen pattern — real kyant glass pill when the
-    // Liquid Glass master toggle is on (Android 12+), translucent frosted
-    // fallback pill otherwise.
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
-    val liquidGlassHeaderActive =
-        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val iconSurfaceColor = MaterialTheme.colorScheme.surface
-    val backdrop = rememberBackdrop(iconSurfaceColor)
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt gave this screen a kyant glass pill in
+    // the top bar with `layerBackdrop` recording the content BELOW the bar.
+    // The pill and the recorded layer never overlap (the Scaffold lays the
+    // top bar out ABOVE the content slot), so the pill had nothing behind it
+    // to blur and rendered as an opaque chip — the user reported "liquid
+    // glass but the background is opaque and there's no haze effect". This
+    // now uses the canonical pattern the 30+ approved screens use
+    // (PlayerSettings et al.): transparent TopAppBar + plain FrostedHeaderPill,
+    // the LazyColumn tagged as the haze source, and ScreenHeaderHaze drawing
+    // the same progressive top-fade blur the Home route's bar renders.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            MediumFlexibleTopAppBar(
+            // Plain TopAppBar + transparent container (the approved single-pill
+            // pattern). The pinned "Personalize your launcher" subtitle the user
+            // asked to remove is gone, and the back button keeps its default
+            // (transparent inside a plain FrostedHeaderPill) instead of the
+            // filled-tonal orange circle that nested inside the glass pill.
+            TopAppBar(
                 title = {},
-                subtitle = {
-                    Text(text = stringResource(R.string.app_icon_subtitle))
-                },
                 navigationIcon = {
-                    FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = onNavigateUp,
                             onLongClick = onNavigateHome,
-                            modifier = Modifier.padding(start = 5.dp),
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.arrow_back),
@@ -246,10 +242,9 @@ private fun IconScreenContent(
                 },
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -258,20 +253,15 @@ private fun IconScreenContent(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        // Records the content below the top bar into `backdrop` so the
-        // frosted header pill can blur it (haze effect). Only active when
-        // the Liquid Glass master toggle is on; otherwise it's a no-op.
+        // Full-screen Box (the Scaffold content slot ignores innerPadding at
+        // this level so the haze overlay can start at y=0, under the
+        // transparent top bar). The list itself is padded down by the bar
+        // height via its contentPadding — items scroll up INTO the blur.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .then(
-                        if (liquidGlassHeaderActive) {
-                            Modifier.layerBackdrop(backdrop)
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .hazeSource(headerHaze),
         ) {
         when (state) {
             IconScreenState.Loading -> {
@@ -330,7 +320,14 @@ private fun IconScreenContent(
                 )
             }
         }
-        } // end haze backdrop recording Box
+
+        // Header haze overlay — progressive top-fade blur over whatever
+        // scrolls under the transparent bar (the Home route's material).
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        } // end full-screen haze Box
     }
 }
 

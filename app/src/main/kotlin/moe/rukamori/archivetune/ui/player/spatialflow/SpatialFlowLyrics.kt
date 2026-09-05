@@ -22,6 +22,7 @@
 
 package moe.rukamori.archivetune.ui.player.spatialflow
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -45,7 +46,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -83,17 +83,34 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.db.entities.LyricsEntity
+import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
 /**
  * Optimized circular reveal modifier utilizing a remembered path and in-place
@@ -168,6 +185,110 @@ internal fun SpatialFlowLyricsOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+
+    // ── Lyrics overflow menu (2026-09-05) ─────────────────────────────────
+    // The SpatialFlow lyrics screen previously had NO lyrics overflow menu
+    // at all, so Translate / AI Translation / Romanise / Undo / Search were
+    // simply unreachable here (user report: "Translation/AI Translation/
+    // Romanisation doesn't work in ... SpatialFlow lyrics screens"). The
+    // header's leading slot (a 48dp Spacer) becomes the more button opening
+    // the same anchored Apple-Music-style popup the Apple Music and
+    // SimpMusic styles show, rendered as the last child of this overlay's
+    // root Box (always above the lyrics).
+    var showLyricsMenu by remember { mutableStateOf(false) }
+    var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    // Backdrop that records THIS overlay's content (title header + lyrics)
+    // while the popup is open, so its drawBackdrop sampler blurs what is
+    // actually behind the menu. Android 12+ only; below that the popup
+    // falls back to its dark tint. The popup renders as a SIBLING of the
+    // layer-capturing Box (never nested inside it).
+    val popupBackdrop: PlatformBackdrop? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rememberBackdrop(Color.Transparent)
+        } else {
+            null
+        }
+
+    // ── Automatic AI translation (2026-09-05) ──────────────────────────────
+    // Mirrors the LaunchedEffect in AppleMusicPlayer.kt / LyricsScreen.kt —
+    // the SpatialFlow lyrics screen previously had no auto-translate
+    // trigger (user report: "Auto translation and auto romanisation doesn't
+    // work in ... SpatialFlow lyrics screens").
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(
+        currentSong.id,
+        currentLyricsEntity?.lyrics,
+        currentLyricsEntity?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+        autoTranslateExcludedLanguages,
+        translationDismissedMediaIds,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyricsEntity ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LYRICS_NOT_FOUND) return@LaunchedEffect
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
+        if (currentSong.id in translationDismissedMediaIds) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = currentSong,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
+
+    // ── AI romanisation (2026-09-05) ─────────────────────────────────────
+    // Mirrors LyricsEnhanced's consumption of AiLyricsRomanization results —
+    // without this the menu's "AI Romanise Now" and the "Auto AI
+    // Romanisation" setting had no visible effect in the SpatialFlow
+    // lyrics screen. Lines are resolved by line TEXT (not index).
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+    val aiRomanizationSessionKey =
+        remember(currentLyricsEntity?.lyrics) {
+            AiLyricsRomanization.sessionKey(currentSong.id, currentLyricsEntity?.lyrics)
+        }
+    val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
+    val romanizedLines: List<String?> =
+        remember(
+            aiRomanizationResult,
+            aiRomanizationSessionKey,
+            aiRomanizationSettings.active,
+            syncedLyrics,
+        ) {
+            if (!aiRomanizationSettings.active || syncedLyrics == null) {
+                emptyList()
+            } else {
+                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, syncedLyrics.map { it.text })
+            }
+        }
+    LaunchedEffect(aiRomanizationSessionKey, syncedLyrics, aiRomanizationSettings) {
+        if (!aiRomanizationSettings.active || !aiRomanizationSettings.auto) return@LaunchedEffect
+        if (syncedLyrics.isNullOrEmpty()) return@LaunchedEffect
+        AiLyricsRomanization.request(
+            sessionKey = aiRomanizationSessionKey,
+            lines = syncedLyrics.map { it.text },
+            settings = aiRomanizationSettings,
+        )
+    }
+
     val consumeClicks = remember { MutableInteractionSource() }
 
     val view = LocalView.current
@@ -193,6 +314,20 @@ internal fun SpatialFlowLyricsOverlay(
                 .navigationBarsPadding()
                 .padding(vertical = 12.dp),
     ) {
+        // Inner content Box — records the overlay's header + lyrics into
+        // `popupBackdrop` WHILE the anchored overflow popup is open (same
+        // pattern as the SimpMusic lyrics sheet); the popup renders as a
+        // SIBLING below, never nested inside this layer-capturing Box.
+        Box(
+            modifier =
+                Modifier.fillMaxSize().let { base ->
+                    if (popupBackdrop != null && showLyricsMenu) {
+                        base.layerBackdrop(popupBackdrop)
+                    } else {
+                        base
+                    }
+                },
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Centered Title Header Layout
             Row(
@@ -204,7 +339,34 @@ internal fun SpatialFlowLyricsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(modifier = Modifier.size(48.dp))
+                // Lyrics overflow menu button (2026-09-05): opens the same
+                // anchored Apple-Music-style popup the other player styles
+                // show — Translate / AI Translation / Romanise / Undo /
+                // Search were unreachable in this screen before.
+                IconButton(
+                    onClick = { showLyricsMenu = true },
+                    modifier =
+                        Modifier.onGloballyPositioned { coords ->
+                            val pos = coords.positionInRoot()
+                            val sz = coords.size
+                            moreIconBounds =
+                                androidx.compose.ui.geometry.Rect(
+                                    offset = pos,
+                                    size =
+                                        androidx.compose.ui.geometry.Size(
+                                            width = sz.width.toFloat(),
+                                            height = sz.height.toFloat(),
+                                        ),
+                                )
+                        },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_vert),
+                        contentDescription = "Lyrics menu",
+                        tint = contentColor.copy(alpha = 0.8f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -276,6 +438,7 @@ internal fun SpatialFlowLyricsOverlay(
                     !syncedLyrics.isNullOrEmpty() ->
                         SpatialFlowSyncedLyrics(
                             lyrics = syncedLyrics,
+                            romanizedLines = romanizedLines,
                             currentPositionProvider = currentPositionProvider,
                             contentColor = contentColor,
                             onSeekTo = onSeekTo,
@@ -333,6 +496,23 @@ internal fun SpatialFlowLyricsOverlay(
                 }
             }
         }
+        } // end inner content Box (popup backdrop recording layer)
+
+        // ── Anchored Apple-Music-style overflow popup ─────────────────────
+        // Rendered as the LAST child of the overlay's root Box so it draws
+        // above everything else (title header, lyrics). Same menu the Apple
+        // Music and SimpMusic player styles show over their lyrics.
+        if (showLyricsMenu) {
+            AnchoredLyricsOverflowMenu(
+                iconBoundsInRoot = moreIconBounds,
+                lyricsProvider = { currentLyricsEntity },
+                mediaMetadataProvider = { currentSong },
+                lyricsSyncOffset = 0,
+                onLyricsSyncOffsetChange = {},
+                onDismiss = { showLyricsMenu = false },
+                backdrop = popupBackdrop,
+            )
+        }
     }
 }
 
@@ -350,6 +530,7 @@ internal fun SpatialFlowLyricsOverlay(
 @Composable
 private fun SpatialFlowSyncedLyrics(
     lyrics: List<LyricsEntry>,
+    romanizedLines: List<String?>,
     currentPositionProvider: () -> Long,
     contentColor: Color,
     onSeekTo: (Long) -> Unit,
@@ -427,6 +608,7 @@ private fun SpatialFlowSyncedLyrics(
                     isActive = isActive,
                     currentPositionProvider = currentPositionProvider,
                     contentColor = contentColor,
+                    romanizedText = romanizedLines.getOrNull(lyricsIndex)?.takeIf { it.isNotBlank() },
                     onClick = { onSeekTo(line.time) },
                 )
             }
@@ -471,6 +653,7 @@ private fun SpatialFlowLyricLineItem(
     isActive: Boolean,
     currentPositionProvider: () -> Long,
     contentColor: Color,
+    romanizedText: String? = null,
     onClick: () -> Unit,
 ) {
     val rawWords = line.words.orEmpty().filter { it.text.isNotBlank() }
@@ -509,40 +692,71 @@ private fun SpatialFlowLyricLineItem(
                 onClick = onClick,
             ),
     ) {
-        // Base dim text — for karaoke lines it stays dim and the overlay lights the sung part;
-        // for line-synced lines it carries the whole highlight when active.
-        Text(
-            text = line.text,
-            style = mainTextStyle,
-            color = if (isKaraoke || !isActive) dimColor else litColor,
-            textAlign = TextAlign.Center,
-            onTextLayout = { baseTextLayout.value = it },
-            maxLines = Int.MAX_VALUE,
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
-        )
+        ) {
+            // Text stack — the base dim text and the karaoke overlay text
+            // OVERLAP here (Box children stack), exactly as before; the
+            // romanisation sub-line then flows below the stack.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // Base dim text — for karaoke lines it stays dim and the overlay lights the sung part;
+                // for line-synced lines it carries the whole highlight when active.
+                Text(
+                    text = line.text,
+                    style = mainTextStyle,
+                    color = if (isKaraoke || !isActive) dimColor else litColor,
+                    textAlign = TextAlign.Center,
+                    onTextLayout = { baseTextLayout.value = it },
+                    maxLines = Int.MAX_VALUE,
+                    modifier = Modifier.fillMaxWidth(),
+                )
 
-        // Overlay lit text, erased ahead of the sung position (SpatialFlow's eraseFutureText).
-        if (isKaraoke && isActive) {
-            Text(
-                text = line.text,
-                style = mainTextStyle,
-                color = litColor,
-                textAlign = TextAlign.Center,
-                maxLines = Int.MAX_VALUE,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithCache {
-                            onDrawWithContent {
-                                val layout = baseTextLayout.value
-                                drawContent()
-                                if (layout != null) {
-                                    eraseFutureText(layout, spans, smoothedPos.toLong())
-                                }
-                            }
-                        },
-            )
+                // Overlay lit text, erased ahead of the sung position (SpatialFlow's eraseFutureText).
+                if (isKaraoke && isActive) {
+                    Text(
+                        text = line.text,
+                        style = mainTextStyle,
+                        color = litColor,
+                        textAlign = TextAlign.Center,
+                        maxLines = Int.MAX_VALUE,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                .drawWithCache {
+                                    onDrawWithContent {
+                                        val layout = baseTextLayout.value
+                                        drawContent()
+                                        if (layout != null) {
+                                            eraseFutureText(layout, spans, smoothedPos.toLong())
+                                        }
+                                    }
+                                },
+                    )
+                }
+            }
+
+            // AI romanisation sub-line (2026-09-05) — smaller and dimmer under
+            // the lyric line, the same presentation the Apple Music renderer's
+            // romanisation uses.
+            romanizedText
+                ?.takeIf { it.isNotBlank() && it != line.text }
+                ?.let { romanized ->
+                    Text(
+                        text = romanized,
+                        style =
+                            MaterialTheme.typography.bodyLarge.copy(
+                                fontFamily = SpatialFlowGoogleSansFlexNonRounded,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Normal,
+                            ),
+                        color = if (isActive) litColor.copy(alpha = 0.65f) else dimColor.copy(alpha = 0.9f),
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
         }
     }
 }

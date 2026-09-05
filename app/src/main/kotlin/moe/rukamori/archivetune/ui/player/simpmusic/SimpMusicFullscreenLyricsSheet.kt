@@ -103,7 +103,15 @@ import kotlin.math.cos
 import kotlin.math.sin
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.hilt.navigation.compose.hiltViewModel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -180,6 +188,55 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+
+    // ── Automatic AI translation (2026-09-05) ──────────────────────────────
+    // Mirrors the LaunchedEffect in AppleMusicPlayer.kt / LyricsScreen.kt.
+    // The SimpMusic lyrics screen previously had NO auto-translate trigger
+    // at all (user report: "Auto translation and auto romanisation doesn't
+    // work in simpmusic"), so the setting silently did nothing here.
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    // "Don't auto translate these languages" — read here and passed
+    // explicitly, exactly like the Apple Music player does.
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyricsEntity?.lyrics,
+        currentLyricsEntity?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+        autoTranslateExcludedLanguages,
+        translationDismissedMediaIds,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyricsEntity ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LYRICS_NOT_FOUND) return@LaunchedEffect
+        // Skip when these lyrics were already AI-translated AND actually
+        // carry translation content (same retry guard as the other screens).
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
+        // Respect an "Undo Translation" dismissal for this song.
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
 
     val hasLyrics = currentLyricsEntity?.lyrics
         ?.let { it.isNotBlank() && it != LYRICS_NOT_FOUND } == true

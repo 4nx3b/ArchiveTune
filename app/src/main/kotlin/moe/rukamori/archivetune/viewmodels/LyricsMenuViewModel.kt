@@ -294,11 +294,27 @@ class LyricsMenuViewModel
                     when (source) {
                         LyricsEntity.Source.REMOTE,
                         LyricsEntity.Source.EMBEDDED,
-                        LyricsEntity.Source.USER_SELECTION,
                         -> LyricsUtils.lyricsOrNotFound(lyrics)
 
                         LyricsEntity.Source.USER_EDIT,
                         -> lyrics
+
+                        // USER_SELECTION: save the lyrics EXACTLY as the
+                        // search result provided them. The result was already
+                        // filtered through a non-blank preview at search time
+                        // (`toUiModel` drops blank-preview results), so the
+                        // `lyricsOrNotFound` guard adds nothing — and its
+                        // `hasMeaningfulLyricsContent` check (which re-parses
+                        // the lyrics with our own parsers) can false-negative
+                        // on formats our preview-parser mishandles, silently
+                        // overwriting the user's explicit pick with
+                        // LYRICS_NOT_FOUND and making the lyrics "disappear"
+                        // (user report 2026-09-05: "selecting a different
+                        // lyrics makes the whole lyrics disappear"). The
+                        // renderer-side fallbacks handle any format edges at
+                        // display time instead.
+                        LyricsEntity.Source.USER_SELECTION,
+                        -> lyrics.trim().ifBlank { LyricsEntity.LYRICS_NOT_FOUND }
 
                         LyricsEntity.Source.AI_TRANSLATION ->
                             usableTranslatedLyrics(lyrics) ?: return@launch

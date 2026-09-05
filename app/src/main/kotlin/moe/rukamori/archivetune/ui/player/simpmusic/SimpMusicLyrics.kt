@@ -30,6 +30,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -66,6 +67,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsEntry.Companion.HEAD_LYRICS_ENTRY
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
@@ -131,15 +133,26 @@ fun SimpMusicLyrics(
         val durationMs = player.duration.takeIf { it > 0L } ?: 0L
         parsed =
             withContext(Dispatchers.Default) {
-                val lines =
+                // Parse-fallback guards (2026-09-05, user report: "selecting
+                // a different lyrics makes the whole lyrics disappear"):
+                // every parser call is wrapped and an empty sync parse falls
+                // back to rendering the raw text as plain lines, so a
+                // user-selected lyrics that our parsers half-understand shows
+                // SOMETHING rather than a blank screen.
+                fun plainLines(): List<LyricsEntry> =
+                    text
+                        .lines()
+                        .filter { it.isNotBlank() }
+                        .map { LyricsEntry(time = -1L, text = it.trim()) }
+
+                val lines: List<LyricsEntry> =
                     when {
-                        isTtml(text) -> parseTtml(text)
-                        isLineSyncedLrc(text) -> insertInstrumentalBreaks(parseLyrics(text), durationMs)
-                        else ->
-                            text
-                                .lines()
-                                .filter { it.isNotBlank() }
-                                .map { LyricsEntry(time = -1L, text = it.trim()) }
+                        isTtml(text) -> runCatching { parseTtml(text) }.getOrDefault(emptyList())
+                        isLineSyncedLrc(text) ->
+                            runCatching { insertInstrumentalBreaks(parseLyrics(text), durationMs) }
+                                .getOrDefault(emptyList())
+                                .ifEmpty { plainLines() }
+                        else -> plainLines()
                     }
                 // findCurrentLineIndex clamps to 0, so without an empty entry in front of the
                 // first real one the opening line reads as "being sung" from 0:00 until the song
@@ -152,6 +165,38 @@ fun SimpMusicLyrics(
             }
     }
     val entries = parsed.orEmpty()
+
+    // ── AI romanisation (2026-09-05) ──────────────────────────────────────
+    // The lyrics menu's "AI Romanise Now" and the "Auto AI Romanisation"
+    // setting publish results through AiLyricsRomanization; only LyricsEnhanced
+    // consumed them, so the action looked dead in the SimpMusic style (user
+    // report: "Romanisation / auto romanisation doesn't work in simpmusic").
+    // This mirrors LyricsEnhanced's consumption: a session key scoped to the
+    // raw lyrics text, lines resolved by line TEXT (not index), and the auto
+    // request fired when the setting is on.
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+    val aiRomanizationSessionKey =
+        remember(lyrics) {
+            AiLyricsRomanization.sessionKey(playerConnection.mediaMetadata.value?.id, lyrics)
+        }
+    val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
+    val romanizedLines: List<String?> =
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, entries) {
+            if (!aiRomanizationSettings.active) {
+                emptyList()
+            } else {
+                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, entries.map { it.text })
+            }
+        }
+    LaunchedEffect(aiRomanizationSessionKey, entries, aiRomanizationSettings) {
+        if (!aiRomanizationSettings.active || !aiRomanizationSettings.auto) return@LaunchedEffect
+        if (entries.isEmpty()) return@LaunchedEffect
+        AiLyricsRomanization.request(
+            sessionKey = aiRomanizationSessionKey,
+            lines = entries.map { it.text },
+            settings = aiRomanizationSettings,
+        )
+    }
 
     // The playhead lives in explicit state read through a stable provider, so a position tick
     // invalidates only the line that reads it — not this composable and not the list.
@@ -224,6 +269,7 @@ fun SimpMusicLyrics(
                     baseSizeSp = lyricsTextSize,
                     currentColor = currentColor,
                     positionProvider = positionProvider,
+                    romanizedText = romanizedLines.getOrNull(index)?.takeIf { it.isNotBlank() },
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -238,7 +284,9 @@ fun SimpMusicLyrics(
 
 /**
  * One line. Dim and a size smaller until it is the one being sung; a word-timed line then lights
- * word by word instead of all at once.
+ * word by word instead of all at once. When AI romanisation resolved a line, its romanisation
+ * renders under it, smaller and dimmer (the same presentation LyricsEnhanced's translation
+ * romanisation uses).
  *
  * [positionProvider] rather than a position parameter: only a line that is actually word-timed and
  * actually current ever reads the playhead, so a tick never touches the rest of the list.
@@ -250,6 +298,7 @@ private fun SimpMusicLyricsLine(
     baseSizeSp: Float,
     currentColor: Color,
     positionProvider: () -> Long,
+    romanizedText: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val text = if (entry.isInstrumental) "♪" else entry.text
@@ -262,14 +311,32 @@ private fun SimpMusicLyricsLine(
             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
         )
 
+    val romanization: (@Composable () -> Unit)? =
+        romanizedText?.takeIf { it.isNotBlank() && it != text }?.let { romanized ->
+            {
+                Text(
+                    text = romanized,
+                    style =
+                        MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = (baseSizeSp * 0.55f).sp,
+                            fontWeight = FontWeight.Normal,
+                        ),
+                    color = if (isCurrent) currentColor.copy(alpha = 0.65f) else Color.LightGray.copy(alpha = 0.28f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+
     val wordSynced = remember(entry) { hasTrueWordSync(entry) }
     if (!isCurrent || !wordSynced) {
-        Text(
-            text = text,
-            style = style,
-            color = if (isCurrent) currentColor else DimLine,
-            modifier = modifier,
-        )
+        Column(modifier = modifier) {
+            Text(
+                text = text,
+                style = style,
+                color = if (isCurrent) currentColor else DimLine,
+            )
+            romanization?.invoke()
+        }
         return
     }
 
@@ -285,13 +352,15 @@ private fun SimpMusicLyricsLine(
         }
     }
 
-    FlowRowWords(
-        words = words.map { it.text },
-        sungThrough = sungThrough,
-        style = style,
-        sungColor = currentColor,
-        modifier = modifier,
-    )
+    Column(modifier = modifier) {
+        FlowRowWords(
+            words = words.map { it.text },
+            sungThrough = sungThrough,
+            style = style,
+            sungColor = currentColor,
+        )
+        romanization?.invoke()
+    }
 }
 
 /**
