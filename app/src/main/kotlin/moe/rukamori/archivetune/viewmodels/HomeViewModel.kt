@@ -284,11 +284,6 @@ class HomeViewModel
         private val previousHomePage = MutableStateFlow<HomePage?>(null)
         private val previousRemoteQuickPicks = MutableStateFlow<HomePage.Section?>(null)
 
-        private val _allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
-        val allLocalItems: StateFlow<List<LocalItem>> = _allLocalItems.asStateFlow()
-        private val _allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
-        val allYtItems: StateFlow<List<YTItem>> = _allYtItems.asStateFlow()
-
         private val _accountName = MutableStateFlow("")
         val accountName: StateFlow<String> = _accountName.asStateFlow()
         private val _accountImageUrl = MutableStateFlow<String?>(null)
@@ -451,12 +446,6 @@ class HomeViewModel
         private fun Flow<List<Song>>.distinctUntilSongIdsChanged(): Flow<List<Song>> =
             distinctUntilChanged { old, new -> old.hasSameSongIdsAs(new) }
 
-        private fun updateAllLocalItems() {
-            _allLocalItems.value =
-                (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty() + recentlyPlayed.value.orEmpty())
-                    .filter { it is Song || it is Album }
-        }
-
         private suspend fun quickPicksWithFallback(primary: List<Song>): List<Song> {
             val primaryPicks = primary.toQuickPickSample()
             if (primaryPicks.isNotEmpty()) return primaryPicks
@@ -537,6 +526,12 @@ class HomeViewModel
                         } else {
                             delay(1_000L)
                         }
+                    }.catch { throwable ->
+                        reportException(throwable)
+                        emit(quickPicksWithFallback(emptyList()))
+                    }.collect { picks ->
+                        quickPicks.value = picks
+                        refreshHeroPicks(picks.orEmpty())
                     }
                 }
             }
@@ -559,7 +554,6 @@ class HomeViewModel
                 }
             quickPicks.value = picks
             refreshHeroPicks(picks.orEmpty())
-            updateAllLocalItems()
         }
 
         private fun refreshHeroPicks(pool: List<Song>) {
@@ -661,7 +655,6 @@ class HomeViewModel
                                 .distinctBy { it.id }
                                 .take(30)
                         if (quickPicks.value.isNullOrEmpty()) refreshHeroPicks(recentlyPlayed.value.orEmpty())
-                        updateAllLocalItems()
                     }
 
                     launchHomeSection {
@@ -730,8 +723,6 @@ class HomeViewModel
                     }
                 }
 
-                updateAllLocalItems()
-
                 recommendationJob = viewModelScope.launch(Dispatchers.IO) {
                     try {
                         loadSimilarRecommendations()
@@ -742,15 +733,7 @@ class HomeViewModel
                     }
                 }
 
-                _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
-                    remoteQuickPicks.value?.items.orEmpty() +
-                    homePage.value
-                        ?.sections
-                        ?.flatMap { it.items }
-                        .orEmpty()
-
                 currentCoroutineContext().ensureActive()
-                isInitialLoadComplete.value = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -841,13 +824,6 @@ class HomeViewModel
 
             currentCoroutineContext().ensureActive()
             similarRecommendations.value = (artistRecommendations + songRecommendations).shuffled()
-
-            _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
-                remoteQuickPicks.value?.items.orEmpty() +
-                homePage.value
-                    ?.sections
-                    ?.flatMap { it.items }
-                    .orEmpty()
         }
 
         private fun clearAccountData() {
@@ -1200,7 +1176,6 @@ class HomeViewModel
                             wasLoggedIn = isLoggedIn
 
                             if (isLoggedIn && cookie != null && cookie.isNotEmpty()) {
-                                YouTube.authState = context.dataStore.data.first().toPlaybackAuthState()
                                 supervisorScope {
                                     launch { refreshAccountIdentity() }
                                     launch { refreshAccountPlaylistsInternal() }
