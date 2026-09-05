@@ -109,7 +109,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -265,10 +264,9 @@ fun AppearanceSectionSettings(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
         )
-    val (simpMusicLyrics, onSimpMusicLyricsChange) =
+    val (appleMusicAnimatedArtwork, onAppleMusicAnimatedArtworkChange) =
         rememberPreference(
-            SimpMusicLyricsKey,
-
+            AppleMusicAnimatedArtworkKey,
             defaultValue = true,
         )
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
@@ -983,15 +981,19 @@ fun AppearanceSectionSettings(
                         }
                 }
 
-                if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
+                // Only for the Apple Music style: it is the one style that plays a Canvas loop or
+                // a music video in the cover's place, so the switch would control nothing anywhere
+                // else. Hidden rather than disabled — a permanently greyed row is a worse
+                // explanation than no row.
+                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
                     item {
                         SwitchPreference(
-                            modifier = positions.modifierFor("simpmusic_lyrics"),
-                            title = { Text(stringResource(R.string.simpmusic_lyrics)) },
-                            description = stringResource(R.string.simpmusic_lyrics_desc),
-                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = simpMusicLyrics,
-                            onCheckedChange = onSimpMusicLyricsChange,
+                            modifier = positions.modifierFor("apple_music_animated_artwork"),
+                            title = { Text(stringResource(R.string.apple_music_animated_artwork)) },
+                            description = stringResource(R.string.apple_music_animated_artwork_desc),
+                            icon = { Icon(painterResource(R.drawable.animation), null) },
+                            checked = appleMusicAnimatedArtwork,
+                            onCheckedChange = onAppleMusicAnimatedArtworkChange,
                         )
                     }
                 }

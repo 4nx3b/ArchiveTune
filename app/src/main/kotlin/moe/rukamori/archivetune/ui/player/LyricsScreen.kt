@@ -143,6 +143,8 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
+import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
@@ -153,6 +155,8 @@ import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.makeTimeString
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -209,6 +213,7 @@ fun LyricsScreen(
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
     val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
     val configuredLyricsBackground by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
     val disableBlur by rememberPreference(DisableBlurKey, false)
@@ -581,6 +586,7 @@ fun LyricsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppleMusicLyricsPane(
+                                lyricsMode = lyricsMode,
                                 foregroundColor = foregroundColor,
                                 sliderPositionProvider = { sliderPosition },
                                 lyricsSyncOffset = lyricsSyncOffset,
@@ -625,6 +631,7 @@ fun LyricsScreen(
                         }
                     } else {
                         AppleMusicLyricsPane(
+                            lyricsMode = lyricsMode,
                             foregroundColor = foregroundColor,
                             sliderPositionProvider = { sliderPosition },
                             lyricsSyncOffset = lyricsSyncOffset,
@@ -637,6 +644,7 @@ fun LyricsScreen(
                 }
             } else {
                 AppleMusicLyricsPane(
+                    lyricsMode = lyricsMode,
                     foregroundColor = foregroundColor,
                     sliderPositionProvider = { sliderPosition },
                     lyricsSyncOffset = lyricsSyncOffset,
@@ -1194,12 +1202,14 @@ private fun AppleMusicHeaderIconButton(
 
 @Composable
 private fun AppleMusicLyricsPane(
+    lyricsMode: LyricsMode,
     foregroundColor: Color,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     modifier: Modifier = Modifier,
 ) {
     LyricsContent(
+        lyricsMode = lyricsMode,
         sliderPositionProvider = sliderPositionProvider,
         lyricsSyncOffset = lyricsSyncOffset,
         modifier =
@@ -1507,16 +1517,49 @@ private fun AppleMusicSlider(
 
 @Composable
 private fun LyricsContent(
+    lyricsMode: LyricsMode,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
 
-    LyricsEnhanced(
-        sliderPositionProvider = sliderPositionProvider,
-        lyricsSyncOffset = lyricsSyncOffset,
-        modifier = modifier,
-        textColorOverride = textColor,
-    )
+    when (lyricsMode) {
+        LyricsMode.V2 -> {
+            LyricsV2(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+
+        LyricsMode.ENHANCED -> {
+            LyricsEnhanced(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+
+        LyricsMode.SPOTIFY -> {
+            LyricsV2(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+                spotifyStyle = true,
+            )
+        }
+
+        LyricsMode.SIMPMUSIC -> {
+            SimpMusicLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+    }
 }

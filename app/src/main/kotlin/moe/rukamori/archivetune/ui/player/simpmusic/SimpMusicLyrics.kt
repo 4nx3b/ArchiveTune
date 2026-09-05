@@ -14,7 +14,7 @@
  * lights word by word as it is sung, the rest of the line waiting behind it.
  *
  * Only the SimpMusic player style can reach this, and only while the user has turned it on — every
- * other surface in the app follows LyricsModeKey. See SimpMusicLyricsKey.
+ * other surface in the app follows LyricsModeKey.
  *
  * REWRITTEN rather than transliterated, and deliberately much smaller than either shared renderer:
  * it shows lyrics, follows the song, and seeks on tap. Romanisation, AI translation, per-word blur
