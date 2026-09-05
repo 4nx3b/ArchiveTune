@@ -214,6 +214,7 @@
     <string name="playlist">Playlist</string>
     <string name="remove_from_history_confirm">Clear all local history? This cannot be undone.</string>
     <string name="sync_playlist">Sync playlist</string>
+    <string name="marked_as_read">Marked as read</string>
     <string name="playlist_sync_progress_step">%1$d/%2$d Songs</string>
     <string name="playlist_sync_failed">Playlist sync failed: %1$s</string>
     <string name="sync_disabled">Sync disabled</string>

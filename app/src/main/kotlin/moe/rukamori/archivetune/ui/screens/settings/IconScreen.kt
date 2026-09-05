@@ -195,17 +195,21 @@ private fun IconScreenContent(
     onDismissSortMenu: () -> Unit,
     onSortOrderChange: (AppIconSortOrder) -> Unit,
 ) {
-    // ── Home-screen header haze (2026-09-05, revised) ──
+    // ── Home-screen header haze (2026-09-05, revised again) ──
     // The 2026-09-05 morning attempt gave this screen a kyant glass pill in
     // the top bar with `layerBackdrop` recording the content BELOW the bar.
     // The pill and the recorded layer never overlap (the Scaffold lays the
     // top bar out ABOVE the content slot), so the pill had nothing behind it
     // to blur and rendered as an opaque chip — the user reported "liquid
-    // glass but the background is opaque and there's no haze effect". This
-    // now uses the canonical pattern the 30+ approved screens use
-    // (PlayerSettings et al.): transparent TopAppBar + plain FrostedHeaderPill,
-    // the LazyColumn tagged as the haze source, and ScreenHeaderHaze drawing
-    // the same progressive top-fade blur the Home route's bar renders.
+    // glass but the background is opaque and there's no haze effect". The
+    // mid-day fix then tagged the full-screen Box as the haze source with the
+    // ScreenHeaderHaze effect NESTED INSIDE it — and haze does not support a
+    // hazeEffect inside its own hazeSource content (the exact trap the
+    // History screen's comment documents), so the effect never rendered and
+    // the user still saw no haze. This now mirrors the History screen
+    // exactly: a root Box with NO haze source, an inner Box that is the haze
+    // source (content only), and the ScreenHeaderHaze overlay as a LATER
+    // SIBLING on top of it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -253,16 +257,20 @@ private fun IconScreenContent(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        // Full-screen Box (the Scaffold content slot ignores innerPadding at
-        // this level so the haze overlay can start at y=0, under the
-        // transparent top bar). The list itself is padded down by the bar
-        // height via its contentPadding — items scroll up INTO the blur.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .hazeSource(headerHaze),
-        ) {
+        // Root full-screen Box (NO haze source on it): the haze overlay below
+        // must never sit inside the layer its own source records. The inner
+        // Box carries hazeSource for the scrolling content only; the
+        // ScreenHeaderHaze overlay is a LATER SIBLING that draws on top of
+        // it, under the transparent top bar — the History screen's exact
+        // source/effect split (2026-09-05, user report: "Haze effect like
+        // home screen is still missing in app icon customisation").
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(headerHaze),
+            ) {
         when (state) {
             IconScreenState.Loading -> {
                 IconScreenLoading(
@@ -319,15 +327,19 @@ private fun IconScreenContent(
                             .playerAwareInsets(),
                 )
             }
-        }
+            }
+            } // end haze-source Box (content only — never the effect)
 
-        // Header haze overlay — progressive top-fade blur over whatever
-        // scrolls under the transparent bar (the Home route's material).
-        ScreenHeaderHaze(
-            hazeState = headerHaze,
-            systemBarsTopPadding = systemBarsTopPadding,
-        )
-        } // end full-screen haze Box
+            // Header haze overlay — progressive top-fade blur over whatever
+            // scrolls under the transparent bar (the Home route's material).
+            // A SIBLING of the source Box (never inside it — the effect
+            // would sample its own source), drawn ON TOP of the content,
+            // under the transparent top bar.
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
+        } // end root full-screen Box
     }
 }
 

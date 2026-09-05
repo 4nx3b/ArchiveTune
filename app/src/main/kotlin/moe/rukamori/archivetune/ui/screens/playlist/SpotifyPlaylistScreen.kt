@@ -98,6 +98,7 @@ import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
@@ -756,13 +757,8 @@ fun SpotifyPlaylistScreen(
                         tint = liquidGlassContentColor(),
                     )
                 }
-                Text(
+                GlassPillTitleText(
                     text = playlist?.name ?: stringResource(R.string.spotify),
-                    color = liquidGlassContentColor(),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
             LiquidGlassActionPill(

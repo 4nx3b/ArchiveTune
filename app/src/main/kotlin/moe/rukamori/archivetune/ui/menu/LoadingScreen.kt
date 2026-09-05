@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import moe.rukamori.archivetune.ui.component.UnglassedDialogTheme
 
 @Composable
 fun LoadingScreen(
@@ -47,16 +48,25 @@ fun LoadingScreen(
         val cancelAction = onCancel
         val resolvedCancelLabel = cancelLabel?.takeIf(String::isNotBlank)
         Dialog(onDismissRequest = {}) {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
-            Card(
-                modifier =
-                    Modifier
-                        .widthIn(min = 280.dp, max = 380.dp)
-                        .padding(16.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
+            // Restore the app's real (opaque) color scheme when this dialog
+            // was spawned from inside a glass menu's theme overlay — the
+            // menu (PlaylistMenu & co.) renders inside a translucent glass
+            // ColorScheme, and without this wrap the sync popup's Card
+            // picked up the see-through surfaceContainerHigh and the song
+            // list showed through it (user report 2026-09-05: "sync playlist
+            // popup ... transparent. Restore them to old opaque background").
+            // No-op outside a glass menu.
+            UnglassedDialogTheme {
+                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                Card(
+                    modifier =
+                        Modifier
+                            .widthIn(min = 280.dp, max = 380.dp)
+                            .padding(16.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -121,6 +131,7 @@ fun LoadingScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }

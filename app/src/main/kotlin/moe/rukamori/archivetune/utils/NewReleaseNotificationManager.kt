@@ -217,4 +217,22 @@ object NewReleaseNotificationManager {
             }
         }
     }
+
+    /**
+     * Cancels the posted notifications for the given release ids (the same
+     * id derivation [notifyNewReleases] uses). Called when the user marks
+     * releases read on the New Releases page (2026-09-05) so the system
+     * notifications for those releases clear together with the page.
+     */
+    fun cancelNotifications(
+        context: Context,
+        releaseIds: Collection<String>,
+    ) {
+        if (releaseIds.isEmpty()) return
+        val manager = NotificationManagerCompat.from(context)
+        releaseIds.forEach { releaseId ->
+            val notificationId = NOTIFICATION_ID_BASE + (releaseId.hashCode() and 0xFFF)
+            runCatching { manager.cancel(notificationId) }
+        }
+    }
 }

@@ -14,17 +14,21 @@
 package moe.rukamori.archivetune.ui.component
 
 import android.os.SystemClock
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -55,9 +59,12 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireDensity
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
@@ -556,6 +563,44 @@ fun LiquidGlassActionPill(
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
+    )
+}
+
+/**
+ * Cap on a header pill's title width, as a fraction of the screen width,
+ * so a long title can never push the leading pill into the trailing pill
+ * (2026-09-05, user report: "Playlists with large names have their headers
+ * colliding. Introduce a fixed length with text scroll inside").
+ *
+ * 0.42 of the screen keeps the leading pill (48dp back icon + title + 12dp
+ * end pad + 12dp start margin) + the trailing two-icon pill + 12dp margin
+ * inside even a 360dp viewport.
+ */
+private const val GlassPillTitleMaxWidthFraction = 0.42f
+
+/**
+ * The title text for a [LiquidGlassActionPill] back pill: capped at a fixed
+ * length (a screen-width fraction) and marquee-scrolls inside that length
+ * when the title is longer, instead of growing the pill until it collides
+ * with the trailing actions pill. Same ink treatment the inline titles used
+ * (liquid glass content color, SemiBold, single line).
+ */
+@Composable
+fun GlassPillTitleText(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    Text(
+        text = text,
+        color = liquidGlassContentColor(),
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        modifier =
+            modifier
+                .widthIn(max = (screenWidthDp * GlassPillTitleMaxWidthFraction).dp)
+                .basicMarquee()
+                .padding(end = 12.dp),
     )
 }
 

@@ -11,7 +11,9 @@
  * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
  * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
  * background is the artwork palette colour bleeding into black through a slowly wandering
- * five-stop linear gradient (angle ±45° over 6 s, offsets ±1500/±1000 over 8 s, the stops
+ * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — the
+ * original 6 s / 8 s sweeps read as a fast strobe on a phone screen and were slowed 4x
+ * 2026-09-05, user report: "the background changes at extremely fast speed" — the stops
  * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
  * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
  * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
@@ -257,13 +259,25 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     // ── Position polling for the slider ───────────────────────────────────────────────
+    // 2026-09-05 fix (user report: "the lyrics lines don't automatically
+    // proceed to the next line in simpmusic player style"): the poll used to
+    // latch `sliderPosition` to the playhead ONCE (first tick) and then stop
+    // updating it (the `sliderPosition < 0` guard flipped false forever), so
+    // the lyrics' sliderPositionProvider kept returning that one STALE
+    // position and the lyrics froze on the line that was current when the
+    // sheet opened. Scrubbing is now tracked by its own flag: the playhead
+    // refreshes the slider + labels every tick while the user is NOT
+    // dragging, and the lyrics provider only returns a value WHILE dragging
+    // (a live seek preview) — the rest of the time the lyrics self-poll the
+    // player and advance line by line.
     var sliderPosition by remember { mutableLongStateOf(-1L) }
+    var isScrubbing by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(mediaMetadata.id, isPlaying) {
         while (isActive) {
             val d = playerConnection.player.duration
             if (d > 0) duration = d
-            if (sliderPosition < 0) {
+            if (!isScrubbing) {
                 sliderPosition = playerConnection.player.currentPosition.coerceAtLeast(0L)
             }
             delay(200L)
@@ -284,7 +298,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 45f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 6000, easing = LinearEasing),
+                // 2026-09-05: 6 s read as a fast strobing wander on a phone
+                // screen (user report: "the background changes at extremely
+                // fast speed"); 24 s keeps the same travel but drifts at a
+                // quarter of the speed.
+                animation = tween(durationMillis = 24_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientAngle",
@@ -294,7 +312,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1500f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                // Same 4x slowdown as the angle: 8 s -> 32 s per sweep.
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetX",
@@ -304,7 +323,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1000f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetY",
@@ -554,7 +573,12 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         // slider, so SimpMusicLyrics self-polls the player — the same contract
                         // the lyrics card uses.
                         SimpMusicLyrics(
-                            sliderPositionProvider = { if (sliderPosition >= 0) sliderPosition else null },
+                            // Only report a position while the user is actually
+                            // dragging the sheet's slider (a live seek preview);
+                            // null the rest of the time so SimpMusicLyrics
+                            // self-polls the player and the lines follow the
+                            // song (see the polling fix above).
+                            sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -579,10 +603,13 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     val shown = sliderPosition.coerceIn(0L, safeDuration)
                     Slider(
                         value = shown.toFloat() / safeDuration.toFloat(),
-                        onValueChange = { sliderPosition = (it * safeDuration).toLong() },
+                        onValueChange = {
+                            isScrubbing = true
+                            sliderPosition = (it * safeDuration).toLong()
+                        },
                         onValueChangeFinished = {
                             playerConnection.player.seekTo(sliderPosition)
-                            sliderPosition = -1L
+                            isScrubbing = false
                         },
                         track = { sliderState ->
                             SliderDefaults.Track(

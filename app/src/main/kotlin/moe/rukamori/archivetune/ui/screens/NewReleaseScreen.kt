@@ -91,13 +91,15 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
-import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
-import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.viewmodels.NewReleaseContent
 import moe.rukamori.archivetune.viewmodels.NewReleaseUiState
 import moe.rukamori.archivetune.viewmodels.NewReleaseViewModel
@@ -109,8 +111,14 @@ fun NewReleaseScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     viewModel: NewReleaseViewModel = hiltViewModel(),
 ) {
-    val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    // "Marked as read" toast — shown for both the header's mark-all-read
+    // button and a long-press on a single release's thumbnail (2026-09-05,
+    // user request: "a toast should appear that's says marked as read").
+    val showMarkedAsReadToast: () -> Unit = {
+        Toast.makeText(context, R.string.marked_as_read, Toast.LENGTH_SHORT).show()
+    }
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
@@ -223,6 +231,20 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
+                            // Mark all releases read (2026-09-05) — the plain-bar
+                            // twin of the glass header's trailing mark-all-read
+                            // button, so the affordance exists in both header modes.
+                            IconButton(
+                                onClick = {
+                                    viewModel.markAllRead()
+                                    showMarkedAsReadToast()
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.solar_check_circle_linear),
+                                    contentDescription = stringResource(R.string.marked_as_read),
+                                )
+                            }
                             // Using Material3's standard IconButton here (not the
                             // custom AppIconButton) because the custom one uses
                             // combinedClickable which can fail to register taps in
@@ -304,14 +326,16 @@ fun NewReleaseScreen(
                         searchQuery = searchQuery,
                         onReleaseClick = { album -> navController.navigate("album/${album.id}") },
                         onReleaseLongClick = { album ->
+                            // 2026-09-05 (user request: "This should also
+                            // appear when I long press any album, ed or a
+                            // single songs thumbnail. That should individually
+                            // clear that selected item and mark it as read"):
+                            // long-press marks the release read — it clears
+                            // from the feed and the matching system
+                            // notification is cancelled.
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                YouTubeAlbumMenu(
-                                    albumItem = album,
-                                    navController = navController,
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
+                            viewModel.markRead(album.id)
+                            showMarkedAsReadToast()
                         },
                         onRefresh = viewModel::retry,
                     )
@@ -396,7 +420,47 @@ fun NewReleaseScreen(
                 title = stringResource(R.string.new_releases),
                 onBack = navController::navigateUp,
                 onBackLongClick = navController::backToMain,
-                onSearch = { isSearchActive = true },
+                // Trailing liquid-glass pill (2026-09-05, user request: "add a
+                // button on the right side of the header in liquid glass.
+                // When I click on it all the new album, single, eds
+                // notifications should get cleared and a toast should appear
+                // that's says marked as read"): mark-all-read + search, the
+                // same two affordances the plain top bar's actions carry.
+                trailing = {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = {
+                                viewModel.markAllRead()
+                                showMarkedAsReadToast()
+                            },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_check_circle_linear),
+                                contentDescription = stringResource(R.string.marked_as_read),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = { isSearchActive = true },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = stringResource(R.string.search),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                },
             )
         }
         }

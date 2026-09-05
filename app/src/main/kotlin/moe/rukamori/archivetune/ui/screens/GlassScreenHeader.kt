@@ -26,8 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.HazeState
@@ -35,6 +33,7 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
@@ -162,14 +161,10 @@ fun BoxScope.GlassScreenHeaderOverlay(
                 tint = liquidGlassContentColor(),
             )
         }
-        Text(
-            text = title,
-            color = liquidGlassContentColor(),
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(end = 12.dp),
-        )
+        // Fixed-length, marquee-scrolling title (2026-09-05): a long screen
+        // title used to grow this pill until it collided with the trailing
+        // actions pill — the same defect the playlist pages showed.
+        GlassPillTitleText(text = title)
     }
 
     // Trailing pill: search for screens that have a search affordance, or a

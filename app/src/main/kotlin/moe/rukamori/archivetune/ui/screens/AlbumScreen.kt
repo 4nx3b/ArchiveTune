@@ -99,7 +99,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
@@ -811,24 +811,61 @@ fun AlbumScreen(
         //
         // Shown only when:
         //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - Not in selection mode (selection mode uses the TopAppBar below)
         //  - The album has songs (so there's a hero to show)
         //  - The albumWithSongs is loaded (for the heart toggle state)
+        //
+        // Selection mode KEEPS the glass pills (2026-09-05, user report: "If
+        // i select songs in an album page of an artist the liquid glass header
+        // disappears. Fix it just like you did in the history screen"): the
+        // back pill morphs in place — close (X) icon + the "N songs" count,
+        // tap to clear the selection — and the trailing pill swaps to the
+        // select-all / deselect toggle and the "..." that opens
+        // SelectionSongMenu, the exact actions the opaque selection bar
+        // carried (the Local/Online playlist screens' pattern).
         val currentAlbumWithSongs = albumWithSongs
-        if (layerBackdropActive && !selection && currentAlbumWithSongs != null &&
+        if (layerBackdropActive && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()
         ) {
-            LiquidGlassIconButton(
+            LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = null,
+                interactive = true,
                 modifier =
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
-                        .size(48.dp),
-                onClick = { navController.navigateUp() },
-            )
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        if (selection) {
+                            selection = false
+                            wrappedSongs.forEach { it.isSelected = false }
+                        } else {
+                            navController.navigateUp()
+                        }
+                    },
+                    onLongClick = {
+                        if (!selection) {
+                            navController.backToMain()
+                        }
+                    },
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        painter =
+                            painterResource(
+                                if (selection) R.drawable.close else R.drawable.arrow_back,
+                            ),
+                        contentDescription = stringResource(R.string.back_button_desc),
+                        tint = liquidGlassContentColor(),
+                    )
+                }
+                if (selection) {
+                    val count = wrappedSongs.count { it.isSelected }
+                    GlassPillTitleText(
+                        text = pluralStringResource(R.plurals.n_song, count, count),
+                    )
+                }
+            }
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 modifier =
@@ -836,6 +873,63 @@ fun AlbumScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
+                if (selection) {
+                    // Selection actions in glass: select-all / deselect toggle
+                    // + the "..." that opens the selection menu — the exact
+                    // actions the opaque selection bar carried (playlist
+                    // screens' pattern, 2026-09-05).
+                    val selectedCount = wrappedSongs.count { it.isSelected }
+                    val allSelected = selectedCount == wrappedSongs.size && wrappedSongs.isNotEmpty()
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.IconButton(
+                            onClick = {
+                                if (allSelected) {
+                                    wrappedSongs.forEach { it.isSelected = false }
+                                } else {
+                                    wrappedSongs.forEach { it.isSelected = true }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (allSelected) R.drawable.deselect else R.drawable.select_all,
+                                    ),
+                                contentDescription = null,
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.IconButton(onClick = {
+                            menuState.show {
+                                SelectionSongMenu(
+                                    songSelection =
+                                        wrappedSongs
+                                            .filter { it.isSelected }
+                                            .map { it.item },
+                                    onDismiss = menuState::dismiss,
+                                    clearAction = {
+                                        selection = false
+                                        wrappedSongs.forEach { it.isSelected = false }
+                                    },
+                                )
+                            }
+                        }) {
+                            Icon(
+                                painter = painterResource(R.drawable.more_vert),
+                                contentDescription = null,
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                } else {
                 // Bookmark toggle (heart)
                 Box(
                     modifier = Modifier.size(48.dp),
@@ -885,14 +979,17 @@ fun AlbumScreen(
                         )
                     }
                 }
+                }
             }
         }
 
-        // Top App Bar: shown when Liquid Glass is disabled OR in selection mode.
-        // When Liquid Glass is active and not in selection mode, the persistent
-        // Liquid Glass buttons above handle navigation and actions, so the
-        // TopAppBar is hidden entirely (no overlay, no click interception).
-        if (!liquidGlassHeaderActive || selection) {
+        // Top App Bar: shown when Liquid Glass is disabled. When Liquid Glass
+        // is active the persistent Liquid Glass buttons above handle
+        // navigation and actions in EVERY mode — including selection (the
+        // pills morph, they no longer hand over to this opaque bar; 2026-09-05)
+        // — so the TopAppBar is hidden entirely (no overlay, no click
+        // interception).
+        if (!liquidGlassHeaderActive) {
         // Top App Bar
         val topAppBarColors =
             if (transparentAppBar) {
