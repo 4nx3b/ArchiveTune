@@ -4109,6 +4109,7 @@ class MusicService :
         scope.launch(SilentHandler) {
             var autoLoadMoreEnabled = true
             try {
+                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 autoLoadMoreEnabled = dataStore.getAsync(AutoLoadMoreKey, true)
                 val hideExplicit = dataStore.get(HideExplicitKey, false)
                 val hideVideo = dataStore.get(HideVideoKey, false)
@@ -8850,7 +8851,18 @@ class MusicService :
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
             return null
         }
-
+        runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
+        // Direct Qobuz track playback: when the user picks a specific Qobuz
+        // track from the "Play from" source-search popup, a per-song Qobuz
+        // trackId override is persisted in SongSourceQobuzTrackIdKey. We
+        // detect that here so we can force the chain to [QOBUZ] and bypass
+        // the metadata match gate — the user explicitly chose this track.
+        // The mediaId is NOT changed (it stays as the song's existing YouTube
+        // id), so the song is not registered as a duplicate in the playback
+        // history.
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get() — see buildSourceQuery for the rationale.
         val qobuzTrackIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
@@ -9774,6 +9786,9 @@ class MusicService :
             return dataSpec
         }
         val mediaId = dataSpec.key ?: return dataSpec
+        // ResolvingDataSource runs on Media3's loader thread. Headless restores
+        // must see the configured auth/proxy/region just like foreground playback.
+        runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
         val lowDataModeActive = isLowDataModeActive()
         val storedFormat =
             runBlocking(Dispatchers.IO) {

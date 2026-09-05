@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.constants.AudioQuality
@@ -91,6 +91,33 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+
+internal class DownloadSnapshotState<T> {
+    private val lock = Any()
+    private val changedBeforeSnapshot = mutableSetOf<String>()
+    private var initialized = false
+    private val values = MutableStateFlow<Map<String, T>>(emptyMap())
+    val flow = values.asStateFlow()
+
+    fun put(id: String, value: T) = synchronized(lock) {
+        if (!initialized) changedBeforeSnapshot += id
+        values.value = values.value + (id to value)
+    }
+
+    fun remove(id: String) = synchronized(lock) {
+        // Keep a tombstone until the initial cursor closes, so a removed item
+        // cannot be resurrected by the older database snapshot.
+        if (!initialized) changedBeforeSnapshot += id
+        values.value = values.value - id
+    }
+
+    fun initialize(snapshot: Map<String, T>) = synchronized(lock) {
+        if (initialized) return
+        values.value = snapshot.filterKeys { it !in changedBeforeSnapshot } + values.value
+        initialized = true
+        changedBeforeSnapshot.clear()
+    }
+}
 
 @Singleton
 class DownloadUtil
@@ -199,7 +226,8 @@ class DownloadUtil
             }
         }
 
-        val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
+        private val downloadState = DownloadSnapshotState<Download>()
+        val downloads = downloadState.flow
 
         private val okHttpDataSourceFactory =
             PRDownloaderDataSource.Factory(context)
@@ -229,6 +257,9 @@ class DownloadUtil
                             .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE),
                     ),
             ) { dataSpec ->
+                // Media3 invokes resolvers on its download worker, including
+                // resumed downloads that never pass through the activity.
+                runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
                 val mediaId = dataSpec.key ?: error("No media id")
 
                 val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
@@ -354,11 +385,7 @@ class DownloadUtil
                                     runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
                                 }
                             }
-                            downloads.update { map ->
-                                map.toMutableMap().apply {
-                                    set(download.request.id, download)
-                                }
-                            }
+                            downloadState.put(download.request.id, download)
                         }
 
                         override fun onDownloadRemoved(
@@ -371,7 +398,7 @@ class DownloadUtil
                             for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
                                 runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
                             }
-                            downloads.update { map -> map - download.request.id }
+                            downloadState.remove(download.request.id)
                         }
                     },
                 )
@@ -380,11 +407,19 @@ class DownloadUtil
         init {
             downloadScope.launch {
                 val result = mutableMapOf<String, Download>()
-                val cursor = downloadManager.downloadIndex.getDownloads()
-                while (cursor.moveToNext()) {
-                    result[cursor.download.request.id] = cursor.download
+                try {
+                    downloadManager.downloadIndex.getDownloads().use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val download = cursor.download
+                            result[download.request.id] = download
+                        }
+                    }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Timber.e(error, "Could not load the download index")
                 }
-                downloads.value = result
+                downloadState.initialize(result)
             }
             downloadScope.launch {
                 var previousFingerprint: String? = null
@@ -403,7 +438,15 @@ class DownloadUtil
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
         suspend fun prewarmSongForDownload(mediaId: String): String? {
-
+            moe.rukamori.archivetune.App.startupReadiness.awaitReady()
+            // Refresh the community Source Pool accounts (Qobuz/Tidal subscriber
+            // tokens) before resolving — the pool refresh is throttled to once
+            // per 30 min inside PoolAccountManager.refresh(), so this is a cheap
+            // no-op on the hot path. Doing it here (instead of only at app start)
+            // means newly-contributed accounts become available to downloads
+            // without an app restart, and avoids the "downloads always fall back
+            // to YouTube .webm" failure mode when the pool cache has been evicted
+            // by the OS or never loaded on this cold start.
             if (PoolAccountManager.isEnabled) {
                 runCatching { PoolAccountManager.refresh(appContext) }
             }
