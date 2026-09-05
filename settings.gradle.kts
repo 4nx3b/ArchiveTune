@@ -82,6 +82,13 @@ dependencyResolutionManagement {
                 // Used by AudioTagger to write title/artist/album/year/artwork tags onto
                 // exported downloaded songs.
                 includeGroup("com.github.RouHim")
+                // HlsDownloader — BravePipeExtractor's transitive dependency
+                // (com.github.evermind-zz:hlsdownloader:1.0.0, a standalone
+                // no-dependency artifact on JitPack). Without this allow-list
+                // entry the JitPack exclusiveContent filter blocks it and the
+                // APK builds fail with "Could not find
+                // com.github.evermind-zz:hlsdownloader:1.0.0".
+                includeGroup("com.github.evermind-zz")
                 // SimpMusic stream-resolution extractors (2026-09-05 port):
                 // PipePipeExtractor (tier 1/2, dev.maxrave.pipepipe.extractor namespace)
                 // and BravePipeExtractor (tier 3 + NewPipeUtils, org.schabi.newpipe
