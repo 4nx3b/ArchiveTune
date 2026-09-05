@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
@@ -959,50 +960,71 @@ fun AutoPlaylistScreen(
                 //    button isn't there, so the TopAppBar must provide back
                 //    navigation even when the hero is visible)
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
-                    IconButton(
-                        onClick = {
-                            when {
-                                isSearching -> {
-                                    isSearching = false
-                                    query = TextFieldValue()
-                                    focusManager.clearFocus()
-                                }
-
-                                selection -> {
-                                    selection = false
-                                    wrappedSongs.forEach { it.isSelected = false }
-                                }
-
-                                else -> {
-                                    navController.navigateUp()
-                                }
-                            }
-                        },
-                        onLongClick = {
-                            if (!isSearching && !selection) {
-                                navController.backToMain()
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter =
-                                painterResource(
-                                    if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
-                                ),
-                            contentDescription = null,
-                        )
-                    }
+                    // [2026-09-05] Haze effect: when Liquid Glass is OFF and
+                    // the user is browsing (not searching / selecting), the
+                    // back arrow + label render inside the translucent
+                    // frosted capsule (FrostedHeaderPill fallback) — the same
+                    // haze look HistoryScreen's TopAppBar shows, per user
+                    // request "haze effect is not available in ... offline
+                    // download page in library". When Liquid Glass is ON the
+                    // persistent LiquidGlassActionPill above handles this
+                    // slot with real glass.
                     if (!isSearching && !selection && !liquidGlassHeaderActive) {
-                        // Library label next to back chevron — only when
-                        // Liquid Glass is OFF (the persistent LiquidGlass
-                        // pill above carries the label when LG is on).
-                        Text(
-                            text = stringResource(R.string.library),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(end = 4.dp),
-                        )
+                        FrostedHeaderPill {
+                            IconButton(
+                                onClick = { navController.navigateUp() },
+                                onLongClick = { navController.backToMain() },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = null,
+                                )
+                            }
+                            // Library label next to back chevron — only when
+                            // Liquid Glass is OFF (the persistent LiquidGlass
+                            // pill above carries the label when LG is on).
+                            Text(
+                                text = stringResource(R.string.library),
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                when {
+                                    isSearching -> {
+                                        isSearching = false
+                                        query = TextFieldValue()
+                                        focusManager.clearFocus()
+                                    }
+
+                                    selection -> {
+                                        selection = false
+                                        wrappedSongs.forEach { it.isSelected = false }
+                                    }
+
+                                    else -> {
+                                        navController.navigateUp()
+                                    }
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSearching && !selection) {
+                                    navController.backToMain()
+                                }
+                            },
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
+                                    ),
+                                contentDescription = null,
+                            )
+                        }
                     }
                 }
             },

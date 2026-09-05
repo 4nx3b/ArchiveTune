@@ -93,9 +93,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AppIconSortOrder
 import moe.rukamori.archivetune.viewmodels.AppIconUiModel
 import moe.rukamori.archivetune.viewmodels.IconScreenEffect
@@ -194,6 +198,17 @@ private fun IconScreenContent(
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in app icon change
+    // settings". HistoryScreen pattern — real kyant glass pill when the
+    // Liquid Glass master toggle is on (Android 12+), translucent frosted
+    // fallback pill otherwise.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val iconSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(iconSurfaceColor)
+
     Scaffold(
         modifier =
             Modifier
@@ -208,7 +223,7 @@ private fun IconScreenContent(
                     Text(text = stringResource(R.string.app_icon_subtitle))
                 },
                 navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
+                    FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
                         IconButton(
                             onClick = onNavigateUp,
                             onLongClick = onNavigateHome,
@@ -243,6 +258,21 @@ private fun IconScreenContent(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
+        // Records the content below the top bar into `backdrop` so the
+        // frosted header pill can blur it (haze effect). Only active when
+        // the Liquid Glass master toggle is on; otherwise it's a no-op.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (liquidGlassHeaderActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
+                    ),
+        ) {
         when (state) {
             IconScreenState.Loading -> {
                 IconScreenLoading(
@@ -300,6 +330,7 @@ private fun IconScreenContent(
                 )
             }
         }
+        } // end haze backdrop recording Box
     }
 }
 

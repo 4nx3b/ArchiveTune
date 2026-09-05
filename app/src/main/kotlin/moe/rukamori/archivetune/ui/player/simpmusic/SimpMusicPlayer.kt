@@ -483,12 +483,14 @@ fun SimpMusicPlayerContent(
         if (lyricsFullscreenOpen) {
             // SimpMusic's fullscreen lyrics page: the wandering gradient, the AM-style header,
             // the Classic renderer full-screen, and the 4-second auto-hiding control block.
+            // [2026-09-05] The header's more button opens the anchored Apple-Music-style
+            // lyrics popup inside the sheet (no playerBottomSheetState needed anymore —
+            // the shared PlayerMenu bottomsheet path was removed with it).
             SimpMusicFullscreenLyricsSheet(
                 mediaMetadata = mediaMetadata,
                 playerConnection = playerConnection,
                 navController = navController,
                 bottomSheetPageState = bottomSheetPageState,
-                playerBottomSheetState = state,
                 color = startColor,
                 onDismiss = { lyricsFullscreenOpen = false },
             )

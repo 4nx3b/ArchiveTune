@@ -87,6 +87,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -106,13 +108,16 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import android.os.Build
 import androidx.media3.common.Player
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
@@ -131,13 +136,41 @@ internal fun SimpMusicFullscreenLyricsSheet(
     playerConnection: PlayerConnection,
     navController: NavController,
     bottomSheetPageState: BottomSheetPageState,
-    playerBottomSheetState: BottomSheetState,
     color: Color,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val menuState = LocalMenuState.current
+
+    // ── Anchored Apple-Music-style overflow popup (2026-09-05) ──
+    // Per user request: "i don't want the bottomsheet lyrics overflow menu.
+    // I want the one used in apple music style" — the header's more button now
+    // opens the same anchored popup the Apple Music player style uses
+    // (AnchoredLyricsOverflowMenu: scales up from the more icon with a
+    // frosted-glass blur), rendered INSIDE this sheet's dialog window so it
+    // is always above the lyrics. It replaces the shared menuState/
+    // BottomSheetMenu slide-up card that previously hosted PlayerMenu here.
+    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
+    var moreIconBounds by remember {
+        mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
+    }
+
+    // Backdrop that records THIS sheet's content (the wandering gradient +
+    // lyrics) so the popup's drawBackdrop sampler blurs what is actually
+    // behind the menu inside this dialog window. Android 12+ only (kyant
+    // RuntimeShader); below that the popup falls back to its dark tint.
+    // `Modifier.layerBackdrop(popupBackdrop)` is applied to the inner
+    // content Box below ONLY while the popup is open — zero steady-state
+    // recording cost for the lyrics scroll while the menu is closed. The
+    // popup renders as a SIBLING of that Box (never nested inside it) to
+    // avoid the kyant render-feedback loop.
+    val popupBackdrop: PlatformBackdrop? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rememberBackdrop(Color.Transparent)
+        } else {
+            null
+        }
 
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val liked = currentSong?.song?.liked == true
@@ -273,6 +306,26 @@ internal fun SimpMusicFullscreenLyricsSheet(
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Inner content Box — records the sheet's gradient + lyrics +
+            // controls into `popupBackdrop` via `Modifier.layerBackdrop(...)`
+            // WHILE the anchored overflow popup is open, so the popup's
+            // drawBackdrop sampler blurs the actual content behind the menu
+            // (real frosted glass, same as the Apple Music player style).
+            // The popup renders as a SIBLING of this Box (after the overlay
+            // hosts below) — nesting it inside this layer-capturing Box would
+            // create the kyant render-feedback loop. While the popup is
+            // closed the modifier is a no-op, so the lyrics scroll pays zero
+            // steady-state GPU recording cost.
+            Box(
+                modifier =
+                    Modifier.fillMaxSize().let { base ->
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
+                            base.layerBackdrop(popupBackdrop)
+                        } else {
+                            base
+                        }
+                    },
+            ) {
             // Animated gradient background.
             Box(
                 modifier =
@@ -399,19 +452,28 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
 
                     IconButton(
-                        onClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
+                        onClick = { showAnchoredLyricsMenu = true },
+                        modifier =
+                            Modifier
+                                .onGloballyPositioned { coords ->
+                                    // Report the icon's bounds in this dialog
+                                    // window's root coordinates so the anchored
+                                    // popup can align its top-right corner with
+                                    // the icon. boundsInRoot() isn't available on
+                                    // this Compose version — compute the Rect from
+                                    // positionInRoot() + size.
+                                    val pos = coords.positionInRoot()
+                                    val sz = coords.size
+                                    moreIconBounds =
+                                        androidx.compose.ui.geometry.Rect(
+                                            offset = pos,
+                                            size =
+                                                androidx.compose.ui.geometry.Size(
+                                                    width = sz.width.toFloat(),
+                                                    height = sz.height.toFloat(),
+                                                ),
+                                        )
+                                },
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.simpmusic_more_vert),
@@ -640,23 +702,44 @@ internal fun SimpMusicFullscreenLyricsSheet(
             // open but when I exit the lyrics screen it's there"). Hosting both
             // systems INSIDE the sheet's content — this Box, in the dialog window,
             // composed AFTER the lyrics column so they draw above it — makes the
-            // same shared `menuState.show { PlayerMenu(...) }` and
-            // `bottomSheetPageState.show { ShowMediaInfo(...) }` calls render
-            // visibly. The app-window instances still compose beneath the dialog
-            // but are unreachable (the dialog consumes touches), so exactly one
-            // instance is interactive.
+            // shared `bottomSheetPageState.show { ShowMediaInfo(...) }` calls (the
+            // info button at the bottom of the lyrics page) render visibly. The
+            // app-window instances still compose beneath the dialog but are
+            // unreachable (the dialog consumes touches), so exactly one instance
+            // is interactive.
             //
-            // The menu's background is pinned to the dark fallback charcoal
-            // instead of the liquid-glass path: the kyant backdrop records the app
-            // window, so sampling it from this dialog would blur the player hidden
-            // behind the sheet — not the lyrics actually behind the menu — and the
-            // coordinates pair would span two different windows. The charcoal card
-            // is the designed no-glass look and is the correct material here.
+            // [2026-09-05] The header's more button no longer opens the shared
+            // menuState menu from this sheet — it opens the anchored
+            // Apple-Music-style popup below instead (per user request). The
+            // BottomSheetMenu host stays for the details page's dialogs and any
+            // other menuState consumer that may run inside this sheet.
             BottomSheetMenu(
                 state = menuState,
                 background = Color(0xF01C1C1E),
             )
             BottomSheetPage(state = bottomSheetPageState)
+            } // end inner content Box (anchored-popup backdrop recording layer)
+
+            // ── Anchored Apple-Music-style overflow popup ───────────────────────
+            // Rendered as the LAST child of the sheet's content Box so it draws
+            // above everything else in this dialog window (gradient, lyrics,
+            // controls, header, overlay hosts). The popup manages its own
+            // enter/exit animations (scale + alpha from the more icon's corner)
+            // and positions itself via `moreIconBounds` (captured by the
+            // onGloballyPositioned wired to the header's more IconButton).
+            // This is the exact pattern AppleMusicPlayer.kt uses — the same
+            // menu the Apple Music player style shows over its lyrics.
+            if (showAnchoredLyricsMenu) {
+                AnchoredLyricsOverflowMenu(
+                    iconBoundsInRoot = moreIconBounds,
+                    lyricsProvider = { currentLyricsEntity },
+                    mediaMetadataProvider = { mediaMetadata },
+                    lyricsSyncOffset = 0,
+                    onLyricsSyncOffsetChange = {},
+                    onDismiss = { showAnchoredLyricsMenu = false },
+                    backdrop = popupBackdrop,
+                )
+            }
         }
     }
 

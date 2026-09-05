@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.os.Build
 import androidx.compose.foundation.layout.WindowInsets
 import android.content.Intent
 import android.net.Uri
@@ -58,6 +59,8 @@ import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -92,6 +95,17 @@ private val DiscordLargeTextOptions = listOf("song", "artist", "album", "app", "
 fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val scrollBehavior = appBarScrollBehavior()
+
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in ... discord
+    // integration". HistoryScreen pattern — real kyant glass pill when the
+    // Liquid Glass master toggle is on (Android 12+), translucent frosted
+    // fallback pill otherwise.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val discordSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(discordSurfaceColor)
     val song by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -392,7 +406,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             LargeFlexibleTopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill(plain = true) {
+                    FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
@@ -467,6 +481,16 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
+                    )
+                    // Records the scrolling content into `backdrop` so the
+                    // frosted header pill can blur it (haze effect). No-op
+                    // while the Liquid Glass master toggle is off.
+                    .then(
+                        if (liquidGlassHeaderActive) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
                     )
                     // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                     .then(positions.containerModifier())

@@ -11,6 +11,7 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
@@ -114,6 +115,7 @@ import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.DeeplApiKeyKey
 import moe.rukamori.archivetune.constants.DeeplFormalityKey
 import moe.rukamori.archivetune.constants.HideAiMixKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.OpenRouterApiKeyKey
 import moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey
 import moe.rukamori.archivetune.constants.OpenRouterModelKey
@@ -122,6 +124,8 @@ import moe.rukamori.archivetune.constants.TranslateLanguageKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -357,9 +361,30 @@ fun AiIntegrationSettings(
     val positions = rememberPreferencePositions()
     androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+    // ── Haze / frosted-glass header (2026-09-05) ──
+    // Per user request: "haze effect is not available in ... ai integration".
+    // HistoryScreen pattern — real kyant glass pill when the Liquid Glass
+    // master toggle is on (Android 12+), translucent frosted fallback pill
+    // otherwise.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val aiSurfaceColor = MaterialTheme.colorScheme.surface
+    val backdrop = rememberBackdrop(aiSurfaceColor)
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            // Records the scrolling content into `backdrop` so the frosted
+            // header pill can blur it (haze effect). No-op while the Liquid
+            // Glass master toggle is off.
+            .then(
+                if (liquidGlassHeaderActive) {
+                    Modifier.layerBackdrop(backdrop)
+                } else {
+                    Modifier
+                },
+            )
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
@@ -774,7 +799,7 @@ fun AiIntegrationSettings(
     TopAppBar(
         title = {},
         navigationIcon = {
-            FrostedHeaderPill(plain = true) {
+            FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
                 IconButton(
                     onClick = navController::navigateUp,
                     onLongClick = navController::backToMain,
