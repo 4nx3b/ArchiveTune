@@ -108,6 +108,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.BottomSheetMenu
+import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -241,7 +243,17 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // Leaving the lyrics page must not strand overlays opened from inside it: the
+            // menu / details-page hosts below render in THIS sheet's dialog window, but the
+            // state they share is app-wide — without dismissing it here, MainActivity's
+            // app-window hosts would pick the still-open state up the moment this dialog
+            // closes and the menu would materialise over the player (the exact "when I exit
+            // the lyrics screen it's there" report).
+            menuState.dismiss()
+            bottomSheetPageState.dismiss()
+            onDismiss()
+        },
         sheetState = sheetState,
         containerColor = Color.Black,
         contentColor = Color.Transparent,
@@ -616,6 +628,35 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
+
+            // ── In-sheet hosts for the app's overlay systems ─────────────────────
+            // This sheet is a ModalBottomSheet, which is a real Android dialog
+            // window that floats ABOVE the app window where MainActivity hosts
+            // BottomSheetMenu and BottomSheetPage. A menu (or the details page)
+            // opened from inside the lyrics screen therefore rendered in the app
+            // window, BEHIND this dialog: tapping the header's overflow button
+            // looked dead, and the menu only materialised over the player after
+            // the lyrics screen was dismissed (user report 2026-09-05: "it doesn't
+            // open but when I exit the lyrics screen it's there"). Hosting both
+            // systems INSIDE the sheet's content — this Box, in the dialog window,
+            // composed AFTER the lyrics column so they draw above it — makes the
+            // same shared `menuState.show { PlayerMenu(...) }` and
+            // `bottomSheetPageState.show { ShowMediaInfo(...) }` calls render
+            // visibly. The app-window instances still compose beneath the dialog
+            // but are unreachable (the dialog consumes touches), so exactly one
+            // instance is interactive.
+            //
+            // The menu's background is pinned to the dark fallback charcoal
+            // instead of the liquid-glass path: the kyant backdrop records the app
+            // window, so sampling it from this dialog would blur the player hidden
+            // behind the sheet — not the lyrics actually behind the menu — and the
+            // coordinates pair would span two different windows. The charcoal card
+            // is the designed no-glass look and is the correct material here.
+            BottomSheetMenu(
+                state = menuState,
+                background = Color(0xF01C1C1E),
+            )
+            BottomSheetPage(state = bottomSheetPageState)
         }
     }
 
