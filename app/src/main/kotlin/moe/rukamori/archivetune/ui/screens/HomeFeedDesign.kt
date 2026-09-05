@@ -476,7 +476,7 @@ fun HomeFeedSongCard(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
     menuState: MenuState,
     haptic: HapticFeedback,
     onPlayFromSection: () -> Unit,
@@ -491,7 +491,7 @@ fun HomeFeedSongCard(
         isPlaying = isPlaying,
         onClick = {
             if (isActive) {
-                playerConnection.player.togglePlayPause()
+                playerConnection?.player?.togglePlayPause()
             } else {
                 onPlayFromSection()
             }
@@ -593,7 +593,7 @@ fun HomeFeedLocalItemCard(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,

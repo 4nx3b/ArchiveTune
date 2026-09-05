@@ -92,7 +92,8 @@ object GlobalLog {
     }
 }
 
-class GlobalLogTree : Timber.DebugTree() {
+/** Timber Tree that forwards logs to GlobalLog */
+class GlobalLogTree : Timber.Tree() {
     override fun log(
         priority: Int,
         tag: String?,
@@ -101,7 +102,7 @@ class GlobalLogTree : Timber.DebugTree() {
     ) {
         try {
             val final = if (t != null) "$message\n$t" else message
-            GlobalLog.append(priority, tag, final)
+            GlobalLog.append(priority, tag ?: "ArchiveTune", final)
         } catch (_: Exception) {
 
         }
