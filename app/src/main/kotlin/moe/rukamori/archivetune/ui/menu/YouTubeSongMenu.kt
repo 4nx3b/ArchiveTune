@@ -77,12 +77,12 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.MuzoQuickAction
 import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
-import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
@@ -225,59 +225,45 @@ fun YouTubeSongMenu(
         }
     }
 
-    MuzoSongMenuHeader(
-        artworkUrl = song.thumbnail,
-        title = song.title,
-        artist = song.artists.joinToString { it.name },
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
-    val bottomSheetPageState = LocalBottomSheetPageState.current
-    val dividerModifier = Modifier.padding(start = 56.dp)
-    val startRadioText = stringResource(R.string.start_radio)
-    val playNextText = stringResource(R.string.play_next)
-    val addToQueueText = stringResource(R.string.add_to_queue)
-    val addToPlaylistText = stringResource(R.string.add_to_playlist)
-    val shareText = stringResource(R.string.share)
-    val likedLabel = stringResource(R.string.liked_label)
-    val downloadLabel = stringResource(R.string.action_download)
-    val downloadingLabel = stringResource(R.string.downloading)
-    val downloadedLabel = stringResource(R.string.downloaded_label)
-    val addToDotsLabel = stringResource(R.string.add_to_dots)
-
-    val quickActions =
-        remember(
-            song,
-
-            librarySong,
-            download?.state,
-            likedLabel,
-            downloadLabel,
-            downloadingLabel,
-            downloadedLabel,
-            addToDotsLabel,
-            playNextText,
-            onDismiss,
-            playerConnection,
-        ) {
-            listOf(
-                MuzoQuickAction(
-                    icon = {
-                        Icon(
-                            painter =
-                                painterResource(
-                                    if (librarySong?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border,
-                                ),
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    },
-                    label = likedLabel,
-
+    MenuHeaderCard {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = song.title,
+                    modifier = Modifier.basicMarquee(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            supportingContent = {
+                Text(
+                    text =
+                        joinByBullet(
+                            song.artists.joinToString { it.name },
+                            song.duration?.let { makeTimeString(it * 1000L) },
+                        ),
+                )
+            },
+            leadingContent = {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier =
+                        Modifier
+                            .size(ListThumbnailSize)
+                            .clip(RoundedCornerShape(ThumbnailCornerRadius)),
+                ) {
+                    AsyncImage(
+                        model = song.thumbnail,
+                        contentDescription = null,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
+                    )
+                }
+            },
+            trailingContent = {
+                IconButton(
                     onClick = {
                         database.transaction {
                             librarySong.let { librarySong ->

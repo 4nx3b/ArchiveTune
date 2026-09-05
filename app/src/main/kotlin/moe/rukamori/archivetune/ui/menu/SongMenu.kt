@@ -102,12 +102,12 @@ import moe.rukamori.archivetune.ui.player.fetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.MuzoQuickAction
 import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
-import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.component.MenuSectionDivider
@@ -514,11 +514,30 @@ fun SongMenu(
         }
     }
 
-    MuzoSongMenuHeader(
-        artworkUrl = song.song.thumbnailUrl,
-        title = song.song.title,
-        artist = song.artists.joinToString { it.name },
-    )
+    MenuHeaderCard {
+        SongListItem(
+            song = song,
+            badges = {},
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            trailingContent = {
+                IconButton(
+                    onClick = {
+                        val s = song.song.toggleLike()
+                        database.query {
+                            update(s)
+                        }
+                        syncUtils.likeSong(s)
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(if (song.song.liked) R.drawable.favorite else R.drawable.favorite_border),
+                        tint = if (song.song.liked) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                        contentDescription = null,
+                    )
+                }
+            },
+        )
+    }
 
     Spacer(modifier = Modifier.height(16.dp))
 
