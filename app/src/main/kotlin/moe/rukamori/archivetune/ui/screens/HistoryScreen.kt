@@ -259,10 +259,12 @@ fun HistoryScreen(
     val spotifyHistoryAvailable = rememberLibrarySourceAvailable()
     val spotifyViewModel: SpotifyLibraryViewModel = hiltViewModel()
     val spotifyHistory by spotifyViewModel.recentlyPlayed.collectAsStateWithLifecycle()
-    val spotifyHistoryLoading by spotifyViewModel.isLoadingSection.collectAsStateWithLifecycle()
+    val spotifyAccountRevision by spotifyViewModel.accountRevision.collectAsStateWithLifecycle()
+    val spotifyHistoryLoading = spotifyHistory.isLoading ||
+        (spotifyHistory.items == null && spotifyHistory.errorMessage == null)
     val spotifyHistoryItems =
-        remember(spotifyHistory, searchQuery) {
-            spotifyHistory
+        remember(spotifyHistory.items, searchQuery) {
+            spotifyHistory.items.orEmpty()
                 .mapNotNull { it.track }
                 .filter { track ->
                     searchQuery.isBlank() ||
@@ -516,9 +518,10 @@ fun HistoryScreen(
                         listState = if (searchMode) spotifySearchListState else spotifyListState,
                         topPadding = topPadding,
                         headerContent = historySourceDock,
-                        items = spotifyHistoryItems,
-                        isLoading = spotifyHistoryLoading,
-                        onRefresh = { spotifyViewModel.loadRecentlyPlayed(force = true) },
+                    items = spotifyHistoryItems,
+                    isLoading = spotifyHistoryLoading,
+                    errorMessage = spotifyHistory.errorMessage,
+                    onRefresh = { spotifyViewModel.loadRecentlyPlayed(force = true) },
                     )
                 }
 
@@ -588,7 +591,7 @@ fun HistoryScreen(
         }
     }
 
-    LaunchedEffect(historySource, spotifyHistoryAvailable) {
+    LaunchedEffect(historySource, spotifyHistoryAvailable, spotifyAccountRevision) {
         if (historySource == HistorySource.SPOTIFY) {
             if (spotifyHistoryAvailable) spotifyViewModel.loadRecentlyPlayed() else viewModel.historySource.value = HistorySource.LOCAL
         }
@@ -1621,6 +1624,7 @@ private fun SpotifyHistoryFeed(
     headerContent: @Composable () -> Unit,
     items: List<SpotifySearchItem>,
     isLoading: Boolean,
+    errorMessage: String?,
     onRefresh: () -> Unit,
 ) {
     ExpressivePullToRefreshBox(
@@ -1643,20 +1647,22 @@ private fun SpotifyHistoryFeed(
         ) {
             item(key = "history_source_dock", contentType = "dock") { headerContent() }
 
-            if (items.isEmpty() && !isLoading) {
-                item(key = "spotify_history_empty", contentType = "empty") {
+            if (errorMessage != null || (items.isEmpty() && !isLoading)) {
+                item(key = "spotify_history_status", contentType = "status") {
                     HistoryStateCard(
                         title = stringResource(R.string.spotify_history),
-                        description = stringResource(R.string.history_spotify_summary),
+                        description = errorMessage ?: stringResource(R.string.no_results_found),
+                        actionLabel = if (errorMessage != null) stringResource(R.string.retry) else null,
+                        onActionClick = onRefresh,
                     )
                 }
             }
 
-            items(
+            itemsIndexed(
                 items = items,
-                key = { "spotify_history_${it.key}" },
-                contentType = { "spotify_history_row" },
-            ) { item ->
+                key = { index, item -> "spotify_history_${item.key}_$index" },
+                contentType = { _, _ -> "spotify_history_row" },
+            ) { _, item ->
                 SpotifyPlayableRow(item)
             }
         }

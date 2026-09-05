@@ -479,8 +479,10 @@ fun AppearanceSectionSettings(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(isPlayerStyleCustomizationEnabled, playerBackground) {
-        if (!isPlayerStyleCustomizationEnabled && playerBackground != PlayerBackgroundStyle.DEFAULT) {
+    LaunchedEffect(section, isPlayerStyleCustomizationEnabled, playerBackground) {
+        if (section == AppearanceSection.PLAYER &&
+            !isPlayerStyleCustomizationEnabled && playerBackground != PlayerBackgroundStyle.DEFAULT
+        ) {
             onPlayerBackgroundChange(PlayerBackgroundStyle.DEFAULT)
         }
     }
