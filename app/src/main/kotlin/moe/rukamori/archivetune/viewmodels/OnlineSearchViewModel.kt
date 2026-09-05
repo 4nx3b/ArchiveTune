@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
+import moe.rukamori.archivetune.innertube.models.filterUnsupportedEpisodes
 import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
 import moe.rukamori.archivetune.models.ItemsPage
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
@@ -114,6 +115,10 @@ class OnlineSearchViewModel
                     .searchSummary(query)
                     .onSuccess {
                         val aiContentFilterPolicy = loadAiContentFilterPolicy()
+                        // filterUnsupportedEpisodes (2026-09-05): podcast/audiobook episodes
+                        // parse as plain song rows through the permissive isSong heuristic and
+                        // rendered as results the app has no surface for — drop them so a
+                        // search only shows content the app actually supports.
                         val contentFilteredPage =
                             it
                                 .filterExplicit(context.dataStore.get(HideExplicitKey, false))
@@ -123,7 +128,13 @@ class OnlineSearchViewModel
                                 summaries =
                                     contentFilteredPage.summaries.mapNotNull { summary ->
                                         summary
-                                            .copy(items = filterAiContent(summary.items, aiContentFilterPolicy))
+                                            .copy(
+                                                items =
+                                                    filterAiContent(
+                                                        summary.items.filterUnsupportedEpisodes(),
+                                                        aiContentFilterPolicy,
+                                                    ),
+                                            )
                                             .takeIf { filteredSummary -> filteredSummary.items.isNotEmpty() }
                                     },
                             )
@@ -149,6 +160,7 @@ class OnlineSearchViewModel
                                 filterAiContent(
                                     result.items
                                         .distinctBy { it.id }
+                                        .filterUnsupportedEpisodes()
                                         .filterExplicit(
                                             context.dataStore.get(
                                                 HideExplicitKey,

@@ -39,33 +39,29 @@ kuromojiIpadic = "0.9.0"
 # points at it — :core has used either fork at different times.
 extractor = "0.26.5"
 
-# MetrolistExtractor needs its own version: it is a different artifact from
-# NewPipeExtractor and MetrolistGroup publishes no release numbered 0.26.5, so
-# sharing `extractor` is what broke CI with "Could not find
-# com.github.MetrolistGroup:MetrolistExtractor:0.26.5" the moment the :core
-# submodule switched back to `libs.metrolist.extractor`.
-#
-# Pinned to MetrolistGroup's commit `08a64867704c` (2026-05-29) — the last
-# commit before MetrolistExtractor bumped its java toolchain to JDK 25 in
-# `1cce4d0ce1bb` (2026-05-29). The :core submodule is a pure Kotlin/JVM module
-# with `jvmToolchain(21)` and the CI runner uses JDK 21, so we cannot consume
-# artifacts built with `languageVersion = JavaLanguageVersion.of(25)` — Gradle's
-# strict variant matching rejects them with "only compatible with JVM runtime
-# version 25 or newer". This commit targets Java 8 bytecode (`jvm.version=8` in
-# the Gradle module metadata), which is loadable on JVM 21.
-#
-# The API surface :core relies on (Downloader.executeAsync + AsyncCallback
-# nested interface, CancellableCall, 6-arg Response constructor) is already
-# present at this commit, so the swap from NewPipeExtractor still works.
-#
-# MetrolistExtractor is a maintained fork of NewPipeExtractor that keeps the
-# `org.schabi.newpipe.extractor` package names. The project publishes only via
-# JitPack (no Maven Central release) and has no git tags — JitPack resolves the
-# short commit hash. To move to a newer commit, the CI JDK and :core's
-# `jvmToolchain(...)` both need to be bumped to ≥ 25.
-metrolistExtractor = "08a64867704c"
+# SimpMusic stream-resolution port (2026-09-05): the app now resolves YouTube
+# Music streams exactly like maxrave-dev/SimpMusic — a 3-tier extractor chain:
+#   Tier 1: PipePipe (dev.maxrave.pipepipe.extractor namespace) with a local
+#           QuickJS cipher decoder fed by the remote player-config table.
+#   Tier 2: PipePipe with no local decoder — every challenge solved at
+#           api.pipepipe.dev.
+#   Tier 3: BravePipe (org.schabi.newpipe.extractor namespace) — a different
+#           extractor entirely, used as the last resort.
+# Both artifacts come from maxrave-dev's JitPack, pinned at the exact commits
+# SimpMusic's gradle/libs.versions.toml pins (verified present on JitPack with
+# openjdk17 build configs, loadable on the CI's JDK 21).
+# BravePipe REPLACES MetrolistExtractor: both occupy the `org.schabi.newpipe.extractor`
+# package namespace, so having both on the classpath would duplicate classes.
+# BravePipe carries the same YoutubeJavaScriptPlayerManager API surface
+# (getSignatureTimestamp / deobfuscateSignature /
+# getUrlWithThrottlingParameterDeobfuscated / clearAllCaches) that core's
+# NewPipeUtils uses, with two adaptations: its Downloader has no executeAsync /
+# AsyncCallback / CancellableCall, and its Response constructor takes 5 args
+# (no rawBytes) — both handled in core's NewPipe.kt.
+pipepipe = "f8982ca9e7"
+braveNewpipe = "0fcaf19ecc"
 graphicsShapes = "1.0.1"
-quickjsKt = "1.0.10"
+quickjsKt = "1.0.14"
 bouncyCastle = "1.85"
 translator = "1.1.1"
 rhino = "1.9.1"
@@ -175,11 +171,18 @@ turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 
-# MetrolistExtractor — maintained fork of NewPipeExtractor used by :core.
-# Same `org.schabi.newpipe.extractor` package namespace as upstream, so all
-# existing NewPipe imports keep working. Published on JitPack only.
-# Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
-metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "metrolistExtractor" }
+# SimpMusic stream-resolution extractors (2026-09-05 port). BravePipe replaces
+# MetrolistExtractor — both keep the `org.schabi.newpipe.extractor` namespace
+# (so core's existing NewPipe imports keep working), but only ONE of them may
+# be on the classpath or DEX/duplicate-class failures follow. PipePipe lives
+# in `dev.maxrave.pipepipe.extractor`, so it coexists with BravePipe.
+# Coordinates + pinned commits are byte-for-byte what SimpMusic's version
+# catalog pins. Multi-module JitPack artifacts: parent POM pulls submodules
+# published under `com.github.maxrave-dev.PipePipeExtractor` /
+# `com.github.maxrave-dev.BravePipeExtractor` groups (allow-listed in
+# settings.gradle.kts).
+pipepipe-extractor = { module = "com.github.maxrave-dev:PipePipeExtractor", version.ref = "pipepipe" }
+brave-extractor = { module = "com.github.maxrave-dev:BravePipeExtractor", version.ref = "braveNewpipe" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
