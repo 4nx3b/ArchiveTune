@@ -675,8 +675,6 @@ fun AccountPlaylistsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection?,
-    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -714,8 +712,6 @@ fun SimilarRecommendationsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection?,
-    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -857,11 +853,6 @@ fun SimilarRecommendationsTitle(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val thumbSizePx =
-        with(LocalDensity.current) {
-            ListThumbnailSize.roundToPx().coerceAtLeast(1)
-        }
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,

@@ -22,7 +22,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -119,7 +118,7 @@ private val LEGACY_SIMPMUSIC_LYRICS_KEY = androidx.datastore.preferences.core.bo
 
 object PreferenceStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _prefs = MutableStateFlow<Preferences?>(null)
+    @Volatile private var _prefs: Preferences? = null
     private val initialSnapshot = kotlinx.coroutines.CompletableDeferred<Preferences>()
 
     @Volatile private var started = false
@@ -132,7 +131,7 @@ object PreferenceStore {
             scope.launch {
                 try {
                     context.applicationContext.dataStore.data.collect { preferences ->
-                        _prefs.value = preferences
+                        _prefs = preferences
                         initialSnapshot.complete(preferences)
                     }
                 } catch (error: Throwable) {
@@ -145,7 +144,7 @@ object PreferenceStore {
     }
 
     val snapshot: Preferences?
-        get() = _prefs.value
+        get() = _prefs
 
     suspend fun awaitSnapshot(): Preferences = snapshot ?: initialSnapshot.await()
 
