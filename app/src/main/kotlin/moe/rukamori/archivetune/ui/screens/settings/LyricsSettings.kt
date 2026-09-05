@@ -9,7 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import android.os.Build
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -43,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,7 +81,6 @@ import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
-import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
@@ -97,14 +100,16 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -201,34 +206,44 @@ fun LyricsSettings(
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
-    // ── Haze / frosted-glass header (2026-09-05) ──
-    // Per user request: "haze effect is not available in lyrics settings in
-    // player and audio". HistoryScreen pattern — real kyant glass pill when
-    // the Liquid Glass master toggle is on (Android 12+), translucent
-    // frosted fallback pill otherwise.
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
-    val liquidGlassHeaderActive =
-        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val lyricsSurfaceColor = MaterialTheme.colorScheme.surface
-    val backdrop = rememberBackdrop(lyricsSurfaceColor)
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt recorded the Column into a kyant
+    // layerBackdrop for a glass pill in the TopAppBar — but the pill and
+    // the recorded layer never overlap (the bar overlays the NavHost Box,
+    // while the recording only covered the area below the bar), so the pill
+    // rendered opaque with no visible blur (user report: "liquid glass but
+    // the background is opaque and there's no haze effect"). This now uses
+    // the canonical pattern the 30+ approved settings screens use
+    // (PlayerSettings et al.): the scrolling Column is the haze source, the
+    // ScreenHeaderHaze overlay blurs whatever scrolls under the transparent
+    // TopAppBar, and the pill is the plain single-pill look.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    // Mini-player aware bottom padding — keeps the last row clear of the
+    // persistent mini player (the insets' bottom half of the old single
+    // windowInsetsPadding call).
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+    // The insets' top half (status bar + AppBarHeight) moves INSIDE the
+    // scroll so items scroll up under the transparent bar into the blur.
+    val headerTopPadding =
+        LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateTopPadding()
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            // Records the scrolling content into `backdrop` so the frosted
-            // header pill can blur it (haze effect). No-op while the Liquid
-            // Glass master toggle is off.
-            .then(
-                if (liquidGlassHeaderActive) {
-                    Modifier.layerBackdrop(backdrop)
-                } else {
-                    Modifier
-                },
-            )
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .hazeSource(headerHaze)
+            .padding(top = headerTopPadding)
+            .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -538,10 +553,22 @@ fun LyricsSettings(
 
     }
 
+    // Header haze overlay — drawn ON TOP of the scrolling content (later
+    // sibling), UNDER the transparent TopAppBar (emitted after it).
+    ScreenHeaderHaze(
+        hazeState = headerHaze,
+        systemBarsTopPadding = systemBarsTopPadding,
+    )
+
     TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
-            FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
+            FrostedHeaderPill(plain = true) {
                 IconButton(
                     onClick = navController::navigateUp,
                     onLongClick = navController::backToMain,
@@ -561,6 +588,7 @@ fun LyricsSettings(
             }
         },
     )
+    } // end full-screen haze Box
 }
 
 internal fun PreferredLyricsProvider.displayName(): String =

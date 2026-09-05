@@ -40,7 +40,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -62,7 +62,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -104,7 +103,10 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
-import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -113,10 +115,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-import moe.rukamori.archivetune.ui.component.layerBackdrop
-import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
@@ -158,22 +157,19 @@ fun AodCustomizedScreen(
     navController: NavController,
     scrollTo: String? = null,
 ) {
-    val scrollBehavior = appBarScrollBehavior()
-
-    // ── Haze / frosted-glass header (2026-09-05) ──
-    // Per user request: "haze effect is not available in AOD customisation".
-    // This screen previously used `FrostedHeaderPill(plain = true)` — a bare
-    // Row with no glass. It now follows the HistoryScreen pattern: when the
-    // Liquid Glass master toggle is ON (and Android 12+), the pill samples
-    // the LazyColumn content recorded by `Modifier.layerBackdrop(backdrop)`
-    // and renders real kyant glass (vibrancy + blur + lens); when OFF it
-    // falls back to the translucent frosted `surfaceContainerHigh` pill that
-    // History/Library pages show.
-    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
-    val liquidGlassHeaderActive =
-        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val aodSurfaceColor = MaterialTheme.colorScheme.surface
-    val backdrop = rememberBackdrop(aodSurfaceColor)
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt put a kyant glass pill in the top bar
+    // and recorded the content below it into a layerBackdrop — but the pill
+    // and that layer never overlap, so the pill rendered opaque with no
+    // visible blur (user report: "liquid glass but the background is opaque
+    // and there's no haze effect"). This now uses the canonical pattern the
+    // 30+ approved settings screens use: transparent TopAppBar + plain
+    // FrostedHeaderPill, the scrolling LazyColumn as the haze source, and
+    // ScreenHeaderHaze rendering the same progressive top-fade blur the Home
+    // route's bar shows. The haze renders regardless of the Liquid Glass
+    // master toggle (it needs no glass), matching those screens exactly.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
@@ -286,17 +282,13 @@ fun AodCustomizedScreen(
         }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
-                    FrostedHeaderPill(backdrop = backdrop.takeIf { liquidGlassHeaderActive }) {
+                    FrostedHeaderPill(plain = true) {
                         IconButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
@@ -315,10 +307,9 @@ fun AodCustomizedScreen(
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior,
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
             )
@@ -332,32 +323,33 @@ fun AodCustomizedScreen(
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         val positions = rememberPreferencePositions()
         androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+        // Full-screen Box: the Scaffold content slot spans the whole screen
+        // (innerPadding is advisory), so the LazyColumn viewport starts at
+        // y=0 — items scroll up THROUGH the transparent bar into the
+        // progressive blur, exactly the Home feed's scroll-under behaviour.
+        Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .hazeSource(headerHaze)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // Records the scrolling content into `backdrop` so the
-                    // frosted header pill above can blur it (haze effect).
-                    // Only active when the Liquid Glass master toggle is on;
-                    // otherwise the pill renders its translucent fallback and
-                    // this modifier is a no-op (zero recording cost).
-                    .then(
-                        if (liquidGlassHeaderActive) {
-                            Modifier.layerBackdrop(backdrop)
-                        } else {
-                            Modifier
-                        },
-                    )
                     // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
                     .then(positions.containerModifier()),
-            contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 16.dp),
+            contentPadding =
+                PaddingValues(
+                    // Scroll-under clearance: the pinned bar zone (status bar
+                    // + 64dp) + a little breathing room — replaces the old
+                    // `.padding(paddingValues)` which reserved the space as
+                    // layout padding (content could never scroll under it).
+                    top = paddingValues.calculateTopPadding(),
+                    bottom = playerAwareBottomPadding + 16.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item(
@@ -685,6 +677,15 @@ fun AodCustomizedScreen(
                 Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
             }
         }
+
+        // Header haze overlay — progressive top-fade blur over the list
+        // (the Home route's material), drawn AFTER the LazyColumn so it sits
+        // on top of the scrolling content, under the transparent top bar.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        } // end full-screen haze Box
     }
 }
 
