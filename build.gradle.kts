@@ -41,6 +41,16 @@ subprojects {
     configurations.configureEach {
         resolutionStrategy {
             cacheChangingModulesFor(0, "seconds")
+
+            // SimpMusic stream-resolution port (2026-09-05), copied verbatim from
+            // SimpMusic's root build.gradle.kts: PipePipe and Brave both depend on
+            // com.github.TeamNewPipe:nanojson with different commit hashes. Gradle's
+            // default resolver picks PipePipe's older 1d9e1aea... commit which lacks
+            // JsonArray.streamAsJsonObjects(), causing NoSuchMethodError when Brave's
+            // fallback runs at runtime. Force the latest upstream commit (newer than
+            // both libs ship) across every module so the merged APK/JAR carries a
+            // nanojson with the API both extractors expect.
+            force("com.github.TeamNewPipe:nanojson:c7a6c1c08d16b6d5ecded34758e6415e07be2166")
         }
     }
 }

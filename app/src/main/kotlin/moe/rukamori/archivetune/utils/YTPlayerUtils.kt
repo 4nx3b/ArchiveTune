@@ -38,6 +38,8 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_CRE
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.simpstream.ITAG
+import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.potoken.PoTokenResult
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -52,6 +54,7 @@ object YTPlayerUtils {
     private const val MAX_PLAYBACK_DATA_CACHE_ENTRIES = 128
     private const val PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT = 32
     const val STREAM_URL_EXPIRY_SAFETY_MS = 60_000L
+    private const val SIMP_MUSIC_FAILURE_BACKOFF_MS = 60_000L
     private val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
 
     private fun extractExpireTimestampMsFromUrl(url: String): Long? {
@@ -236,12 +239,16 @@ object YTPlayerUtils {
     private val playbackDataResolutionMutexes = Array(PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT) { Mutex() }
     private val failedStreamClientsUntil = ConcurrentHashMap<String, Long>()
 
+    /** Per-video backoff for the SimpMusic resolution (see simpMusicStreamResolution). */
+    private val simpMusicFailedUntil = ConcurrentHashMap<String, Long>()
+
     @Volatile private var lastSuccessfulClientKey: String? = null
 
     fun clearPlaybackAuthCaches() {
         streamUrlCache.clear()
         playbackDataCache.clear()
         failedStreamClientsUntil.clear()
+        simpMusicFailedUntil.clear()
         lastSuccessfulClientKey = null
     }
 
@@ -981,6 +988,168 @@ object YTPlayerUtils {
         }.isSuccess
     }
 
+    /**
+     * The ported SimpMusic resolution + format selection.
+     *
+     * `SimpMusicPlayer.player` is SimpMusic's `YouTube.player` — InnerTube WEB_REMIX request
+     * + 3-tier NewPipe extraction + itag merge (see core simpstream/SimpMusicPlayer.kt).
+     * Everything below the call is SimpMusic's `StreamRepositoryImpl.getStream` selection:
+     * pick the format by the quality's itag, fall back to the high-quality twin, then to any
+     * audio stream, then to any stream at all; append the CPN (playback tracking) and the
+     * `range=0-…` window the way SimpMusic emits its URLs.
+     *
+     * Returns null on any failure so [playerResponseForPlaybackOnce] falls back to the
+     * existing multi-client resolution.
+     */
+    private suspend fun simpMusicStreamResolution(
+        videoId: String,
+        playlistId: String?,
+        audioQuality: AudioQuality,
+        networkMetered: Boolean,
+    ): PlaybackData? {
+        val authState = YouTube.currentPlaybackAuthState()
+        val result =
+            try {
+                SimpMusicPlayer.player(videoId = videoId, playlistId = playlistId, authState = authState)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                Result.failure(throwable)
+            }
+        val (cpn, response, mediaType) =
+            result.getOrNull()
+                ?: run {
+                    // Back the SimpMusic path off for a minute so the quality-fallback
+                    // loop (and the next few plays of this track) go straight to the
+                    // proven multi-client resolution instead of repeating a failing
+                    // extraction.
+                    simpMusicFailedUntil[videoId] = System.currentTimeMillis() + SIMP_MUSIC_FAILURE_BACKOFF_MS
+                    Timber.tag(logTag).w(
+                        result.exceptionOrNull(),
+                        "SimpMusic resolution failed for %s; falling back to native multi-client resolution",
+                        videoId,
+                    )
+                    return null
+                }
+        simpMusicFailedUntil.remove(videoId)
+
+        Timber.tag(logTag).i(
+            "SimpMusic resolution succeeded for %s (%s, source=%s)",
+            videoId,
+            mediaType,
+            SimpMusicPlayer.getExtractSource(videoId) ?: "unknown",
+        )
+
+        // ── SimpMusic getStream: format selection by itag ──
+        val formatList = mutableListOf<PlayerResponse.StreamingData.Format>()
+        formatList.addAll(response.streamingData?.formats?.filter { it.url.isNullOrEmpty().not() } ?: emptyList())
+        formatList.addAll(
+            response.streamingData?.adaptiveFormats?.filter { it.url.isNullOrEmpty().not() }
+                ?: emptyList(),
+        )
+        if (formatList.isEmpty()) {
+            Timber.tag(logTag).w("SimpMusic resolution produced no URL-bearing formats for %s", videoId)
+            return null
+        }
+
+        val itag = simpMusicItagForQuality(audioQuality, networkMetered)
+        val audioTwinItag = ITAG.highQualityTwinOf(itag)
+        val audioFormat =
+            formatList.find { it.itag == itag } ?: if (audioTwinItag != null) {
+                formatList.find { it.itag == audioTwinItag }
+            } else {
+                formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
+            }
+        var format = audioFormat
+        if (format == null) {
+            format = formatList.lastOrNull { it.url.isNullOrEmpty().not() }
+        }
+        if (format == null || format.url == null) {
+            Timber.tag(logTag).w(
+                "SimpMusic resolution found no playable format for %s at quality %s (wanted itag %d, available %s)",
+                videoId,
+                audioQuality,
+                itag,
+                formatList.map { it.itag },
+            )
+            return null
+        }
+
+        Timber.tag(logTag).i(
+            "SimpMusic selected format: itag=${format.itag}, ${format.mimeType}, bitrate: ${format.bitrate}",
+        )
+
+        // ── SimpMusic getStream: URL emission (cpn + range window) ──
+        // SimpMusic branches on whether the CPN came back: with a CPN both the
+        // tracking param and the range window are appended; without it only the
+        // range window (manifest URLs only ever get the CPN).
+        val url = requireNotNull(format.url)
+        val finalUrl =
+            if (SimpMusicPlayer.isManifestUrl(url)) {
+                if (cpn != null) url.plus("&cpn=$cpn") else url
+            } else if (cpn != null) {
+                url.plus("&cpn=$cpn&range=0-${format.contentLength ?: 10000000}")
+            } else {
+                url.plus("&range=0-${format.contentLength ?: 10000000}")
+            }
+
+        val streamExpiresInSeconds =
+            resolveExpireSeconds(
+                apiExpire = response.streamingData?.expiresInSeconds,
+                streamUrl = finalUrl,
+            )
+
+        return PlaybackData(
+            audioConfig = response.playerConfig?.audioConfig,
+            videoDetails = response.videoDetails,
+            playbackTracking = response.playbackTracking?.let(::withSimpMusicTrackingHosts),
+            format = format,
+            streamUrl = finalUrl,
+            streamExpiresInSeconds = streamExpiresInSeconds,
+            authFingerprint = authState.streamCacheFingerprint,
+        )
+    }
+
+    /**
+     * SimpMusic's StreamRepositoryImpl rewrites the tracking baseUrls from s.youtube.com to
+     * music.youtube.com before persisting them; copy that so watch-time reporting matches.
+     */
+    private fun withSimpMusicTrackingHosts(
+        tracking: PlayerResponse.PlaybackTracking,
+    ): PlayerResponse.PlaybackTracking =
+        tracking.copy(
+            videostatsPlaybackUrl =
+                tracking.videostatsPlaybackUrl?.copy(
+                    baseUrl = tracking.videostatsPlaybackUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                ),
+            atrUrl =
+                tracking.atrUrl?.copy(
+                    baseUrl = tracking.atrUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                ),
+            videostatsWatchtimeUrl =
+                tracking.videostatsWatchtimeUrl?.copy(
+                    baseUrl = tracking.videostatsWatchtimeUrl.baseUrl?.replace("https://s.youtube.com", "https://music.youtube.com"),
+                ),
+        )
+
+    /**
+     * ArchiveTune's AudioQuality -> SimpMusic's QUALITY itag.
+     *
+     * SimpMusic's own items are Low(66k)=250 / Medium(129k)=251 / High Opus(256k)=774 /
+     * High AAC(256k)=141. AUTO behaves like the existing selectAudioFormatCandidates:
+     * metered -> medium, unmetered -> high (Opus, twin AAC fallback handled by the caller).
+     */
+    private fun simpMusicItagForQuality(
+        audioQuality: AudioQuality,
+        networkMetered: Boolean,
+    ): Int =
+        when (audioQuality) {
+            AudioQuality.LOW -> ITAG.AUDIO_OPUS_LOW
+            AudioQuality.HIGH -> ITAG.AUDIO_OPUS_MEDIUM
+            AudioQuality.HIGHEST -> ITAG.AUDIO_OPUS_HIGH
+            AudioQuality.AUTO -> if (networkMetered) ITAG.AUDIO_OPUS_MEDIUM else ITAG.AUDIO_OPUS_HIGH
+        }
+
     private suspend fun playerResponseForPlaybackOnce(
         videoId: String,
         playlistId: String?,
@@ -992,7 +1161,32 @@ object YTPlayerUtils {
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
 
-        // Echo-Music resolution port (2026-09-05): Echo's cascade runs FIRST — the
+        // ── SimpMusic stream resolution (ported 2026-09-05) ──────────────────
+        // This is the PRIMARY path, copied from how maxrave-dev/SimpMusic
+        // resolves YouTube Music streams: one InnerTube WEB_REMIX player
+        // request (with a random CPN and the days-since-epoch signature
+        // timestamp), then a 3-tier NewPipe extraction (PipePipe with a local
+        // QuickJS cipher decoder -> PipePipe with remote decoding at
+        // api.pipepipe.dev -> BravePipe) whose resolved URLs replace the
+        // response's URLs matched by itag. The format is then selected by
+        // SimpMusic's itag mapping for the requested quality.
+        // On failure we simply fall through to Echo's cascade and then to
+        // ArchiveTune's existing multi-client chain below, so no existing
+        // behaviour is lost. A 60s per-video backoff keeps the quality-fallback
+        // loop from re-running the full extraction three times for the same
+        // track.
+        if (simpMusicFailedUntil[videoId]?.let { it > System.currentTimeMillis() } != true) {
+            simpMusicStreamResolution(
+                videoId = videoId,
+                playlistId = playlistId,
+                audioQuality = audioQuality,
+                networkMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+            )?.let { return it }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Echo-Music resolution port (2026-09-05): Echo's cascade runs second —
+        // after the SimpMusic resolution above, before the local chain — the
         // VISIONOS-first client order, NewPipe StreamInfo URL substitution and the
         // last-byte HEAD+Range validation probe (see EchoStreamResolver). Everything
         // below (the 13-client chain, po-token minting, auth repair, bot-detection
