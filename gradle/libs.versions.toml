@@ -27,6 +27,8 @@ workManager = "2.11.2"
 composeReorderable = "3.1.0"
 squigglyslider = "1.0.0"
 shimmer = "1.5.0"
+lottie = "6.6.6"
+profileinstaller = "1.4.1"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
 brotli = "0.1.2"
@@ -121,6 +123,8 @@ coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 shimmer = { module = "com.valentinilk.shimmer:compose-shimmer", version.ref = "shimmer" }
+lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
+profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 
 palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
 

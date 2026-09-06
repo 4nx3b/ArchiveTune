@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
+import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
@@ -453,6 +454,9 @@ fun AutoPlaylistScreen(
                     EmptyPlaceholder(
                         icon = R.drawable.music_note,
                         text = stringResource(R.string.playlist_is_empty),
+                        // Subtle looping music-note animation for the empty
+                        // liked-songs / auto-playlist state.
+                        lottieRes = ArchiveTuneLottie.EmptyStateRes,
                     )
                 }
             } else {

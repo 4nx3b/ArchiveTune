@@ -304,11 +304,61 @@ private class GmsCastMediaItemConverter(
 
     override fun toMediaItem(mediaQueueItem: MediaQueueItem): MediaItem =
         try {
-            delegate.toMediaItem(mediaQueueItem)
+            delegate
+                .toMediaItem(mediaQueueItem)
+                .enrichWithAppMetadata(mediaQueueItem)
         } catch (error: RuntimeException) {
             Timber.tag("Cast").w(error, "Falling back to manual Cast media item conversion")
             mediaQueueItem.toFallbackMediaItem()
         }
+
+    /**
+     * Belt-and-braces metadata guarantee for cast round-trips (user report
+     * 2026-09-06: "when the app is casting I don't see the song details in
+     * the notification").
+     *
+     * [androidx.media3.cast.DefaultMediaItemConverter.toMediaItem] rebuilds
+     * the Media3 [MediaItem.mediaMetadata] from the receiver's CastMetadata
+     * but drops the ArchiveTune app [moe.rukamori.archivetune.models.MediaMetadata]
+     * tag entirely, so every consumer of `MediaItem.metadata` (the app
+     * extension reading `localConfiguration.tag`) — the media notification
+     * details path, widget, mini-player and playback state synced from
+     * onMediaItemTransition — sees null during cast playback. This wrapper
+     * re-attaches the app metadata (built from the same CastMetadata the
+     * fallback path uses) whenever the converted item lacks it, and fills
+     * any missing Media3 title/artist fields from the same source so the
+     * notification always renders the song details.
+     */
+    private fun MediaItem.enrichWithAppMetadata(mediaQueueItem: MediaQueueItem): MediaItem {
+        val mediaInfo = mediaQueueItem.media
+        val appMetadata = (localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata)
+            ?: mediaInfo.toAppMediaMetadata(mediaId)
+        val media3Metadata = mediaMetadata
+        val enrichedMedia3Metadata =
+            if (media3Metadata.title == null || media3Metadata.artist == null) {
+                val castMetadata = mediaInfo?.metadata
+                media3Metadata
+                    .buildUpon()
+                    .apply {
+                        if (media3Metadata.title == null) {
+                            castMetadata?.stringValue(CastMetadata.KEY_TITLE)?.let { title ->
+                                setTitle(title)
+                            }
+                        }
+                        if (media3Metadata.artist == null) {
+                            castMetadata?.stringValue(CastMetadata.KEY_ARTIST)?.let { artist ->
+                                setArtist(artist)
+                            }
+                        }
+                    }.build()
+            } else {
+                media3Metadata
+            }
+        return buildUpon()
+            .setTag(appMetadata)
+            .setMediaMetadata(enrichedMedia3Metadata)
+            .build()
+    }
 
     private fun MediaItem.resolveForReceiver(): MediaItem {
         val uri = localConfiguration?.uri ?: return this

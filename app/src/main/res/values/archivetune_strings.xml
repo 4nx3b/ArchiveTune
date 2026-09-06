@@ -214,7 +214,6 @@
     <string name="playlist">Playlist</string>
     <string name="remove_from_history_confirm">Clear all local history? This cannot be undone.</string>
     <string name="sync_playlist">Sync playlist</string>
-    <string name="marked_as_read">Marked as read</string>
     <string name="playlist_sync_progress_step">%1$d/%2$d Songs</string>
     <string name="playlist_sync_failed">Playlist sync failed: %1$s</string>
     <string name="sync_disabled">Sync disabled</string>
@@ -530,6 +529,11 @@
     <string name="singles">Singles</string>
     <string name="ep">EP</string>
     <string name="no_releases_found">No releases found</string>
+    <string name="marked_as_read">Marked as read</string>
+    <string name="mark_as_read">Mark as read</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="select_releases">Select releases</string>
+    <string name="select_all">Select all</string>
     <string name="playlist_private_title">This playlist was private</string>
     <string name="playlist_private_desc">You don\'t have access to this playlist.</string>
     <string name="empty_playlist">Empty Playlist</string>

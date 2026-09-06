@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.statToPeriod
@@ -291,7 +292,19 @@ class StatsViewModel
                 )
 
         init {
-            viewModelScope.launch {
+            // Fix (user report 2026-09-06): "open stats page in settings and then
+            // come back the app gets stuck for 3-4 seconds". These collectors
+            // refresh stale artist/album metadata with sequential InnerTube
+            // requests. InnerTube's `body<T>()` deserializes the (very large)
+            // JSON response on the CALLING coroutine's context — previously
+            // `viewModelScope.launch {}` defaulted to Dispatchers.Main, so
+            // every artist/album page parse blocked the main thread for tens
+            // to hundreds of milliseconds each, stacking into multi-second
+            // freezes exactly when leaving the screen. Launching on
+            // Dispatchers.IO keeps all parsing + DB writes off the main
+            // thread while preserving the exact same refresh behavior
+            // (same filters, same endpoints, same sequential order).
+            viewModelScope.launch(Dispatchers.IO) {
                 mostPlayedArtists.collect { artists ->
                     artists
                         .map { it.artist }
@@ -309,7 +322,7 @@ class StatsViewModel
                         }
                 }
             }
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 mostPlayedAlbums.collect { albums ->
                     albums
                         .filter {

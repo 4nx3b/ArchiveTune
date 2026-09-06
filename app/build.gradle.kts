@@ -471,6 +471,14 @@ dependencies {
     implementation(libs.coil.network.okhttp)
 
     implementation(libs.shimmer)
+    // Lottie Compose — animation layer for like bursts, download completion
+    // and empty states. Only the official Airbnb artifact; no extra plugins.
+    implementation(libs.lottie.compose)
+    // Baseline Profile installer — packages app/src/main/baseline-prof.txt
+    // into release builds so ART pre-compiles the hot user journeys (startup,
+    // home, player, lyrics, liquid-glass rendering) on first install instead
+    // of JIT-compiling them on first use. No runtime API surface.
+    implementation(libs.profileinstaller)
 
     // Glance Widget support
     implementation("androidx.glance:glance:1.1.1")

@@ -285,6 +285,18 @@ fun Thumbnail(
     val currentItem by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemIndex } }
     val itemScrollOffset by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemScrollOffset } }
 
+    // Guards the swipe handler against double-firing. After a swipe-triggered
+    // seek, `player.currentMediaItemIndex` updates immediately while
+    // `mediaMetadata` (and the "current" thumbnail page built from it) lags
+    // a few frames behind. During that window the page list is rebuilt from
+    // a stale "current" slot, which could re-trigger the swipe handler and
+    // bounce playback back to the previous song — most visibly when the
+    // current song was on repeat (user report: swiping to the previous song
+    // "swipes" but the repeated song starts playing again). Deduplicating
+    // by the exact swipe target fixes that without changing any visual
+    // behavior.
+    var lastHandledSwipeTarget by remember { mutableStateOf<String?>(null) }
+
     // Handle swipe to change song
     LaunchedEffect(itemScrollOffset) {
         if (!thumbnailLazyGridState.isScrollInProgress || !swipeThumbnail || itemScrollOffset != 0 ||
@@ -293,10 +305,26 @@ fun Thumbnail(
             return@LaunchedEffect
         }
 
-        if (currentItem > currentMediaIndex && canSkipNext) {
-            playerConnection.player.seekToNext()
-        } else if (currentItem < currentMediaIndex && canSkipPrevious) {
-            playerConnection.player.seekToPreviousMediaItem()
+        if (currentItem == currentMediaIndex) return@LaunchedEffect
+
+        val targetPage = thumbnailPages.getOrNull(currentItem) ?: return@LaunchedEffect
+        val targetWindowIndex = targetPage.windowIndex
+        if (targetWindowIndex < 0 || targetWindowIndex == currentIndex) return@LaunchedEffect
+
+        val swipeTargetKey = "$currentItem:${targetPage.mediaItem.mediaId}:$targetWindowIndex"
+        if (lastHandledSwipeTarget == swipeTargetKey) return@LaunchedEffect
+        lastHandledSwipeTarget = swipeTargetKey
+
+        // Seek directly to the window the user swiped to. Player.seekTo(
+        // mediaItemIndex, positionMs) is repeat-mode-independent, unlike
+        // seekToNext()/seekToPreviousMediaItem(), whose navigation resolves
+        // through repeat-mode-aware index computation (with REPEAT_MODE_ONE
+        // the resolved "previous" target can fall back onto the current,
+        // repeated song — the exact reported bug). An explicit index seek
+        // always lands on the page the user actually swiped to.
+        val directionNext = currentItem > currentMediaIndex
+        if ((directionNext && canSkipNext) || (!directionNext && canSkipPrevious)) {
+            playerConnection.player.seekTo(targetWindowIndex, 0L)
         }
     }
 
