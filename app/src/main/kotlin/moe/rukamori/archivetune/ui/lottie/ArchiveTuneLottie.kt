@@ -50,13 +50,16 @@ import moe.rukamori.archivetune.R
 @Composable
 fun rememberArchiveTuneLottieComposition(
     @RawRes rawRes: Int,
-): LottieComposition? =
+): LottieComposition? {
     // rememberLottieComposition keeps an internal cache keyed by the spec, so
     // recomposition (and re-entering a screen) reuses the parsed composition
-    // instead of re-parsing the JSON.
-    rememberLottieComposition(
+    // instead of re-parsing the JSON. It returns a LottieCompositionResult
+    // (a State<LottieComposition?>); delegate to read the composition value.
+    val composition by rememberLottieComposition(
         LottieCompositionSpec.RawRes(rawRes),
     )
+    return composition
+}
 
 /**
  * Shared dynamic-property builder: recolors every shape group named "Color"
