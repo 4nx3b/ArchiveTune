@@ -11,14 +11,19 @@ package moe.rukamori.archivetune.ui.screens
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +37,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +47,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,17 +64,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,7 +110,11 @@ import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.viewmodels.NewReleaseContent
 import moe.rukamori.archivetune.viewmodels.NewReleaseUiState
 import moe.rukamori.archivetune.viewmodels.NewReleaseViewModel
@@ -109,8 +126,16 @@ fun NewReleaseScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     viewModel: NewReleaseViewModel = hiltViewModel(),
 ) {
-    val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val menuState = LocalMenuState.current
+    // "Marked as read" toast — shown when the user marks releases read via
+    // the selection mode's action bar (2026-09-06 redesign: manual
+    // multi-select + mark-as-read; the previous long-press-to-mark and
+    // mark-all header button were replaced by it).
+    val showMarkedAsReadToast: () -> Unit = {
+        Toast.makeText(context, R.string.marked_as_read, Toast.LENGTH_SHORT).show()
+    }
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
@@ -122,6 +147,16 @@ fun NewReleaseScreen(
     // visible grid in-place. Empty query = show all releases.
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
+
+    // Selection mode ("mark as read", 2026-09-06): the header's edit icon
+    // (liquid-glass pen in glass mode, pen IconButton in the plain top bar)
+    // enters selection mode. Tapping releases toggles them; the bottom
+    // action bar marks any number of selected releases as read (persisted,
+    // removed from the feed, notifications cancelled) with a
+    // "Marked as read" toast. Long-press outside selection mode keeps its
+    // pre-2026-09-05 behavior: opens the album menu.
+    var isSelectionMode by rememberSaveable { mutableStateOf(false) }
+    val selectedReleaseIds = remember { mutableStateSetOf<String>() }
 
     // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
     // back pill + search pill pinned over the scrolling content, plus the
@@ -223,6 +258,36 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
+                            // Selection-mode toggle (2026-09-06): the plain-bar
+                            // twin of the glass header's pen pill. Toggles
+                            // selection mode so any number of releases can be
+                            // selected manually and marked as read from the
+                            // bottom action bar (replaces the previous
+                            // mark-all-read button + long-press marking).
+                            IconButton(
+                                onClick = {
+                                    isSelectionMode = !isSelectionMode
+                                    selectedReleaseIds.clear()
+                                },
+                            ) {
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (isSelectionMode) {
+                                                R.drawable.solar_close_circle_linear
+                                            } else {
+                                                R.drawable.solar_pen_linear
+                                            },
+                                        ),
+                                    contentDescription = stringResource(R.string.select_releases),
+                                    tint =
+                                        if (isSelectionMode) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                )
+                            }
                             // Using Material3's standard IconButton here (not the
                             // custom AppIconButton) because the custom one uses
                             // combinedClickable which can fail to register taps in
@@ -302,8 +367,27 @@ fun NewReleaseScreen(
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
                         searchQuery = searchQuery,
-                        onReleaseClick = { album -> navController.navigate("album/${album.id}") },
+                        isSelectionMode = isSelectionMode,
+                        selectedIds = selectedReleaseIds,
+                        onReleaseClick = { album ->
+                            if (isSelectionMode) {
+                                // Selection mode: tap toggles the release's
+                                // selection instead of navigating (the user
+                                // picks what to mark as read).
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                if (album.id in selectedReleaseIds) {
+                                    selectedReleaseIds.remove(album.id)
+                                } else {
+                                    selectedReleaseIds.add(album.id)
+                                }
+                            } else {
+                                navController.navigate("album/${album.id}")
+                            }
+                        },
                         onReleaseLongClick = { album ->
+                            // Restored pre-2026-09-05 behaviour (user request
+                            // 2026-09-06: "remove that hold to mark as read"):
+                            // long-press opens the album menu again.
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuState.show {
                                 YouTubeAlbumMenu(
@@ -396,8 +480,144 @@ fun NewReleaseScreen(
                 title = stringResource(R.string.new_releases),
                 onBack = navController::navigateUp,
                 onBackLongClick = navController::backToMain,
-                onSearch = { isSearchActive = true },
+                // Trailing liquid-glass pill (2026-09-06, user request:
+                // "add an edit icon in liquid glass on the right header that
+                // lets me manually select as much as I like manually and then
+                // I can mark them as read"): the selection-mode pen +
+                // search, the same two affordances the plain top bar's
+                // actions carry. In selection mode the pen becomes a close
+                // button that clears the selection and exits.
+                trailing = {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = {
+                                isSelectionMode = !isSelectionMode
+                                selectedReleaseIds.clear()
+                            },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (isSelectionMode) {
+                                            R.drawable.solar_close_circle_linear
+                                        } else {
+                                            R.drawable.solar_pen_linear
+                                        },
+                                    ),
+                                contentDescription = stringResource(R.string.select_releases),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = { isSearchActive = true },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = stringResource(R.string.search),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                },
             )
+        }
+
+        // Selection action bar (2026-09-06) — appears only in selection mode
+        // with at least one release selected. "Mark as read" removes the
+        // selected releases from the feed (persisted via the ViewModel, the
+        // matching system notifications are cancelled), clears the selection
+        // and shows a "Marked as read" toast. "Select all" selects every
+        // release currently in the feed so the previous mark-all-read
+        // capability remains available through manual selection.
+        AnimatedVisibility(
+            visible = isSelectionMode && selectedReleaseIds.isNotEmpty(),
+            enter =
+                slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 2 } +
+                    fadeIn(tween(200)),
+            exit =
+                slideOutVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 2 } +
+                    fadeOut(tween(150)),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                border =
+                    BorderStroke(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    ),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .navigationBarsPadding()
+                        .fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.selected_count, selectedReleaseIds.size),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = {
+                            // Select every release currently in the feed.
+                            val state = uiState
+                            if (state is NewReleaseUiState.Success) {
+                                selectedReleaseIds.addAll(
+                                    (state.content.albums + state.content.singles + state.content.eps)
+                                        .map { it.id },
+                                )
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.select_all))
+                    }
+                    TextButton(
+                        onClick = {
+                            isSelectionMode = false
+                            selectedReleaseIds.clear()
+                        },
+                    ) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.markAsRead(selectedReleaseIds.toSet())
+                            showMarkedAsReadToast()
+                            selectedReleaseIds.clear()
+                            isSelectionMode = false
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_check_circle_linear),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.mark_as_read))
+                    }
+                }
+            }
         }
         }
     }
@@ -448,6 +668,8 @@ private fun NewReleaseGridContent(
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
     searchQuery: String,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     onRefresh: () -> Unit,
@@ -478,7 +700,38 @@ private fun NewReleaseGridContent(
         else allSections.map { it.copy(releases = it.releases.filter(::matchesQuery)) }.filter { it.releases.isNotEmpty() }
     }
 
+    // Progressive rendering (2026-09-06, user request: "it should just
+    // display the total number and not load everything at once — only load
+    // when I scroll"). The full dataset is known (the summary header shows
+    // the total count immediately) but only the first `visibleCount` releases
+    // are composed into the tab grids; scrolling near the end reveals the
+    // next batch. The "All" tab's horizontal sections are already lazy (a
+    // LazyHorizontalGrid), so they compose on scroll natively.
+    val gridState = rememberLazyGridState()
+    var visibleCount by rememberSaveable(selectedTab) { mutableStateOf(NewReleaseVisibleBatchSize) }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val info = gridState.layoutInfo
+            val lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val total = info.totalItemsCount
+            total > 0 && lastVisibleIndex >= total - NewReleasePrefetchDistance
+        }
+    }
+    LaunchedEffect(shouldLoadMore, filteredReleases.size) {
+        if (shouldLoadMore && visibleCount < filteredReleases.size) {
+            visibleCount += NewReleaseVisibleBatchSize
+        }
+    }
+
+    // Hoisted above the LazyVerticalGrid content lambda (which is not a
+    // @Composable context — only the per-item content lambdas are).
+    val visibleReleases = remember(filteredReleases, visibleCount) {
+        filteredReleases.take(visibleCount)
+    }
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
         contentPadding = paddingValues,
         modifier = Modifier.fillMaxSize(),
@@ -528,6 +781,8 @@ private fun NewReleaseGridContent(
                         activeAlbumId = activeAlbumId,
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
+                        isSelectionMode = isSelectionMode,
+                        selectedIds = selectedIds,
                         onReleaseClick = onReleaseClick,
                         onReleaseLongClick = onReleaseLongClick,
                     )
@@ -543,23 +798,132 @@ private fun NewReleaseGridContent(
             }
         } else {
             items(
-                items = filteredReleases,
+                items = visibleReleases,
                 key = { it.id },
                 contentType = { selectedTab.contentType },
             ) { album ->
-                YouTubeGridItem(
-                    item = album,
-                    isActive = activeAlbumId == album.id,
-                    isPlaying = isPlaying,
+                SelectableReleaseItem(
+                    album = album,
                     fillMaxWidth = true,
+                    isSelectionMode = isSelectionMode,
+                    selectedIds = selectedIds,
+                    activeAlbumId = activeAlbumId,
+                    isPlaying = isPlaying,
                     coroutineScope = coroutineScope,
-                    modifier =
-                        Modifier
-                            .animateItem()
-                            .combinedClickable(
-                                onClick = { onReleaseClick(album) },
-                                onLongClick = { onReleaseLongClick(album) },
-                            ),
+                    onReleaseClick = onReleaseClick,
+                    onReleaseLongClick = onReleaseLongClick,
+                    // animateItem is a LazyGridItemScope extension — it must
+                    // be invoked inside the items {} lambda, so it is applied
+                    // to the passed-in modifier instead of inside the composable.
+                    itemModifier = Modifier.animateItem(),
+                )
+            }
+        }
+    }
+}
+
+/** Number of releases composed per progressive-rendering batch. */
+private const val NewReleaseVisibleBatchSize = 24
+
+/** Grid items remaining before the next batch is revealed. */
+private const val NewReleasePrefetchDistance = 8
+
+/**
+ * A release grid item with selection affordances. Outside selection mode this
+ * is exactly the previous [YouTubeGridItem] with its click/long-click
+ * behavior. Inside selection mode a translucent scrim, a selection border and
+ * a circular check badge are layered on top, and taps toggle selection (via
+ * [onReleaseClick], which routes to the selection handler in selection mode).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SelectableReleaseItem(
+    album: AlbumItem,
+    fillMaxWidth: Boolean,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
+    activeAlbumId: String?,
+    isPlaying: Boolean,
+    coroutineScope: CoroutineScope,
+    onReleaseClick: (AlbumItem) -> Unit,
+    onReleaseLongClick: (AlbumItem) -> Unit,
+    itemModifier: Modifier = Modifier,
+) {
+    val selected = album.id in selectedIds
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier =
+            itemModifier
+                .let { if (fillMaxWidth) it.fillMaxWidth() else it }
+                .let {
+                    if (isSelectionMode) {
+                        it.border(
+                            width = if (selected) 2.dp else 1.dp,
+                            color =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                                },
+                            shape = shape,
+                        )
+                    } else {
+                        it
+                    }
+                },
+    ) {
+        YouTubeGridItem(
+            item = album,
+            isActive = activeAlbumId == album.id,
+            isPlaying = isPlaying,
+            fillMaxWidth = fillMaxWidth,
+            coroutineScope = coroutineScope,
+            modifier =
+                Modifier.combinedClickable(
+                    onClick = { onReleaseClick(album) },
+                    onLongClick = { onReleaseLongClick(album) },
+                ),
+        )
+        if (isSelectionMode) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .clip(shape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            } else {
+                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f)
+                            },
+                        ),
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                            },
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_check_circle_linear),
+                    contentDescription = null,
+                    tint =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        },
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -635,6 +999,8 @@ private fun NewReleaseHorizontalSection(
     activeAlbumId: String?,
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
 ) {
@@ -652,19 +1018,17 @@ private fun NewReleaseHorizontalSection(
             key = { it.id },
             contentType = { contentType },
         ) { album ->
-            YouTubeGridItem(
-                item = album,
-                isActive = activeAlbumId == album.id,
-                isPlaying = isPlaying,
+            SelectableReleaseItem(
+                album = album,
                 fillMaxWidth = false,
+                isSelectionMode = isSelectionMode,
+                selectedIds = selectedIds,
+                activeAlbumId = activeAlbumId,
+                isPlaying = isPlaying,
                 coroutineScope = coroutineScope,
-                modifier =
-                    Modifier
-                        .animateItem()
-                        .combinedClickable(
-                            onClick = { onReleaseClick(album) },
-                            onLongClick = { onReleaseLongClick(album) },
-                        ),
+                onReleaseClick = onReleaseClick,
+                onReleaseLongClick = onReleaseLongClick,
+                itemModifier = Modifier.animateItem(),
             )
         }
     }

@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,7 +63,10 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.extractThemeColor
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ArtworkStorage
 import moe.rukamori.archivetune.utils.discordAlbumMusicUrl
@@ -91,7 +93,21 @@ private val DiscordLargeTextOptions = listOf("song", "artist", "album", "app", "
 @Composable
 fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val scrollBehavior = appBarScrollBehavior()
+
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt put a kyant glass pill in the
+    // LargeFlexibleTopAppBar and recorded the Column below it into a
+    // layerBackdrop — but the pill and the recorded layer never overlap,
+    // so the pill rendered opaque with no visible blur (user report:
+    // "liquid glass but the background is opaque and there's no haze
+    // effect"). This now uses the canonical pattern the 30+ approved
+    // settings screens use: transparent TopAppBar + plain FrostedHeaderPill
+    // (the 3-dot actions stay), the scrolling Column as the haze source, and
+    // ScreenHeaderHaze rendering the progressive top-fade blur. The
+    // collapsing scroll behavior goes away with the transparent pinned bar
+    // — the Home behaviour the approved screens show.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val song by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -381,15 +397,11 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            LargeFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -441,11 +453,10 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 },
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -459,6 +470,11 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
         LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+        // Full-screen Box: the Scaffold content slot spans the whole screen
+        // (innerPadding is advisory), so the Column viewport starts at y=0 —
+        // items scroll up THROUGH the transparent bar into the blur. The
+        // Column's own top padding reserves the bar zone INSIDE the scroll.
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier =
                 Modifier
@@ -471,6 +487,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                     .then(positions.containerModifier())
                     .verticalScroll(scrollState)
+                    .hazeSource(headerHaze)
                     .padding(
                         top = innerPadding.calculateTopPadding() + 16.dp,
                         bottom = 32.dp,
@@ -769,6 +786,15 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 },
             )
         }
+
+        // Header haze overlay — progressive top-fade blur over the list
+        // (the Home route's material), drawn AFTER the Column so it sits on
+        // top of the scrolling content, under the transparent top bar.
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        } // end full-screen haze Box
     }
 }
 

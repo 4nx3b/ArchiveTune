@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -42,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -101,6 +106,10 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -197,13 +206,44 @@ fun LyricsSettings(
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt recorded the Column into a kyant
+    // layerBackdrop for a glass pill in the TopAppBar — but the pill and
+    // the recorded layer never overlap (the bar overlays the NavHost Box,
+    // while the recording only covered the area below the bar), so the pill
+    // rendered opaque with no visible blur (user report: "liquid glass but
+    // the background is opaque and there's no haze effect"). This now uses
+    // the canonical pattern the 30+ approved settings screens use
+    // (PlayerSettings et al.): the scrolling Column is the haze source, the
+    // ScreenHeaderHaze overlay blurs whatever scrolls under the transparent
+    // TopAppBar, and the pill is the plain single-pill look.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+    // Mini-player aware bottom padding — keeps the last row clear of the
+    // persistent mini player (the insets' bottom half of the old single
+    // windowInsetsPadding call).
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+    // The insets' top half (status bar + AppBarHeight) moves INSIDE the
+    // scroll so items scroll up under the transparent bar into the blur.
+    val headerTopPadding =
+        LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateTopPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .hazeSource(headerHaze)
+            .padding(top = headerTopPadding)
+            .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -513,8 +553,20 @@ fun LyricsSettings(
 
     }
 
+    // Header haze overlay — drawn ON TOP of the scrolling content (later
+    // sibling), UNDER the transparent TopAppBar (emitted after it).
+    ScreenHeaderHaze(
+        hazeState = headerHaze,
+        systemBarsTopPadding = systemBarsTopPadding,
+    )
+
     TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
             FrostedHeaderPill(plain = true) {
                 IconButton(
@@ -536,6 +588,7 @@ fun LyricsSettings(
             }
         },
     )
+    } // end full-screen haze Box
 }
 
 internal fun PreferredLyricsProvider.displayName(): String =

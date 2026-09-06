@@ -221,6 +221,8 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
+import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieAnimation
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.screens.LOGIN_ROUTE
@@ -2942,6 +2944,57 @@ fun BottomSheetPlayer(
                     selectedHeight = videoSelectedHeight,
                     onDismiss = { videoFullscreenHolder.isFullscreen = false },
                 )
+            }
+        }
+
+        // Like burst overlay (Lottie): plays a one-shot heart burst centered
+        // over the player when the CURRENT song's liked state flips to true
+        // through a user action (toggleLike from any player style / control).
+        // Purely decorative — the favorite state itself remains the single
+        // source of truth and every existing favorite icon is untouched. Only
+        // rendered while the player sheet is expanded so the mini player never
+        // shows a floating animation, and only for ~600ms per like. Sits at
+        // the outer Box scope (BoxScope) so Alignment.Center positions it over
+        // the whole player surface, drawn on top of the sheet content.
+        if (!state.isCollapsed) {
+            var likeBurstTrigger by remember { mutableStateOf<Any?>(null) }
+            // Track the liked state PER SONG: a burst fires only on a genuine
+            // false -> true flip for the SAME song (a user action). Switching
+            // to a song that is already liked adopts its state silently.
+            var lastLiked by remember { mutableStateOf<Boolean?>(null) }
+            var lastBurstSongId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(currentSongLiked, mediaMetadata?.id) {
+                val songId = mediaMetadata?.id ?: return@LaunchedEffect
+                if (songId != lastBurstSongId) {
+                    lastBurstSongId = songId
+                    lastLiked = currentSongLiked
+                    return@LaunchedEffect
+                }
+                if (currentSongLiked && lastLiked == false) {
+                    likeBurstTrigger = System.nanoTime()
+                }
+                lastLiked = currentSongLiked
+            }
+            LaunchedEffect(likeBurstTrigger) {
+                if (likeBurstTrigger != null) {
+                    delay(700)
+                    likeBurstTrigger = null
+                }
+            }
+            if (likeBurstTrigger != null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(140.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArchiveTuneLottieAnimation(
+                        rawRes = ArchiveTuneLottie.LikeRes,
+                        trigger = likeBurstTrigger,
+                        tintColor = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         }
     } // close Box(Modifier.fillMaxSize())

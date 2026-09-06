@@ -103,9 +103,16 @@ val LocalUnglassColorScheme: ProvidableCompositionLocal<ColorScheme?> =
  * dialog was spawned inside a glass menu's [MaterialTheme] overlay — see
  * [LocalUnglassColorScheme]. Outside a glass menu this is a no-op (the
  * current scheme is re-provided unchanged).
+ *
+ * Public (2026-09-05) so raw `Dialog { ... }` composables that render their
+ * own surfaces — LoadingScreen (the sync-playlist progress popup) and
+ * AddToPlaylistDialog — can restore the same opaque Material look the
+ * DefaultDialog / ActionPromptDialog / ListDialog trio already restores
+ * (user report: "sync playlist popup and add to playlist popup are
+ * transparent. Restore them to old opaque background").
  */
 @Composable
-private fun UnglassedDialogTheme(content: @Composable () -> Unit) {
+fun UnglassedDialogTheme(content: @Composable () -> Unit) {
     val unglassed = LocalUnglassColorScheme.current
     MaterialTheme(
         colorScheme = unglassed ?: MaterialTheme.colorScheme,

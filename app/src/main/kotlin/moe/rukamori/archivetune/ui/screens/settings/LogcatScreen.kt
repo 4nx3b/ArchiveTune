@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,7 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
@@ -64,10 +65,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -91,6 +92,11 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
@@ -206,7 +212,24 @@ private fun LogcatScreenContent(
             -> null
         }
     val listState = rememberLazyListState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt put a kyant glass pill in the
+    // MediumFlexibleTopAppBar and recorded the content below it into a
+    // layerBackdrop — but the pill and the recorded layer never overlap,
+    // so the pill rendered opaque with no visible blur (user report:
+    // "liquid glass but the background is opaque and there's no haze
+    // effect"). This now uses the canonical pattern the 30+ approved
+    // settings screens use: transparent TopAppBar + plain
+    // FrostedHeaderPill (the pause / more actions stay), the content Box
+    // as the haze source, and ScreenHeaderHaze rendering the progressive
+    // top-fade blur over the search field, filter chips and the top of
+    // the log list. The collapsing scroll behavior goes away with the
+    // transparent pinned bar — the Home behaviour the approved screens
+    // show.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     val logUserScrollConnection =
         remember(onPauseAutoScroll) {
             object : NestedScrollConnection {
@@ -224,7 +247,6 @@ private fun LogcatScreenContent(
         }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LogcatTopBar(
@@ -236,7 +258,6 @@ private fun LogcatScreenContent(
                 onClear = onClear,
                 onShare = onShare,
                 onExport = onExport,
-                scrollBehavior = scrollBehavior,
             )
         },
         floatingActionButton = {
@@ -263,18 +284,26 @@ private fun LogcatScreenContent(
             SnackbarHost(hostState = snackbarHostState)
         },
     ) { innerPadding ->
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal,
-                        ),
-                    ),
-            contentAlignment = Alignment.TopCenter,
-        ) {
+        // Root full-screen Box (y=0, ignoring innerPadding) hosting the
+        // content Box plus the header haze overlay as a LATER sibling so the
+        // haze draws on top of the search field / chips / log list, under the
+        // transparent top bar.
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .windowInsetsPadding(
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal,
+                            ),
+                        )
+                        // The haze source — everything drawn in the content
+                        // area (search field, chips, log entries).
+                        .hazeSource(headerHaze),
+                contentAlignment = Alignment.TopCenter,
+            ) {
             when (state) {
                 LogcatScreenState.Loading -> {
                     LoadingIndicator(
@@ -319,7 +348,18 @@ private fun LogcatScreenContent(
                     )
                 }
             }
-        }
+            } // end content haze-source Box
+
+            // Header haze overlay — progressive top-fade blur over the
+            // search field / filter chips / top of the log list (the Home
+            // route's material). A SIBLING of the source Box (never inside
+            // it — the effect would sample its own source), drawn ON TOP of
+            // the content, under the transparent top bar.
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
+        } // end root full-screen haze Box
     }
 
     LaunchedEffect(model?.entries?.size, model?.isAutoScrollPaused) {
@@ -340,10 +380,14 @@ private fun LogcatTopBar(
     onClear: () -> Unit,
     onShare: () -> Unit,
     onExport: () -> Unit,
-    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
 ) {
-    MediumFlexibleTopAppBar(
+    TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
             FrostedHeaderPill(plain = true) {
                 ArchiveTuneIconButton(
@@ -433,7 +477,6 @@ private fun LogcatTopBar(
                 }
             }
         },
-        scrollBehavior = scrollBehavior,
     )
 }
 

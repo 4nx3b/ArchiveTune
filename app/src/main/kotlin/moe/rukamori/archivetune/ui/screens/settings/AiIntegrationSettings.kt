@@ -26,7 +26,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -65,6 +67,7 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -131,6 +134,10 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.TranslatorLang
 import moe.rukamori.archivetune.utils.TranslatorLanguages
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AiIntegrationSettingsViewModel
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
@@ -357,12 +364,30 @@ fun AiIntegrationSettings(
     val positions = rememberPreferencePositions()
     androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+    // ── Home-screen header haze (2026-09-05, revised) ──
+    // The 2026-09-05 morning attempt recorded the Column into a kyant
+    // layerBackdrop for a glass pill in the TopAppBar — but the pill and
+    // the recorded layer never overlap (the bar overlays the NavHost Box
+    // while the recording only covered the area below the bar), so the pill
+    // rendered opaque with no visible blur (user report: "liquid glass but
+    // the background is opaque and there's no haze effect"). This now uses
+    // the canonical pattern the 30+ approved settings screens use
+    // (PlayerSettings et al.): the scrolling Column is the haze source (its
+    // top Spacer already reserves the bar zone INSIDE the scroll, so items
+    // scroll up under the transparent bar into the blur), the
+    // ScreenHeaderHaze overlay renders the progressive top-fade blur, and
+    // the pill is the plain single-pill look.
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             // Chained before verticalScroll so it measures the viewport, not the scrolling content.
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
+            .hazeSource(headerHaze)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         Spacer(
@@ -771,8 +796,20 @@ fun AiIntegrationSettings(
         }
     }
 
+    // Header haze overlay — drawn ON TOP of the scrolling content (later
+    // sibling), UNDER the transparent TopAppBar (emitted after it).
+    ScreenHeaderHaze(
+        hazeState = headerHaze,
+        systemBarsTopPadding = systemBarsTopPadding,
+    )
+
     TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
             FrostedHeaderPill(plain = true) {
                 IconButton(
@@ -794,6 +831,7 @@ fun AiIntegrationSettings(
             }
         },
     )
+    } // end full-screen haze Box
 }
 
 @Composable

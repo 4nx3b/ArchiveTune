@@ -101,6 +101,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -2320,14 +2321,51 @@ private object Icon {
     ) {
         when (state) {
             STATE_COMPLETED -> {
-                Icon(
-                    painter = painterResource(R.drawable.offline),
-                    contentDescription = null,
-                    modifier =
-                        Modifier
-                            .size(18.dp)
-                            .padding(end = 2.dp),
-                )
+                // One-shot Lottie completion burst (download started →
+                // downloading → completed): when this row's download
+                // transitions into COMPLETED from any other live state, the
+                // static offline icon is briefly replaced by a checkmark burst
+                // animation, then reverts. Purely decorative — the download
+                // state machine remains the source of truth. Rows that were
+                // already completed when composed show the static icon (no
+                // burst), so scrolling doesn't replay animations.
+                var burstTrigger by remember { mutableStateOf<Any?>(null) }
+                var lastSeenState by remember { mutableStateOf<Int?>(null) }
+                LaunchedEffect(state) {
+                    if (state == STATE_COMPLETED &&
+                        lastSeenState != null &&
+                        lastSeenState != STATE_COMPLETED
+                    ) {
+                        burstTrigger = System.nanoTime()
+                    }
+                    lastSeenState = state
+                }
+                LaunchedEffect(burstTrigger) {
+                    if (burstTrigger != null) {
+                        delay(800)
+                        burstTrigger = null
+                    }
+                }
+                if (burstTrigger != null) {
+                    moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieAnimation(
+                        rawRes = moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie.DownloadCompleteRes,
+                        trigger = burstTrigger,
+                        tintColor = MaterialTheme.colorScheme.primary,
+                        modifier =
+                            Modifier
+                                .size(20.dp)
+                                .padding(end = 0.dp),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.offline),
+                        contentDescription = null,
+                        modifier =
+                            Modifier
+                                .size(18.dp)
+                                .padding(end = 2.dp),
+                    )
+                }
             }
 
             STATE_QUEUED, STATE_DOWNLOADING -> {

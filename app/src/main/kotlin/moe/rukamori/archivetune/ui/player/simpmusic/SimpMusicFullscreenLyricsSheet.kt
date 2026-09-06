@@ -11,7 +11,9 @@
  * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
  * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
  * background is the artwork palette colour bleeding into black through a slowly wandering
- * five-stop linear gradient (angle ±45° over 6 s, offsets ±1500/±1000 over 8 s, the stops
+ * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — the
+ * original 6 s / 8 s sweeps read as a fast strobe on a phone screen and were slowed 4x
+ * 2026-09-05, user report: "the background changes at extremely fast speed" — the stops
  * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
  * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
  * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
@@ -87,6 +89,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -101,16 +105,29 @@ import kotlin.math.cos
 import kotlin.math.sin
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.hilt.navigation.compose.hiltViewModel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.BottomSheetMenu
+import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import android.os.Build
 import androidx.media3.common.Player
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
@@ -129,13 +146,41 @@ internal fun SimpMusicFullscreenLyricsSheet(
     playerConnection: PlayerConnection,
     navController: NavController,
     bottomSheetPageState: BottomSheetPageState,
-    playerBottomSheetState: BottomSheetState,
     color: Color,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val menuState = LocalMenuState.current
+
+    // ── Anchored Apple-Music-style overflow popup (2026-09-05) ──
+    // Per user request: "i don't want the bottomsheet lyrics overflow menu.
+    // I want the one used in apple music style" — the header's more button now
+    // opens the same anchored popup the Apple Music player style uses
+    // (AnchoredLyricsOverflowMenu: scales up from the more icon with a
+    // frosted-glass blur), rendered INSIDE this sheet's dialog window so it
+    // is always above the lyrics. It replaces the shared menuState/
+    // BottomSheetMenu slide-up card that previously hosted PlayerMenu here.
+    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
+    var moreIconBounds by remember {
+        mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
+    }
+
+    // Backdrop that records THIS sheet's content (the wandering gradient +
+    // lyrics) so the popup's drawBackdrop sampler blurs what is actually
+    // behind the menu inside this dialog window. Android 12+ only (kyant
+    // RuntimeShader); below that the popup falls back to its dark tint.
+    // `Modifier.layerBackdrop(popupBackdrop)` is applied to the inner
+    // content Box below ONLY while the popup is open — zero steady-state
+    // recording cost for the lyrics scroll while the menu is closed. The
+    // popup renders as a SIBLING of that Box (never nested inside it) to
+    // avoid the kyant render-feedback loop.
+    val popupBackdrop: PlatformBackdrop? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rememberBackdrop(Color.Transparent)
+        } else {
+            null
+        }
 
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val liked = currentSong?.song?.liked == true
@@ -145,6 +190,55 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+
+    // ── Automatic AI translation (2026-09-05) ──────────────────────────────
+    // Mirrors the LaunchedEffect in AppleMusicPlayer.kt / LyricsScreen.kt.
+    // The SimpMusic lyrics screen previously had NO auto-translate trigger
+    // at all (user report: "Auto translation and auto romanisation doesn't
+    // work in simpmusic"), so the setting silently did nothing here.
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    // "Don't auto translate these languages" — read here and passed
+    // explicitly, exactly like the Apple Music player does.
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyricsEntity?.lyrics,
+        currentLyricsEntity?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+        autoTranslateExcludedLanguages,
+        translationDismissedMediaIds,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyricsEntity ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LYRICS_NOT_FOUND) return@LaunchedEffect
+        // Skip when these lyrics were already AI-translated AND actually
+        // carry translation content (same retry guard as the other screens).
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
+        // Respect an "Undo Translation" dismissal for this song.
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
 
     val hasLyrics = currentLyricsEntity?.lyrics
         ?.let { it.isNotBlank() && it != LYRICS_NOT_FOUND } == true
@@ -165,13 +259,25 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     // ── Position polling for the slider ───────────────────────────────────────────────
+    // 2026-09-05 fix (user report: "the lyrics lines don't automatically
+    // proceed to the next line in simpmusic player style"): the poll used to
+    // latch `sliderPosition` to the playhead ONCE (first tick) and then stop
+    // updating it (the `sliderPosition < 0` guard flipped false forever), so
+    // the lyrics' sliderPositionProvider kept returning that one STALE
+    // position and the lyrics froze on the line that was current when the
+    // sheet opened. Scrubbing is now tracked by its own flag: the playhead
+    // refreshes the slider + labels every tick while the user is NOT
+    // dragging, and the lyrics provider only returns a value WHILE dragging
+    // (a live seek preview) — the rest of the time the lyrics self-poll the
+    // player and advance line by line.
     var sliderPosition by remember { mutableLongStateOf(-1L) }
+    var isScrubbing by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(mediaMetadata.id, isPlaying) {
         while (isActive) {
             val d = playerConnection.player.duration
             if (d > 0) duration = d
-            if (sliderPosition < 0) {
+            if (!isScrubbing) {
                 sliderPosition = playerConnection.player.currentPosition.coerceAtLeast(0L)
             }
             delay(200L)
@@ -192,7 +298,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 45f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 6000, easing = LinearEasing),
+                // 2026-09-05: 6 s read as a fast strobing wander on a phone
+                // screen (user report: "the background changes at extremely
+                // fast speed"); 24 s keeps the same travel but drifts at a
+                // quarter of the speed.
+                animation = tween(durationMillis = 24_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientAngle",
@@ -202,7 +312,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1500f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                // Same 4x slowdown as the angle: 8 s -> 32 s per sweep.
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetX",
@@ -212,7 +323,7 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1000f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetY",
@@ -241,7 +352,17 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // Leaving the lyrics page must not strand overlays opened from inside it: the
+            // menu / details-page hosts below render in THIS sheet's dialog window, but the
+            // state they share is app-wide — without dismissing it here, MainActivity's
+            // app-window hosts would pick the still-open state up the moment this dialog
+            // closes and the menu would materialise over the player (the exact "when I exit
+            // the lyrics screen it's there" report).
+            menuState.dismiss()
+            bottomSheetPageState.dismiss()
+            onDismiss()
+        },
         sheetState = sheetState,
         containerColor = Color.Black,
         contentColor = Color.Transparent,
@@ -261,6 +382,26 @@ internal fun SimpMusicFullscreenLyricsSheet(
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Inner content Box — records the sheet's gradient + lyrics +
+            // controls into `popupBackdrop` via `Modifier.layerBackdrop(...)`
+            // WHILE the anchored overflow popup is open, so the popup's
+            // drawBackdrop sampler blurs the actual content behind the menu
+            // (real frosted glass, same as the Apple Music player style).
+            // The popup renders as a SIBLING of this Box (after the overlay
+            // hosts below) — nesting it inside this layer-capturing Box would
+            // create the kyant render-feedback loop. While the popup is
+            // closed the modifier is a no-op, so the lyrics scroll pays zero
+            // steady-state GPU recording cost.
+            Box(
+                modifier =
+                    Modifier.fillMaxSize().let { base ->
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
+                            base.layerBackdrop(popupBackdrop)
+                        } else {
+                            base
+                        }
+                    },
+            ) {
             // Animated gradient background.
             Box(
                 modifier =
@@ -387,19 +528,28 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
 
                     IconButton(
-                        onClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
+                        onClick = { showAnchoredLyricsMenu = true },
+                        modifier =
+                            Modifier
+                                .onGloballyPositioned { coords ->
+                                    // Report the icon's bounds in this dialog
+                                    // window's root coordinates so the anchored
+                                    // popup can align its top-right corner with
+                                    // the icon. boundsInRoot() isn't available on
+                                    // this Compose version — compute the Rect from
+                                    // positionInRoot() + size.
+                                    val pos = coords.positionInRoot()
+                                    val sz = coords.size
+                                    moreIconBounds =
+                                        androidx.compose.ui.geometry.Rect(
+                                            offset = pos,
+                                            size =
+                                                androidx.compose.ui.geometry.Size(
+                                                    width = sz.width.toFloat(),
+                                                    height = sz.height.toFloat(),
+                                                ),
+                                        )
+                                },
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.simpmusic_more_vert),
@@ -423,7 +573,12 @@ internal fun SimpMusicFullscreenLyricsSheet(
                         // slider, so SimpMusicLyrics self-polls the player — the same contract
                         // the lyrics card uses.
                         SimpMusicLyrics(
-                            sliderPositionProvider = { if (sliderPosition >= 0) sliderPosition else null },
+                            // Only report a position while the user is actually
+                            // dragging the sheet's slider (a live seek preview);
+                            // null the rest of the time so SimpMusicLyrics
+                            // self-polls the player and the lines follow the
+                            // song (see the polling fix above).
+                            sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -448,10 +603,13 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     val shown = sliderPosition.coerceIn(0L, safeDuration)
                     Slider(
                         value = shown.toFloat() / safeDuration.toFloat(),
-                        onValueChange = { sliderPosition = (it * safeDuration).toLong() },
+                        onValueChange = {
+                            isScrubbing = true
+                            sliderPosition = (it * safeDuration).toLong()
+                        },
                         onValueChangeFinished = {
                             playerConnection.player.seekTo(sliderPosition)
-                            sliderPosition = -1L
+                            isScrubbing = false
                         },
                         track = { sliderState ->
                             SliderDefaults.Track(
@@ -615,6 +773,56 @@ internal fun SimpMusicFullscreenLyricsSheet(
                 if (!showControlButtons) {
                     Spacer(modifier = Modifier.height(20.dp))
                 }
+            }
+
+            // ── In-sheet hosts for the app's overlay systems ─────────────────────
+            // This sheet is a ModalBottomSheet, which is a real Android dialog
+            // window that floats ABOVE the app window where MainActivity hosts
+            // BottomSheetMenu and BottomSheetPage. A menu (or the details page)
+            // opened from inside the lyrics screen therefore rendered in the app
+            // window, BEHIND this dialog: tapping the header's overflow button
+            // looked dead, and the menu only materialised over the player after
+            // the lyrics screen was dismissed (user report 2026-09-05: "it doesn't
+            // open but when I exit the lyrics screen it's there"). Hosting both
+            // systems INSIDE the sheet's content — this Box, in the dialog window,
+            // composed AFTER the lyrics column so they draw above it — makes the
+            // shared `bottomSheetPageState.show { ShowMediaInfo(...) }` calls (the
+            // info button at the bottom of the lyrics page) render visibly. The
+            // app-window instances still compose beneath the dialog but are
+            // unreachable (the dialog consumes touches), so exactly one instance
+            // is interactive.
+            //
+            // [2026-09-05] The header's more button no longer opens the shared
+            // menuState menu from this sheet — it opens the anchored
+            // Apple-Music-style popup below instead (per user request). The
+            // BottomSheetMenu host stays for the details page's dialogs and any
+            // other menuState consumer that may run inside this sheet.
+            BottomSheetMenu(
+                state = menuState,
+                background = Color(0xF01C1C1E),
+            )
+            BottomSheetPage(state = bottomSheetPageState)
+            } // end inner content Box (anchored-popup backdrop recording layer)
+
+            // ── Anchored Apple-Music-style overflow popup ───────────────────────
+            // Rendered as the LAST child of the sheet's content Box so it draws
+            // above everything else in this dialog window (gradient, lyrics,
+            // controls, header, overlay hosts). The popup manages its own
+            // enter/exit animations (scale + alpha from the more icon's corner)
+            // and positions itself via `moreIconBounds` (captured by the
+            // onGloballyPositioned wired to the header's more IconButton).
+            // This is the exact pattern AppleMusicPlayer.kt uses — the same
+            // menu the Apple Music player style shows over its lyrics.
+            if (showAnchoredLyricsMenu) {
+                AnchoredLyricsOverflowMenu(
+                    iconBoundsInRoot = moreIconBounds,
+                    lyricsProvider = { currentLyricsEntity },
+                    mediaMetadataProvider = { mediaMetadata },
+                    lyricsSyncOffset = 0,
+                    onLyricsSyncOffsetChange = {},
+                    onDismiss = { showAnchoredLyricsMenu = false },
+                    backdrop = popupBackdrop,
+                )
             }
         }
     }

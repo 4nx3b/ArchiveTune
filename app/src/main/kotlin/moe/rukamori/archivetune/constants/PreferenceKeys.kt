@@ -1764,6 +1764,16 @@ val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 // first check would fire dozens of notifications at once).
 val SeenNewReleaseIdsKey = stringPreferencesKey("seenNewReleaseIds")
 
+// New Releases screen read-marker (2026-09-05): release IDs (CSV, newest
+// first, bounded) the user has marked as read on the New Releases page —
+// via the header's mark-all-read button or a long-press on a release's
+// thumbnail. Read releases are removed from the page's feed. Deliberately
+// SEPARATE from [SeenNewReleaseIdsKey] (the notification worker's
+// bookkeeping): marking a release read on the page never un-notifies
+// history, and the worker's silent first-run baseline never hides
+// anything from the page.
+val ReadNewReleaseIdsKey = stringPreferencesKey("readNewReleaseIds")
+
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
 val GitHubContributorsLastCheckedAtKey = longPreferencesKey("github_contributors_last_checked_at")
