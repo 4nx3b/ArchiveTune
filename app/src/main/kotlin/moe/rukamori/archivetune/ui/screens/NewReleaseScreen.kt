@@ -724,6 +724,12 @@ private fun NewReleaseGridContent(
         }
     }
 
+    // Hoisted above the LazyVerticalGrid content lambda (which is not a
+    // @Composable context — only the per-item content lambdas are).
+    val visibleReleases = remember(filteredReleases, visibleCount) {
+        filteredReleases.take(visibleCount)
+    }
+
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
@@ -792,7 +798,7 @@ private fun NewReleaseGridContent(
             }
         } else {
             items(
-                items = remember(filteredReleases, visibleCount) { filteredReleases.take(visibleCount) },
+                items = visibleReleases,
                 key = { it.id },
                 contentType = { selectedTab.contentType },
             ) { album ->
