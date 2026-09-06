@@ -106,7 +106,29 @@ class NewReleaseViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 _uiState.value = NewReleaseUiState.Loading
                 try {
+                    // Fast path (user report 2026-09-06: "the new releases
+                    // loading is extremely slow"): serve a recent in-memory
+                    // snapshot of the full enriched catalogue instantly and
+                    // only re-fetch once the cache is stale.
+                    val cacheSnapshot = CachedCatalogue.get()
+                    if (cacheSnapshot != null) {
+                        lastCatalogue = cacheSnapshot
+                        reemitContent()
+                        if (CachedCatalogue.isFresh()) return@launch
+                    }
+
                     val albums = YouTube.newReleaseAlbums().getOrThrow()
+
+                    // ── Fast first paint (2026-09-06, user report: "it should
+                    // just display the total number and not load everything
+                    // at once") ─────────────────────────────────────────────
+                    // Emit the browse grid immediately after the single
+                    // browse request — the page shows the count + releases in
+                    // one request's time. The enrichment below continues in
+                    // the background and re-emits the full catalogue when it
+                    // lands.
+                    lastCatalogue = albums.distinctBy { it.id }
+                    reemitContent()
 
                     // ── Catalogue enrichment (2026-09-05, user report:
                     // "new releases are still capped at max 200 entries") ──
@@ -153,12 +175,20 @@ class NewReleaseViewModel
                         ).distinctBy { it.id }
 
                     lastCatalogue = filtered
+                    CachedCatalogue.store(filtered)
                     reemitContent()
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (t: Throwable) {
                     reportException(t)
-                    _uiState.value = NewReleaseUiState.Error
+                    // Keep serving the last snapshot (or the intermediate
+                    // browse-grid emit) when a refresh fails — stale content
+                    // beats an error screen for a notification feed.
+                    if (lastCatalogue.isEmpty()) {
+                        _uiState.value = NewReleaseUiState.Error
+                    } else {
+                        reemitContent()
+                    }
                 }
             }
         }
@@ -295,6 +325,24 @@ class NewReleaseViewModel
             }
         }
 
+        /**
+         * Marks an arbitrary set of releases as read (2026-09-06, user
+         * request: "Add an edit icon in liquid glass on the right header that
+         * lets me manually select as much as I like manually and then I can
+         * mark them as read"). Used by the selection mode's action bar; the
+         * DataStore collector re-emits the content without these ids and the
+         * matching system notifications are cancelled.
+         */
+        fun markAsRead(ids: Set<String>) {
+            if (ids.isEmpty()) return
+            val newIds = ids.filter { it.isNotBlank() && it !in readIds }
+            if (newIds.isEmpty()) return
+            NewReleaseNotificationManager.cancelNotifications(context, newIds)
+            viewModelScope.launch(Dispatchers.IO) {
+                writeReadIds(newIds + readIds.toList())
+            }
+        }
+
         private suspend fun writeReadIds(newestFirst: List<String>) {
             val bounded = newestFirst.filter { it.isNotBlank() }.take(READ_IDS_LIMIT)
             context.dataStore.edit { prefs ->
@@ -334,5 +382,33 @@ class NewReleaseViewModel
 
             /** Concurrent artist-page requests during the sweep. */
             const val SWEEP_CONCURRENCY = 4
+        }
+
+        /**
+         * Process-wide cache of the last fully enriched New Releases catalogue
+         * (2026-09-06, user report: "the new releases loading is extremely
+         * slow"). The screen's ViewModel is navigation-scoped (a new instance
+         * per visit), which previously forced the full network sweep
+         * (browse + Explore + up to 30 subscribed artist pages) on every
+         * visit. Caching the final enriched catalogue for a few minutes makes
+         * repeat visits instant; the read-marker filtering is applied on top
+         * of whatever the cache serves.
+         */
+        private object CachedCatalogue {
+            private const val TTL_MS = 5 * 60 * 1000L
+
+            @Volatile private var catalogue: List<AlbumItem>? = null
+            @Volatile private var storedAtMs: Long = 0
+
+            fun store(value: List<AlbumItem>) {
+                catalogue = value
+                storedAtMs = System.currentTimeMillis()
+            }
+
+            fun get(): List<AlbumItem>? = catalogue?.takeIf { it.isNotEmpty() }
+
+            fun isFresh(): Boolean =
+                catalogue?.let { it.isNotEmpty() } == true &&
+                    System.currentTimeMillis() - storedAtMs < TTL_MS
         }
     }

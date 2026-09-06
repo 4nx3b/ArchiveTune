@@ -96,6 +96,7 @@ import moe.rukamori.archivetune.downloads.DownloadSectionUiModel
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
+import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatFileSize
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -469,6 +470,14 @@ private fun DownloadSections(
                         R.string.no_downloads
                     },
                 ),
+            // Subtle Lottie only for the truly-empty state (not for active
+            // search queries or in-progress screens).
+            lottieRes =
+                if (query.isBlank() && !inProgress) {
+                    ArchiveTuneLottie.EmptyStateRes
+                } else {
+                    null
+                },
             modifier = Modifier.padding(contentPadding),
         )
         return
