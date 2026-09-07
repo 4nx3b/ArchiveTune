@@ -173,6 +173,7 @@ import moe.rukamori.archivetune.constants.EqualizerVirtualizerStrengthKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MAX
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MIN
+import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.HistoryDuration
@@ -1305,6 +1306,18 @@ class MusicService :
                     removeMusicVideoItems()
                 }
             }
+        // Turning "allow age-restricted songs" off also stops playing
+        // explicit-tagged songs: the live queue drops them immediately (the
+        // current item included — removing it advances playback to the next
+        // allowed track), and every newly built queue filters them upstream.
+        dataStore.data
+            .map { preferences -> preferences[AllowAgeRestrictedKey] ?: false }
+            .distinctUntilChanged()
+            .collect(scope) { ageRestrictedAllowed ->
+                if (!ageRestrictedAllowed) {
+                    scope.launch(SilentHandler) { removeExplicitItems() }
+                }
+            }
         widgetUpdater =
             MusicServiceWidgetUpdater(
                 service = this,
@@ -2186,6 +2199,17 @@ class MusicService :
             database.getBlockedArtistIds().toSet()
         }
 
+    // The age-restricted toggle also gates explicit tracks: while age-restricted
+    // songs are disallowed, explicit-tagged songs count as hidden content too,
+    // for both freshly built queues and the live queue below.
+    private suspend fun shouldHideExplicitTracks(): Boolean =
+        dataStore.get(HideExplicitKey, false) ||
+            !dataStore.get(AllowAgeRestrictedKey, false)
+
+    private fun removeExplicitItems() {
+        removeQueueItems { item -> item.metadata?.explicit == true }
+    }
+
     private fun removeBlockedArtistItems(updatedBlockedArtistIds: Set<String>) {
         if (updatedBlockedArtistIds.isEmpty() || player.mediaItemCount == 0) return
 
@@ -2229,7 +2253,7 @@ class MusicService :
 
         val itemQueue = persistedQueue.toQueue()
         val continuationQueue = persistedQueue.toContinuationQueue()
-        val hideExplicit = dataStore.get(HideExplicitKey, false)
+        val hideExplicit = shouldHideExplicitTracks()
         val hideVideo = dataStore.get(HideVideoKey, false)
         val initialStatus =
             itemQueue
@@ -4030,7 +4054,7 @@ class MusicService :
                         queue
                             .getInitialStatus()
                             .filterPlaybackContent(
-                                hideExplicit = dataStore.get(HideExplicitKey, false),
+                                hideExplicit = shouldHideExplicitTracks(),
                                 hideVideo = dataStore.get(HideVideoKey, false),
                             )
                     }
@@ -4111,7 +4135,7 @@ class MusicService :
             try {
                 moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 autoLoadMoreEnabled = dataStore.getAsync(AutoLoadMoreKey, true)
-                val hideExplicit = dataStore.get(HideExplicitKey, false)
+                val hideExplicit = shouldHideExplicitTracks()
                 val hideVideo = dataStore.get(HideVideoKey, false)
                 val preloadItem =
                     queue.preloadItem
@@ -4305,7 +4329,7 @@ class MusicService :
                     radioQueue
                         .getInitialStatus()
                         .filterPlaybackContent(
-                            hideExplicit = dataStore.get(HideExplicitKey, false),
+                            hideExplicit = shouldHideExplicitTracks(),
                             hideVideo = dataStore.get(HideVideoKey, false),
                         )
                 }

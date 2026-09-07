@@ -91,6 +91,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -620,18 +621,11 @@ fun LastFmDashboardScreen(
                 ),
             )
 
-            if (searchVisible && glassHeader.liquidGlassActive) {
-                LastFmGlassSearchField(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it },
-                    onClose = {
-                        searchVisible = false
-                        searchQuery = ""
-                    },
-                )
-            }
+            // The glass search field no longer renders at the top (that left a
+            // tall gap between the floating glass header and the bar); it opens
+            // IN PLACE of the header pills further down instead.
 
-            if (!searchVisible) {
+            if (!searchVisible || glassHeader.liquidGlassActive) {
                 HeroStatsCard(
                     userInfo = userInfo,
                     isRefreshing = isRefreshing,
@@ -662,11 +656,28 @@ fun LastFmDashboardScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
             ) {
-                FilterHeader(
-                    selectedFilter = selectedFilter,
-                    onSelect = { selectedFilter = it },
-                    theme = theme,
-                )
+                if (searchVisible && glassHeader.liquidGlassActive) {
+                    // Open the search bar IN PLACE of the header pills — the
+                    // bar takes the pills' exact spot under the stats card, no
+                    // floating field at the top with dead space under the glass
+                    // header. The field sits inside this already-16dp-padded
+                    // column, so its own horizontal inset is zeroed out.
+                    LastFmGlassSearchField(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        onClose = {
+                            searchVisible = false
+                            searchQuery = ""
+                        },
+                        horizontalPadding = 0.dp,
+                    )
+                } else {
+                    FilterHeader(
+                        selectedFilter = selectedFilter,
+                        onSelect = { selectedFilter = it },
+                        theme = theme,
+                    )
+                }
 
                 LazyColumn(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -842,12 +853,13 @@ private fun LastFmGlassSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
     onClose: () -> Unit,
+    horizontalPadding: Dp = 16.dp,
 ) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = horizontalPadding, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SearchBar(

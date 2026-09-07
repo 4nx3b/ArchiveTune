@@ -234,13 +234,36 @@ fun OnlineSearchResult(
                         onClick = {
                             when (item) {
                                 is SongItem -> {
-                                    if (item.id == mediaMetadata?.id) {
+                                    // Playing from the Videos category: the user picked
+                                    // the VIDEO rendition of the track, so the player
+                                    // must play the actual YouTube video — never the
+                                    // (possibly cached) canvas. Two holes fixed here:
+                                    // 1) the seed metadata may not carry the OMV/UGC
+                                    //    endpoint type, so the video intent is lost and
+                                    //    playback falls back to song+canvas — force
+                                    //    isMusicVideo on the seed;
+                                    // 2) when the SAME track is already playing as a
+                                    //    song, the plain same-id branch only toggled
+                                    //    play/pause — the video never started. Re-queue
+                                    //    as a video instead.
+                                    val playAsVideo = searchFilter == FILTER_VIDEO
+                                    val sameTrack = item.id == mediaMetadata?.id
+                                    val currentIsVideo = sameTrack && mediaMetadata?.isMusicVideo == true
+                                    if (sameTrack && (!playAsVideo || currentIsVideo)) {
                                         playerConnection.player.togglePlayPause()
                                     } else {
+                                        val seedMetadata =
+                                            item.toMediaMetadata().let { metadata ->
+                                                if (playAsVideo && !metadata.isMusicVideo) {
+                                                    metadata.copy(isMusicVideo = true)
+                                                } else {
+                                                    metadata
+                                                }
+                                            }
                                         playerConnection.playQueue(
                                             YouTubeQueue(
                                                 WatchEndpoint(videoId = item.id),
-                                                item.toMediaMetadata(),
+                                                seedMetadata,
                                             ),
                                         )
                                     }

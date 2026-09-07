@@ -37,7 +37,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -93,6 +92,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -505,24 +505,37 @@ fun NewReleaseScreen(
                 modifier =
                     Modifier
                         .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .navigationBarsPadding()
+                        // Player-aware bottom inset (same source as the grid's
+                        // contentPadding): when the mini player is visible the
+                        // controls lift above it instead of being overlapped.
+                        // The Scaffold content's bottom padding already folds
+                        // in nav bar + mini player height.
+                        .padding(bottom = paddingValues.calculateBottomPadding())
                         .fillMaxWidth(),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 ) {
+                    // Weight + ellipsis: when the row runs out of room the
+                    // count shrinks ("2 selec…"), the buttons never wrap —
+                    // the mark-as-read pill keeps its single-line height
+                    // instead of stacking its label into a tall column.
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 12.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                        modifier =
+                            Modifier
+                                .weight(1f, fill = false)
+                                .padding(horizontal = 12.dp),
                     )
-                    Spacer(Modifier.weight(1f))
                     TextButton(
                         onClick = {
-
                             val state = uiState
                             if (state is NewReleaseUiState.Success) {
                                 selectedReleaseIds.addAll(
@@ -531,16 +544,26 @@ fun NewReleaseScreen(
                                 )
                             }
                         },
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                     ) {
-                        Text(stringResource(R.string.select_all))
+                        Text(
+                            stringResource(R.string.select_all),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
                     TextButton(
                         onClick = {
                             isSelectionMode = false
                             selectedReleaseIds.clear()
                         },
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                     ) {
-                        Text(stringResource(R.string.cancel))
+                        Text(
+                            stringResource(R.string.cancel),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
                     FilledTonalButton(
                         onClick = {
@@ -550,6 +573,7 @@ fun NewReleaseScreen(
                             isSelectionMode = false
                         },
                         shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.solar_check_circle_linear),
@@ -557,7 +581,11 @@ fun NewReleaseScreen(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.mark_as_read))
+                        Text(
+                            stringResource(R.string.mark_as_read),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
                 }
             }

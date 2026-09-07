@@ -73,7 +73,6 @@ import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
 import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
-import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
@@ -260,8 +259,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (blurRadius, onBlurRadiusChange) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
     val (backdropEnabled, onBackdropEnabledChange) = rememberPreference(BackdropEnabledKey, defaultValue = true)
-    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
-        rememberPreference(AlbumCanvasEnabledKey, defaultValue = true)
+    // The album-page canvas toggle moved to Player Settings → Artwork.
     val (backdropBlurAmount, onBackdropBlurAmountChange) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (fontPreference, onFontPreferenceChange) =
         rememberEnumPreference(
@@ -744,35 +742,41 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.album_backdrop)) },
-                        description = stringResource(R.string.album_backdrop_desc),
-                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                        checked = backdropEnabled,
-                        onCheckedChange = onBackdropEnabledChange,
-                    )
-                }
+                // The album backdrop and its blur slider do not apply under the
+                // Apple Music style (that style owns its own backdrop material),
+                // so the rows are hidden while it is selected — the preference
+                // code stays intact for the other styles.
+                if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.album_backdrop)) },
+                            description = stringResource(R.string.album_backdrop_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = backdropEnabled,
+                            onCheckedChange = onBackdropEnabledChange,
+                        )
+                    }
 
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("backdrop_blur_amount"),
-                        title = { Text(stringResource(R.string.backdrop_blur_amount)) },
-                        description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
-                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                        isEnabled = backdropEnabled,
-                        content = {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Slider(
-                                value = backdropBlurAmount.toFloat(),
-                                onValueChange = { onBackdropBlurAmountChange(it.roundToInt()) },
-                                valueRange = 0f..100f,
-                                steps = 19,
-                                enabled = backdropEnabled,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        },
-                    )
+                    item {
+                        PreferenceEntry(
+                            modifier = positions.modifierFor("backdrop_blur_amount"),
+                            title = { Text(stringResource(R.string.backdrop_blur_amount)) },
+                            description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            isEnabled = backdropEnabled,
+                            content = {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Slider(
+                                    value = backdropBlurAmount.toFloat(),
+                                    onValueChange = { onBackdropBlurAmountChange(it.roundToInt()) },
+                                    valueRange = 0f..100f,
+                                    steps = 19,
+                                    enabled = backdropEnabled,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 item {
@@ -827,22 +831,27 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("disable_blur"),
                 title = stringResource(R.string.player),
             ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("apple_music_experience"),
-                        title = { Text(stringResource(R.string.apple_music_experience)) },
-                        description = stringResource(R.string.apple_music_experience_desc),
-                        icon = { Icon(painterResource(R.drawable.music_note), null) },
-                        checked = appleMusicExperience,
-                        onCheckedChange = { enabled ->
-                            onAppleMusicExperienceChange(enabled)
-                            // Turning the experience on also puts the player in Apple Music's
-                            // style: half an Apple Music app is not an experience. Turning it
-                            // off leaves the player alone — someone who liked that player and
-                            // only wanted the old headers back should keep it.
-                            if (enabled) onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
-                        },
-                    )
+                // The Apple Music experience toggle is only an entry point INTO the
+                // style — once the style itself is selected the row is redundant, so
+                // it is hidden while APPLE_MUSIC is selected (code kept).
+                if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        SwitchPreference(
+                            modifier = positions.modifierFor("apple_music_experience"),
+                            title = { Text(stringResource(R.string.apple_music_experience)) },
+                            description = stringResource(R.string.apple_music_experience_desc),
+                            icon = { Icon(painterResource(R.drawable.music_note), null) },
+                            checked = appleMusicExperience,
+                            onCheckedChange = { enabled ->
+                                onAppleMusicExperienceChange(enabled)
+                                // Turning the experience on also puts the player in Apple Music's
+                                // style: half an Apple Music app is not an experience. Turning it
+                                // off leaves the player alone — someone who liked that player and
+                                // only wanted the old headers back should keep it.
+                                if (enabled) onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
+                            },
+                        )
+                    }
                 }
                 item {
                     Column(modifier = positions.modifierFor("player_design_style")) {
@@ -896,22 +905,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // Only for the Apple Music style: it is the one style that plays a Canvas loop or
-                // a music video in the cover's place, so the switch would control nothing anywhere
-                // else. Hidden rather than disabled — a permanently greyed row is a worse
-                // explanation than no row.
-                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
-                    item {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("apple_music_animated_artwork"),
-                            title = { Text(stringResource(R.string.apple_music_animated_artwork)) },
-                            description = stringResource(R.string.apple_music_animated_artwork_desc),
-                            icon = { Icon(painterResource(R.drawable.animation), null) },
-                            checked = appleMusicAnimatedArtwork,
-                            onCheckedChange = onAppleMusicAnimatedArtworkChange,
-                        )
-                    }
-                }
+                // The Apple Music animated-artwork row is removed from the UI
+                // (user request): the style's own behavior decides when the
+                // animated artwork plays. The preference and its plumbing stay
+                // intact — only the row is gone.
 
                 item {
                     SwitchPreference(
@@ -1166,21 +1163,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
-                modifier = positions.modifierFor("album_page"),
-                title = stringResource(R.string.album_page),
-            ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("album_canvas_enabled"),
-                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
-                        description = stringResource(R.string.album_canvas_enabled_desc),
-                        icon = { Icon(painterResource(R.drawable.album), null) },
-                        checked = albumCanvasEnabled,
-                        onCheckedChange = onAlbumCanvasEnabledChange,
-                    )
-                }
-            }
+            // The album-page group is gone — its only row (canvas in albums page)
+            // moved to Player Settings → Artwork.
 
             // The settings that decide what the Home tab shows were scattered through
             // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
