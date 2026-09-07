@@ -1935,7 +1935,7 @@ object YTPlayerUtils {
         )
         throw InvalidPlaybackLoginContextException(
             videoId = videoId,
-            targetUrl = "https:
+            targetUrl = "https://music.youtube.com/watch?v=$videoId",
             cause = failure,
         )
     }
