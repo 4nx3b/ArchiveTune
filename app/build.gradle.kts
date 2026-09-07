@@ -135,7 +135,7 @@ android {
             "String",
             "TDLIB_NATIVE_BASE_URL",
             "\"${project.findProperty("tdlibNativeBaseUrl") as String?
-                ?: "https:
+                ?: "https://github.com/vossgraves/ArchiveTune/releases/download/tdlib-1.8.56"}\"",
         )
 
         val sourceProviderUrl =
