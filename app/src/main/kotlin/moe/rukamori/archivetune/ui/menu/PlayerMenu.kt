@@ -1871,7 +1871,7 @@ private suspend fun searchOneSource(
             }
 
             AudioSourceType.JIOSAAVN -> {
-                runCatching { SaavnService.searchSongs(query) }
+                SaavnService.searchSongs(query)
                     .getOrDefault(emptyList())
                     .map { saavnSong ->
                         val cover =
