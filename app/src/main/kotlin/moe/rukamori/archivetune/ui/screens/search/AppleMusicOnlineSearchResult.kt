@@ -273,7 +273,7 @@ private fun AppleMusicSearchResultRow(
 
             is AppleMusicSearchItem.Album,
             is AppleMusicSearchItem.Artist,
-            -> openExternal(),
+            -> openExternal()
         }
     }
 
