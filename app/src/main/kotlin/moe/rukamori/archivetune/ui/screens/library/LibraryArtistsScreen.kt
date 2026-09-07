@@ -505,7 +505,7 @@ fun ArtistListCard(
     val subtitleText = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount)
 
     ListItem(
-        title = artist.name,
+        title = artist.artist.name,
         subtitle = subtitleText,
         thumbnailContent = {
             ItemThumbnail(
