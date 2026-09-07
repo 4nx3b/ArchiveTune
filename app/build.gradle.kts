@@ -3,6 +3,21 @@ import java.security.MessageDigest
 import java.util.Properties
 import java.util.zip.ZipFile
 
+// Print the FULL stack trace of every failing unit test to the console so CI
+// logs are self-sufficient for diagnosis (Gradle's default 1-line summary
+// hides the exception message and the failing assert frame after the ASM
+// coverage transform scrambles line tables).
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events(
+            org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED,
+        )
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}
+
 @DisableCachingByDefault(because = "Validation-only task has no outputs.")
 abstract class ValidateStartIoReleaseConfigurationTask : DefaultTask() {
     @get:Input
