@@ -11,13 +11,8 @@ import moe.rukamori.archivetune.playback.artwork.ArtworkRequest
 import moe.rukamori.archivetune.playback.artwork.TidalArtworkFetcher
 import moe.rukamori.archivetune.playback.artwork.TidalArtworkMatch
 
-/**
- * Bridges the [ArtworkResolver]'s Tidal artwork abstraction to [TidalAudioProvider]'s
- * instance/account search infrastructure. Contains no auth state of its own and never
- * logs credentials.
- */
 object TidalArtworkProvider {
-    /** Production fetcher backed by the configured Tidal instances/account. Blocking. */
+
     fun fetcher(): TidalArtworkFetcher =
         TidalArtworkFetcher { request: ArtworkRequest ->
             val query =
@@ -40,10 +35,6 @@ object TidalArtworkProvider {
             }
         }
 
-    /**
-     * Tidal cover UUIDs map to the static image CDN by replacing dashes with slashes.
-     * Available sizes are typically 80, 160, 320, 640, 1080 and 1280 (square).
-     */
     fun buildTidalArtworkUrl(
         coverId: String,
         size: Int,

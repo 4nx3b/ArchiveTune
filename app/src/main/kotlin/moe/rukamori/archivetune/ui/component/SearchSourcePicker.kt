@@ -28,7 +28,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSource
 
-/** Compact source menu shared by the active search bar and search result top bar. */
 @Composable
 fun SearchSourcePicker(
     currentScope: SearchSource,
@@ -47,6 +46,8 @@ fun SearchSourcePicker(
                             R.drawable.library_music
                         } else if (currentProvider == SearchProvider.SPOTIFY) {
                             R.drawable.spotify_icon
+                        } else if (currentProvider == SearchProvider.APPLE_MUSIC) {
+                            R.drawable.apple_music_icon
                         } else {
                             R.drawable.language
                         },
@@ -83,6 +84,14 @@ fun SearchSourcePicker(
             ) {
                 expanded = false
                 onSelection(SearchSource.ONLINE, SearchProvider.SPOTIFY)
+            }
+            SearchSourceMenuItem(
+                label = stringResource(R.string.search_source_apple_music),
+                iconRes = R.drawable.apple_music_icon,
+                selected = currentScope == SearchSource.ONLINE && currentProvider == SearchProvider.APPLE_MUSIC,
+            ) {
+                expanded = false
+                onSelection(SearchSource.ONLINE, SearchProvider.APPLE_MUSIC)
             }
         }
     }

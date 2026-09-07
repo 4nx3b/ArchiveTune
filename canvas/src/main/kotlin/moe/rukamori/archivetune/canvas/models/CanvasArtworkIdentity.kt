@@ -25,12 +25,6 @@ fun CanvasArtwork.matchesSongIdentity(
         resolvedArtist == requestedArtist
 }
 
-/**
- * Fuzzy variant of [matchesSongIdentity] for sources with unreliable tags (e.g. files streamed
- * from Telegram channels, whose "artist" may be a channel name and whose title carries extra
- * qualifiers). Accepts containment either way on the normalized song title, and requires the
- * artists to be equal, contain each other, or the requested artist to be unusable (blank).
- */
 fun CanvasArtwork.looselyMatchesSongIdentity(
     song: String,
     artist: String,
@@ -52,7 +46,6 @@ fun CanvasArtwork.looselyMatchesSongIdentity(
         requestedArtist.contains(resolvedArtist)
 }
 
-/** Whether this artwork's album matches the requested album title (normalized containment). */
 fun CanvasArtwork.matchesAlbumIdentity(album: String): Boolean {
     val requested = album.toCanvasSongIdentity()
     val resolved = albumName?.toCanvasSongIdentity().orEmpty()

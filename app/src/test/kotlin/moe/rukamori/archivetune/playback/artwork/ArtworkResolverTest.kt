@@ -60,8 +60,7 @@ class ArtworkResolverTest {
 
     @Test
     fun originalMetadataAlwaysWinsAndTidalIsNeverQueried() = runTest {
-        // Priority is defined by configuration, not by which request would finish first:
-        // even a hypothetical instant Tidal response must not replace original artwork.
+
         val settings =
             MutableStateFlow(ArtworkSettings(tidalArtworkEnabled = true, tidalAvailable = true))
         val fetchCalls = AtomicInteger(0)
@@ -117,13 +116,12 @@ class ArtworkResolverTest {
 
     @Test
     fun disabledProviderCannotPublishLateResult() = runTest {
-        // Tidal request starts while enabled, the user disables it mid-flight, then the
-        // request completes: the result must be discarded, never applied.
+
         val settings =
             MutableStateFlow(ArtworkSettings(tidalArtworkEnabled = true, tidalAvailable = true))
         val fetcher =
             TidalArtworkFetcher {
-                // Simulate the preference changing while the network request is in flight.
+
                 settings.value = ArtworkSettings(tidalArtworkEnabled = false, tidalAvailable = true)
                 tidalMatch(0.95f)
             }
@@ -156,7 +154,7 @@ class ArtworkResolverTest {
         val resolver = resolver(settings, { tidalMatch(1f) }, StandardTestDispatcher(testScheduler))
 
         val genA = resolver.beginTrack("track-A")
-        // The user skips to track B while track A's request is still in flight.
+
         val genB = resolver.beginTrack("track-B")
 
         assertFalse("track A must never overwrite track B", resolver.isCurrent("track-A", genA))
@@ -212,11 +210,9 @@ class ArtworkResolverTest {
         val resolver = resolver(settings, fetcher, StandardTestDispatcher(testScheduler))
 
         resolver.resolve(request())
-        resolver.resolve(request()) // inside the short failure window
+        resolver.resolve(request())
         assertEquals(1, fetchCalls.get())
 
-        // After the short failure window the resolver must try again: transient errors must
-        // never permanently poison the artwork cache.
         nowMs += ArtworkResolver.FAILURE_CACHE_MS + 1
         resolver.resolve(request())
         assertEquals(2, fetchCalls.get())
@@ -237,7 +233,7 @@ class ArtworkResolverTest {
             resolver.resolve(request())
             fail("CancellationException must be rethrown, not swallowed")
         } catch (error: CancellationException) {
-            // expected
+
         }
     }
 

@@ -21,21 +21,20 @@ import org.json.JSONObject
 import java.util.Base64
 import java.util.UUID
 
-/** A user-saved Telegram bot entry. */
 data class TelegramBot(
-    /** Stable client-side id (UUID). Used as the nav arg when opening a bot's chat screen. */
+
     val id: String,
-    /** Bot username without the leading @. Lower-cased to dedupe case variants. */
+
     val username: String,
-    /** TDLib chat id of the resolved bot, 0 until first resolution. */
+
     val chatId: Long,
-    /** Display title (the bot's first name from TDLib, falls back to @username). */
+
     val title: String,
-    /** Epoch millis when the user added the bot. */
+
     val addedAtMs: Long,
-    /** Inline JPEG minithumbnail of the bot's profile photo (tiny, ~40px). May be null. */
+
     val photoMinithumbnail: ByteArray? = null,
-    /** TDLib file id of the bot's full-size profile photo (0 when the bot has no photo). */
+
     val photoFileId: Int = 0,
 ) {
     val displayHandle: String
@@ -50,7 +49,6 @@ data class TelegramBot(
     override fun hashCode(): Int = id.hashCode()
 }
 
-/** Encodes/decodes the bot list to/from the JSON shape persisted under [moe.rukamori.archivetune.constants.TelegramBotsKey]. */
 object TelegramBotCodec {
     private const val KEY_ID = "id"
     private const val KEY_USERNAME = "username"
@@ -106,29 +104,22 @@ object TelegramBotCodec {
     }
 }
 
-/**
- * Parses raw user input ("@BotFather", "https://t.me/BotFather", "t.me/BotFather", "BotFather")
- * down to a clean username, or null when the input doesn't look like a Telegram bot reference.
- *
- * Bots cannot be added via invite links (they don't have those); this only accepts the public
- * @-handle forms. Anything else returns null and the caller can show an error.
- */
 fun parseBotUsername(raw: String): String? {
     val trimmed = raw.trim()
     if (trimmed.isEmpty()) return null
-    // t.me/<username> or https://t.me/<username>
+
     val linkMatch = Regex(
         "(?:https?://)?t(?:elegram)?\\.me/([A-Za-z][A-Za-z0-9_]{3,})",
         RegexOption.IGNORE_CASE,
     ).find(trimmed)
     val fromLink = linkMatch?.groupValues?.get(1)
     if (fromLink != null) return fromLink.lowercase()
-    // @<username>
+
     if (trimmed.startsWith("@")) {
         val u = trimmed.removePrefix("@")
         return u.takeIf { it.matches(Regex("[A-Za-z][A-Za-z0-9_]{3,}")) }?.lowercase()
     }
-    // Bare username
+
     return trimmed
         .takeIf { it.matches(Regex("[A-Za-z][A-Za-z0-9_]{3,}")) }
         ?.lowercase()

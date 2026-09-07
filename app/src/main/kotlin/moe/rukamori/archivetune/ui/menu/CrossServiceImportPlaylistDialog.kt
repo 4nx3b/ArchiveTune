@@ -58,16 +58,6 @@ import moe.rukamori.archivetune.utils.dataStore
 import timber.log.Timber
 import java.time.LocalDateTime
 
-/**
- * Dialog that imports a playlist from a foreign music service URL
- * (Apple Music, Amazon Music, Tidal, Deezer, or YouTube Music). The user
- * pastes a URL, we resolve the source playlist's tracks, then look up
- * each track on YouTube Music and add the resolved song ids to a new
- * (or existing, if the URL was previously imported) local playlist.
- *
- * This entry point lives in the Integration settings screen so the user
- * can pull their library into ArchiveTune without leaving the app.
- */
 @Composable
 fun CrossServiceImportPlaylistDialog(
     isVisible: Boolean,
@@ -172,8 +162,7 @@ fun CrossServiceImportPlaylistDialog(
                     statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            // Tidal/Qobuz playlist reads need an account token;
-                            // the other services resolve anonymously.
+
                             val credentials = CrossServiceImportCredentials.load(context)
                             val resolved = CrossServicePlaylistImporter.fetchPlaylist(url, credentials)
                                 .getOrElse { e ->
@@ -205,19 +194,6 @@ fun CrossServiceImportPlaylistDialog(
                                 return@launch
                             }
 
-                            // Resolve tracks all the way to fully-populated
-                            // MediaMetadata (title/artists/album/thumbnail)
-                            // so we can insert them into the `song` table
-                            // BEFORE linking them to a playlist. Without this,
-                            // addSongToPlaylist() trips the
-                            // playlist_song_map.songId → song.id FOREIGN KEY
-                            // constraint and the whole import fails with
-                            // "FOREIGN KEY constraint failed (code 787)".
-                            //
-                            // YouTube Music already has the song ids natively
-                            // (no per-track search needed) but we still fetch
-                            // the full SongItems via fetchYouTubePlaylistSongs
-                            // so we have the metadata to populate the song row.
                             val songs: List<MediaMetadata> =
                                 if (resolved.source == CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC) {
                                     CrossServicePlaylistImporter.fetchYouTubePlaylistSongs(resolved.sourcePlaylistId)
@@ -252,27 +228,15 @@ fun CrossServiceImportPlaylistDialog(
                                 return@launch
                             }
 
-                            // === Foreign-key-safe insert ===
-                            // Insert every resolved song into the `song` table
-                            // (plus its artist rows via the @Transaction insert
-                            // overload) inside a single transaction so a
-                            // mid-import crash doesn't leave half the songs
-                            // behind. After this, addSongToPlaylist() can
-                            // safely create the playlist_song_map rows.
                             database.withTransaction {
                                 songs.forEach { meta -> insert(meta) }
                             }
                             val songIds = songs.map { it.id }
 
-                            // Create the local playlist and insert the song ids.
                             val playlistName = resolved.title.ifBlank {
                                 "${resolved.source.displayName} Import"
                             }
-                            // Re-use an existing playlist if we've imported this URL before.
-                            // The synthetic browseId below is just a dedupe key for the *first*
-                            // import — once we successfully create a remote YT Music playlist
-                            // further down, we overwrite it with the real "VLPL…" browseId so
-                            // the playlist becomes server-side and survives local data clears.
+
                             val syntheticBrowseId = "import:${resolved.source.name}:${resolved.sourcePlaylistId}"
                             val existing = database.playlistByBrowseId(syntheticBrowseId).firstOrNull()
                             val targetPlaylistId = if (existing != null) {
@@ -303,38 +267,13 @@ fun CrossServiceImportPlaylistDialog(
                                 database.addSongToPlaylist(playlist, songIds)
                             }
 
-                            // === Sync the imported playlist to the user's YT Music account ===
-                            //
-                            // Before this block, imported playlists lived only in the local
-                            // database — the synthetic "import:…" browseId is not a real YT
-                            // Music playlist id, so when the user cleared app data, reinstalled,
-                            // or switched devices, the imported playlist would silently vanish
-                            // (the "imported playlists disappeared after some time" report).
-                            //
-                            // If the user is signed in to YT Music and YT sync is enabled, we
-                            // create a real server-side playlist via YouTube.createPlaylist
-                            // (which uses the /playlist/create endpoint and accepts the initial
-                            // videoIds in the same call), then rewrite the local playlist's
-                            // browseId to the returned "VLPL…" id. From that point on:
-                            //   - The playlist exists on music.youtube.com and survives local
-                            //     data loss.
-                            //   - LocalPlaylistViewModel.refresh() will sync server → local
-                            //     because browseId is now a real YT Music playlist id.
-                            //   - SyncUtils periodic sync will keep it up to date.
-                            //
-                            // If the user is not signed in or YT sync is disabled, we keep the
-                            // synthetic browseId and the playlist stays local-only — same as
-                            // the previous behavior, no regression.
                             val preferences = context.dataStore.data.firstOrNull()
                             val isSignedIn = preferences != null &&
                                 hasYouTubeLoginCookie(preferences[InnerTubeCookieKey].orEmpty())
                             val isYtSyncEnabled = preferences == null || (preferences[YtmSyncKey] ?: true)
 
                             if (isSignedIn && isYtSyncEnabled && songIds.isNotEmpty()) {
-                                // YouTube.createPlaylist already returns Result<String> (it is
-                                // defined as `= runCatching { ... }`), so we call .onSuccess /
-                                // .onFailure directly on it. Wrapping it in another runCatching
-                                // would produce Result<Result<String>> and break compilation.
+
                                 YouTube.createPlaylist(playlistName, songIds)
                                     .onSuccess { remoteBrowseId ->
                                         if (remoteBrowseId.isNotBlank()) {
@@ -353,10 +292,7 @@ fun CrossServiceImportPlaylistDialog(
                                             }
                                         }
                                     }.onFailure { error ->
-                                        // Don't fail the whole import — the local playlist is
-                                        // already created and populated. The user just doesn't get
-                                        // server-side sync this time. They can pull-to-refresh on
-                                        // the playlist later to retry, or sign in and re-import.
+
                                         Timber.w(
                                             error,
                                             "Remote YT Music playlist creation failed during import; " +

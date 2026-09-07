@@ -21,17 +21,6 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.floor
 
-/**
- * Handles Spotify authentication using the web player's internal token endpoint.
- * Uses sp_dc cookies (extracted from WebView login) to obtain access tokens
- * without requiring a Spotify Developer Client ID.
- *
- * Token acquisition requires a TOTP (Time-based One-Time Password) generated
- * from a shared secret that Spotify rotates periodically. The secret and its
- * version are fetched from a community-maintained GitHub Gist.
- *
- * Reference: https://github.com/sonic-liberation/spotube-plugin-spotify
- */
 object SpotifyAuth {
     private const val TOKEN_URL = "https://open.spotify.com/api/token"
     private const val SERVER_TIME_URL = "https://open.spotify.com/api/server-time"
@@ -68,14 +57,6 @@ object SpotifyAuth {
     private val nuanceMutex = Mutex()
     private var cachedNuance: CachedNuance? = null
 
-    /**
-     * Fetches an internal web-player access token using session cookies and TOTP.
-     *
-     * 1. Fetches the TOTP secret from the community Gist
-     * 2. Gets the server time from Spotify
-     * 3. Generates a 6-digit TOTP (SHA1, 30s interval)
-     * 4. Calls /api/token with the TOTP and sp_dc cookie
-     */
     suspend fun fetchAccessToken(
         spDc: String,
         spKey: String = "",
@@ -179,11 +160,6 @@ object SpotifyAuth {
             response.serverTime
         }
 
-    /**
-     * Generates a 6-digit TOTP using HMAC-SHA1 (RFC 6238).
-     * @param secret Base32-encoded shared secret
-     * @param serverTimeSec Spotify server time in seconds since epoch
-     */
     private fun generateTotp(
         secret: String,
         serverTimeSec: Long,

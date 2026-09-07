@@ -262,7 +262,6 @@ class BackupRestoreViewModel
         private var scheduledBackupUpdateJob: Job? = null
         private var manualBackupJob: Job? = null
 
-        // --- Google Drive sync state ----------------------------------------------------------
         private val _googleDriveSyncState =
             MutableStateFlow<GoogleDriveSyncScreenState>(GoogleDriveSyncScreenState.Loading)
         val googleDriveSyncState: StateFlow<GoogleDriveSyncScreenState> = _googleDriveSyncState.asStateFlow()
@@ -451,8 +450,6 @@ class BackupRestoreViewModel
                 )
         }
 
-        // --- Google Drive sync -----------------------------------------------------------------
-
         fun onGoogleDriveSyncEnabledChanged(enabled: Boolean) {
             updateGoogleDriveSync { updateGoogleDriveSync.setEnabled(enabled) }
         }
@@ -495,15 +492,12 @@ class BackupRestoreViewModel
             if (isGDriveSyncing) return
             isGDriveSyncing = true
             publishGoogleDriveSyncState()
-            // Run the upload directly (not via WorkManager) so we can react to the result
-            // synchronously and show a snackbar immediately. WorkManager's runNow() is still
-            // triggered as a fallback for the scheduled path.
+
             viewModelScope.launch {
                 try {
                     val settings = googleDriveSettings
                     if (settings == null || !settings.enabled || settings.remoteFolderUri == null) {
-                        // Fall back to the WorkManager path — settings may have changed but not
-                        // yet propagated to the local cache. The worker will bail out safely.
+
                         updateGoogleDriveSync.runNow()
                         return@launch
                     }
@@ -520,7 +514,7 @@ class BackupRestoreViewModel
                     when (val result = googleDriveClient.uploadBackup(settings, fileName)) {
                         is GoogleDriveClient.UploadResult.Success -> {
                             updateGoogleDriveSync {
-                                // recordSyncResult updates lastSyncEpochMs + lastSyncFailed
+
                                 googleDriveSyncRepository.recordSyncResult(success = true)
                             }
                             _googleDriveSyncEvent.emit(R.string.google_drive_sync_succeeded)
@@ -530,7 +524,7 @@ class BackupRestoreViewModel
                                 googleDriveSyncRepository.recordSyncResult(success = false)
                             }
                             _googleDriveSyncEvent.emit(R.string.google_drive_sync_failed_transient)
-                            // Also kick the WorkManager path so it retries with backoff.
+
                             updateGoogleDriveSync.runNow()
                         }
                         is GoogleDriveClient.UploadResult.PermanentFailure -> {
@@ -729,9 +723,7 @@ class BackupRestoreViewModel
                                     }
 
                                     else -> {
-                                        // Custom font .ttf entries live under the `fonts/` prefix.
-                                        // Extract them back to filesDir/custom_fonts/ so the
-                                        // restored settings.xml font URI resolves correctly.
+
                                         if (name.startsWith("$FONTS_ZIP_PREFIX/") && name.endsWith(".ttf", ignoreCase = true)) {
                                             emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
                                             val fontsDir = context.filesDir / CUSTOM_FONTS_DIR_NAME

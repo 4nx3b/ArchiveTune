@@ -3123,6 +3123,8 @@ modifier =
                                                                 SearchSource.ONLINE ->
                                                                     if (searchProvider == SearchProvider.SPOTIFY) {
                                                                         R.string.search_source_spotify
+                                                                    } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
+                                                                        R.string.search_source_apple_music
                                                                     } else {
                                                                         R.string.search_yt_music
                                                                     }

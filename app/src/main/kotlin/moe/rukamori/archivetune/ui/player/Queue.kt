@@ -552,13 +552,7 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.APPLE_MUSIC -> {
-                    // The Apple Music style renders its queue via the in-place
-                    // SharedTransitionLayout morph in AppleMusicPlayer (its
-                    // collapsed peek height is 0dp, so this BottomSheet never
-                    // visibly collapses for that style). Keeping an explicit
-                    // empty branch here means the `when` stays exhaustive and
-                    // we don't accidentally render an upstream collapsed-content
-                    // variant behind the morph.
+
                 }
 
                 PlayerDesignStyle.BITCHORD -> {

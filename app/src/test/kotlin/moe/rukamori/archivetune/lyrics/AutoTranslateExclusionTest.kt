@@ -13,21 +13,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Guards "Don't auto translate these languages" / "Don't romanise these languages".
- *
- * This shipped doing nothing at all: `shouldAutoTranslate` took the exclusion set as a parameter
- * defaulting to `emptySet()`, and both live callers omitted it, so the picker wrote a preference that
- * was then read only by a class nothing ever injected. Selecting Hindi and still getting Hindi
- * translated is [excludedHindiIsNotAutoTranslated], and it is why that default is gone.
- */
 class AutoTranslateExclusionTest {
-    // Devanagari consonants; the matras are combining marks and don't count as letters, which is
-    // fine — the consonants alone make Devanagari the dominant script.
+
     private val hindi = "मैं तुझको लेकर उड़ जाऊँ"
 
-    // Deliberately all-kana. "君の名は" is mostly Han by character count, so the detector calls it
-    // CHINESE — a real limitation of script-based detection, and not what this test is about.
     private val japanese = "きみのなまえはぼくのなまえ"
     private val chinese = "我的心里只有你"
     private val english = "Just a regular english line"
@@ -45,8 +34,6 @@ class AutoTranslateExclusionTest {
         assertNull(LyricsUtils.detectDominantLanguageCode(""))
     }
 
-    // ── The reported bug ──
-
     @Test
     fun excludedHindiIsNotAutoTranslated() {
         assertFalse(
@@ -60,8 +47,7 @@ class AutoTranslateExclusionTest {
 
     @Test
     fun hindiIsAutoTranslatedWhenNotExcluded() {
-        // The other half of the assertion above: the exclusion is what stops it, not the detector
-        // failing to notice Devanagari in the first place.
+
         assertTrue(
             LyricsUtils.shouldAutoTranslate(
                 lyrics = hindi,
@@ -82,13 +68,9 @@ class AutoTranslateExclusionTest {
         )
     }
 
-    // ── Code-space mismatches ──
-
     @Test
     fun chineseMatchesEitherPickerVariant() {
-        // detectDominantLanguageCode can only ever say "CHINESE" (it sees the Han script), while the
-        // picker offers CHINESE_SIMPLIFIED and CHINESE_TRADITIONAL and no plain "CHINESE". A direct
-        // set lookup therefore never matched, so Chinese could not be excluded from either feature.
+
         assertTrue(LyricsUtils.matchesExcludedLanguage("CHINESE", setOf("CHINESE_SIMPLIFIED")))
         assertTrue(LyricsUtils.matchesExcludedLanguage("CHINESE", setOf("CHINESE_TRADITIONAL")))
         assertFalse(

@@ -158,7 +158,6 @@ fun YouTubeAlbumMenu(
             speedDialPins.any { it.type == albumPin.type && it.id == albumPin.id }
         }
 
-    // Split artists by configured separators
     data class SplitArtist(
         val name: String,
         val originalArtist: moe.rukamori.archivetune.db.entities.ArtistEntity?,

@@ -197,16 +197,6 @@ object LastFM {
         )
     }
 
-    // --- Dashboard data fetchers -------------------------------------------
-
-    /**
-     * Fetches the user's profile info (playcount, registration date,
-     * avatar, etc.) for the Last.fm dashboard. Requires the user to be
-     * logged in (a session key is required by the dashboard contract,
-     * though the underlying Last.fm API endpoint technically allows
-     * unauthenticated reads; we keep it consistent with the rest of
-     * the dashboard).
-     */
     suspend fun getUserInfo(username: String) =
         runCatching {
             postAndDecode<UserInfoResponse>(
@@ -215,10 +205,6 @@ object LastFM {
             ).user
         }
 
-    /**
-     * Fetches the user's recent listening history for the dashboard.
-     * Limit defaults to 50 (Last.fm's max per page).
-     */
     suspend fun getRecentTracks(
         username: String,
         limit: Int = 50,
@@ -235,9 +221,6 @@ object LastFM {
         )
     }
 
-    /**
-     * Fetches the user's all-time top tracks for the dashboard.
-     */
     suspend fun getTopTracks(
         username: String,
         period: String = "overall",
@@ -292,7 +275,6 @@ object LastFM {
         )
     }
 
-    /** Fetches the community tags for a track shown in the dashboard overflow menu. */
     suspend fun getTrackInfo(
         artist: String,
         track: String,

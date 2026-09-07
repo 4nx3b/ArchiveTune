@@ -394,28 +394,6 @@ private fun paletteStyleFor(seedColor: Color): PaletteStyle {
 
 private fun Int.toComposeColor(): Color = Color(this.toLong() and 0xFFFFFFFFL)
 
-fun Bitmap.extractThemeColor(): Color {
-    val palette =
-        Palette
-            .from(this)
-            .maximumColorCount(16)
-            .generate()
-
-    val swatch =
-        palette.vibrantSwatch
-            ?: palette.dominantSwatch
-            ?: palette.mutedSwatch
-            ?: palette.lightVibrantSwatch
-            ?: palette.darkVibrantSwatch
-            ?: palette.lightMutedSwatch
-            ?: palette.darkMutedSwatch
-
-    return swatch?.rgb?.toComposeColor() ?: DefaultThemeColor
-}
-
-/** Wallpaper-based dynamic theme on API < 31 (backport, rukamori PR #1219).
- *  Returns null when extraction is impossible (no wallpaper / no permission), so
- *  the caller can fall back to the custom theme color and flag it in settings. */
 fun extractWallpaperThemeColor(context: Context): Color? {
     return try {
         val wallpaperManager = WallpaperManager.getInstance(context)
@@ -439,6 +417,25 @@ fun extractWallpaperThemeColor(context: Context): Color? {
     } catch (e: Exception) {
         null
     }
+}
+
+fun Bitmap.extractThemeColor(): Color {
+    val palette =
+        Palette
+            .from(this)
+            .maximumColorCount(16)
+            .generate()
+
+    val swatch =
+        palette.vibrantSwatch
+            ?: palette.dominantSwatch
+            ?: palette.mutedSwatch
+            ?: palette.lightVibrantSwatch
+            ?: palette.darkVibrantSwatch
+            ?: palette.lightMutedSwatch
+            ?: palette.darkMutedSwatch
+
+    return swatch?.rgb?.toComposeColor() ?: DefaultThemeColor
 }
 
 fun Bitmap.extractGradientColors(): List<Color> {

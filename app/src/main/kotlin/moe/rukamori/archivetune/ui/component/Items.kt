@@ -903,21 +903,7 @@ fun LibraryPinnedCollectionTile(
     subtitle: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    // Performance (user request 2026-08-30): hoist the Brush.linearGradient out
-    // of the per-composition `Modifier.background(...)` call. The previous code
-    // re-built the Brush + 3 Color.copy instances on every recomposition of
-    // this tile — which fires on every LazyColumn scroll, every selection-mode
-    // toggle, every theme change. `Modifier.background(Brush.linearGradient(...))`
-    // re-installs the modifier element on every Brush instance change →
-    // `update + invalidateDraw` cascade.
-    //
-    // Now the brush is built once per (accentColor, surfaceContainerHigh,
-    // surfaceContainerLow) tuple — typically stable for the lifetime of a
-    // tile. We hold the three inputs in stable locals and key the remember
-    // on them, so a theme change still rebuilds the brush but a scroll does
-    // not. The actual painting still happens via `Modifier.background`
-    // (cheap; the background modifier's `equals` returns true across
-    // recompositions when the Brush reference is stable).
+
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
     val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
     val pinnedGradientBrush =
@@ -932,17 +918,6 @@ fun LibraryPinnedCollectionTile(
             )
         }
 
-    // Per user request (2026-08-28): "the liked songs in Spotify playlists
-    // looks a bit faded. Fix it and make it compact." The previous tile
-    // had a 76% opacity surface behind the icon (which muted the accent
-    // colour), generous 14dp outer + 16dp inner padding, and 16dp
-    // inter-element spacing — visually airy but read as washed-out next
-    // to the dense Spotify playlist list items below it. Tightened:
-    //   - Icon backdrop: opaque surface (1.0 alpha) so the accent colour
-    //     reads at full saturation.
-    //   - Outer padding: 14dp -> 10dp.
-    //   - Inter-element spacing: 16dp -> 8dp.
-    //   - Icon inner padding: 12dp -> 8dp.
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -1015,15 +990,7 @@ fun LibraryPlaylistFeatureCard(
     val context = LocalContext.current
     val primaryThumbnailUrl = playlist.thumbnails.getOrNull(0)
     var extractedGlowColor by remember(primaryThumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp on
-    // the glow color. The animation was rebuilding `Modifier.shadow(ambientColor = glowColor.copy(alpha = ...),
-    // spotColor = glowColor.copy(alpha = ...))` every frame for 400ms after each thumbnail
-    // color extraction — `Modifier.shadow`'s `equals()` returns false every frame, causing
-    // `update + invalidateDraw` cascade for every visible Spotlight card on screen.
-    // The 400ms ramp is barely perceptible on a thumbnail-card glow shadow; a snap is
-    // visually equivalent (the color extraction happens asynchronously, so the glow appears
-    // only after the thumbnail is already visible). Now we just snap to the extracted color.
-    // Same fix applied below for LibraryAlbumSpotlightCard and LibraryArtistSpotlightCard.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(primaryThumbnailUrl) {
         if (primaryThumbnailUrl == null) return@LaunchedEffect
@@ -1128,8 +1095,7 @@ fun LibraryAlbumSpotlightCard(
         )
     val context = LocalContext.current
     var extractedGlowColor by remember(album.album.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
-    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(album.album.thumbnailUrl) {
         val url = album.album.thumbnailUrl ?: return@LaunchedEffect
@@ -1240,8 +1206,7 @@ fun LibraryArtistSpotlightCard(
 ) {
     val context = LocalContext.current
     var extractedGlowColor by remember(artist.artist.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
-    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(artist.artist.thumbnailUrl) {
         val url = artist.artist.thumbnailUrl ?: return@LaunchedEffect
@@ -1331,10 +1296,7 @@ fun MediaMetadataListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     shouldLoadImage: Boolean = true,
-    // Forwarded to ListItem so callers that already paint their own row
-    // background (e.g. AppleMusicQueueSheet's glassy pill) can suppress the
-    // default secondaryContainer highlight that would otherwise stack on
-    // top and produce a bright, glitchy double-background.
+
     showActiveContainer: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
     textColorOverride: Color? = null,
@@ -2252,10 +2214,7 @@ fun SwipeToSongBox(
         Box(
             modifier =
                 Modifier
-                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(...) }` ran
-                    // in the LAYOUT phase on every swipe-dismiss drag frame. Folding
-                    // into `graphicsLayer` moves the transform to the DRAW phase; the
-                    // layout pass stays cached while the user swipes the row out.
+
                     .graphicsLayer {
                         translationX = offset.value
                     }
@@ -2266,7 +2225,6 @@ fun SwipeToSongBox(
     }
 }
 
-// Helper to animate reset of swipe offset
 private fun reset(
     offset: MutableState<Float>,
     scope: CoroutineScope,
@@ -2280,7 +2238,6 @@ private fun reset(
     }
 }
 
-// Data holder for swipe visuals
 data class Quadruple<A, B, C, D>(
     val first: A,
     val second: B,
@@ -2394,7 +2351,7 @@ private object Icon {
                 }
             }
 
-            else -> { /* no icon */ }
+            else -> {  }
         }
     }
 

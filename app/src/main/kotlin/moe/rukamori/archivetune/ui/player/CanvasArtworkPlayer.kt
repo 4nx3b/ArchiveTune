@@ -61,16 +61,7 @@ fun CanvasArtworkPlayer(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
-    // When false, the ExoPlayer is kept alive (paused) but the TextureView
-    // (ContentFrame) is NOT rendered. This is used by the Apple Music player's
-    // backdrop canvas when lyrics is open: the canvas's Modifier.blur(72.dp)
-    // on a live TextureView is a heavy per-frame GPU cost even when the video
-    // is paused, because the blur RenderEffect is re-applied every frame.
-    // Hiding the TextureView frees the entire GPU frame budget for the
-    // karaoke syllable sweep, eliminating the "lyrics lag when canvas is
-    // playing" issue. When `visible` flips back to true, the TextureView is
-    // re-created and the ExoPlayer attaches to it — no reload delay because
-    // the player instance was retained.
+
     visible: Boolean = true,
     // Optional availability signal for callers that keep a fallback behind
     // the video: invoked with `true` once a frame is actually rendering (the
@@ -129,14 +120,7 @@ fun CanvasArtworkPlayer(
                     )
                 }.build()
         }
-    // Player cache — wraps the OkHttp DataSource with a CacheDataSource so
-    // canvas video segments are cached across ExoPlayer re-creations. This
-    // is critical for the Apple Music player: when the user closes the
-    // lyrics/queue panel, the COVER branch is re-entered and a brand-new
-    // ExoPlayer is created. Without caching, the new ExoPlayer re-fetches
-    // the canvas from the network (multi-second delay during which the
-    // user sees a static artwork flash). With caching, the segments are
-    // served from the player cache (sub-second load).
+
     val playerCache =
         remember {
             val entryPoint =
@@ -175,19 +159,15 @@ fun CanvasArtworkPlayer(
                 )
             }
         }
-    // LoadControl tuned for short looping canvas videos. The default
-    // DefaultLoadControl has bufferForPlayback = 2.5s which delays the
-    // first frame render after a re-creation. A 500ms buffer is plenty
-    // for a 5-10s looping clip and lets the first frame render as soon
-    // as the initial segment is read (often from cache, so near-instant).
+
     val loadControl =
         remember {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    /* minBufferMs = */ 15_000,
-                    /* maxBufferMs = */ 30_000,
-                    /* bufferForPlaybackMs = */ 500,
-                    /* bufferForPlaybackAfterRebufferMs = */ 1_000,
+                     15_000,
+                     30_000,
+                     500,
+                     1_000,
                 )
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
@@ -216,15 +196,6 @@ fun CanvasArtworkPlayer(
         }
     }
 
-    // When `visible` flips from false → true (e.g. lyrics closing in the
-    // Apple Music player), a NEW TextureView is created and the retained
-    // ExoPlayer re-attaches to it. The `isVideoReady` state is stale
-    // (still true from before the TextureView was removed), which would
-    // make the alpha animate to 1 immediately — showing a black
-    // TextureView surface (no frame yet) over the blurred AsyncImage
-    // fallback below. Resetting isVideoReady to false keeps the new
-    // TextureView invisible until `onRenderedFirstFrame` fires again,
-    // letting the fallback show through during the brief re-attach gap.
     LaunchedEffect(visible) {
         if (visible) {
             isVideoReady = false
@@ -377,12 +348,6 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
-    // Only render the ContentFrame (TextureView) when `visible` is true.
-    // When false, the ExoPlayer stays alive (paused) but the TextureView is
-    // removed from the composition tree — eliminating the per-frame GPU cost
-    // of compositing + blurring a video surface that isn't changing. When
-    // `visible` flips back to true, a new TextureView is created and the
-    // ExoPlayer re-attaches to it, showing the current frame immediately.
     if (visible) {
         ContentFrame(
             player = exoPlayer,

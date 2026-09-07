@@ -56,9 +56,4 @@ data class TelegramMediaId(
     }
 }
 
-/**
- * True when this media id addresses a Telegram channel track. Telegram ids behave like local media
- * ids for everything YouTube-specific (no YT metadata fetch, no remote scrobble id, no YT playlist
- * sync) but are streamed through [TelegramDataSource] instead of the content resolver.
- */
 fun String.isTelegramMediaId(): Boolean = startsWith(PREFIX) && TelegramMediaId.decode(this) != null

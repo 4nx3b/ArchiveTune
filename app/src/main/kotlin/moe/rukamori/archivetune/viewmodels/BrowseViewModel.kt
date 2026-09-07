@@ -35,10 +35,9 @@ class BrowseViewModel
                     YouTube
                         .browse(browseId, null)
                         .onSuccess { result ->
-                            // Store the title
+
                             title.value = result.title
 
-                            // Flatten the nested structure to get all YTItems
                             val allItems = result.items.flatMap { it.items }
                             items.value = allItems
                         }.onFailure {

@@ -47,10 +47,7 @@ object SpotifyPlaybackResolver {
             }
 
             val youtubeQuery = SpotifyMapper.buildSearchQuery(track)
-            // Spotify catalog playback is intentionally resolved through the existing audio-source
-            // chain, so identifying the matching YouTube item must also work without a YouTube
-            // login. Try anonymous search first; a stale account context must not make Spotify
-            // playlist tracks appear unplayable for signed-out users.
+
             val searchResult =
                 YouTube
                     .search(

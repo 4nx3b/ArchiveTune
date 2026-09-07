@@ -22,11 +22,6 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * A Material 3 Expressive style settings group component
- * @param title The title of the settings group
- * @param items List of settings items to display
- */
 @Composable
 fun Material3SettingsGroup(
     title: String? = null,
@@ -35,7 +30,7 @@ fun Material3SettingsGroup(
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {
-        // Section title
+
         title?.let {
             Text(
                 text = it,
@@ -46,7 +41,6 @@ fun Material3SettingsGroup(
             )
         }
 
-        // Settings card
         Card(
             modifier =
                 Modifier
@@ -71,9 +65,6 @@ fun Material3SettingsGroup(
     }
 }
 
-/**
- * Individual settings item row with Material 3 styling
- */
 @Composable
 private fun Material3SettingsItemRow(
     item: Material3SettingsItem,
@@ -92,7 +83,7 @@ private fun Material3SettingsItemRow(
                     ).padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Icon with background
+
             item.icon?.let { icon ->
                 Box(
                     modifier =
@@ -144,28 +135,24 @@ private fun Material3SettingsItemRow(
                 Spacer(modifier = Modifier.width(16.dp))
             }
 
-            // Title and description
             Column(
                 modifier = Modifier.weight(1f),
             ) {
-                // Title content (can be Text or custom composable)
+
                 item.title()
 
-                // Description if provided
                 item.description?.let { desc ->
                     Spacer(modifier = Modifier.height(2.dp))
                     desc()
                 }
             }
 
-            // Trailing content
             item.trailingContent?.let { trailing ->
                 Spacer(modifier = Modifier.width(8.dp))
                 trailing()
             }
         }
 
-        // Divider
         if (showDivider) {
             HorizontalDivider(
                 modifier =
@@ -180,9 +167,6 @@ private fun Material3SettingsItemRow(
     }
 }
 
-/**
- * Data class for Material 3 settings item
- */
 data class Material3SettingsItem(
     val icon: Painter? = null,
     val title: @Composable () -> Unit,

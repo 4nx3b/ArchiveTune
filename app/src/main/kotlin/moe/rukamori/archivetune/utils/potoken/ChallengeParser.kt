@@ -19,30 +19,12 @@ import okio.ByteString.Companion.toByteString
 
 private val json = Json { ignoreUnknownKeys = true }
 
-/**
- * Parses the raw response from YouTube's `api/jnn/v1/Create` endpoint into a JSON object
- * that can be embedded directly into a JavaScript snippet for `runBotGuard()`.
- *
- * The response is a JSON array.  The first element may be:
- * - a nested JSON array (unscrambled challenge), or
- * - a base64-encoded string (scrambled challenge) that must be descrambled first.
- *
- * The resulting challenge array contains (by index):
- *   [0]  messageId
- *   [1]  interpreterJavascript array (or null)
- *   [2]  interpreterTrustedResourceUrl array (or null)
- *   [3]  interpreterHash
- *   [4]  program (base64)
- *   [5]  globalName
- *   [6]  (unknown)
- *   [7]  clientExperimentsStateBlob
- */
 fun parseCreateChallenge(rawResponse: String): String {
     val outer = json.parseToJsonElement(rawResponse).jsonArray
 
     val challenge =
         if (outer.size > 1 && outer[1].jsonPrimitive.isString) {
-            // Scrambled: base64-decode then add 97 to each byte
+
             val decoded = descramble(outer[1].jsonPrimitive.content)
             json.parseToJsonElement(decoded).jsonArray
         } else {
@@ -82,13 +64,6 @@ fun parseCreateChallenge(rawResponse: String): String {
     )
 }
 
-/**
- * Parses the raw response from YouTube's `api/jnn/v1/GenerateIT` endpoint.
- *
- * Returns a pair of:
- * - A JavaScript `Uint8Array(...)` string representation of the integrity token
- * - The token's lifetime in seconds
- */
 fun parseIntegrityToken(rawResponse: String): Pair<String, Long> {
     val arr = json.parseToJsonElement(rawResponse).jsonArray
     val tokenU8 = base64ToJsUint8Array(arr[0].jsonPrimitive.content)
@@ -96,18 +71,11 @@ fun parseIntegrityToken(rawResponse: String): Pair<String, Long> {
     return tokenU8 to lifetimeSeconds
 }
 
-/**
- * Converts a plain-string identifier to a JavaScript `Uint8Array(...)` literal.
- */
 fun stringToJsUint8Array(identifier: String): String {
     val bytes = identifier.toByteArray(Charsets.UTF_8)
     return "new Uint8Array([${bytes.joinToString(",") { (it.toInt() and 0xFF).toString() }}])"
 }
 
-/**
- * Converts a comma-separated byte list (output of `Uint8Array.toString()` in JS)
- * to the YouTube-specific base64 encoding used for PoTokens.
- */
 fun commaSeparatedBytesToBase64(commaBytes: String): String =
     commaBytes
         .split(",")
@@ -117,8 +85,6 @@ fun commaSeparatedBytesToBase64(commaBytes: String): String =
         .base64()
         .replace('+', '-')
         .replace('/', '_')
-
-// --- internal helpers ---
 
 private fun descramble(base64Payload: String): String =
     base64ToByteArray(base64Payload)

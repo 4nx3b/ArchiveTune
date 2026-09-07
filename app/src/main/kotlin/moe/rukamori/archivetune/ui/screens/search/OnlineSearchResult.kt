@@ -110,6 +110,14 @@ fun OnlineSearchResult(
         SpotifyOnlineSearchResult(navController = navController)
         return
     }
+    if (viewModel.searchProvider == SearchProvider.APPLE_MUSIC) {
+        AppleMusicOnlineSearchResult(navController = navController)
+        return
+    }
+    if (viewModel.searchProvider == SearchProvider.APPLE_MUSIC) {
+        AppleMusicOnlineSearchResult(navController = navController)
+        return
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
@@ -273,13 +281,7 @@ fun OnlineSearchResult(
             shadowElevation = 1.dp,
             modifier =
                 Modifier
-                    // Use safeDrawing (not systemBars) so the chips row stays
-                    // below the notch/cutout even when the status bar is hidden
-                    // (e.g., an item overflow menu is open on the search results
-                    // page, which flips shouldHideStatusBars to true). When the
-                    // status bar is hidden, systemBars reports 0 top inset and
-                    // the chips row would float into the cutout. safeDrawing
-                    // always reports the cutout-safe area.
+
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
                     .fillMaxWidth(),
         ) {

@@ -7,12 +7,6 @@
 
 package moe.rukamori.archivetune.playback
 
-/**
- * Keeps YouTube stream recovery bounded while allowing a fresh client/URL to
- * recover from more than one transient failure. A single retry is frequently
- * insufficient: a 403 can invalidate one client and the replacement URL can
- * still be stale or rejected before the next client is selected.
- */
 internal class PlaybackStreamRecoveryTracker(
     private val maxAttemptsPerMediaItem: Int = 3,
 ) {

@@ -19,27 +19,15 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 
-/**
- * Centralized *behavior* for the title/artist block shared by every player design style.
- *
- * This intentionally contains **no UI** — each player style keeps rendering its own `Text`s,
- * layout, typography and decorations. Only the tap/long-press behavior lives here, so:
- *  - the historical inconsistency (title used `snapTo`, artist used `collapseSoft`) has a single
- *    source of truth and is fixed in one place, and
- *  - the behavior can no longer drift between styles.
- *
- * Adding a new player style does **not** require touching this file: just call
- * [rememberPlayerTitleActions] and wire the callbacks into whatever UI the style draws.
- */
 @Immutable
 class PlayerTitleActions(
-    /** Navigate to the current song's album (no-op if the song has no album). */
+
     val onTitleClick: () -> Unit,
-    /** Navigate to a specific artist by id (no-op for blank ids). */
+
     val onArtistClick: (artistId: String) -> Unit,
-    /** Copy the song title to the clipboard and show a toast. */
+
     val onCopyTitle: () -> Unit,
-    /** Copy the comma-joined artist names to the clipboard and show a toast. */
+
     val onCopyArtists: () -> Unit,
 )
 
@@ -61,10 +49,7 @@ fun rememberPlayerTitleActions(
         PlayerTitleActions(
             onTitleClick = {
                 mediaMetadata.album?.let { album ->
-                    // collapseSoft animates the sheet AND updates its internal anchor, keeping
-                    // isCollapsed/isExpanded in sync. (Previously this used snapTo, which jumped
-                    // without animation and left the anchor stale, so tapping the title from the
-                    // home screen failed to collapse the player reliably.)
+
                     state.collapseSoft()
                     navController.navigate("album/${album.id}")
                 }

@@ -88,7 +88,7 @@ object UpdateNotificationManager {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            // Replace the old six-hour schedule after an app update.
+
             ExistingPeriodicWorkPolicy.UPDATE,
             updateCheckRequest,
         )
@@ -146,7 +146,7 @@ object UpdateNotificationManager {
                     }
                 }
             } catch (e: Exception) {
-                // Silently fail
+
             }
         }
     }
@@ -167,7 +167,7 @@ object UpdateNotificationManager {
                 dataStore.edit { it[LastNotifiedVersionKey] = latestVersion }
             }
         } catch (e: Exception) {
-            // Silently fail
+
         }
     }
 
@@ -223,7 +223,7 @@ object UpdateNotificationManager {
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
-            // Missing POST_NOTIFICATIONS permission
+
         }
     }
 

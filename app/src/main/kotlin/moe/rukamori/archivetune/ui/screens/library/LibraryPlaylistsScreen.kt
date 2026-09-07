@@ -151,65 +151,25 @@ fun LibraryPlaylistsScreen(
     val playerConnection = LocalPlayerConnection.current
     val haptic = LocalHapticFeedback.current
 
-    // Per user request (2026-08-29): Spotify and Playlists were previously
-    // sub-tabs of the Library HorizontalPager. The pager slide animation
-    // felt different from the standard app-wide slide-in-from-right page
-    // transition. Moving both out of the pager into their own NavHost
-    // routes makes them ordinary pages — they use the same default
-    // slide-in-from-right transition as every other page.
-    //
-    // As a consequence, the screen now owns its own tag-filter state
-    // (previously constructed by the parent LibraryScreen and passed
-    // in via the `filterContent` and `selectedTagIds` params). The
-    // `rememberPlaylistTagFilterState` helper lives in the same package
-    // and is self-contained, so the screen constructs it locally.
     val (selectedTagIds, onSelectedTagIdsChange) = rememberPlaylistTagFilterState(database)
     val allTags by database.allTags().collectAsStateWithLifecycle(initialValue = emptyList())
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, defaultValue = true)
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     var showTagsManagementDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Per user request (2026-08-29): "The liquid glass navigation buttons
-    // is not in liquid glass in playlist and Spotify page. Its just
-    // frosted. Use the exact same logic from playlist page for liquid
-    // glass buttons on the header".
-    //
-    // The playlist detail page (LocalPlaylistScreen) uses
-    // `LiquidGlassActionPill(backdrop = artworkBackdrop, interactive =
-    // true, ...) { back arrow + title text }` as the persistent top-start
-    // header, with `Modifier.layerBackdrop(artworkBackdrop)` applied to
-    // the scrolling LazyColumn to record the content the pill samples
-    // from. Mirroring that pattern here gives the Playlists Library page
-    // the same liquid glass header the user explicitly asked for.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Stable system-bars top inset so the header pill stays
-    // anchored below the status bar even when the bar is transiently
-    // hidden. Matches the pattern used in LocalPlaylistScreen.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // BackHandler so the predictive back gesture always escapes the
-    // Playlists Library page. Per user report (2026-08-29). Same pattern
-    // as LocalPlaylistScreen.kt — popBackStack first, fall back to
-    // navigateUp, then navigate("library") so the gesture NEVER
-    // silently fails.
     BackHandler {
         try {
             if (!navController.popBackStack()) {
@@ -221,7 +181,7 @@ fun LibraryPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-                // Last-resort: let the system handle the back press
+
             }
         }
     }
@@ -259,16 +219,6 @@ fun LibraryPlaylistsScreen(
         }
     val mutablePlaylists = remember { mutableStateListOf<Playlist>() }
 
-    // Persist the list/grid view choice across cold launches via DataStore.
-    // Previously this was only `rememberSaveable { mutableStateOf(false) }`
-    // which survives rotation but NOT process death — so every cold launch
-    // reverted to list view. Now the choice survives app restarts.
-    // Per user request (2026-08-28): the List/Grid toggle UI is removed
-    // and the Playlists sub-page always uses the list layout. The
-    // `playlistViewType` preference is no longer read here — any user
-    // who previously selected grid view will silently fall back to list
-    // view on next launch. The `isGridView` const below is kept as
-    // `false` to keep the (now dead) LazyVerticalGrid branch compilable.
     @Suppress("UnusedVariable") val isGridView = false
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
@@ -302,24 +252,18 @@ fun LibraryPlaylistsScreen(
         }
     }
 
-    // Dialog launcher
     if (showCreatePlaylistDialog) {
         CreatePlaylistDialog(
             onDismiss = { showCreatePlaylistDialog = false },
         )
     }
 
-    // Issue 2: player-aware bottom padding
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    // Wrap the PullToRefreshBox in a Box so we can overlay the
-    // persistent header pill at top-start as a sibling (the kyant
-    // liquid glass backdrop sampler must be a SIBLING of the layer
-    // source — never a child — see LiquidGlass.kt KDoc).
     Box(modifier = Modifier.fillMaxSize()) {
         ExpressivePullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -331,13 +275,7 @@ fun LibraryPlaylistsScreen(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        // Record the scrolling content into the screen-local
-                        // backdrop so the persistent LiquidGlassActionPill
-                        // at top-start can sample it for the blur effect.
-                        // Gated on `layerBackdropActive` (Liquid Glass master
-                        // toggle on + Android 12+ + no full-screen lyrics
-                        // overlay) to match the playlist-detail-screen
-                        // pattern in LocalPlaylistScreen.kt.
+
                         .then(
                             if (layerBackdropActive) {
                                 Modifier.layerBackdrop(artworkBackdrop)
@@ -345,8 +283,7 @@ fun LibraryPlaylistsScreen(
                                 Modifier
                             },
                         )
-                        // Pad the top so the first Control Row doesn't
-                        // sit underneath the header pill overlay.
+
                         .padding(top = systemBarsTopPadding + 64.dp),
             ) {
                 Column(
@@ -369,7 +306,7 @@ fun LibraryPlaylistsScreen(
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
                 }
-                // Control row (sort and playlist management actions).
+
             Row(
                 modifier =
                     Modifier
@@ -378,7 +315,7 @@ fun LibraryPlaylistsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Left: Sort dropdown
+
                 var showSortMenu by remember { mutableStateOf(false) }
                 val currentSortLabel =
                     when (sortType) {
@@ -519,19 +456,6 @@ fun LibraryPlaylistsScreen(
                     }
                 }
 
-                // Right: list/grid toggle & add button
-                //
-                // Per user request (2026-08-29 redesign): the Add and Lock
-                // icon buttons have been MOVED to the persistent top-end
-                // LiquidGlassActionPill (see the header section below) so
-                // they fit the visual language of the Playlist Detail page
-                // (which has a LiquidGlassActionPill at top-end with Search
-                // + More). When liquid glass is ACTIVE, this control row
-                // only contains the Sort dropdown (the Add/Lock live in
-                // the pill). When liquid glass is OFF (SDK < S or master
-                // toggle off), the pill isn't rendered, so we fall back
-                // to the original Add/Lock icon buttons here — preserving
-                // the existing functionality in both modes.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (sortType == PlaylistSortType.CUSTOM && !layerBackdropActive) {
                         IconButton(
@@ -567,24 +491,9 @@ fun LibraryPlaylistsScreen(
                         }
                     }
 
-                    // List/Grid layout toggle removed per user request
-                    // (2026-08-28): "There's two icons besides the + icon on
-                    // the left which lets you change the layout of playlists,
-                    // remove that." The Playlists sub-page now always uses
-                    // the list layout (PlaylistListCard), matching the
-                    // Library overview's Recently Added grid presentation
-                    // on the main Library page. The `playlistViewType`
-                    // preference is preserved so any user who previously
-                    // toggled grid view will see their setting honored on
-                    // next launch — but the toggle UI is gone so they can
-                    // no longer flip back to grid.
                 }
             }
 
-            // Tag filter row — previously passed in as a `filterContent`
-            // lambda from the parent LibraryScreen. Since this screen is
-            // now its own NavHost route, the row is constructed locally
-            // using the same tag-filter state the screen owns above.
             if (showTagsInLibrary) {
                 PlaylistTagFilterRow(
                     tags = allTags,
@@ -596,7 +505,6 @@ fun LibraryPlaylistsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Main Content
             if (isGridView) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
@@ -640,18 +548,7 @@ fun LibraryPlaylistsScreen(
                 val showDragHandles = sortType == PlaylistSortType.CUSTOM && !locked
                 LazyColumn(
                     state = lazyListState,
-                    // Per user request (2026-08-29 redesign): "The Playlist
-                    // Detail page (source of truth) has NO visible divider
-                    // lines between rows; spacing is clean and relies on
-                    // whitespace to separate items." The hairline divider
-                    // block has been removed and verticalArrangement uses
-                    // spacedBy(0.dp) so each `ListItem` row's internal
-                    // 72dp height + 8dp horizontal padding handle all
-                    // spacing — exactly matching the Playlist Detail page
-                    // layout. Horizontal contentPadding is 0 so the
-                    // ListItem's internal 8dp+8dp gives the row 16dp of
-                    // horizontal breathing room (matching the source of
-                    // truth's Playlist Detail song rows).
+
                     contentPadding = PaddingValues(bottom = playerAwareBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -703,17 +600,6 @@ fun LibraryPlaylistsScreen(
         }
         }
 
-        // Persistent header pill at top-start. Mirrors the playlist-detail
-        // page layout: `LiquidGlassActionPill(backdrop = artworkBackdrop,
-        // interactive = true, ...) { back arrow + sub-tab title text }`
-        // when liquid glass is active, falling back to `FrostedHeaderPill`
-        // (no backdrop) when the master toggle is off or the platform
-        // doesn't support the kyant RuntimeShader.
-        //
-        // Per user request (2026-08-29): "Use the exact same logic from
-        // playlist page for liquid glass buttons on the header" — the
-        // LiquidGlassActionPill + layerBackdrop combo is the exact pattern
-        // used in LocalPlaylistScreen.kt for the persistent back pill.
         if (layerBackdropActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
@@ -784,17 +670,6 @@ fun LibraryPlaylistsScreen(
             }
         }
 
-        // Persistent header pill at top-end. Mirrors the Playlist Detail
-        // page (source of truth) layout which has a LiquidGlassActionPill
-        // at top-end with Search + More icon buttons. The Playlists
-        // Library page's equivalent right-side actions are:
-        //   - Lock toggle (only rendered when sortType == CUSTOM, since
-        //     reordering is only meaningful in custom-order mode).
-        //   - Add playlist (always rendered — opens the existing
-        //     create-playlist dialog).
-        // Per user request (2026-08-29 redesign): "restyle them so they
-        // fit the visual language of the Playlist Detail page." All
-        // existing onClick handlers are reused verbatim.
         if (layerBackdropActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
@@ -985,7 +860,7 @@ fun rememberArtworkCardColor(
         val hue = hsv[0]
 
         if (useDarkTheme) {
-            // Issue 6/3 fix: increased brightness for visibility in pure black mode
+
             val s = (hsv[1] * 0.45f).coerceIn(0.06f, 0.20f)
             val v = if (pureBlack) 0.18f else 0.12f
             Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, s, v)))
@@ -1006,39 +881,7 @@ fun PlaylistListCard(
     showDragHandle: Boolean = false,
     dragHandleModifier: Modifier = Modifier,
 ) {
-    // Per user request (2026-08-29 redesign): "Make all three screens feel
-    // like they were designed as part of the same UI system by the same
-    // designer." The Playlist Detail page (source of truth — "high nights"
-    // screenshot) uses the shared `ListItem` composable from Items.kt for
-    // its song rows: 72dp height, 56dp 10dp-corner thumbnail, `bodyLarge`
-    // SemiBold title, `bodySmall` subtitle with metadata joined by
-    // bullets, three-dot menu in trailingContent, NO hairline dividers
-    // between rows (whitespace separation only).
-    //
-    // This card now delegates to `ListItem`, passing:
-    //   - title: playlist name
-    //   - subtitle: "{N} songs" via pluralStringResource — same metadata
-    //     pattern as Playlist Detail's "{artist} • {duration}" subtitle,
-    //     adapted for playlist data. The song count that previously sat
-    //     on the right of the row (visually competing with the chevron)
-    //     now lives in the subtitle line, matching the source of truth's
-    //     ARTWORK → TITLE → METADATA → ACTIONS row structure.
-    //   - thumbnailContent: `PlaylistThumbnail` from Items.kt (handles
-    //     single-artwork + 4-tile collage + placeholder icon). Uses
-    //     `ListThumbnailSize` (56dp) + `ThumbnailCornerRadius` (10dp)
-    //     — the exact same constants as `PlaylistListItem` in Items.kt.
-    //   - trailingContent: drag handle (when reordering is unlocked) +
-    //     chevron (always — the navigation affordance) + hidden-playlist
-    //     visibility icon (when applicable). Drag handle uses
-    //     `dragHandleModifier` from `ReorderableItem` so reorder gestures
-    //     keep working — preserves the existing custom-order reordering
-    //     functionality without any business-logic change.
-    //
-    // `onPlay` and `onMenuClick` are kept in the signature for source
-    // compatibility with the call site, but they are no longer rendered
-    // as visible buttons — the row-level click covers onClick, and long
-    // press is handled by the call site's `combinedClickable` wrapper
-    // (the grid path still uses PlaylistGridCard with combinedClickable).
+
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1048,11 +891,6 @@ fun PlaylistListCard(
     )
     val hiddenAlpha = if (playlist.playlist.isHidden) 0.45f else 1f
 
-    // Subtitle: "{N} songs" via pluralStringResource. Mirrors the subtitle
-    // pattern used by `PlaylistListItem` in Items.kt — including the
-    // remote-song-count fallback for playlists whose local song list
-    // hasn't been synced but whose remote count is known (e.g. Spotify
-    // playlists presented on the local Playlists Library page).
     val subtitleText =
         if (playlist.songCount == 0 && playlist.playlist.remoteSongCount != null) {
             pluralStringResource(
@@ -1191,7 +1029,7 @@ fun PlaylistGridCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            // Play overlay on bottom right of grid cover
+
             Box(
                 modifier =
                     Modifier

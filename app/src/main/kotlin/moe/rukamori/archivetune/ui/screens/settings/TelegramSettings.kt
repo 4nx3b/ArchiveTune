@@ -78,7 +78,6 @@ fun TelegramSettings(
 
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Start TDLib eagerly so the session is restored (or the login step is ready) on entry.
     LaunchedEffect(Unit) {
         TelegramClient.ensureStarted(context)
     }
@@ -161,7 +160,7 @@ fun TelegramSettings(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
@@ -235,9 +234,6 @@ fun TelegramSettings(
                 }
             }
 
-            // Telegram bots — pill/section below the channels group. Lets the user paste a bot's
-            // @username once, then re-open it from this list to send song links and get back
-            // streamable / downloadable audio.
             PreferenceGroup(title = stringResource(R.string.telegram_bots_title)) {
                 item {
                     PreferenceEntry(

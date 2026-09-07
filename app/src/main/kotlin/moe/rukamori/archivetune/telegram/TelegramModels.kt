@@ -12,7 +12,6 @@ package moe.rukamori.archivetune.telegram
 
 import java.util.Locale
 
-/** A public Telegram channel (or supergroup) as shown in channel search results. */
 data class TelegramChannel(
     val chatId: Long,
     val title: String,
@@ -20,7 +19,7 @@ data class TelegramChannel(
     val memberCount: Int,
     val isBroadcastChannel: Boolean,
     val photoMinithumbnail: ByteArray?,
-    /** TDLib file id of the full-size channel avatar (0 when the chat has no photo). */
+
     val photoFileId: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean = other is TelegramChannel && other.chatId == chatId
@@ -28,7 +27,6 @@ data class TelegramChannel(
     override fun hashCode(): Int = chatId.hashCode()
 }
 
-/** One playable audio file found in a Telegram channel. */
 data class TelegramTrack(
     val chatId: Long,
     val messageId: Long,
@@ -42,7 +40,7 @@ data class TelegramTrack(
     val sizeBytes: Long,
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
-    /** TDLib file id of the full album-cover thumbnail (0 when the file has none). */
+
     val thumbnailFileId: Int = 0,
 ) {
     val mediaId: String
@@ -57,18 +55,12 @@ data class TelegramTrack(
     val isLossless: Boolean
         get() = isLosslessAudio(mimeType, fileName)
 
-    /** Best-effort display title: audio tag title, else the file name without its extension. */
     val displayTitle: String
         get() =
             title.ifBlank {
                 fileName.substringBeforeLast('.').ifBlank { fileName }
             }
 
-    /**
-     * Title/artist for metadata lookups (lyrics, canvas, cover art) and library rows. Prefers the
-     * audio tags; when the performer tag is missing, tries to split the file name as
-     * "Artist - Title" (with track numbers and noise stripped) so provider lookups can match.
-     */
     val lookupMetadata: TelegramTrackMetadata
         get() = deriveTrackMetadata(tagTitle = title, tagPerformer = performer, fileName = fileName)
 
@@ -78,7 +70,6 @@ data class TelegramTrack(
     override fun hashCode(): Int = (chatId * 31 + messageId).hashCode()
 }
 
-/** One page of channel audio results plus the cursor for the next page (0 = exhausted). */
 data class TelegramAudioPage(
     val tracks: List<TelegramTrack>,
     val nextFromMessageId: Long,
@@ -123,7 +114,6 @@ private val LOSSLESS_EXTENSIONS =
         "shn",
     )
 
-/** Extensions that make a document message count as audio at all (documents carry no duration). */
 private val AUDIO_EXTENSIONS =
     LOSSLESS_EXTENSIONS +
         setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "wma", "mka")
@@ -139,7 +129,6 @@ fun isLosslessAudio(
     return fileExtension(fileName) in LOSSLESS_EXTENSIONS
 }
 
-/** Whether a document message (arbitrary file) looks like an audio file worth listing. */
 fun isAudioDocument(
     mimeType: String,
     fileName: String,
@@ -149,7 +138,6 @@ fun isAudioDocument(
     return fileExtension(fileName) in AUDIO_EXTENSIONS
 }
 
-/** Cleaned-up title + optional artist derived from a track's tags/file name. */
 data class TelegramTrackMetadata(
     val title: String,
     val artist: String?,
@@ -161,7 +149,6 @@ private val BRACKET_TAG_REGEX = Regex("\\[[^\\]]*\\]")
 private val LEADING_TRACK_NUMBER_REGEX = Regex("^\\s*\\d{1,3}\\s*[.\\-]\\s*")
 private val WHITESPACE_REGEX = Regex("\\s+")
 
-/** Strips bracketed tags, "(official …)" noise and leading track numbers from a raw name. */
 fun cleanTrackName(raw: String): String =
     raw
         .replace(NOISE_SUFFIX_REGEX, " ")
@@ -170,10 +157,6 @@ fun cleanTrackName(raw: String): String =
         .replace(WHITESPACE_REGEX, " ")
         .trim()
 
-/**
- * Derives lookup metadata from tags + file name. When the performer tag is missing, a file name
- * shaped like "Artist - Title.flac" is split so the artist isn't lost (many channels tag nothing).
- */
 fun deriveTrackMetadata(
     tagTitle: String,
     tagPerformer: String?,

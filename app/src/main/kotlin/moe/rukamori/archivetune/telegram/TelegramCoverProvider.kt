@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
 object TelegramCoverProvider {
     private const val SEARCH_ENDPOINT = "https://itunes.apple.com/search"
 
-    // Optional sentinel used as the cached value for a confirmed miss.
     private const val MISS = ""
 
     private val client: OkHttpClient by lazy {
@@ -37,10 +36,6 @@ object TelegramCoverProvider {
 
     private val cache = ConcurrentHashMap<String, String>()
 
-    /**
-     * Returns a high-resolution cover URL for the given track metadata, or null if none is found.
-     * Blocking network call — invoke from a background dispatcher.
-     */
     fun coverUrl(
         title: String,
         artist: String?,
@@ -78,17 +73,16 @@ object TelegramCoverProvider {
             if (results.length() == 0) return null
             val artwork = results.getJSONObject(0).optString("artworkUrl100").takeIf(String::isNotBlank)
                 ?: return null
-            // iTunes returns a 100x100 thumbnail; swap the size segment for a large square cover.
+
             return artwork.replace(Regex("/\\d+x\\d+bb\\.jpg$"), "/600x600bb.jpg")
         }
     }
 
-    /** Strips common noise (bracketed tags, "official video", track numbers) to improve matching. */
     private fun cleanTitle(raw: String): String {
         var t = raw
         t = t.replace(Regex("\\((?:official|lyric|audio|video|hd|hq|visualizer)[^)]*\\)", RegexOption.IGNORE_CASE), " ")
         t = t.replace(Regex("\\[[^\\]]*\\]"), " ")
-        t = t.replace(Regex("^\\s*\\d+\\s*[.\\-]\\s*"), "") // leading track number
+        t = t.replace(Regex("^\\s*\\d+\\s*[.\\-]\\s*"), "")
         return t.replace(Regex("\\s+"), " ").trim()
     }
 

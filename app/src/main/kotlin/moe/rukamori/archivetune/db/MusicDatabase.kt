@@ -254,8 +254,8 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                     SELECT p1.id FROM playlist p1
                     WHERE p1.browseId IS NOT NULL
                     AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
+                        SELECT 1 FROM playlist p2
+                        WHERE p2.browseId = p1.browseId
                         AND p2.id != p1.id
                         AND (
                             (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
@@ -277,8 +277,8 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                     SELECT p1.id FROM playlist p1
                     WHERE p1.browseId IS NOT NULL
                     AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
+                        SELECT 1 FROM playlist p2
+                        WHERE p2.browseId = p1.browseId
                         AND p2.id != p1.id
                         AND (
                             (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
@@ -307,14 +307,6 @@ private class DatabaseCallback : RoomDatabase.Callback() {
     }
 }
 
-// =============================================================================
-// UNIVERSAL MIGRATION - Handles schema upgrade to current version
-// =============================================================================
-
-/**
- * Universal migration that properly handles schema changes for any source version.
- * Recreates tables with correct schema when needed to fix default value issues.
- */
 private class UniversalMigration(
     private val context: Context,
     startVersion: Int,
@@ -600,10 +592,6 @@ private object SchemaTools {
     )
 }
 
-// =============================================================================
-// LEGACY MIGRATION v1 -> v2 (Major schema rewrite, must be kept)
-// =============================================================================
-
 private val MIGRATION_1_2 =
     object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -677,7 +665,6 @@ private val MIGRATION_1_2 =
                 }
             }
 
-            // Drop old tables and create new schema
             db.execSQL("DROP TABLE IF EXISTS song")
             db.execSQL("DROP TABLE IF EXISTS artist")
             db.execSQL("DROP TABLE IF EXISTS playlist")
@@ -723,7 +710,6 @@ private val MIGRATION_1_2 =
             db.execSQL("CREATE VIEW `sorted_song_artist_map` AS SELECT * FROM song_artist_map ORDER BY position")
             db.execSQL("CREATE VIEW `playlist_song_map_preview` AS SELECT * FROM playlist_song_map WHERE position <= 3 ORDER BY position")
 
-            // Insert data
             artists.forEach {
                 db.insert(
                     "artist",
@@ -785,10 +771,6 @@ private val MIGRATION_1_2 =
             }
         }
     }
-
-// =============================================================================
-// AUTO MIGRATION SPECS (Required by Room's AutoMigration annotations)
-// =============================================================================
 
 @DeleteColumn.Entries(
     DeleteColumn(tableName = "song", columnName = "isTrash"),

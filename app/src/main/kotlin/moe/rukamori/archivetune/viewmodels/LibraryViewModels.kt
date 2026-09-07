@@ -522,7 +522,7 @@ class LibraryMixViewModel
                 .map { prefs ->
                     val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
                     provider != AiProvider.NONE &&
-                        // The user hid AI Mix — also stop auto-generating mixes in the background.
+
                         !(prefs[HideAiMixKey] ?: false) &&
                         prefs[AiApiKeyKey].orEmpty().isNotBlank() &&
                         (provider != AiProvider.CUSTOM || prefs[AiCustomEndpointKey].orEmpty().isNotBlank()) &&

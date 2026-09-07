@@ -120,14 +120,14 @@ fun JioSettings(
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + 16.dp),
         ) {
-            // Description block
+
             PreferenceGroup(title = stringResource(R.string.jiosaavn_integration)) {
                 item {
                     Text(
@@ -162,7 +162,6 @@ fun JioSettings(
                 }
             }
 
-            // Attribution (required by vivi-music's GPL-3.0 porting guidelines).
             PreferenceGroup(title = stringResource(R.string.jiosaavn_credit_title)) {
                 item {
                     PreferenceEntry(

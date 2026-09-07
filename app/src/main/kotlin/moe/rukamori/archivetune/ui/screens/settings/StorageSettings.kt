@@ -375,7 +375,7 @@ fun StorageSettings(
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -601,10 +601,6 @@ fun StorageSettings(
                 )
             }
 
-            // Lyrics cache lives in an in-process LruCache + the Room `lyrics` table
-            // (not on disk under cacheDir/ like the other caches above). This entry
-            // gives the user a one-tap way to wipe both from the Storage screen,
-            // mirroring the equivalent entry on the Lyrics settings screen.
             PreferenceGroup(
                 modifier = positions.modifierFor("lyrics_cache"),
                 title = stringResource(R.string.lyrics),

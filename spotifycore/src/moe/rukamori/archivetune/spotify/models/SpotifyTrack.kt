@@ -43,9 +43,6 @@ data class SpotifySimpleAlbum(
     val uri: String? = null,
 )
 
-/**
- * Wrapper for the /me/tracks endpoint which returns SavedTrack objects
- */
 @Serializable
 data class SpotifySavedTrack(
     @SerialName("added_at") val addedAt: String? = null,

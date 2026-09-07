@@ -132,7 +132,7 @@ fun AppearanceExtrasSettings(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)

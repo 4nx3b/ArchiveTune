@@ -13,7 +13,6 @@ import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifySearchResult
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
-/** A provider-neutral wrapper used by the Spotify search UI without changing YouTube's item model. */
 sealed interface SpotifySearchItem {
     val id: String
     val title: String

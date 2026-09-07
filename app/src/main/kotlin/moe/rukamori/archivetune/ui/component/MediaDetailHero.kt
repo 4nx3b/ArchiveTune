@@ -91,12 +91,7 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
-    // When false, the canvas TextureView is not rendered (the ExoPlayer is
-    // kept alive but paused). Forwarded to CanvasArtworkPlayer.visible.
-    // AlbumScreen passes `!lyricsFullScreen` so the canvas's Modifier.blur(72.dp)
-    // RenderEffect doesn't keep re-applying every frame while the full-screen
-    // lyrics overlay is open on top — freeing the GPU frame budget for the
-    // 60 Hz karaoke lyrics sweep.
+
     canvasVisible: Boolean = true,
     useBlurredPlayButton: Boolean = false,
 ) {
@@ -187,9 +182,7 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Title — use a tighter lineHeight than headlineLarge's default
-            // 40sp to avoid the "weird spacing" the user reported when a
-            // playlist title wraps to two lines.
+
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
@@ -329,9 +322,7 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    // The hero artwork URL. Used for the main hero artwork above. (Previously
-    // also used as the backdrop source for the liquid-glass play button — that
-    // sampling has been removed; see useBlurredPlayButton below.)
+
     thumbnailUrl: String? = null,
     useBlurredPlayButton: Boolean = false,
 ) {
@@ -402,11 +393,7 @@ public fun MediaDetailPrimaryActions(
                 }
 
                 onPlay?.let { play ->
-                    // Play button — always uses a solid color pill. The liquid-glass layered
-                    // Box variant (smoked-glass veil + top-highlight gradient) was REMOVED at
-                    // the user's request: "Remove the liquid glass effect from all play buttons
-                    // in playlists or anywhere else". The same solid-color path now runs whether
-                    // or not a LiquidGlassBackdrop is active upstream.
+
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
                     val playShape = RoundedCornerShape(percent = 50)
                     val playPadding =
@@ -654,14 +641,9 @@ private val MediaDetailHeroMinHeight = 560.dp
 private val MediaDetailHorizontalPadding = 24.dp
 private val MediaDetailContentMaxWidth = 720.dp
 private val MediaDetailActionSpacing = 12.dp
-// Reduced from 20.dp — the previous fade was aggressive enough to make the
-// rightmost action (Radio on the artist page) look partially cut off even
-// when it was technically within the viewport. 8.dp preserves the visual
-// cue that more actions are scrollable without obscuring the edge icon.
+
 private val MediaDetailActionEdgeFade = 8.dp
-// Horizontal padding inside the scrollable Row so the first and last actions
-// have visible margin from the screen edge. Without this the balanced layout
-// can place the rightmost action flush against the viewport boundary.
+
 private val MediaDetailActionHorizontalPadding = 12.dp
 private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp

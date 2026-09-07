@@ -15,10 +15,6 @@ import android.net.NetworkRequest
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 
-/**
- * Simple NetworkConnectivityObserver based on OuterTune's implementation
- * Provides network connectivity monitoring for auto-play functionality
- */
 class NetworkConnectivityObserver(
     context: Context,
 ) {
@@ -50,11 +46,10 @@ class NetworkConnectivityObserver(
         try {
             connectivityManager.registerNetworkCallback(request, networkCallback)
         } catch (e: Exception) {
-            // Fallback: assume connected if registration fails
+
             _networkStatus.trySend(true)
         }
 
-        // Send initial state
         val isInitiallyConnected = isCurrentlyConnected()
         _networkStatus.trySend(isInitiallyConnected)
     }
@@ -63,23 +58,18 @@ class NetworkConnectivityObserver(
         connectivityManager.unregisterNetworkCallback(networkCallback)
     }
 
-    /**
-     * Check current connectivity state synchronously
-     */
     fun isCurrentlyConnected(): Boolean =
         try {
             val activeNetwork = connectivityManager.activeNetwork
             val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
 
-            // Check if we have internet capability
             val hasInternet = networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
-            // For API 23+, also check if connection is validated
             val isValidated =
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     networkCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
                 } else {
-                    true // For older versions, assume validated if we have internet capability
+                    true
                 }
 
             hasInternet && isValidated

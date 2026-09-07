@@ -134,11 +134,6 @@ fun LoginScreen(
         },
     )
 
-    // The AuthWebViewScreen above already renders its own TopAppBar (with the
-    // login title and a back button wired to navController). When this screen
-    // is reached from onboarding (onNavigateBack != null), we add a BackHandler
-    // so the system back gesture routes through onNavigateBack instead of
-    // popping the nav stack.
     BackHandler(enabled = onNavigateBack != null) {
         onNavigateBack?.invoke()
     }

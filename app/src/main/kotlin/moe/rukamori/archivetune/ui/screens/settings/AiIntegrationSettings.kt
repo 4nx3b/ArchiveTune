@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +50,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
@@ -64,6 +66,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -87,6 +90,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -163,7 +167,7 @@ fun AiIntegrationSettings(
     val (hideAiMix, onHideAiMixChange) = rememberPreference(HideAiMixKey, defaultValue = false)
     val (autoTranslateLyrics, onAutoTranslateLyricsChange) =
         rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
-    // DeepL / OpenRouter / Mistral-specific preferences (ported from vivi-music).
+
     val (deeplApiKey, setDeeplApiKey) = rememberPreference(DeeplApiKeyKey, "")
     val (deeplFormality, setDeeplFormality) = rememberPreference(DeeplFormalityKey, "default")
     val (openRouterApiKey, setOpenRouterApiKey) = rememberPreference(OpenRouterApiKeyKey, "")
@@ -207,7 +211,7 @@ fun AiIntegrationSettings(
     val hasModelConfiguration =
         when (provider) {
             AiProvider.CUSTOM -> customModel.isNotBlank()
-            AiProvider.DEEPL -> true // No model picker for DeepL; the API key determines the tier.
+            AiProvider.DEEPL -> true
             AiProvider.NONE -> false
             else -> selectedModel.isNotBlank() || openRouterModel.isNotBlank()
         }
@@ -228,6 +232,13 @@ fun AiIntegrationSettings(
                 setValidationStatus(AiApiValidationStatus.UNKNOWN)
                 viewModel.clearAvailableModels()
             },
+        )
+    }
+
+    actionState.apiTestError?.let { details ->
+        AiApiTestErrorDialog(
+            details = details,
+            onClose = viewModel::dismissApiTestError,
         )
     }
 
@@ -352,9 +363,6 @@ fun AiIntegrationSettings(
         }
     }
 
-    // Mini-player aware bottom padding — keeps the last settings row from being
-    // covered by the persistent mini player when a song is loaded. Other settings
-    // screens (e.g. NavigationBarSettings) use the same pattern.
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -384,7 +392,7 @@ fun AiIntegrationSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
             .hazeSource(headerHaze)
@@ -441,10 +449,6 @@ fun AiIntegrationSettings(
                 )
             }
 
-            // Inline hint that tells the user where to obtain an API key for the
-            // currently-selected provider. Tapping the row opens the provider's
-            // developer console / sign-up page in the system browser. Hidden for
-            // CUSTOM (user supplies their own endpoint/key) and NONE.
             item(visible = provider != AiProvider.NONE && provider != AiProvider.CUSTOM) {
                 val keyPortalUrl = provider.apiKeyPortalUrl()
                 val keyPortalLabel = provider.apiKeyPortalLabel()
@@ -618,15 +622,11 @@ fun AiIntegrationSettings(
                     icon = { Icon(painterResource(R.drawable.translate), null) },
                     checked = autoTranslateLyrics,
                     onCheckedChange = onAutoTranslateLyricsChange,
-                    // Without an AI provider + API key, there's no engine to run the
-                    // translation, so the toggle is greyed out rather than silently ignored.
+
                     isEnabled = hasApiConfiguration,
                 )
             }
 
-            // "Don't auto translate these languages" — multi-select. Visible only when
-            // auto-translate is on. Lets users pick language codes that should NEVER be
-            // auto-translated (e.g. they understand Japanese and don't want it translated).
             item(visible = autoTranslateLyrics) {
                 val languages = remember(context) { TranslatorLanguages.load(context) }
                 val selectedNames =
@@ -647,9 +647,6 @@ fun AiIntegrationSettings(
                 )
             }
 
-            // ── AI romanisation ──
-            // Master switch. Turning it on also switches the built-in romanisers off (see
-            // `LyricsRomanizationPreferences.aiHandled`) so one song never mixes two schemes.
             item {
                 SwitchPreference(
                     modifier = positions.modifierFor("ai_romanize_lyrics"),
@@ -658,14 +655,11 @@ fun AiIntegrationSettings(
                     icon = { Icon(painterResource(R.drawable.language), null) },
                     checked = aiRomanizeLyrics,
                     onCheckedChange = onAiRomanizeLyricsChange,
-                    // Same reasoning as auto-translate: with no provider there is no engine to run.
+
                     isEnabled = hasApiConfiguration,
                 )
             }
 
-            // Separate from the master switch because these are billed network calls: enabling the
-            // feature should not commit the user to one request per track. With this off, the request
-            // is made from Lyrics menu → "Romanise with AI".
             item(visible = aiRomanizeLyrics) {
                 SwitchPreference(
                     modifier = positions.modifierFor("auto_ai_romanize_lyrics"),
@@ -699,9 +693,6 @@ fun AiIntegrationSettings(
             }
         }
 
-        // DeepL / OpenRouter / Mistral provider-specific configuration. These three providers
-        // (ported from vivi-music) have dedicated preference keys separate from the generic
-        // CHATGPT/GEMINI/CUSTOM chat-completion path, so they each get their own subsection.
         if (provider == AiProvider.DEEPL || provider == AiProvider.OPENROUTER || provider == AiProvider.MISTRAL) {
             PreferenceGroup(title = stringResource(R.string.ai_translation_settings)) {
                 if (provider == AiProvider.DEEPL) {
@@ -773,7 +764,7 @@ fun AiIntegrationSettings(
                         )
                     }
                 }
-                // Translation target language + mode shared by DeepL/OpenRouter/Mistral.
+
                 item {
                     PreferenceEntry(
                         modifier = positions.modifierFor("translate_language"),
@@ -832,6 +823,57 @@ fun AiIntegrationSettings(
         },
     )
     } // end full-screen haze Box
+}
+
+@Composable
+private fun AiApiTestErrorDialog(
+    details: String,
+    onClose: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+
+    DefaultDialog(
+        onDismiss = onClose,
+        modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+        constrainContentHeight = true,
+        icon = {
+            Icon(
+                painter = painterResource(R.drawable.error),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(24.dp),
+            )
+        },
+        title = { Text(stringResource(R.string.ai_api_test_failed)) },
+        buttons = {
+            TextButton(onClick = onClose, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            SelectionContainer(
+                modifier =
+                    Modifier
+                        .verticalScroll(scrollState)
+                        .padding(16.dp),
+            ) {
+                Text(
+                    text = details,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -898,11 +940,6 @@ private fun AiProvider.label(): String =
         AiProvider.NONE -> stringResource(R.string.ai_provider_none)
     }
 
-/**
- * Returns the developer-portal URL where the user can sign up for / fetch an API
- * key for this provider. Null for providers that don't have a public self-serve
- * portal (CUSTOM relies on the user's own endpoint, NONE is the off state).
- */
 private fun AiProvider.apiKeyPortalUrl(): String? =
     when (this) {
         AiProvider.CHATGPT -> "https://platform.openai.com/api-keys"
@@ -913,10 +950,6 @@ private fun AiProvider.apiKeyPortalUrl(): String? =
         AiProvider.CUSTOM, AiProvider.NONE -> null
     }
 
-/**
- * One-line description shown under the "Get API key" row. Tells the user which
- * portal the row opens and (where relevant) which plan is needed for API access.
- */
 @Composable
 private fun AiProvider.apiKeyPortalLabel(): String =
     when (this) {
@@ -1189,15 +1222,6 @@ private fun ModelPickerPreference(
     )
 }
 
-/**
- * Multi-select dialog behind both "Don't auto translate these languages" and "Don't romanise these
- * languages".
- *
- * Lists every language known to [TranslatorLanguages] with a checkbox. Toggling a checkbox
- * adds/removes its uppercase code in whichever persisted set the caller passed in — the two features
- * share the code space (`TranslatorLang.code`) and the detector (`LyricsUtils.detectDominantLanguageCode`),
- * so they can share the picker too.
- */
 @Composable
 private fun ExcludedLanguagesDialog(
     initialSelected: Set<String>,

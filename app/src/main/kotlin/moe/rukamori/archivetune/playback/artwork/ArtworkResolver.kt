@@ -20,24 +20,6 @@ import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.PreferredArtworkProvider
 import timber.log.Timber
 
-/**
- * The single authoritative artwork-resolution pipeline.
- *
- * Deterministic provider priority (never "last request wins"):
- *   1. [ArtworkProvider.LOCAL_EMBEDDED] for local files / local content URIs.
- *   2. [ArtworkProvider.ORIGINAL_METADATA] when the metadata already carries an artwork URL.
- *   3. [ArtworkProvider.TIDAL] as a fallback only when: the user enabled Tidal artwork,
- *      Tidal is available, no original artwork exists, and the match confidence clears
- *      [MIN_TIDAL_CONFIDENCE].
- *   4. Otherwise [ArtworkProvider.ORIGINAL_METADATA] with a null URL (UI keeps its placeholder).
- *
- * Guarantees:
- *  - Single-flight: concurrent resolves for the same [ArtworkCacheKey] share one fetch.
- *  - A provider disabled mid-flight cannot publish its late result.
- *  - [beginTrack]/[isCurrent] let callers reject results for tracks that are no longer current.
- *  - Successes are cached by artwork identity; failures only briefly (never permanently).
- *  - [CancellationException] is always rethrown.
- */
 class ArtworkResolver(
     private val tidalFetcher: TidalArtworkFetcher,
     private val settings: StateFlow<ArtworkSettings>,
@@ -52,7 +34,6 @@ class ArtworkResolver(
     @Volatile
     private var activeGeneration: Long = 0
 
-    /** Success cache keyed by artwork identity; access-ordered LRU. */
     private val successCache =
         object : LinkedHashMap<ArtworkCacheKey, ResolvedArtwork>(16, 0.75f, true) {
             override fun removeEldestEntry(
@@ -60,15 +41,10 @@ class ArtworkResolver(
             ): Boolean = size > MAX_CACHE_ENTRIES
         }
 
-    /** key -> expiry timestamp (ms). Short-lived so transient failures never poison the cache. */
     private val failureCache = HashMap<ArtworkCacheKey, Long>()
     private val cacheLock = Any()
     private val keyMutexes = ConcurrentHashMap<ArtworkCacheKey, Mutex>()
 
-    /**
-     * Marks [mediaId] as the current track and returns the new generation token.
-     * Callers must verify [isCurrent] before committing any asynchronously resolved artwork.
-     */
     fun beginTrack(mediaId: String): Long {
         val next = generation.incrementAndGet()
         currentMediaId = mediaId
@@ -77,30 +53,22 @@ class ArtworkResolver(
         return next
     }
 
-    /** True when [mediaId] is still the current track and [gen] is the latest generation. */
     fun isCurrent(
         mediaId: String,
         gen: Long,
     ): Boolean = currentMediaId == mediaId && activeGeneration == gen
 
-    /**
-     * Invalidates in-flight work, e.g. when the provider settings changed. Late results from
-     * before this call can no longer be committed by generation-checked callers.
-     */
     fun invalidate() {
         val next = generation.incrementAndGet()
         activeGeneration = next
         Timber.tag(TAG).d("artwork resolution invalidated generation=%d", next)
     }
 
-    /** Cache lookup exposed for consumers that only need to dedupe derived work. */
     fun cached(key: ArtworkCacheKey): ResolvedArtwork? = synchronized(cacheLock) { successCache[key] }
 
     suspend fun resolve(request: ArtworkRequest): ResolvedArtwork {
         val localUrl = request.originalArtworkUrl
-        // LOCAL_EMBEDDED always wins for local files regardless of priority order — a local
-        // file's embedded cover is the authoritative source and no remote provider can
-        // produce a more correct image for it.
+
         if (request.isLocal || localUrl.isLocalArtworkUri()) {
             return ResolvedArtwork(
                 mediaId = request.mediaId,
@@ -110,18 +78,13 @@ class ArtworkResolver(
             ).also { logResolution(request, it, "local") }
         }
 
-        // User-configured provider priority. Iterate in order and return the first provider
-        // that has artwork. Canvas providers (SPOTIFY_CANVAS, ARCHIVETUNE_CANVAS) are
-        // video-based and handled by the Player UI separately — skip them here.
-        // When the order is empty (e.g. tests or before DataStore loads), use the default
-        // order so the resolver still produces correct results.
         val order = settings.value.providerOrder
         val effectiveOrder =
             if (order.isEmpty()) DefaultArtworkProviderOrder else order
         for (provider in effectiveOrder) {
             when (provider) {
                 PreferredArtworkProvider.LOCAL_EMBEDDED -> {
-                    // Already handled above for local files; skip for non-local.
+
                     continue
                 }
                 PreferredArtworkProvider.ORIGINAL_METADATA -> {
@@ -139,19 +102,17 @@ class ArtworkResolver(
                     if (tidalResult.url != null) {
                         return tidalResult
                     }
-                    // Tidal had no match — continue to the next provider in priority order.
+
                 }
                 PreferredArtworkProvider.SPOTIFY_CANVAS,
                 PreferredArtworkProvider.ARCHIVETUNE_CANVAS,
                 -> {
-                    // Canvas providers are video-based and handled by the Player UI; skip.
+
                     continue
                 }
             }
         }
 
-        // If no provider in the user-ordered list produced artwork, fall back to the
-        // original metadata (even if null) so the UI gets a definitive answer.
         return if (!localUrl.isNullOrBlank()) {
             ResolvedArtwork(
                 mediaId = request.mediaId,
@@ -190,8 +151,7 @@ class ArtworkResolver(
         val mutex = keyMutexes.getOrPut(key) { Mutex() }
         return mutex.withLock {
             try {
-                // Re-check inside the single-flight section: a concurrent caller may have
-                // completed the fetch while we waited.
+
                 synchronized(cacheLock) {
                     successCache[key]?.let { return@withLock it }
                 }
@@ -214,7 +174,6 @@ class ArtworkResolver(
                         null
                     }
 
-                // The provider must not publish a late result after being disabled mid-flight.
                 val settingsAfter = settings.value
                 if (!settingsAfter.tidalArtworkEnabled || !settingsAfter.tidalAvailable) {
                     Timber.tag(TAG).d(
@@ -293,15 +252,12 @@ class ArtworkResolver(
     companion object {
         private const val TAG = "ArtworkResolver"
 
-        /** Minimum Tidal match confidence accepted for display. Below this, fall back. */
         const val MIN_TIDAL_CONFIDENCE = 0.45f
         const val TIDAL_ARTWORK_SIZE = 1080
         const val MAX_CACHE_ENTRIES = 128
 
-        /** Transient network/provider failures: retried after a short window. */
         const val FAILURE_CACHE_MS = 60_000L
 
-        /** Legitimate "nothing matches" results: kept a bit longer to avoid search storms. */
         const val NO_MATCH_CACHE_MS = 10 * 60_000L
 
         fun normalizeArtworkIdentity(url: String): String = url.trim()

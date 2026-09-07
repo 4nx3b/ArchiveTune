@@ -64,40 +64,19 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/**
- * Apple Music–style sleep timer sheet.
- *
- * Renders as a compact modal sheet with:
- *  - A header showing the current timer status (Off / End of song / m:ss remaining).
- *  - A horizontal wrap of preset duration chips (5/10/15/20/30/45/60/90 min).
- *  - A slider that lets the user pick any duration between 1 and 120 minutes
- *    (Apple Music exposes the same slider in its sleep timer popover).
- *  - An "End of current song" chip.
- *  - A "Turn off timer" chip that only appears when the timer is active.
- *
- * Designed to be embedded inside the existing bottom-sheet menu container that
- * PlayerMenu already lives in (so we don't introduce a second modal layer).
- * The parent supplies the active [SleepTimer] instance so this composable can
- * poll it for the live countdown and call [SleepTimer.start] / [SleepTimer.clear]
- * directly — no extra callback wiring required.
- */
 @Composable
 fun AppleMusicSleepTimerSheet(
     sleepTimer: SleepTimer,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Poll the SleepTimer every 500ms for the live countdown. We deliberately
-    // don't read `triggerTime` as a Compose state here because the timer mutates
-    // it from a background coroutine — reading it once per recomposition via the
-    // published `var triggerTime` works fine, but a 500ms polling loop keeps the
-    // displayed countdown smooth without forcing a recomp on every millis tick.
+
     var remainingMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sleepTimer, sleepTimer.isActive) {
         while (isActive) {
             remainingMs =
                 when {
-                    sleepTimer.pauseWhenSongEnd -> -1L // sentinel: "end of song"
+                    sleepTimer.pauseWhenSongEnd -> -1L
                     sleepTimer.triggerTime > 0 -> sleepTimer.triggerTime - System.currentTimeMillis()
                     else -> 0L
                 }
@@ -109,11 +88,6 @@ fun AppleMusicSleepTimerSheet(
     val isTimed = sleepTimer.triggerTime > 0 && !isEndOfSong
     val isActive = sleepTimer.isActive
 
-    // Slider state — 0..120 in 1-minute steps. A value of 0 means "no duration
-    // chosen yet" and renders the Start button disabled. When the user drags
-    // the slider we update local state; the timer only starts when they tap
-    // the "Start" button so they can scrub freely without immediately
-    // committing each intermediate value.
     val activeTimerMinutes =
         if (isTimed && remainingMs > 0) {
             ((remainingMs + 30_000L) / 60_000L).toInt().coerceIn(1, 120)
@@ -122,13 +96,11 @@ fun AppleMusicSleepTimerSheet(
         }
     var sliderMinutes by remember { mutableFloatStateOf(activeTimerMinutes.toFloat()) }
 
-    // If the timer state changes externally (e.g. user cancels via another
-    // surface), keep the slider in sync instead of holding a stale value.
     LaunchedEffect(activeTimerMinutes, isActive) {
         if (isActive) {
             sliderMinutes = activeTimerMinutes.toFloat()
         } else if (sliderMinutes > 0 && !isActive) {
-            // Timer just cleared — reset slider to 0 so the user can pick fresh.
+
             sliderMinutes = 0f
         }
     }
@@ -149,7 +121,7 @@ fun AppleMusicSleepTimerSheet(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
                     .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         ) {
-            // Header row — icon + status text.
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -195,7 +167,6 @@ fun AppleMusicSleepTimerSheet(
 
             Spacer(Modifier.height(20.dp))
 
-            // Preset duration chips — Apple Music exposes a similar chip row.
             val presets =
                 remember {
                     listOf(5, 10, 15, 20, 30, 45, 60, 90)
@@ -211,7 +182,7 @@ fun AppleMusicSleepTimerSheet(
                             abs(
                                 (sleepTimer.triggerTime - System.currentTimeMillis()) -
                                     minutes.toLong() * 60_000L,
-                            ) < 30_000L // within 30s = same preset (handles small drift)
+                            ) < 30_000L
                     FilterChip(
                         selected = selected,
                         onClick = {
@@ -228,7 +199,6 @@ fun AppleMusicSleepTimerSheet(
                     )
                 }
 
-                // End of song chip.
                 FilterChip(
                     selected = isEndOfSong,
                     onClick = {
@@ -255,9 +225,6 @@ fun AppleMusicSleepTimerSheet(
 
             Spacer(Modifier.height(20.dp))
 
-            // Apple Music–style slider — lets the user pick any duration
-            // between 1 and 120 minutes. Snaps to whole minutes so the value
-            // shown in the time pill always matches what gets committed.
             val sliderValue = sliderMinutes.coerceIn(0f, 120f)
             val sliderEnabled = true
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -271,7 +238,7 @@ fun AppleMusicSleepTimerSheet(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // Time pill — shows the slider's currently selected duration.
+
                     Box(
                         modifier =
                             Modifier
@@ -299,7 +266,7 @@ fun AppleMusicSleepTimerSheet(
                         }
                     },
                     valueRange = 0f..120f,
-                    steps = 119, // 1-minute granularity across 0..120
+                    steps = 119,
                     enabled = sliderEnabled,
                     colors =
                         SliderDefaults.colors(
@@ -326,7 +293,6 @@ fun AppleMusicSleepTimerSheet(
                 }
             }
 
-            // "Turn off timer" — only visible when the timer is active.
             AnimatedVisibility(
                 visible = isActive,
                 enter = fadeIn(),
@@ -370,7 +336,6 @@ fun AppleMusicSleepTimerSheet(
     }
 }
 
-/** Formats a minute count as `Hh Mm` (e.g. 95 → "1h 35m", 5 → "5m", 0 → "Off"). */
 private fun formatMinutes(minutes: Int): String =
     when {
         minutes <= 0 -> "Off"

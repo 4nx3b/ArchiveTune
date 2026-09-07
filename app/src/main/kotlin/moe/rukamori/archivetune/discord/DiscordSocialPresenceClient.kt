@@ -233,7 +233,6 @@ object DiscordSocialPresenceClient {
         runCatching { newGateway.disconnect() }
     }
 
-    // must be called with mutex held
     private fun tearDownLocked(reason: String) {
         val currentGateway = gateway
         if (currentGateway != null) {

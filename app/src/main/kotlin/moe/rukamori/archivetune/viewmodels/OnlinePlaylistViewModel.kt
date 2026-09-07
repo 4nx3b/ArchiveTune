@@ -48,10 +48,7 @@ class OnlinePlaylistViewModel
         savedStateHandle: SavedStateHandle,
         private val database: MusicDatabase,
     ) : ViewModel() {
-        // Community-playlist search results occasionally surface items whose `id` is null or
-        // blank — passing that through navigation previously produced a KotlinNullPointerException
-        // here (the `!!`) before any UI rendered, which crashed the app on tap. Fall back to
-        // an empty string and let #load() surface a typed error to the UI instead.
+
         private val playlistId: String = savedStateHandle.get<String>("playlistId").orEmpty()
 
         private val _playlist = MutableStateFlow<PlaylistItem?>(null)
@@ -127,9 +124,7 @@ class OnlinePlaylistViewModel
         }
 
         private fun load(initial: Boolean) {
-            // Bail out early with a typed error if there's no playlist ID to load — happens
-            // when a community-playlist search result had a null/blank id. Previously this
-            // crashed the app; now the user sees an error state with a retry button.
+
             if (playlistId.isBlank()) {
                 _error.value = "This playlist could not be opened (missing id)."
                 _isLoading.value = false

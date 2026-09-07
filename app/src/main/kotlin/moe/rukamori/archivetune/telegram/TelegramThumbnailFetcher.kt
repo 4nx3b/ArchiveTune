@@ -33,10 +33,6 @@ import java.util.concurrent.TimeUnit
 
 private const val TELEGRAM_ART_SCHEME = "tgart"
 
-/**
- * Builds the Coil model string for a Telegram track's artwork. [title]/[artist] drive the online
- * lookup; [fileId] is the embedded-cover fallback. Returns null when there is nothing to show.
- */
 fun telegramArtworkModel(
     fileId: Int,
     title: String?,
@@ -59,7 +55,6 @@ class TelegramThumbnailFetcher(
         val title = parsed.getQueryParameter("t")
         val artist = parsed.getQueryParameter("a")
 
-        // 1. High-resolution catalogue cover from the internet.
         if (!title.isNullOrBlank()) {
             val coverUrl = withContext(Dispatchers.IO) { TelegramCoverProvider.coverUrl(title, artist) }
             if (coverUrl != null) {
@@ -68,13 +63,6 @@ class TelegramThumbnailFetcher(
             }
         }
 
-        // 2. Embedded album cover from the Telegram file.
-        // We read the TDLib-downloaded file into a Buffer and return it as
-        // DataSource.NETWORK so Coil writes it to its own disk cache. Without
-        // this, the TDLib file is treated as already-on-disk (DataSource.DISK)
-        // and never enters Coil's cache — so the next time the same track's
-        // artwork is requested, we'd re-download from TDLib (and possibly
-        // re-fetch the embedded cover) every time.
         if (fileId > 0) {
             val path = TelegramClient.downloadFileBlocking(fileId) ?: return null
             return withContext(Dispatchers.IO) {
@@ -88,8 +76,7 @@ class TelegramThumbnailFetcher(
                                 fileSystem = options.fileSystem,
                             ),
                         mimeType = null,
-                        // Mark as NETWORK so Coil persists the bytes into its
-                        // disk cache for future lookups.
+
                         dataSource = DataSource.NETWORK,
                     )
                 }.getOrNull()

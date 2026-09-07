@@ -481,8 +481,6 @@ fun UpdateScreen(
             }
         }
 
-        // Task 4: cap recent commits at 50 (was unlimited). The Updates page is meant for
-        // a quick glance at recent activity; the full history is always available on GitHub.
         Updater
             .getCommitHistory(50)
             .onSuccess {
@@ -622,9 +620,6 @@ fun UpdateScreen(
                 )
             }
 
-            // Task 5: unofficial fork warning pill. Sits right under the dashboard so the user
-            // sees it before checking for updates or reading commits. Reminds them this is a
-            // personal fork — issues are unlikely to be fixed unless they're serious.
             item(key = "fork_warning", contentType = "warning") {
                 Surface(
                     modifier =

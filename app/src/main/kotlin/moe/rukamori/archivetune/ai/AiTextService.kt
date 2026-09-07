@@ -38,20 +38,6 @@ object AiTextService {
     private const val OpenRouterModelsEndpoint = "https://openrouter.ai/api/v1/models"
     private const val GeminiBaseEndpoint = "https://generativelanguage.googleapis.com/v1beta"
 
-    /**
-     * OkHttp's connection pool can enter a bad state after sustained use (stale sockets,
-     * SSL session cache misses, half-closed connections from a server-side idle timeout).
-     * The singleton [client] below is reused for every call, so once the pool goes bad,
-     * EVERY subsequent request fails with a network exception — manifesting as
-     * "auto-translate works for a few songs then stops working until the user toggles
-     * it off/on + clicks Check API".
-     *
-     * The fix: hold the client in an AtomicReference and recreate it on demand when a
-     * connection-level failure is detected. The recreate path closes the old client's
-     * connection pool (evicting all stale sockets) and creates a fresh one. This is
-     * cheaper than creating a new client per call (which would defeat HTTP keep-alive),
-     * but resilient to the stale-pool failure mode.
-     */
     private val clientHolder = AtomicReference<HttpClient>(createClient())
 
     private fun createClient(): HttpClient =
@@ -62,11 +48,7 @@ object AiTextService {
                     readTimeout(60, TimeUnit.SECONDS)
                     writeTimeout(60, TimeUnit.SECONDS)
                     retryOnConnectionFailure(true)
-                    // Aggressively evict idle connections so stale sockets don't accumulate
-                    // in the pool between translation batches. 30s is below typical
-                    // server-side idle timeouts (60-120s), so connections get reused
-                    // within a song but evicted before they go stale.
-                    // ConnectionPool(maxIdleConnections, keepAliveDuration, unit).
+
                     connectionPool(
                         okhttp3.ConnectionPool(5, 30, TimeUnit.SECONDS),
                     )
@@ -76,27 +58,15 @@ object AiTextService {
 
     private val client: HttpClient get() = clientHolder.get()
 
-    /**
-     * Recreates the HttpClient. Called when a connection-level failure is detected
-     * (IOException that smells like a stale pool — SocketTimeoutException,
-     * ConnectException, SSLException, etc.). The old client is closed asynchronously
-     * to avoid blocking the caller.
-     */
     private fun recreateClientOnFailure(t: Throwable) {
         val oldClient = clientHolder.getAndSet(createClient())
         Log.w(TAG, "Recreated HttpClient after connection failure: ${t.javaClass.simpleName}: ${t.message}")
-        // Close the old client asynchronously — close() is blocking because it evicts
-        // the connection pool. We don't want to stall the translation coroutine.
+
         Thread {
             runCatching { oldClient.close() }
         }.start()
     }
 
-    /**
-     * Returns true if the throwable indicates a connection-level failure that warrants
-     * recreating the HttpClient. HTTP 4xx/5xx responses do NOT count — those are
-     * application-level errors from a healthy connection.
-     */
     private fun isConnectionLevelFailure(t: Throwable): Boolean =
         when (t) {
             is java.net.SocketTimeoutException -> true
@@ -106,13 +76,11 @@ object AiTextService {
             is java.net.UnknownHostException -> true
             is java.io.IOException -> true
             else -> {
-                // Ktor wraps IOException in HttpRequestTimeoutException and other
-                // engine-specific exceptions; check the cause chain.
+
                 val cause = t.cause
                 cause != null && cause !== t && isConnectionLevelFailure(cause)
             }
         }
-
 
     suspend fun test(config: AiServiceConfig) {
         val response =
@@ -159,11 +127,7 @@ object AiTextService {
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                // Connection-level failures (SocketTimeout, ConnectException, SSLException,
-                // IOException) suggest the OkHttp connection pool has gone stale. Recreate
-                // the client so the NEXT call starts fresh — this prevents the "auto-translate
-                // stops working after a few songs" cascade where every subsequent request
-                // fails on the same stale pool.
+
                 if (isConnectionLevelFailure(t)) {
                     recreateClientOnFailure(t)
                 }
@@ -174,17 +138,6 @@ object AiTextService {
         return List(array.length()) { index -> array.optString(index) }
     }
 
-    /**
-     * Transliterates [lines] into the Latin alphabet, one output string per input string.
-     *
-     * Deliberately not [translateLines] with a "romanise" target language: the two need opposite
-     * instructions. A translator is told to convey meaning, which is precisely what must not happen
-     * here — "君の名は" has to come back as "kimi no na wa", not "your name". The prompt repeats that
-     * several ways because every model tested drifted into translating at least once when it didn't.
-     *
-     * Lines already written in Latin script come back unchanged; the caller relies on that to decide
-     * which lines have a romanisation worth showing.
-     */
     suspend fun romanizeLines(
         config: AiServiceConfig,
         lines: List<String>,
@@ -213,8 +166,7 @@ object AiTextService {
                             The caller will reconstruct the $formatName lyrics container separately.
                             """.trimIndent(),
                         userPrompt = payload.toString(),
-                        // Lower than translation's 0.15: transliteration has one right answer, and
-                        // sampling variance here only produces inconsistent spellings between lines.
+
                         temperature = 0.0,
                         maxTokens = 8192,
                     )
@@ -222,8 +174,7 @@ object AiTextService {
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                // See translateLines: a connection-level failure means the pooled connection has
-                // likely gone stale, and reusing it would fail every subsequent track the same way.
+
                 if (isConnectionLevelFailure(t)) {
                     recreateClientOnFailure(t)
                 }
@@ -280,7 +231,6 @@ object AiTextService {
                 )
             }
 
-
             AiProvider.GEMINI -> {
                 completeGemini(
                     apiKey = config.apiKey,
@@ -292,10 +242,6 @@ object AiTextService {
                 )
             }
 
-            // DeepL / Mistral are translation-only providers (not generic chat completion).
-            // AiTextService is used for AI Mix / Wrapped / chat-style prompts, so these
-            // providers throw — translation calls go through the in-app lyrics translation
-            // pipeline instead.
             AiProvider.DEEPL,
             AiProvider.MISTRAL,
             -> {
@@ -314,7 +260,7 @@ object AiTextService {
             AiProvider.CHATGPT -> fetchOpenAiModels(OpenAiModelsEndpoint, config.apiKey)
             AiProvider.OPENROUTER -> fetchOpenAiModels(OpenRouterModelsEndpoint, config.apiKey)
             AiProvider.GEMINI -> fetchGeminiModels(config.apiKey)
-            // DeepL / Mistral have no models-list endpoint exposed in this service.
+
             AiProvider.DEEPL, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
         }
     }
@@ -411,7 +357,7 @@ object AiTextService {
             AiProvider.MISTRAL -> "mistral-small-latest"
             AiProvider.OPENROUTER -> "~openai/gpt-latest"
             AiProvider.CUSTOM -> throw AiServiceException("No AI model configured")
-            // DeepL doesn't use a model picker (the API key determines the tier).
+
             AiProvider.DEEPL, AiProvider.NONE -> throw AiServiceException("AI provider is disabled")
         }
 
@@ -456,14 +402,13 @@ object AiTextService {
         }
     }
 
-
     private fun apiException(
         status: Int,
         raw: String,
     ): AiServiceException {
         val message =
             runCatching { JSONObject(raw).readErrorMessage() }.getOrNull()
-                ?: raw.take(240).ifBlank { "HTTP $status" }
+                ?: raw.ifBlank { "HTTP $status" }
         return AiServiceException("AI API failed ($status): $message")
     }
 }

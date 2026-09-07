@@ -156,13 +156,6 @@ fun SongMenu(
 
     val downloadUtil = LocalDownloadUtil.current
 
-    // Direct export to the device's Downloads folder (via SAF CreateDocument).
-    // The MIME type hint is derived from the *actual* cached audio bytes
-    // (preferred) or the FormatEntity stored at download time, so a FLAC
-    // stream from Qobuz exports with audio/flac rather than the previous
-    // audio/mpeg fallback. The file extension is always detected from
-    // magic bytes to avoid exporting lossy data with a .flac extension
-    // (and vice versa).
     val songFormat by database.format(song.id).collectAsStateWithLifecycle(initialValue = null)
     val detectedExt by produceState(
         initialValue = songFormat?.fileExtension() ?: "mp3",
@@ -198,7 +191,6 @@ fun SongMenu(
         label = "",
     )
 
-    // Artist separators for splitting artist names
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
@@ -228,7 +220,6 @@ fun SongMenu(
         }
     }
 
-    // Split artists by configured separators
     data class SplitArtist(
         val name: String,
         val originalArtist: ArtistEntity?,
@@ -247,8 +238,7 @@ fun SongMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-                        // If the name contains separators, create split artists
-                        // The first part keeps the original artist reference for navigation
+
                         parts.mapIndexed { index, name ->
                             SplitArtist(name, if (index == 0) artist else null)
                         }
@@ -263,10 +253,6 @@ fun SongMenu(
         mutableStateOf(false)
     }
 
-    // Apple Music–style sleep timer sheet. Rendered inline at the top of the
-    // menu (replacing the rest of the body) so the user can pick a duration
-    // without leaving the song's overflow menu — mirrors the behaviour of
-    // PlayerMenu's sleep timer entry.
     var showSleepTimerSheet by rememberSaveable { mutableStateOf(false) }
 
     val TextFieldValueSaver: Saver<TextFieldValue, *> =
@@ -548,8 +534,7 @@ fun SongMenu(
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val isLocalSong = song.song.isLocal
-    // Telegram tracks have no YouTube watch endpoint, so YouTube-only actions (e.g. Start radio)
-    // are hidden for them — they still support play next / add to queue / add to playlist.
+
     val isTelegramSong = song.song.id.isTelegramMediaId()
 
     val startRadioText = stringResource(R.string.start_radio)
@@ -720,11 +705,7 @@ fun SongMenu(
                 bottom = 12.dp,
             ),
     ) {
-        // When the user taps "Sleep timer", replace the menu body with the
-        // Apple Music–style picker sheet. Keeping the song header above gives
-        // the user context that this sheet still belongs to the current song,
-        // while the rest of the menu items are hidden so the sheet is
-        // immediately visible without scrolling.
+
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -1138,12 +1119,7 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-                                                // Remove any existing failed/queued download
-                                                // before starting a fresh one. Stale entries
-                                                // in the download cache can cause HTTP 416
-                                                // (Range Not Satisfiable) errors when the
-                                                // stream URL or content-length changes
-                                                // between attempts.
+
                                                 val dl = download
                                                 if (dl != null &&
                                                     dl.state != Download.STATE_COMPLETED
@@ -1155,10 +1131,7 @@ fun SongMenu(
                                                         false,
                                                     )
                                                 }
-                                                // Also clear any partial cached data from the
-                                                // download cache. Stale bytes can cause HTTP 416
-                                                // (Range Not Satisfiable) when the stream URL or
-                                                // content-length changes between attempts.
+
                                                 downloadUtil.downloadCache.removeResource(song.id)
                                                 val downloadRequest =
                                                     DownloadRequest
@@ -1177,9 +1150,7 @@ fun SongMenu(
                                     )
                                 }
                             }
-                            // Export — only shown when the download has actually completed.
-                            // Uses the correct file extension based on the audio codec
-                            // (FLAC for lossless, OPUS/M4A for lossy, etc.).
+
                             if (download?.state == Download.STATE_COMPLETED) {
                                 val safeTitle = song.song.title.trim()
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
@@ -1308,10 +1279,6 @@ fun SongMenu(
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
 
-                    // Sleep timer row — appears in the secondary section alongside
-                    // View Artist / View Album. Tapping it opens the inline Apple
-                    // Music–style sheet at the top of the menu with a 0..120 min
-                    // slider and the standard preset chips.
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
                         leadingContent = {
@@ -1328,11 +1295,6 @@ fun SongMenu(
             }
         }
 
-        // "Don't recommend this song again" — blocks the song from the discovery/recommendation
-        // feeds without blocking the artist. The user can still play it manually and undo the
-        // block at any time by tapping the same menu item (which now reads "Allow recommendations
-        // for this song again"). Excluded from local songs because recommendations never include
-        // local tracks anyway.
         if (!song.song.isLocal) item {
             val blockedSongIds by database.blockedSongIds().collectAsState(initial = emptyList())
             val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
@@ -1525,14 +1487,10 @@ fun SongMenu(
                 }
             }
         }
-        } // end else (showSleepTimerSheet)
+        }
     }
 }
 
-
-/**
- * Exports a downloaded song to a pre-existing [destUri] (e.g. from CreateDocument).
- */
 private suspend fun exportDownloadedSongToUri(
     context: android.content.Context,
     downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil,
@@ -1551,14 +1509,6 @@ private suspend fun exportDownloadedSongToUri(
     }
 }
 
-/**
- * Resolves cached spans for a given [songId]. Tries the key directly first,
- * then checks the source-prefixed keys used by Qobuz/Tidal downloads
- * ("qobuz:<songId>" and "tidal:<songId>") so lossless exports pull the
- * actual FLAC bytes instead of falling through to a YouTube Music stream,
- * and finally falls back to scanning all cache keys for any entry that
- * ends with the songId.
- */
 private fun getCachedSpansForKey(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,
@@ -1567,7 +1517,6 @@ private fun getCachedSpansForKey(
         .takeIf { it.isNotEmpty() }
         ?.let { return it }
 
-    // Source-prefixed cache keys (set by DownloadUtil.resolvePreferredDownloadDataSpec).
     for (prefix in listOf("qobuz:", "tidal:")) {
         val sourceKey = "$prefix$songId"
         cache.getCachedSpans(sourceKey)
@@ -1575,8 +1524,6 @@ private fun getCachedSpansForKey(
             ?.let { return it }
     }
 
-    // Last-resort scan: the download may have been stored under a URI-derived
-    // key. Match any key whose final path segment equals the songId.
     for (key in cache.keys) {
         val cleanKey = key.substringAfterLast("/")
         if (cleanKey == songId || key == songId || key.endsWith(":$songId")) {
@@ -1587,9 +1534,6 @@ private fun getCachedSpansForKey(
     return java.util.TreeSet()
 }
 
-/**
- * Writes cached [spans] (sorted by position) to the output stream at [destUri].
- */
 private fun writeSpansToUri(
     context: android.content.Context,
     destUri: Uri,

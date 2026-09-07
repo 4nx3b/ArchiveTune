@@ -123,7 +123,7 @@ fun DiscordExperimental(
 
             LazyColumn(
                 state = listState,
-                // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+
                 modifier = Modifier.fillMaxSize().then(positions.containerModifier()),
                 contentPadding =
                     PaddingValues(

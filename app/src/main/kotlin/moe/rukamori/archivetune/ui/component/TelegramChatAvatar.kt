@@ -37,15 +37,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.telegram.TelegramClient
 import java.io.File
 
-/**
- * Circular Telegram chat avatar.
- *
- * @param photoMinithumbnail Inline JPEG bytes (typically ~40×40). Shown instantly while the
- *   full photo downloads. May be null.
- * @param photoFileId TDLib file id of the small photo. When > 0, the full photo is downloaded
- *   via [TelegramClient.downloadFileBlocking] and replaces the minithumbnail. 0 = no photo.
- * @param size Diameter of the avatar circle. Defaults to 48.dp.
- */
 @Composable
 fun TelegramChatAvatar(
     photoMinithumbnail: ByteArray?,
@@ -55,8 +46,6 @@ fun TelegramChatAvatar(
 ) {
     var fullPhotoPath by remember(photoFileId) { mutableStateOf<String?>(null) }
 
-    // Download the full-resolution small photo in the background. TDLib caches it, so repeat
-    // calls with the same fileId are cheap (return the cached path immediately).
     LaunchedEffect(photoFileId) {
         if (photoFileId > 0) {
             val path = runCatching { TelegramClient.downloadFileBlocking(photoFileId) }.getOrNull()
@@ -76,7 +65,7 @@ fun TelegramChatAvatar(
     ) {
         val fullPhoto = fullPhotoPath
         when {
-            // Full photo downloaded — best quality.
+
             fullPhoto != null -> {
                 AsyncImage(
                     model = File(fullPhoto),
@@ -85,8 +74,7 @@ fun TelegramChatAvatar(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            // Minithumbnail available — show it as a placeholder while the full photo downloads
-            // (or permanently if the chat has no full photo).
+
             photoMinithumbnail != null -> {
                 AsyncImage(
                     model = photoMinithumbnail,
@@ -95,7 +83,7 @@ fun TelegramChatAvatar(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            // No photo at all — generic chat icon.
+
             else -> {
                 Icon(
                     painter = painterResource(R.drawable.solar_chat_round_linear),
