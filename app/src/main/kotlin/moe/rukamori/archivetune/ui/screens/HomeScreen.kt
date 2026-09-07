@@ -61,6 +61,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
@@ -311,6 +312,9 @@ private fun HomeContent(
                         live to other
                     }
 
+                val (homeCatalogueSwitchEnabled, _) =
+                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
+
                 LazyColumn(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -329,6 +333,15 @@ private fun HomeContent(
                             accountName = uiState.accountName,
                             modifier = Modifier.animateItem(),
                         )
+                    }
+
+                    if (homeCatalogueSwitchEnabled) {
+                        item(
+                            key = "home_source_switcher",
+                            contentType = "source_switcher",
+                        ) {
+                            HomeSourceSwitcher(modifier = Modifier.animateItem())
+                        }
                     }
 
                     // Home feed layout policy:

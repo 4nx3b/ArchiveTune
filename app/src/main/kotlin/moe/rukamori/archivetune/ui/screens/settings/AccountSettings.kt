@@ -112,7 +112,6 @@ import moe.rukamori.archivetune.constants.VisitorDataKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
-import moe.rukamori.archivetune.ui.component.MarqueeText
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
@@ -1203,11 +1202,11 @@ private fun ExpressiveActionRow(
                 }
             },
     ) {
-        // One line with an edge fade when it overflows — same treatment as every PreferenceEntry
-        // title, so the settings screens agree with each other.
-        MarqueeText(
+        Text(
             text = title,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1255,11 +1254,11 @@ private fun ExpressiveSwitchRow(
                 }
             },
     ) {
-        // One line with an edge fade when it overflows — same treatment as every PreferenceEntry
-        // title, so the settings screens agree with each other.
-        MarqueeText(
+        Text(
             text = title,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

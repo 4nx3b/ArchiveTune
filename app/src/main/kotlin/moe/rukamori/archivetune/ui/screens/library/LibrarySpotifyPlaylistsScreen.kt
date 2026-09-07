@@ -332,12 +332,6 @@ fun LibrarySpotifyPlaylistsScreen(
                         }
                     }
                 }
-                item(key = "library_source_pills", contentType = "library_source_pills") {
-                    // The page the pills switch back to is the playlists section of whichever
-                    // service this page is not showing.
-                    LibrarySourcePills()
-                }
-
                 item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
                     SpotifyLikedSongsListItem(navController = navController)
                 }

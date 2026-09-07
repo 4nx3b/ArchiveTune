@@ -60,8 +60,6 @@ import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
-import moe.rukamori.archivetune.ui.screens.settings.AppearanceSection
-import moe.rukamori.archivetune.ui.screens.settings.AppearanceSectionSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
@@ -134,10 +132,9 @@ fun NavGraphBuilder.navigationBuilder(
 ) {
     composable(Screens.Home.route) {
         // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
-        // HomeSourceToggleButton in the top app bar. They are not layered: whichever is showing
-        // owns the tab, keeps its own layout style, and leaves the other one exactly as it was.
+        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
+        // owns the tab and leaves the other one exactly as it was.
         // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
-
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
             SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
             return@composable
@@ -457,24 +454,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
-    }
-    composable(
-        route = "settings/appearance/theme?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        AppearanceSectionSettings(navController, AppearanceSection.THEME, it.savedStateHandle["scrollTo"])
-    }
-    composable(
-        route = "settings/appearance/player?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        AppearanceSectionSettings(navController, AppearanceSection.PLAYER, it.savedStateHandle["scrollTo"])
-    }
-    composable(
-        route = "settings/appearance/interface?scrollTo={scrollTo}",
-        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
-    ) {
-        AppearanceSectionSettings(navController, AppearanceSection.INTERFACE, it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/appearance/extras?scrollTo={scrollTo}",

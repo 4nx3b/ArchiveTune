@@ -75,7 +75,6 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.AssignTagsDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
@@ -470,7 +469,11 @@ public fun PlaylistMenu(
         )
     }
 
-    MenuHeaderCard {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         PlaylistListItem(
             playlist = playlist,
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

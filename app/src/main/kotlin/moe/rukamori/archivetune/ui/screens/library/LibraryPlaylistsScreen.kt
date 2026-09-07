@@ -95,7 +95,6 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
-import moe.rukamori.archivetune.constants.LibrarySource
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
@@ -141,14 +140,6 @@ fun LibraryPlaylistsScreen(
     navController: NavController,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
-    // The Spotify half of this section is a whole different list — remote playlists, its own
-    // refresh, no reordering or tags — so it is a separate screen rather than a branch threaded
-    // through the four hundred lines below. The pills are rendered by both.
-    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
-        LibrarySpotifyPlaylistsScreen(navController = navController)
-        return
-    }
-
     val context = LocalContext.current
     val menuState = LocalMenuState.current
     val coroutineScope = rememberCoroutineScope()
@@ -312,9 +303,6 @@ fun LibraryPlaylistsScreen(
                     )
                 }
 
-            LibrarySourcePills()
-
-            // Control row (Sort dropdown, grid/list layout toggle, + add button)
             Row(
                 modifier =
                     Modifier
