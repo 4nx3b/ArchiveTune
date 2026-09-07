@@ -73,7 +73,6 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.LibrarySource
 import moe.rukamori.archivetune.constants.ArtistFilter
 import moe.rukamori.archivetune.constants.ArtistFilterKey
 import moe.rukamori.archivetune.constants.ArtistSongSortType
@@ -109,14 +108,6 @@ fun LibraryArtistsScreen(
     navController: NavController,
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
-    // The Spotify half of this section is a remote list with none of the sorting, filtering
-    // or multi-select below it, so it is its own screen rather than a branch threaded through
-    // this one. Both render the pills.
-    if (rememberLibrarySource() == LibrarySource.SPOTIFY) {
-        LibrarySpotifyArtistsScreen()
-        return
-    }
-
     val menuState = LocalMenuState.current
     val coroutineScope = rememberCoroutineScope()
     val playerConnection = LocalPlayerConnection.current
@@ -206,9 +197,6 @@ fun LibraryArtistsScreen(
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                     )
                 }
-                // The section's YTM/Spotify pills, under the header and above the sort row.
-                // Renders nothing without a usable Spotify session.
-                LibrarySourcePills()
                 Row(
                     modifier =
                         Modifier

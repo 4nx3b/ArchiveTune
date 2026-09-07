@@ -17,7 +17,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -83,17 +82,7 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.MuzoQuickAction
 import moe.rukamori.archivetune.ui.component.MuzoQuickActionRow
-import moe.rukamori.archivetune.ui.component.MenuHeaderCard
-import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.ui.draw.clip
-import coil3.compose.AsyncImage
-import moe.rukamori.archivetune.constants.ListThumbnailSize
-import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
-import moe.rukamori.archivetune.utils.joinByBullet
-import moe.rukamori.archivetune.utils.makeTimeString
+import moe.rukamori.archivetune.ui.component.MuzoSongMenuHeader
 import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.utils.SpeedDialPin
@@ -236,83 +225,13 @@ fun YouTubeSongMenu(
         }
     }
 
-MenuHeaderCard {
-        ListItem(
-            headlineContent = {
-                Text(
-                    text = song.title,
-                    modifier = Modifier.basicMarquee(),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            supportingContent = {
-                Text(
-                    text =
-                        joinByBullet(
-                            song.artists.joinToString { it.name },
-                            song.duration?.let { makeTimeString(it * 1000L) },
-                        ),
-                )
-            },
-            leadingContent = {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier =
-                        Modifier
-                            .size(ListThumbnailSize)
-                            .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                ) {
-                    AsyncImage(
-                        model = song.thumbnail,
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                    )
-                }
-            },
-            trailingContent = {
-                IconButton(
-                    onClick = {
-                        database.transaction {
-                            librarySong.let { librarySong ->
-                                val updatedSong: SongEntity
-                                if (librarySong == null) {
-                                    insert(song.toMediaMetadata(), SongEntity::toggleLike)
-                                    updatedSong = song.toMediaMetadata().toSongEntity().let(SongEntity::toggleLike)
-                                } else {
-                                    updatedSong = librarySong.song.toggleLike()
-                                    update(updatedSong)
-                                }
-                                syncUtils.likeSong(updatedSong)
-                            }
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (librarySong?.song?.liked ==
-                                    true
-                                ) {
-                                    R.drawable.favorite
-                                } else {
-                                    R.drawable.favorite_border
-                                },
-                            ),
-                        tint = if (librarySong?.song?.liked == true) MaterialTheme.colorScheme.error else LocalContentColor.current,
-                        contentDescription = null,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
-    }
+    MuzoSongMenuHeader(
+        artworkUrl = song.thumbnail,
+        title = song.title,
+        artist = song.artists.joinToString { it.name },
+    )
 
-        Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(16.dp))
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT

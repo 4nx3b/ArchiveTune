@@ -38,12 +38,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import moe.rukamori.archivetune.constants.GridThumbnailCornerRadius
+import moe.rukamori.archivetune.constants.HomeCatalogueSwitchKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.ui.component.GridItem
-import moe.rukamori.archivetune.ui.component.MarqueeText
-import moe.rukamori.archivetune.ui.component.ItemThumbnail
-import moe.rukamori.archivetune.utils.joinByBullet
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -87,11 +83,8 @@ import moe.rukamori.archivetune.spotify.SpotifyHomeSection
 import moe.rukamori.archivetune.spotify.SpotifyHomeScreenState
 import moe.rukamori.archivetune.spotify.SpotifyHomeViewModel
 import moe.rukamori.archivetune.spotify.SpotifyRecentItem
-import moe.rukamori.archivetune.spotify.SpotifyTracksQueue
-import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
-import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
@@ -237,6 +230,8 @@ fun SpotifyHomeScreen(
             }
             is SpotifyHomeScreenState.Success -> {
 
+                val (homeCatalogueSwitchEnabled, _) =
+                    rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
                 ExpressivePullToRefreshBox(
                     isRefreshing = false,
                     onRefresh = { viewModel.onAction(SpotifyHomeAction.Refresh) },
@@ -246,6 +241,12 @@ fun SpotifyHomeScreen(
                         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        if (homeCatalogueSwitchEnabled) {
+                            item(key = "home_source_switcher", contentType = "source_switcher") {
+                                HomeSourceSwitcher(modifier = Modifier.animateItem())
+                            }
+                        }
+
                         item(key = "spotify_recent_panel", contentType = "recent_panel") {
                             SpotifyRecentPanel(
                                 recentItems = state.recentItems,
@@ -311,30 +312,52 @@ fun SpotifyHomeScreen(
                                         )
                                     }
                                     is SpotifyHomeSection.Cards -> {
-                                        SpotifyCardSectionRow(
-                                            items = section.items,
-                                            metrics = metrics,
-                                            resolvingItemKey = resolvingItemKey,
-                                            onAlbumClick = { album ->
-                                                viewModel.onAction(
-                                                    SpotifyHomeAction.AlbumClick(
-                                                        id = album.id,
-                                                        name = album.name,
-                                                        artist = album.artists.firstOrNull()?.name,
-                                                    ),
-                                                )
-                                            },
-                                            onArtistClick = { artist ->
-                                                viewModel.onAction(
-                                                    SpotifyHomeAction.ArtistClick(id = artist.id, name = artist.name),
-                                                )
-                                            },
-                                            onPlaylistClick = { playlist ->
-                                                viewModel.cancelSelection()
-                                                openSpotifyPlaylist(playlist.id)
-                                            },
-                                            modifier = Modifier.animateItem(),
-                                        )
+                                        // Render with the app's own shelf rows, one per item
+                                        // kind, in the order the kinds first appear — same tiles,
+                                        // sizes and dimensions the YouTube home shelves use, so
+                                        // the Spotify page reads as part of the same UI.
+                                        val kindOrder = remember(section.items) {
+                            section.items.map { it::class }.distinct()
+                        }
+                        Column(modifier = Modifier.animateItem()) {
+                            kindOrder.forEach { kind ->
+                                when (kind) {
+                                    SpotifyHomeFeedItem.Album::class -> SpotifyAlbumSectionRow(
+                                        albums = section.items.filterIsInstance<SpotifyHomeFeedItem.Album>(),
+                                        metrics = metrics,
+                                        resolvingItemKey = resolvingItemKey,
+                                        onAlbumClick = { album ->
+                                            viewModel.onAction(
+                                                SpotifyHomeAction.AlbumClick(
+                                                    id = album.id,
+                                                    name = album.name,
+                                                    artist = album.artists.firstOrNull()?.name,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                    SpotifyHomeFeedItem.Playlist::class -> SpotifyPlaylistSectionRow(
+                                        playlists = section.items.filterIsInstance<SpotifyHomeFeedItem.Playlist>(),
+                                        metrics = metrics,
+                                        resolvingItemKey = resolvingItemKey,
+                                        onPlaylistClick = { playlist ->
+                                            viewModel.cancelSelection()
+                                            openSpotifyPlaylist(playlist.id)
+                                        },
+                                    )
+                                    SpotifyHomeFeedItem.Artist::class -> SpotifyArtistSectionRow(
+                                        artists = section.items.filterIsInstance<SpotifyHomeFeedItem.Artist>(),
+                                        metrics = metrics,
+                                        resolvingItemKey = resolvingItemKey,
+                                        onArtistClick = { artist ->
+                                            viewModel.onAction(
+                                                SpotifyHomeAction.ArtistClick(id = artist.id, name = artist.name),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
                                     }
                                 }
                             }
@@ -406,18 +429,54 @@ fun SpotifyTrackSectionRow(
     }
 }
 
-/**
- * One shelf of feed tiles. Playlists, albums and artists share a row because Spotify sends them
- * that way; each tile is drawn and dispatched by its own kind, so nothing is dropped for being in
- * the minority and no tile opens somebody else's thing.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SpotifyCardSectionRow(
-    items: List<SpotifyHomeFeedItem>,
+fun SpotifyAlbumSectionRow(
+    albums: List<SpotifyHomeFeedItem.Album>,
     metrics: SpotifyHomeMetrics,
     onAlbumClick: (SpotifyHomeFeedItem.Album) -> Unit,
-    onArtistClick: (SpotifyHomeFeedItem.Artist) -> Unit,
+    modifier: Modifier = Modifier,
+    resolvingItemKey: String? = null,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
+        modifier = modifier,
+    ) {
+        items(
+            items = albums,
+            key = { "spotify_album_${it.id}" },
+            contentType = { "spotify_album" },
+        ) { album ->
+            val albumItem = remember(album.id) {
+                AlbumItem(
+                    browseId = album.id,
+                    playlistId = album.id,
+                    title = album.name,
+                    artists = album.artists.map { Artist(it.name, it.id) },
+                    thumbnail = album.imageUrl ?: "",
+                )
+            }
+            Box(modifier = Modifier.width(metrics.cardWidth)) {
+                YouTubeGridItem(
+                    item = albumItem,
+                    isActive = false,
+                    isPlaying = false,
+                    fillMaxWidth = true,
+                    modifier = Modifier
+                        .pressScaleClickable(onClick = { onAlbumClick(album) }),
+                )
+                if (resolvingItemKey == "album:${album.id}") SpotifySelectionIndicator()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SpotifyPlaylistSectionRow(
+    playlists: List<SpotifyHomeFeedItem.Playlist>,
+    metrics: SpotifyHomeMetrics,
     onPlaylistClick: (SpotifyHomeFeedItem.Playlist) -> Unit,
     modifier: Modifier = Modifier,
     resolvingItemKey: String? = null,
@@ -428,100 +487,83 @@ fun SpotifyCardSectionRow(
         modifier = modifier,
     ) {
         items(
-            items = items,
-            key = { it.uri },
-            contentType = { it::class.simpleName },
-        ) { item ->
-            when (item) {
-                is SpotifyHomeFeedItem.Album ->
-                    SpotifyHomeCard(
-                        title = item.name,
-                        subtitle = item.artists.joinToString { it.name },
-                        thumbnailUrl = item.imageUrl,
-                        isResolving = resolvingItemKey == "album:${item.id}",
-                        onClick = { onAlbumClick(item) },
-                        modifier = Modifier.width(metrics.cardWidth),
-                    )
-
-                is SpotifyHomeFeedItem.Playlist ->
-                    SpotifyHomeCard(
-                        title = item.name,
-                        subtitle = joinByBullet(item.ownerName, item.totalCount.takeIf { it > 0 }?.toString()),
-                        thumbnailUrl = item.imageUrl,
-                        onClick = { onPlaylistClick(item) },
-                        modifier = Modifier.width(metrics.cardWidth),
-                    )
-
-                is SpotifyHomeFeedItem.Artist ->
-                    SpotifyArtistCard(
-                        artist = item,
-                        size = metrics.artistSize,
-                        isResolving = resolvingItemKey == "artist:${item.id}",
-                        onClick = { onArtistClick(item) },
-                    )
+            items = playlists,
+            key = { "spotify_playlist_${it.id}" },
+            contentType = { "spotify_playlist" },
+        ) { playlist ->
+            val playlistItem = remember(playlist.id) {
+                PlaylistItem(
+                    id = playlist.id,
+                    title = playlist.name,
+                    author = playlist.ownerName?.let { Artist(it, null) },
+                    songCountText = playlist.totalCount.takeIf { it > 0 }?.toString(),
+                    thumbnail = playlist.imageUrl ?: "",
+                    playEndpoint = null,
+                    shuffleEndpoint = null,
+                    radioEndpoint = null,
+                )
+            }
+            Box(modifier = Modifier.width(metrics.cardWidth)) {
+                YouTubeGridItem(
+                    item = playlistItem,
+                    isActive = false,
+                    isPlaying = false,
+                    fillMaxWidth = true,
+                    modifier = Modifier
+                        .pressScaleClickable(onClick = { onPlaylistClick(playlist) }),
+                )
+                if (resolvingItemKey == "playlist:${playlist.id}") SpotifySelectionIndicator()
             }
         }
     }
 }
 
 @Composable
-private fun SpotifyArtistCard(
-    artist: SpotifyHomeFeedItem.Artist,
-    size: Dp,
-    isResolving: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .width(size)
-            .pressScaleClickable(onClick = onClick),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            AsyncImage(
-                model = artist.imageUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(size)
-                    .clip(CircleShape),
-            )
-            if (isResolving) SpotifySelectionIndicator()
-        }
-        MarqueeText(
-            text = artist.name,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
-}
-
-@Composable
-private fun SpotifyHomeCard(
-    title: String,
-    subtitle: String,
-    thumbnailUrl: String?,
-    onClick: () -> Unit,
+fun SpotifyArtistSectionRow(
+    artists: List<SpotifyHomeFeedItem.Artist>,
+    metrics: SpotifyHomeMetrics,
+    onArtistClick: (SpotifyHomeFeedItem.Artist) -> Unit,
     modifier: Modifier = Modifier,
-    isResolving: Boolean = false,
+    resolvingItemKey: String? = null,
 ) {
-    GridItem(
-        title = title,
-        subtitle = subtitle,
-        fillMaxWidth = true,
-        thumbnailContent = {
-            ItemThumbnail(
-                thumbnailUrl = thumbnailUrl,
-                isActive = false,
-                isPlaying = false,
-                shape = RoundedCornerShape(GridThumbnailCornerRadius),
-                placeholderIconRes = R.drawable.music_note,
-            )
-            if (isResolving) SpotifySelectionIndicator()
-        },
-        modifier = modifier.pressScaleClickable(onClick = onClick),
-    )
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = metrics.contentPadding),
+        horizontalArrangement = Arrangement.spacedBy(metrics.itemSpacing),
+        modifier = modifier,
+    ) {
+        items(
+            items = artists,
+            key = { "spotify_artist_${it.id}" },
+            contentType = { "spotify_artist" },
+        ) { artist ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(metrics.artistSize)
+                    .pressScaleClickable(onClick = { onArtistClick(artist) }),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = artist.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(metrics.artistSize)
+                            .clip(CircleShape),
+                    )
+                    if (resolvingItemKey == "artist:${artist.id}") SpotifySelectionIndicator()
+                }
+                Text(
+                    text = artist.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable

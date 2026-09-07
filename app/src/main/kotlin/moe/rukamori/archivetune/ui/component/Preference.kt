@@ -17,7 +17,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -181,27 +180,13 @@ fun PreferenceEntry(
         }
     val preferenceIconShape = rememberPreferenceIconShape()
     val resolvedShape = shape ?: preferenceItemShape
-    // Only rows that can actually be pressed pay for the press animation. It costs an
-    // InteractionSource, a coroutine collecting it, an Animatable and a render node PER ROW, and
-    // roughly half the rows on a settings page are switches and sliders with no onClick at all —
-    // for those the whole thing animated nothing.
-    val clickable = isEnabled && onClick != null
     val interactionSource = remember { MutableInteractionSource() }
-    val pressScale =
-        if (clickable) {
-            val isPressed by interactionSource.collectIsPressedAsState()
-            val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.98f else 1f,
-                animationSpec = spring(stiffness = Spring.StiffnessHigh),
-                label = "prefScale",
-            )
-            Modifier.graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-        } else {
-            Modifier
-        }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "prefScale",
+    )
 
     val rowContent: @Composable () -> Unit = {
         Row(
@@ -210,11 +195,11 @@ fun PreferenceEntry(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = PreferenceEntryMinHeight)
-                    .then(if (clickable) Modifier.focusable() else Modifier)
+                    .then(if (isEnabled && onClick != null) Modifier.focusable() else Modifier)
                     .clickable(
                         interactionSource = interactionSource,
                         indication = LocalIndication.current,
-                        enabled = clickable,
+                        enabled = isEnabled && onClick != null,
                         onClick = onClick ?: {},
                     ).alpha(if (isEnabled) 1f else 0.5f)
                     .padding(
@@ -242,14 +227,6 @@ fun PreferenceEntry(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.weight(1f),
             ) {
-                // Neither line scrolls. A settings row is a static label, not a now-playing
-                // ticker: sideways motion on something you are trying to read down a list is
-                // noise, and every visible row doing it at once is worse. Titles are short and
-                // simply wrap on the rare occasion they need to.
-                //
-                // Row height is bounded by clamping the description instead — two lines and an
-                // ellipsis, which is the shape the rest of the app already uses for prose under a
-                // heading. That keeps rows near-uniform without taking the text away.
                 ProvideTextStyle(MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) {
                     title()
                 }
@@ -259,8 +236,6 @@ fun PreferenceEntry(
                         text = description,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 content?.invoke()
@@ -288,7 +263,10 @@ fun PreferenceEntry(
                 .padding(
                     horizontal = if (inGroup) 0.dp else 16.dp,
                     vertical = if (inGroup) 0.dp else 3.dp,
-                ).then(pressScale),
+                ).graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
     ) {
         rowContent()
     }
@@ -1149,65 +1127,6 @@ fun PreferenceGroup(
                 ) {
                     itemContent()
                 }
-            }
-        }
-    }
-}
-
-/**
- * [PreferenceGroup] for a `LazyColumn`: same DSL, same shapes and spacing, but every row is its own
- * lazy item so a long settings page composes only what is on screen.
- *
- * The `verticalScroll` version composes every row before the first frame — sixty of them on
- * Appearance, each with a vector icon to inflate and text to lay out — which is why that screen was
- * slow to open and why its enter animation looked like it was missing: the slide had finished
- * before the content existed.
- *
- * [modifier] is applied to the group's leading item (the title, or the first row when there is
- * none), which is where a group-level [PreferencePositions.modifierFor] anchor wants to be — the
- * deep link scrolls to the top of the group. `scrollToKey` already copes with lazy lists: it walks
- * the list a viewport at a time to bring an uncomposed target into composition.
- */
-fun LazyListScope.preferenceGroup(
-    modifier: Modifier = Modifier,
-    title: String? = null,
-    content: PreferenceGroupScope.() -> Unit,
-) {
-    val items = PreferenceGroupScope().apply(content).items
-    if (items.isEmpty()) return
-
-    if (title != null) {
-        item(contentType = "preference_group_title") {
-            PreferenceGroupTitle(
-                title = title,
-                modifier = modifier.padding(horizontal = PreferenceGroupHorizontalPadding),
-            )
-        }
-    }
-
-    itemsIndexed(items, contentType = { _, _ -> "preference_row" }) { index, itemContent ->
-        val position =
-            when {
-                items.size == 1 -> PreferenceGroupPosition.Single
-                index == 0 -> PreferenceGroupPosition.First
-                index == items.lastIndex -> PreferenceGroupPosition.Last
-                else -> PreferenceGroupPosition.Middle
-            }
-        CompositionLocalProvider(
-            LocalPreferenceInGroup provides true,
-            LocalPreferenceGroupPosition provides position,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        // The Column version used Arrangement.spacedBy(2.dp); lazy items have no
-                        // arrangement, so the gap becomes padding on every row but the first.
-                        .padding(top = if (index == 0) 0.dp else 2.dp)
-                        .then(if (title == null && index == 0) modifier else Modifier)
-                        .fillMaxWidth()
-                        .padding(horizontal = PreferenceGroupHorizontalPadding),
-            ) {
-                itemContent()
             }
         }
     }

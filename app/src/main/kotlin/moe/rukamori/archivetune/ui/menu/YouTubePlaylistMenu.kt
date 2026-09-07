@@ -87,7 +87,6 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -191,7 +190,11 @@ fun YouTubePlaylistMenu(
         },
     )
 
-    MenuHeaderCard {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         YouTubeListItem(
             item = playlist,
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

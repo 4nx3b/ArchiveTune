@@ -39,7 +39,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,6 +87,9 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -114,9 +119,7 @@ import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
-import moe.rukamori.archivetune.ui.component.MenuHeaderCard
 import moe.rukamori.archivetune.ui.component.BottomSheetState
-import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -337,6 +340,7 @@ fun PlayerMenu(
         SongSourceDialog(
             sources = availableSources,
             selected = currentSongSource,
+            initialQuery = mediaMetadata.title,
             onDismiss = { showSourceDialog = false },
             onSelect = { source ->
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
@@ -519,7 +523,11 @@ fun PlayerMenu(
             mediaMetadata.artists.joinToString(separator = " • ") { it.name }
         }
 
-    MenuHeaderCard {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -1676,6 +1684,215 @@ private data class SourceSearchResult(
     val songItem: SongItem?,
 )
 
+/**
+ * One source pill for the play-from search. Same shape, corner and colors as [ChipsRow] so the
+ * row reads as the app's chip language, plus a small spinner on the trailing edge while that
+ * source's search is in flight — the per-source loading indicator.
+ */
+@Composable
+private fun SourceSearchPill(
+    label: String,
+    iconRes: Int,
+    selected: Boolean,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(FilterChipDefaults.IconSize),
+            )
+        },
+        trailingIcon = {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(FilterChipDefaults.IconSize),
+                )
+            }
+        },
+        shape = RoundedCornerShape(16.dp),
+        border = null,
+        colors =
+            FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+    )
+}
+
+/**
+ * Runs ONE source's search against [query]. Every call is self-contained so the dialog can fire
+ * all sources at once and let each land independently.
+ */
+private suspend fun searchOneSource(
+    source: AudioSourceType,
+    query: String,
+    aacLabel: String,
+    saavnLabel: String,
+    losslessLabel: String,
+    deezerLabel: String,
+    appleQualityLabel: String?,
+): List<SourceSearchResult> =
+    withContext(Dispatchers.IO) {
+        when (source) {
+            AudioSourceType.YOUTUBE -> {
+                val ytResult =
+                    runCatching {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                    }.getOrNull()
+                val songs =
+                    ytResult?.items
+                        ?.filterIsInstance<SongItem>()
+                        .orEmpty()
+                songs.map { song ->
+                    SourceSearchResult(
+                        source = AudioSourceType.YOUTUBE,
+                        trackId = song.id,
+                        title = song.title,
+                        artist = song.artists.joinToString(", ") { it.name },
+                        thumbnailUrl = song.thumbnail,
+                        durationMs = song.duration?.toLong()?.times(1000L),
+                        qualityLabel = aacLabel,
+                        songItem = song,
+                    )
+                }
+            }
+
+            AudioSourceType.TIDAL -> {
+                val tidalQuery =
+                    TidalAudioProvider.Query(
+                        mediaId = "",
+                        title = query,
+                        artists = emptyList(),
+                        album = null,
+                        isrc = null,
+                        durationMs = null,
+                    )
+                runCatching { TidalAudioProvider.searchCandidates(tidalQuery, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .map { candidate ->
+                        SourceSearchResult(
+                            source = AudioSourceType.TIDAL,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist,
+                            thumbnailUrl = candidate.thumbnailUrl,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = losslessLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.QOBUZ -> {
+                runCatching { QobuzAudioProvider.searchCandidates(query, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .map { candidate ->
+                        val thumb = candidate.thumbnailUrl ?: run {
+                            val term =
+                                listOfNotNull(
+                                    candidate.artist?.takeIf(String::isNotBlank),
+                                    candidate.title,
+                                ).joinToString(" ")
+                            val ytResult =
+                                YouTube.search(term, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                            ytResult?.items
+                                ?.filterIsInstance<SongItem>()
+                                ?.firstOrNull()
+                                ?.thumbnail
+                        }
+                        SourceSearchResult(
+                            source = AudioSourceType.QOBUZ,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = thumb,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = losslessLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.QOBUZ_BACKUP -> {
+                runCatching { QobuzBackupProvider.searchCandidates(query, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .map { candidate ->
+                        SourceSearchResult(
+                            source = AudioSourceType.QOBUZ_BACKUP,
+                            trackId = candidate.videoId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = candidate.thumbnailUrl,
+                            durationMs = null,
+                            qualityLabel = if (candidate.isLossless) losslessLabel else aacLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.DEEZER -> {
+                runCatching { DeezerAudioProvider.searchCandidates(query, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .map { candidate ->
+                        SourceSearchResult(
+                            source = AudioSourceType.DEEZER,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = candidate.coverUrl,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = deezerLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.APPLE -> {
+                runCatching { AppleMusicAudioProvider.searchCandidates(query, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .map { candidate ->
+                        SourceSearchResult(
+                            source = AudioSourceType.APPLE,
+                            trackId = candidate.songId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = candidate.thumbnailUrl,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = appleQualityLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+
+            AudioSourceType.JIOSAAVN -> {
+                runCatching { SaavnService.searchSongs(query) }
+                    .getOrDefault(emptyList())
+                    .map { saavnSong ->
+                        val cover =
+                            saavnSong.image.maxByOrNull {
+                                runCatching { it.quality.substringBefore("x").toInt() }.getOrDefault(0)
+                            }?.url
+                        SourceSearchResult(
+                            source = AudioSourceType.JIOSAAVN,
+                            trackId = saavnSong.id,
+                            title = saavnSong.name,
+                            artist = saavnSong.artists.primary.joinToString(", ") { it.name },
+                            thumbnailUrl = cover,
+                            durationMs = saavnSong.duration?.toLong()?.times(1000L),
+                            qualityLabel = saavnLabel,
+                            songItem = null,
+                        )
+                    }
+            }
+        }
+    }
+
 @Composable
 private fun SongSourceDialog(
     sources: List<AudioSourceType>,
@@ -1684,17 +1901,26 @@ private fun SongSourceDialog(
     onSelect: (AudioSourceType?) -> Unit,
     onPlaySong: (SongItem) -> Unit,
     onPlayFromSource: (SourceSearchResult) -> Unit,
+    initialQuery: String = "",
 ) {
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
+
+    // Per-source results and per-source loading flags. Every searchable source runs its own
+    // search in parallel as soon as there is a query, and each source's results land the moment
+    // that source answers. Switching the source pill NEVER re-triggers a search: the pills only
+    // filter what is displayed, so results survive any number of pill changes.
+    var resultsBySource by remember {
+        mutableStateOf<Map<AudioSourceType, List<SourceSearchResult>>>(emptyMap())
+    }
+    var loadingSources by remember { mutableStateOf<Set<AudioSourceType>>(emptySet()) }
 
     val aacLabel = stringResource(R.string.quality_badge_aac)
     val saavnLabel = stringResource(R.string.quality_badge_saavn)
     val mp3Label = stringResource(R.string.quality_badge_mp3)
     val losslessLabel = stringResource(R.string.quality_badge_lossless)
     val noResultsText = stringResource(R.string.source_search_no_results)
-    val noBackendText = stringResource(R.string.source_search_no_backend)
 
     val deezerLabel =
         remember(losslessLabel, mp3Label) {
@@ -1708,7 +1934,7 @@ private fun SongSourceDialog(
         }
 
     val searchableSources =
-        setOf(
+        listOf(
             AudioSourceType.YOUTUBE,
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
@@ -1717,206 +1943,52 @@ private fun SongSourceDialog(
             AudioSourceType.APPLE,
             AudioSourceType.JIOSAAVN,
         )
-    val backendMissing = sourceFilter != null && sourceFilter !in searchableSources
 
-    val results by produceState<List<SourceSearchResult>>(
-        initialValue = emptyList(),
-        key1 = searchQuery,
-        key2 = sourceFilter,
-        key3 = searchMode,
-    ) {
-        if (!searchMode || searchQuery.length < 2 || backendMissing) {
-            value = emptyList()
-            return@produceState
+    LaunchedEffect(searchMode, searchQuery) {
+        if (!searchMode || searchQuery.length < 2) {
+            resultsBySource = emptyMap()
+            loadingSources = emptySet()
+            return@LaunchedEffect
         }
+        // Debounce typing; every source then searches the same query at once, each landing in
+        // resultsBySource as it answers so partial results show without waiting for stragglers.
         delay(350L)
-        val out = mutableListOf<SourceSearchResult>()
-        val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
-        val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
-        val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
-        val searchQobuzBackup = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ_BACKUP
-        val searchDeezer = sourceFilter == null || sourceFilter == AudioSourceType.DEEZER
-        val searchApple = sourceFilter == null || sourceFilter == AudioSourceType.APPLE
-        val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
-
-        if (searchYtm) {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val ytResult = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
-                    if (ytResult == null) {
-                        emptyList()
-                    } else {
-                        val songs = mutableListOf<SongItem>()
-                        for (item in ytResult.items) {
-                            if (item is SongItem) songs.add(item)
-                        }
-                        songs
+        val query = searchQuery
+        loadingSources = searchableSources.toSet()
+        resultsBySource = emptyMap()
+        coroutineScope {
+            searchableSources
+                .map { source ->
+                    async {
+                        val results =
+                            runCatching {
+                                searchOneSource(
+                                    source = source,
+                                    query = query,
+                                    aacLabel = aacLabel,
+                                    saavnLabel = saavnLabel,
+                                    losslessLabel = losslessLabel,
+                                    deezerLabel = deezerLabel,
+                                    appleQualityLabel = appleQualityLabel,
+                                )
+                            }.getOrDefault(emptyList())
+                        resultsBySource = resultsBySource + (source to results)
+                        loadingSources = loadingSources - source
                     }
-                }.getOrNull()?.forEach { song ->
-                    out.add(
-                        SourceSearchResult(
-                            source = AudioSourceType.YOUTUBE,
-                            trackId = song.id,
-                            title = song.title,
-                            artist = song.artists.joinToString(", ") { it.name },
-                            thumbnailUrl = song.thumbnail,
-                            durationMs = song.duration?.toLong()?.times(1000L),
-                            qualityLabel = aacLabel,
-                            songItem = song,
-                        ),
-                    )
                 }
-            }
+                .awaitAll()
         }
-        if (searchTidal) {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val tidalQuery =
-                        TidalAudioProvider.Query(
-                            mediaId = "",
-                            title = searchQuery,
-                            artists = emptyList(),
-                            album = null,
-                            isrc = null,
-                            durationMs = null,
-                        )
-                    TidalAudioProvider.searchCandidates(tidalQuery, limit = 8)
-                }.getOrNull()?.forEach { candidate ->
-                    out.add(
-                        SourceSearchResult(
-                            source = AudioSourceType.TIDAL,
-                            trackId = candidate.trackId,
-                            title = candidate.title,
-                            artist = candidate.artist,
-                            thumbnailUrl = candidate.thumbnailUrl,
-                            durationMs = candidate.durationMs,
-                            qualityLabel = losslessLabel,
-                            songItem = null,
-                        ),
-                    )
-                }
-            }
-        }
-        if (searchQobuz) {
-
-            withContext(Dispatchers.IO) {
-                runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
-                    .getOrDefault(emptyList())
-                    .forEach { candidate ->
-
-                        val thumb = candidate.thumbnailUrl ?: run {
-                            val term = listOfNotNull(candidate.artist?.takeIf(String::isNotBlank), candidate.title).joinToString(" ")
-                            val ytResult = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
-                            if (ytResult == null) null
-                            else {
-                                var found: SongItem? = null
-                                for (item in ytResult.items) {
-                                    if (item is SongItem) { found = item; break }
-                                }
-                                found?.thumbnail
-                            }
-                        }
-                        out.add(
-                            SourceSearchResult(
-                                source = AudioSourceType.QOBUZ,
-                                trackId = candidate.trackId,
-                                title = candidate.title,
-                                artist = candidate.artist.orEmpty(),
-                                thumbnailUrl = thumb,
-                                durationMs = candidate.durationMs,
-                                qualityLabel = losslessLabel,
-                                songItem = null,
-                            ),
-                        )
-                    }
-            }
-        }
-        if (searchQobuzBackup) {
-
-            withContext(Dispatchers.IO) {
-                runCatching { QobuzBackupProvider.searchCandidates(searchQuery, limit = 8) }
-                    .getOrDefault(emptyList())
-                    .forEach { candidate ->
-                        out.add(
-                            SourceSearchResult(
-                                source = AudioSourceType.QOBUZ_BACKUP,
-                                trackId = candidate.videoId,
-                                title = candidate.title,
-                                artist = candidate.artist.orEmpty(),
-                                thumbnailUrl = candidate.thumbnailUrl,
-
-                                durationMs = null,
-                                qualityLabel = if (candidate.isLossless) losslessLabel else aacLabel,
-                                songItem = null,
-                            ),
-                        )
-                    }
-            }
-        }
-        if (searchDeezer) {
-            withContext(Dispatchers.IO) {
-                DeezerAudioProvider
-                    .searchCandidates(searchQuery, limit = 8)
-                    .forEach { candidate ->
-                        out.add(
-                            SourceSearchResult(
-                                source = AudioSourceType.DEEZER,
-                                trackId = candidate.trackId,
-                                title = candidate.title,
-                                artist = candidate.artist.orEmpty(),
-                                thumbnailUrl = candidate.coverUrl,
-                                durationMs = candidate.durationMs,
-                                qualityLabel = deezerLabel,
-                                songItem = null,
-                            ),
-                        )
-                    }
-            }
-        }
-        if (searchApple) {
-
-            withContext(Dispatchers.IO) {
-                runCatching { AppleMusicAudioProvider.searchCandidates(searchQuery, limit = 8) }
-                    .getOrDefault(emptyList())
-                    .forEach { candidate ->
-                        out.add(
-                            SourceSearchResult(
-                                source = AudioSourceType.APPLE,
-                                trackId = candidate.songId,
-                                title = candidate.title,
-                                artist = candidate.artist.orEmpty(),
-                                thumbnailUrl = candidate.thumbnailUrl,
-                                durationMs = candidate.durationMs,
-                                qualityLabel = appleQualityLabel,
-                                songItem = null,
-                            ),
-                        )
-                    }
-            }
-        }
-        if (searchSaavn) {
-            withContext(Dispatchers.IO) {
-                runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
-                    .getOrDefault(emptyList())
-                    .forEach { saavnSong ->
-                    val cover = saavnSong.image.maxByOrNull { runCatching { it.quality.substringBefore("x").toInt() }.getOrDefault(0) }?.url
-                    out.add(
-                        SourceSearchResult(
-                            source = AudioSourceType.JIOSAAVN,
-                            trackId = saavnSong.id,
-                            title = saavnSong.name,
-                            artist = saavnSong.artists.primary.joinToString(", ") { it.name },
-                            thumbnailUrl = cover,
-                            durationMs = saavnSong.duration?.toLong()?.times(1000L),
-                            qualityLabel = saavnLabel,
-                            songItem = null,
-                        ),
-                    )
-                }
-            }
-        }
-        value = out
     }
+
+    // The displayed set: the pill filters these lists client-side only.
+    val results =
+        remember(resultsBySource, sourceFilter, searchableSources) {
+            searchableSources
+                .flatMap { source -> resultsBySource[source].orEmpty() }
+                .filter { sourceFilter == null || it.source == sourceFilter }
+        }
+    val filterLoading =
+        sourceFilter?.let { it in loadingSources } ?: loadingSources.isNotEmpty()
 
     DefaultDialog(
         onDismiss = onDismiss,
@@ -1938,8 +2010,14 @@ private fun SongSourceDialog(
                 )
                 IconButton(
                     onClick = {
-                        searchMode = !searchMode
                         if (!searchMode) {
+                            // Entering search mode with the song's name already in the bar: the
+                            // point of the search is finding THIS track on another service.
+                            searchQuery = initialQuery
+                            sourceFilter = null
+                            searchMode = true
+                        } else {
+                            searchMode = false
                             searchQuery = ""
                             sourceFilter = null
                         }
@@ -1962,42 +2040,34 @@ private fun SongSourceDialog(
                         .fillMaxWidth()
                         .padding(bottom = 4.dp),
                 )
-                ChipsRow(
-                    chips =
-                        listOf(
-                            null to stringResource(R.string.source_search_filter_all),
-                            AudioSourceType.TIDAL to stringResource(R.string.source_tidal),
-                            AudioSourceType.QOBUZ to stringResource(R.string.source_qobuz),
-                            AudioSourceType.QOBUZ_BACKUP to stringResource(R.string.source_qobuz_backup),
-                            AudioSourceType.DEEZER to stringResource(R.string.source_deezer),
-                            AudioSourceType.APPLE to stringResource(R.string.source_apple_music),
-                            AudioSourceType.JIOSAAVN to stringResource(R.string.source_jiosaavn),
-                            AudioSourceType.YOUTUBE to stringResource(R.string.source_youtube),
-                        ),
-                    currentValue = sourceFilter,
-                    onValueUpdate = { sourceFilter = it },
-                    icons =
-                        mapOf(
-                            null to R.drawable.search,
-                            AudioSourceType.TIDAL to R.drawable.provider_tidal,
-                            AudioSourceType.QOBUZ to R.drawable.provider_qobuz,
-                            AudioSourceType.QOBUZ_BACKUP to R.drawable.provider_qobuz,
-                            AudioSourceType.DEEZER to R.drawable.provider_deezer,
-                            AudioSourceType.APPLE to R.drawable.provider_apple,
-                            AudioSourceType.JIOSAAVN to R.drawable.provider_jiosaavn,
-                            AudioSourceType.YOUTUBE to R.drawable.play,
-                        ),
-                )
-                when {
-                    backendMissing -> {
-                        Text(
-                            text = noBackendText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .horizontalScroll(rememberScrollState()),
+                ) {
+                    Spacer(Modifier.width(12.dp))
+                    SourceSearchPill(
+                        label = stringResource(R.string.source_search_filter_all),
+                        iconRes = R.drawable.search,
+                        selected = sourceFilter == null,
+                        isLoading = false,
+                        onClick = { sourceFilter = null },
+                    )
+                    searchableSources.forEach { source ->
+                        Spacer(Modifier.width(8.dp))
+                        SourceSearchPill(
+                            label = stringResource(source.sourceLabelRes()),
+                            iconRes = source.sourceIconRes(),
+                            selected = sourceFilter == source,
+                            isLoading = source in loadingSources,
+                            onClick = { sourceFilter = source },
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
+                }
+                when {
                     searchQuery.length < 2 -> {
                         Text(
                             text = noResultsText,
@@ -2006,6 +2076,24 @@ private fun SongSourceDialog(
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                         )
+                    }
+                    results.isEmpty() && filterLoading -> {
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        ) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = stringResource(R.string.source_search_searching),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     results.isEmpty() -> {
                         Text(

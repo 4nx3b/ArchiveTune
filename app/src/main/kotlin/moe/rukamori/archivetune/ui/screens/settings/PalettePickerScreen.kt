@@ -100,8 +100,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -1453,9 +1451,6 @@ private fun ColorPaletteSelector(
     }
 }
 
-/** Fixed so the labelled swatches form an even row instead of each cell sizing to its own name. */
-private val MiniPaletteWidth = 84.dp
-
 @Composable
 private fun SelectableMiniPalette(
     palette: ThemePalette,
@@ -1469,17 +1464,8 @@ private fun SelectableMiniPalette(
         label = "miniPaletteScale",
     )
 
-    // The swatch alone identifies nothing. Every palette in this app sets all four Material roles
-    // to the same colour, so the tri-circle mark below renders as one flat dot — sixty-five flat
-    // dots in a row, several of them close enough in hue to be indistinguishable, and no way to
-    // tell which one is "Sage Green". Each palette already carries a name string that nothing had
-    // ever rendered; it is the label under the swatch now.
-    Column(
-        modifier = modifier.width(MiniPaletteWidth),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
     Surface(
-        modifier = Modifier.scale(scale),
+        modifier = modifier.scale(scale),
         shape = RoundedCornerShape(16.dp),
         color =
             if (isSelected) {
@@ -1534,25 +1520,6 @@ private fun SelectableMiniPalette(
                 }
             }
         }
-    }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-            text = stringResource(palette.nameResId),
-            style = MaterialTheme.typography.labelSmall,
-            color =
-                if (isSelected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 13.sp,
-        )
     }
 }
 

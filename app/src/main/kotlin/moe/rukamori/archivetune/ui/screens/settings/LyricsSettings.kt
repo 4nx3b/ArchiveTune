@@ -87,7 +87,6 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -100,10 +99,7 @@ import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
-import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -116,8 +112,6 @@ fun LyricsSettings(
     scrollTo: String? = null,
 ) {
 
-    val (lyricsMode, onLyricsModeChange) =
-        rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
 
@@ -386,23 +380,6 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_font_size"),
             title = stringResource(R.string.display),
         ) {
-            item {
-                EnumListPreference(
-                    modifier = positions.modifierFor("lyrics_mode", "use_lyrics_v2"),
-                    title = { Text(stringResource(R.string.lyrics_mode)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    selectedValue = lyricsMode,
-                    onValueSelected = onLyricsModeChange,
-                    valueText = {
-                        when (it) {
-                            LyricsMode.V2 -> stringResource(R.string.lyrics_mode_v2)
-                            LyricsMode.ENHANCED -> stringResource(R.string.lyrics_mode_enhanced)
-                            LyricsMode.SPOTIFY -> stringResource(R.string.lyrics_mode_spotify)
-                            LyricsMode.SIMPMUSIC -> stringResource(R.string.lyrics_mode_simpmusic)
-                        }
-                    },
-                )
-            }
 
 
             item {
