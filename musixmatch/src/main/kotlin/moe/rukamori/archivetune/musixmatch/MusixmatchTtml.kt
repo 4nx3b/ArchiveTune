@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.musixmatch
 
 import moe.rukamori.archivetune.musixmatch.models.RichSyncLine
-import moe.rukamori.archivetune.musixmatch.models.RichSyncWord
 import java.util.Locale
 
 internal object MusixmatchTtml {

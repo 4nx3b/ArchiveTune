@@ -141,7 +141,6 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
-import kotlin.math.roundToInt
 
 const val ActiveBoxAlpha = 0.6f
 

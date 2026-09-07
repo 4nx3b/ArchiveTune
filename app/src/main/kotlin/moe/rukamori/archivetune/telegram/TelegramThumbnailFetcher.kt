@@ -28,7 +28,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.Buffer
-import okio.Path.Companion.toPath
 import java.util.concurrent.TimeUnit
 
 private const val TELEGRAM_ART_SCHEME = "tgart"

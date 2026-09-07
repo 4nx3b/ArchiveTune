@@ -11,7 +11,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
 import android.webkit.WebView

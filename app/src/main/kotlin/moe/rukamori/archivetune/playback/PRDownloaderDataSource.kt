@@ -17,9 +17,7 @@ import androidx.media3.datasource.FileDataSource
 import com.downloader.Error
 import com.downloader.OnDownloadListener
 import com.downloader.PRDownloader
-import com.downloader.Status
 import com.downloader.request.DownloadRequest
-import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
