@@ -620,6 +620,17 @@ fun LastFmDashboardScreen(
                 ),
             )
 
+            if (searchVisible && glassHeader.liquidGlassActive) {
+                LastFmGlassSearchField(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onClose = {
+                        searchVisible = false
+                        searchQuery = ""
+                    },
+                )
+            }
+
             if (!searchVisible) {
                 HeroStatsCard(
                     userInfo = userInfo,
@@ -823,6 +834,58 @@ fun LastFmDashboardScreen(
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun LastFmGlassSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SearchBar(
+            inputField = {
+                SearchBarDefaults.InputField(
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    onSearch = { },
+                    expanded = false,
+                    onExpandedChange = { },
+                    placeholder = { Text(stringResource(R.string.lastfm_search_placeholder)) },
+                    leadingIcon = {
+                        IconButton(onClick = onClose) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_arrow_left_linear),
+                                contentDescription = stringResource(R.string.back_button_desc),
+                            )
+                        }
+                    },
+                    trailingIcon =
+                        if (query.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.solar_close_circle_linear),
+                                        contentDescription = stringResource(R.string.clear_search),
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                )
+            },
+            expanded = false,
+            onExpandedChange = { },
+            modifier = Modifier.weight(1f),
+        ) {}
     }
 }
 
