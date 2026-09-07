@@ -39,7 +39,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,7 +49,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
@@ -66,7 +64,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -90,7 +87,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -231,13 +227,6 @@ fun AiIntegrationSettings(
                 setValidationStatus(AiApiValidationStatus.UNKNOWN)
                 viewModel.clearAvailableModels()
             },
-        )
-    }
-
-    actionState.apiTestError?.let { details ->
-        AiApiTestErrorDialog(
-            details = details,
-            onClose = viewModel::dismissApiTestError,
         )
     }
 
@@ -809,56 +798,6 @@ fun AiIntegrationSettings(
     }
 }
 
-@Composable
-private fun AiApiTestErrorDialog(
-    details: String,
-    onClose: () -> Unit,
-) {
-    val scrollState = rememberScrollState()
-
-    DefaultDialog(
-        onDismiss = onClose,
-        modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
-        constrainContentHeight = true,
-        icon = {
-            Icon(
-                painter = painterResource(R.drawable.error),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(24.dp),
-            )
-        },
-        title = { Text(stringResource(R.string.ai_api_test_failed)) },
-        buttons = {
-            TextButton(onClick = onClose, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-    ) {
-        Surface(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = false),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        ) {
-            SelectionContainer(
-                modifier =
-                    Modifier
-                        .verticalScroll(scrollState)
-                        .padding(16.dp),
-            ) {
-                Text(
-                    text = details,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ApiKeyDialog(

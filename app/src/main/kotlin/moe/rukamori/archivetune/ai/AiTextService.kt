@@ -407,7 +407,7 @@ object AiTextService {
     ): AiServiceException {
         val message =
             runCatching { JSONObject(raw).readErrorMessage() }.getOrNull()
-                ?: raw.ifBlank { "HTTP $status" }
+                ?: raw.take(240).ifBlank { "HTTP $status" }
         return AiServiceException("AI API failed ($status): $message")
     }
 }

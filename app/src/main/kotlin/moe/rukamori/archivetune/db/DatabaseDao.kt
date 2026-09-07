@@ -1488,12 +1488,6 @@ interface DatabaseDao {
     @Query("DELETE FROM event")
     fun clearListenHistory()
 
-    @Query("UPDATE song SET totalPlayTime = 0 WHERE totalPlayTime != 0")
-    suspend fun resetTotalPlayTime()
-
-    @Query("DELETE FROM playCount")
-    suspend fun clearPlayCounts()
-
     @Transaction
     @Query("DELETE FROM event WHERE id IN (:eventIds)")
     fun deleteEventsByIds(eventIds: List<Long>)
