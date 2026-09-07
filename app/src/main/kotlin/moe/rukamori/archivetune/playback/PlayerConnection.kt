@@ -78,10 +78,6 @@ class PlayerConnection(
 ) : Player.Listener {
     val service = binder.service
 
-    /**
-     * Always the CURRENT active player. The service may promote a new player instance
-     * (crossfade promotion), so this must be a live getter, not a captured reference.
-     */
     val player: Player
         get() = service.player
     val localPlayer: ExoPlayer
@@ -135,9 +131,6 @@ class PlayerConnection(
     private val _songEndedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val songEndedEvents = _songEndedEvents.asSharedFlow()
 
-    // Ported from vossgraves/ArchiveTune: surfaces the moriextractor backend's
-    // bearer-token rejections (401 during playback) so the UI can prompt for a
-    // refreshed token; updateExtractorBearerToken pushes a new one into the service.
     val extractorAuthenticationEvents = service.extractorAuthenticationEvents
 
     private val canvasArtworkRefetchMutex = Mutex()
@@ -156,7 +149,6 @@ class PlayerConnection(
             service.currentMediaMetadata.value = player.currentMetadata
         }
 
-        // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
         scope.launch {
             service.playerFlow.collect { newPlayer ->
                 if (newPlayer != null && newPlayer !== attachedPlayer) {
@@ -193,12 +185,6 @@ class PlayerConnection(
             }
     }
 
-    /**
-     * Refines a Telegram track's format row (seeded at enqueue with size + container + an average
-     * bitrate) by pulling the real sample rate — and a more accurate bitrate when the container
-     * reports one — from the downloaded audio header. Polls briefly for the header to arrive as the
-     * stream buffers; if the sample rate is already known it does nothing.
-     */
     private suspend fun refineTelegramFormat(mediaId: String) {
         val existing = database.format(mediaId).first() ?: return
         if (existing.sampleRate != null) return
@@ -360,11 +346,6 @@ class PlayerConnection(
         service.startRadioSeamlessly()
     }
 
-    /**
-     * Start radio from [seed]: seamless hand-off when it is already the playing
-     * song, a fresh radio queue otherwise (from rukamori PR #1164 — the player
-     * menu's "Start radio" used to always re-seed from the current song).
-     */
     fun startRadio(seed: MediaMetadata) {
         if (mediaMetadata.value?.id == seed.id) {
             startRadioSeamlessly()
@@ -533,16 +514,8 @@ class PlayerConnection(
                 error.value = null
             }
 
-            // Suppress the error dialog for recoverable MediaCodec decoder-state faults.
-            // MusicService.onPlayerError handles these silently by re-preparing the player,
-            // and the song resumes playback automatically after recovery. Surfacing the
-            // dialog mid-recovery is misleading UX — it flashes briefly then auto-dismisses
-            // once recovery succeeds, which the user perceives as a spurious error popup.
-            // We still log via reportException above (in onPlayerErrorChanged) for diagnostics.
             isRecoverableMediaCodecStateError(playbackError) -> {
-                // Intentionally do NOT update error.value; let recovery run silently.
-                // When recovery succeeds, onPlayerErrorChanged(null) will fire and reset
-                // any previously-exposed error state.
+
             }
 
             playbackError !== dismissedPlaybackError -> {
@@ -576,8 +549,7 @@ class PlayerConnection(
     }
 
     private companion object {
-        // How long to poll for a streamed Telegram track's header before giving up refining its
-        // sample rate (attempts × interval ≈ 15s).
+
         const val TELEGRAM_FORMAT_REFINE_ATTEMPTS = 10
         const val TELEGRAM_FORMAT_REFINE_INTERVAL_MS = 1_500L
     }

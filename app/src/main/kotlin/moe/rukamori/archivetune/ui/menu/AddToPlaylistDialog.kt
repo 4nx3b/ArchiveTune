@@ -301,16 +301,9 @@ fun AddToPlaylistDialog(
             onDismissRequest = onDismiss,
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            // Restore the app's real (opaque) color scheme when this dialog
-            // was spawned from inside a glass menu's theme overlay — the song
-            // / player menus render inside a translucent glass ColorScheme,
-            // and without this wrap the "Add to playlist" popup picked up the
-            // see-through AlertDialogDefaults.containerColor and the content
-            // behind it showed through (user report 2026-09-05: "add to
-            // playlist popup [is] transparent. Restore them to old opaque
-            // background"). No-op outside a glass menu.
+
             UnglassedDialogTheme {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             BoxWithConstraints(
                 modifier =
                     Modifier
@@ -710,7 +703,7 @@ fun AddToPlaylistDialog(
                     }
                 }
             }
-            } // end UnglassedDialogTheme
+            }
         }
     }
 

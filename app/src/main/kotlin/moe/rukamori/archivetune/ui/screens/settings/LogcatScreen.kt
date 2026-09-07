@@ -92,7 +92,6 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
-import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -209,20 +208,6 @@ private fun LogcatScreenContent(
         }
     val listState = rememberLazyListState()
 
-    // ── Home-screen header haze (2026-09-05, revised) ──
-    // The 2026-09-05 morning attempt put a kyant glass pill in the
-    // MediumFlexibleTopAppBar and recorded the content below it into a
-    // layerBackdrop — but the pill and the recorded layer never overlap,
-    // so the pill rendered opaque with no visible blur (user report:
-    // "liquid glass but the background is opaque and there's no haze
-    // effect"). This now uses the canonical pattern the 30+ approved
-    // settings screens use: transparent TopAppBar + plain
-    // FrostedHeaderPill (the pause / more actions stay), the content Box
-    // as the haze source, and ScreenHeaderHaze rendering the progressive
-    // top-fade blur over the search field, filter chips and the top of
-    // the log list. The collapsing scroll behavior goes away with the
-    // transparent pinned bar — the Home behaviour the approved screens
-    // show.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -280,10 +265,7 @@ private fun LogcatScreenContent(
             SnackbarHost(hostState = snackbarHostState)
         },
     ) { innerPadding ->
-        // Root full-screen Box (y=0, ignoring innerPadding) hosting the
-        // content Box plus the header haze overlay as a LATER sibling so the
-        // haze draws on top of the search field / chips / log list, under the
-        // transparent top bar.
+
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier =
@@ -295,8 +277,7 @@ private fun LogcatScreenContent(
                                 WindowInsetsSides.Horizontal,
                             ),
                         )
-                        // The haze source — everything drawn in the content
-                        // area (search field, chips, log entries).
+
                         .hazeSource(headerHaze),
                 contentAlignment = Alignment.TopCenter,
             ) {
@@ -344,18 +325,13 @@ private fun LogcatScreenContent(
                     )
                 }
             }
-            } // end content haze-source Box
+            }
 
-            // Header haze overlay — progressive top-fade blur over the
-            // search field / filter chips / top of the log list (the Home
-            // route's material). A SIBLING of the source Box (never inside
-            // it — the effect would sample its own source), drawn ON TOP of
-            // the content, under the transparent top bar.
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
             )
-        } // end root full-screen haze Box
+        }
     }
 
     LaunchedEffect(model?.entries?.size, model?.isAutoScrollPaused) {

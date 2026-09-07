@@ -73,9 +73,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceSettings(navController: NavController, scrollTo: String? = null) {
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
+
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -131,35 +129,24 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-            // Personal Pool API key (from the pool site's dashboard) + a shortcut that opens the
-            // site to request one. The pool's credential feed is key-gated: without a key (baked-in
-            // or personal) "Refresh from pool" fails with HTTP 401, which used to read as a generic
-            // connection error. Surfacing the key field here turns that dead end into a two-minute
-            // fix: account (no email) → Request API key → paste → refresh.
+
             PoolApiKeySection(positions)
 
-            // Manual "refresh from pool" — pulls the latest shared accounts and instances on demand
-            // (the app also does this automatically on startup). Only shown when a source pool is
-            // configured at build time.
             PoolRefreshSection(positions)
 
-            // Preferred-source picker, per-source enable toggles and quality. Account/instance
-            // management remains in Integration (behind the manual-source-login toggle).
             PlaybackSourceSections(
                 navController = navController,
                 positions = positions,
             )
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -168,11 +155,6 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-/**
- * The pool's credential feed requires an API key. The build may bake one in via CI, but a key
- * pasted here (pool site account → dashboard → “Request API key”) always wins — so users of
- * builds without a working baked key can still use the pool after a free, email-less signup.
- */
 @Composable
 private fun PoolApiKeySection(positions: PreferencePositions) {
     if (!PoolAccountManager.isEnabled) return
@@ -192,7 +174,7 @@ private fun PoolApiKeySection(positions: PreferencePositions) {
                 value = apiKey,
                 onValueChange = onApiKeyChange,
                 singleLine = true,
-                isInputValid = { true }, // empty paste removes a saved key (see pool_api_key_help)
+                isInputValid = { true },
             )
         }
         item {
@@ -213,12 +195,6 @@ private fun PoolApiKeySection(positions: PreferencePositions) {
     }
 }
 
-/**
- * Top-of-screen action that force-refreshes the shared source pool: re-fetches contributed
- * accounts (via [PoolAccountManager]) and re-discovers verified Tidal instances (via
- * [TidalInstanceHealthManager]), bypassing the normal throttle. Hidden entirely when no source
- * pool URL is baked in, since there is nothing to refresh.
- */
 @Composable
 private fun PoolRefreshSection(positions: PreferencePositions) {
     if (!PoolAccountManager.isEnabled) return
@@ -255,9 +231,9 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                     scope.launch {
                         val ok =
                             withContext(Dispatchers.IO) {
-                                // Force past the 6h throttle so the tap always hits the network.
+
                                 val accountsOk = PoolAccountManager.refresh(context, force = true)
-                                // Re-discover + re-verify community Tidal instances from the pool feed.
+
                                 runCatching {
                                     TidalInstanceHealthManager.refresh(
                                         context,
@@ -267,10 +243,7 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                                 }
                                 accountsOk
                             }
-                        // A pool failure wins over `ok`. refresh() returns hasAccounts(), which is
-                        // true whenever anything survives in the persisted cache — so a pool that
-                        // 404s or 401s on every request still reported "refreshed: tidal=1 …" and
-                        // looked healthy, hiding the real reason in logcat. Show the reason.
+
                         val poolError = PoolAccountManager.lastFeedError
                         val message =
                             when {
@@ -281,8 +254,7 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                                         R.string.pool_refresh_done,
                                         PoolAccountManager.tidalAccounts().size,
                                         PoolAccountManager.qobuzAccounts().size,
-                                        // Deezer was missing here, which made a successful refresh look
-                                        // like it had not fetched anything for Deezer users.
+
                                         PoolAccountManager.deezerAccounts().size,
                                     )
                                 else -> context.getString(R.string.pool_refresh_failed)

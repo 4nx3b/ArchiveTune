@@ -159,44 +159,22 @@ fun AlbumScreen(
     val otherVersions by viewModel.otherVersions.collectAsStateWithLifecycle()
     val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
-    // Appearance → "Enable canvas in albums page". Independent of the player's canvas
-    // toggle; see AlbumCanvasEnabledKey for why.
+
     val albumCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
-    // Liquid Glass master toggle. When off, the Liquid Glass header pills are not
-    // shown and the standard TopAppBar is used instead. The kyant RuntimeShader
-    // stack requires Android 12+, so we also gate on SDK_INT.
+
     val liquidGlassEnabled by rememberPreference(
         key = LiquidGlassEnabledKey,
         defaultValue = false,
     )
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // Suspend LiquidGlass + CanvasArtworkPlayer while the full-screen lyrics
-    // overlay is open on top. The overlay is opaque, so this screen's pixels
-    // are never visible — but without this gate the kyant layerBackdrop keeps
-    // recording the LazyColumn into a GraphicsLayer every frame, the LiquidGlass
-    // header pills keep sampling it via RuntimeShader, AND the CanvasArtworkPlayer's
-    // Modifier.blur(72.dp) RenderEffect keeps re-applying on every frame. That
-    // triple per-frame GPU cost starves the 60 Hz karaoke lyrics sweep running
-    // on top, causing the 'enhanced word-synced lyrics lag when launched from
-    // an album page' bug. HomeScreen has none of these, which is why the same
-    // lyrics path doesn't lag from home.
+
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
 
-    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
-    // so the album hero's top padding stays anchored below the TopAppBar.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -265,7 +243,6 @@ fun AlbumScreen(
         }
     }
 
-    // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
     val showTopBarTitle by remember {
@@ -280,33 +257,8 @@ fun AlbumScreen(
         }
     }
 
-    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
-    // handle). The actual content recording only happens when
-    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
-    // which is gated on `liquidGlassHeaderActive`. The Liquid Glass header pills
-    // sample this backdrop to render the frosted-glass effect over the scrolling
-    // content (artwork when at the top, songs list when scrolled).
-    // The backdrop's base rect must be the page's SURFACE colour, not black
-    // (user report 2026-09-03: "When I've light mode turned on ... the Liquid
-    // Glass header pills have a completely white background the liquid glass
-    // pills become black"). The LazyColumn itself is transparent in light
-    // mode — item backgrounds are transparent and gaps between items carry
-    // no fill — so wherever the recorded layer is see-through, the pill's
-    // sample picks up the base rect drawn underneath. A black base reads
-    // correctly in dark mode and renders the pills SOLID BLACK in light
-    // mode. The surface colour blends with the page exactly like the
-    // LocalPlaylistScreen / HistoryScreen pattern already does.
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Header haze (2026-09-04, revised): the home page's blurred top haze,
-    // ported to this screen. The haze SOURCE is the scrolling LazyColumn
-    // itself, and the ScreenHeaderHaze overlay renders ON TOP of it (a later
-    // sibling), beneath the pinned Liquid Glass pills — the overlay was
-    // previously the FIRST child under the LazyColumn, so the list drew
-    // straight over it and the haze was never visible (user report
-    // 2026-09-04: "I don't see the haze effect"). Keeping the source (list)
-    // and the effect (overlay) as siblings also matches the home page's
-    // top-bar blur pattern.
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -335,11 +287,7 @@ fun AlbumScreen(
                         remember(albumWithSongs.artists) {
                             buildAnnotatedString {
                                 albumWithSongs.artists.fastForEachIndexed { index, artist ->
-                                    // Suppress the default link underline (Compose UI 1.7+
-                                    // styles Clickable links with an underline by default).
-                                    // The artist name should look like plain text — tap still
-                                    // navigates to the artist page via the
-                                    // linkInteractionListener below.
+
                                     val linkStyles =
                                         TextLinkStyles(
                                             style = SpanStyle(textDecoration = TextDecoration.None),
@@ -379,19 +327,6 @@ fun AlbumScreen(
                         ).joinToString(MediaDetailMetadataSeparator)
                     val isBookmarked = albumWithSongs.album.bookmarkedAt != null
 
-                    // SimpMusic-style liquid glass backdrop source: the LazyColumn
-                    // itself carries the layerBackdrop modifier (see the LazyColumn
-                    // definition below), so the entire scrolling content is recorded
-                    // into the backdrop. The floating Liquid Glass back button
-                    // (top-start) and heart+more pill (top-end) are siblings of the
-                    // LazyColumn (children of the outer Box), so they sample the
-                    // backdrop without being recorded into it (which would cause a
-                    // RuntimeShader feedback crash). They are PERSISTENT — they stay
-                    // at the top of the screen no matter how far the user scrolls,
-                    // matching the SimpMusic reference look and the user's request.
-                    //
-                    // The hero item itself just renders the MediaDetailHero; no
-                    // inner Box / layerBackdrop wrapper is needed here.
                     MediaDetailHero(
                         title = albumWithSongs.album.title,
                         thumbnailUrl = albumWithSongs.album.thumbnailUrl,
@@ -402,32 +337,13 @@ fun AlbumScreen(
                         isAdded = isBookmarked,
                         addContentDescription = R.string.add_to_library,
                         removeContentDescription = R.string.remove_from_library,
-                        // Pass the album's looping animated canvas (Apple Music
-                        // animated cover art) so the album thumbnail animates
-                        // the same way the song player's thumbnail does. Only
-                        // mounted when the canvas feature is enabled and the
-                        // album actually has a canvas (see AlbumViewModel).
-                        //
-                        // `canvasIsPlaying = true` (not the main player's
-                        // `isPlaying`) because on the album page the user
-                        // expects the animated cover to loop the moment they
-                        // open the album, regardless of whether a song is
-                        // currently playing — matching Apple Music. The
-                        // canvas ExoPlayer is a separate audio-disabled
-                        // instance (see CanvasArtworkPlayer), so playing it
-                        // has no effect on the main playback queue.
-                        //
-                        // `albumCanvasEnabled` is re-checked here, not just in the view
-                        // model: the fetch is skipped when the preference is off, but a
-                        // canvas already resolved before the user turned it off would
-                        // otherwise keep looping until the page was reopened.
+
                         canvasPrimaryUrl =
                             (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
                                 ?.takeIf { albumCanvasEnabled },
                         canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { albumCanvasEnabled },
                         canvasIsPlaying = true,
-                        // Hide the canvas TextureView (and skip its per-frame
-                        // blur RenderEffect) while the lyrics overlay is open.
+
                         canvasVisible = !lyricsFullScreen,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
@@ -473,8 +389,7 @@ fun AlbumScreen(
                                             }
 
                                             is HeaderDownloadState.Partial -> {
-                                                // Pause/Resume (2026-09-05): pending-only, the
-                                                // already-downloaded songs stay untouched.
+
                                                 if (headerState.paused) {
                                                     sendResumePausedDownloads(
                                                         context = context,
@@ -539,14 +454,12 @@ fun AlbumScreen(
                     )
                 }
 
-                // Songs Section Header
                 item(key = "songs_header") {
                     NavigationTitle(
                         title = stringResource(R.string.songs),
                     )
                 }
 
-                // Songs List
                 itemsIndexed(
                     items = wrappedSongs,
                     key = { _, song -> song.item.id },
@@ -606,7 +519,6 @@ fun AlbumScreen(
                     )
                 }
 
-                // Other Versions Section
                 if (otherVersions.isNotEmpty()) {
                     item(key = "other_versions_header") {
                         NavigationTitle(
@@ -792,36 +704,11 @@ fun AlbumScreen(
             }
         }
 
-        // ── Header haze overlay (2026-09-04, revised) ──
-        // Progressive top-fade blur over the list — AFTER the LazyColumn in
-        // declaration order so it draws on top of it, BEFORE the pinned pills
-        // so they stay crisp above the frosted strip.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
 
-        // Persistent Liquid Glass header buttons. These are siblings of the
-        // LazyColumn (children of the outer Box), positioned at top-start and
-        // top-end. They sample the artworkBackdrop (which captures the entire
-        // scrolling content via Modifier.layerBackdrop on the LazyColumn) to
-        // render the frosted-glass effect. They are PERSISTENT — they stay at
-        // the top of the screen no matter how far the user scrolls, matching
-        // the SimpMusic reference look.
-        //
-        // Shown only when:
-        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - The album has songs (so there's a hero to show)
-        //  - The albumWithSongs is loaded (for the heart toggle state)
-        //
-        // Selection mode KEEPS the glass pills (2026-09-05, user report: "If
-        // i select songs in an album page of an artist the liquid glass header
-        // disappears. Fix it just like you did in the history screen"): the
-        // back pill morphs in place — close (X) icon + the "N songs" count,
-        // tap to clear the selection — and the trailing pill swaps to the
-        // select-all / deselect toggle and the "..." that opens
-        // SelectionSongMenu, the exact actions the opaque selection bar
-        // carried (the Local/Online playlist screens' pattern).
         val currentAlbumWithSongs = albumWithSongs
         if (layerBackdropActive && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()
@@ -874,10 +761,7 @@ fun AlbumScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-                    // Selection actions in glass: select-all / deselect toggle
-                    // + the "..." that opens the selection menu — the exact
-                    // actions the opaque selection bar carried (playlist
-                    // screens' pattern, 2026-09-05).
+
                     val selectedCount = wrappedSongs.count { it.isSelected }
                     val allSelected = selectedCount == wrappedSongs.size && wrappedSongs.isNotEmpty()
                     Box(
@@ -930,7 +814,7 @@ fun AlbumScreen(
                         }
                     }
                 } else {
-                // Bookmark toggle (heart)
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -954,7 +838,7 @@ fun AlbumScreen(
                         )
                     }
                 }
-                // Album menu
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -983,14 +867,8 @@ fun AlbumScreen(
             }
         }
 
-        // Top App Bar: shown when Liquid Glass is disabled. When Liquid Glass
-        // is active the persistent Liquid Glass buttons above handle
-        // navigation and actions in EVERY mode — including selection (the
-        // pills morph, they no longer hand over to this opaque bar; 2026-09-05)
-        // — so the TopAppBar is hidden entirely (no overlay, no click
-        // interception).
         if (!liquidGlassHeaderActive) {
-        // Top App Bar
+
         val topAppBarColors =
             if (transparentAppBar) {
                 TopAppBarDefaults.topAppBarColors(
@@ -1031,12 +909,7 @@ fun AlbumScreen(
                 }
             },
             navigationIcon = {
-                // Show the back/close arrow when:
-                //  - In selection mode (close button)
-                //  - Scrolled past the hero (showTopBarTitle)
-                //  - Liquid Glass is OFF (the persistent LiquidGlass back button
-                //    isn't there, so the TopAppBar must provide back navigation
-                //    even when the hero is visible)
+
                 if (selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(
                         onClick = {
@@ -1105,11 +978,7 @@ fun AlbumScreen(
                         )
                     }
                 } else {
-                    // Show the more-horiz action when:
-                    //  - Scrolled past the hero (showTopBarTitle)
-                    //  - Liquid Glass is OFF (the persistent LiquidGlass more
-                    //    button isn't there, so the TopAppBar must provide it
-                    //    even when the hero is visible)
+
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         albumWithSongs?.let { currentAlbum ->
                             IconButton(
@@ -1138,7 +1007,7 @@ fun AlbumScreen(
                 }
             },
         )
-        } // end if (!liquidGlassHeaderActive || selection)
+        }
     }
 }
 

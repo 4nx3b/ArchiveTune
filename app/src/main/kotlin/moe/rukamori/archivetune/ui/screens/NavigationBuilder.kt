@@ -131,17 +131,12 @@ fun NavGraphBuilder.navigationBuilder(
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
-        // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
-        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
-        // owns the tab and leaves the other one exactly as it was.
-        // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
+
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
             SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
             return@composable
         }
 
-        // The YouTube home always renders through this fork's HomeScreen; the alternative
-        // Rukamori layout and its style picker were removed (2026-09-04).
         HomeScreen(
             navController,
             headerScrollConnection = homeScrollConnection,
@@ -715,7 +710,7 @@ fun NavGraphBuilder.navigationBuilder(
             startUrl = backStackEntry.arguments?.getString(LOGIN_URL_ARGUMENT)?.let(Uri::decode),
         )
     }
-    // The other half of YouTube sign-in: no WebView, no cookie — a code typed at google.com/device.
+
     composable(YOUTUBE_OAUTH_ROUTE) {
         YouTubeOAuthLoginScreen(navController)
     }

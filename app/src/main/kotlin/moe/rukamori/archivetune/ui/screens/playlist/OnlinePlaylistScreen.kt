@@ -80,12 +80,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
@@ -206,33 +204,15 @@ fun OnlinePlaylistScreen(
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
-    // Liquid Glass master toggle + lyrics-overlay gate. OnlinePlaylistScreen
-    // previously applied layerBackdrop + LiquidGlass header pills UNCONDITIONALLY
-    // — even when the user had LiquidGlass turned off in settings, and even when
-    // the full-screen lyrics overlay was open on top. The unconditional recording
-    // + RuntimeShader sampling starves the 60 Hz karaoke lyrics sweep of GPU
-    // budget, causing the 'enhanced word-synced lyrics lag when launched from a
-    // playlist page' bug. HomeScreen has no LiquidGlass, which is why the same
-    // lyrics path doesn't lag from home.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
 
-    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
-    // so the search bar offset and the playlist header always stay anchored below the TopAppBar.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val lazyListState = rememberLazyListState()
@@ -259,11 +239,6 @@ fun OnlinePlaylistScreen(
 
     val focusRequester = remember { FocusRequester() }
 
-    // Save scroll position when entering search, restore when leaving.
-    // The header item collapses to height 0 when isSearching becomes true, which
-    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
-    // BEFORE the collapse and restoring them AFTER the expand, the visible
-    // position is preserved across open/close search.
     var savedScrollIndex by remember { mutableIntStateOf(0) }
     var savedScrollOffset by remember { mutableIntStateOf(0) }
     LaunchedEffect(isSearching) {
@@ -272,7 +247,7 @@ fun OnlinePlaylistScreen(
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
         } else {
-            // Wait one frame for the header to re-expand before restoring.
+
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -286,16 +261,7 @@ fun OnlinePlaylistScreen(
     } else if (selection) {
         BackHandler { selection = false }
     } else {
-        // BackHandler so the predictive back gesture always escapes the
-        // online playlist page. Per user report (2026-08-29): gesture not
-        // working in playlists. The previous implementation called
-        // `navController.navigate("library") {
-        // popUpTo(navController.graph.startDestinationId) ... }` which could
-        // fail silently when `navController.graph` was momentarily null.
-        //
-        // New approach: popBackStack() directly first, fall back to
-        // navigate("library") if no previous entry. Wrapped in try/catch
-        // as defense-in-depth so the gesture NEVER silently fails.
+
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -309,7 +275,7 @@ fun OnlinePlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-                    // Last-resort: let the system handle the back press.
+
                 }
             }
         }
@@ -363,28 +329,8 @@ fun OnlinePlaylistScreen(
         }
     }
 
-    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
-    // handle). The actual content recording happens when
-    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below.
-    // This matches the LocalPlaylistScreen pattern: the backdrop captures the entire
-    // scrolling content, and the floating Liquid Glass header buttons are siblings of
-    // the LazyColumn (not nested inside its first item) so they sample the backdrop
-    // without being recorded into it — and, critically, their click handlers are not
-    // competing with any LazyColumn-item pointer-input stack.
-    // Surface-coloured base, NOT black (user report 2026-09-03: light-mode
-    // Liquid Glass pills render solid black over white pages). The recorded
-    // LazyColumn layer is transparent wherever light-theme item backgrounds
-    // don't fill, and the pill's backdrop sample then shows this base rect —
-    // black under a light theme reads as a solid black pill. The surface
-    // colour blends with the page (LocalPlaylistScreen pattern).
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Header haze (2026-09-04, revised): the home page's blurred top haze,
-    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
-    // overlay renders ON TOP of it (a later sibling, beneath the pinned
-    // Liquid Glass pills) — the overlay was previously the FIRST child under
-    // the list, so the list drew straight over it and the haze was never
-    // visible (user report 2026-09-04: "I don't see the haze effect").
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -409,10 +355,7 @@ fun OnlinePlaylistScreen(
                     .hazeSource(headerHaze),
             contentPadding =
                 PaddingValues(
-                    // When searching, the header item collapses to zero height and the
-                    // TopAppBar (which renders the search field) is overlaid on top of
-                    // the LazyColumn. Reserve top space so the first songs aren't hidden
-                    // behind the TopAppBar + status bar.
+
                     top = if (isSearching) systemBarsTopPadding + 64.dp else 0.dp,
                     bottom =
                         LocalPlayerAwareWindowInsets.current
@@ -492,11 +435,7 @@ fun OnlinePlaylistScreen(
                         }
                     }
                 } else if (playlistSnapshot != null) {
-                    // Capture into a local non-null val so the smart-cast survives any
-                    // recomposition timing inside the LazyColumn item lambda — Compose may
-                    // invoke the item{} lambda on a later pass and the outer StateFlow value
-                    // could in theory have flipped back to null, which previously risked an
-                    // NPE on `playlist.title` / `playlist.thumbnail` access.
+
                     val playlist = playlistSnapshot
                     item(key = "header") {
                         if (!isSearching) {
@@ -523,20 +462,6 @@ fun OnlinePlaylistScreen(
                             val isBookmarked = dbPlaylist?.playlist?.bookmarkedAt != null
                             val fallbackPlaySong = songs.firstOrNull()
 
-                            // SimpMusic-style liquid glass backdrop source: the
-                            // LazyColumn itself carries Modifier.layerBackdrop
-                            // (see the LazyColumn definition above), so the entire
-                            // scrolling content is recorded into the backdrop. The
-                            // floating Liquid Glass back button (top-start) and
-                            // search+more pill (top-end) are siblings of the
-                            // LazyColumn (declared after the LazyColumn below), so
-                            // they sample the backdrop without being recorded into
-                            // it. This matches the LocalPlaylistScreen pattern and
-                            // ensures the buttons are clickable (no LazyColumn-item
-                            // pointer-input interference).
-                            //
-                            // The hero item itself just renders the MediaDetailHero;
-                            // no inner Box / layerBackdrop wrapper is needed here.
                             MediaDetailHero(
                                 title = playlist.title,
                                 thumbnailUrl = playlist.thumbnail,
@@ -599,8 +524,7 @@ fun OnlinePlaylistScreen(
                                                     }
 
                                                     is HeaderDownloadState.Partial -> {
-                                                        // Pause/Resume (2026-09-05): pending-only, the
-                                                        // already-downloaded songs stay untouched.
+
                                                         if (headerState.paused) {
                                                             sendResumePausedDownloads(
                                                                 context = context,
@@ -663,14 +587,7 @@ fun OnlinePlaylistScreen(
                                         }
                                     }
                                 },
-                                // REMOVED Modifier.animateItem(): the header is a
-                                // static first item that never needs placement
-                                // animation. animateItem() was causing the header
-                                // to briefly shift position ("goes up for a split
-                                // second and comes back") when a LiquidGlass header
-                                // icon was clicked — the state change triggered a
-                                // LazyColumn layout pass, and animateItem()
-                                // animated the resulting placement delta.
+
                                 useBlurredPlayButton = true,
                             )
                         }
@@ -696,7 +613,6 @@ fun OnlinePlaylistScreen(
                         }
                     }
 
-                    // Songs List
                     items(
                         items = wrappedSongs,
                         key = { it.item.second.setVideoId ?: "${it.item.second.id}-${it.item.first}" },
@@ -854,40 +770,11 @@ fun OnlinePlaylistScreen(
             headerItems = headerItems,
         )
 
-        // ── Header haze overlay (2026-09-04, revised) ──
-        // Progressive top-fade blur over the list — declared AFTER the
-        // LazyColumn so it draws on top of it, BEFORE the pinned pills so
-        // they stay crisp above the frosted strip.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
 
-        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
-        // (children of the ExpressivePullToRefreshBox), positioned at top-start
-        // and top-end. They sample the artworkBackdrop (which captures the
-        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
-        // to render the frosted-glass effect. PERSISTENT — stay at the top no
-        // matter how far the user scrolls.
-        //
-        // This matches the LocalPlaylistScreen pattern exactly: the buttons are
-        // NOT nested inside the LazyColumn's first item (which caused click
-        // interception issues on some devices), but are direct siblings of the
-        // LazyColumn inside the ExpressivePullToRefreshBox.
-        //
-        // Shown only when:
-        //  - Not in selection mode
-        //  - Not searching
-        //  - Playlist is loaded
-        //
-        // Fixed (2026-09-04, user report: "When I select songs in history page
-        // the liquid glass pills disappear and opaque rounded pill appears.
-        // Fix this. Fix the same thing for other screens too"): selection mode
-        // NO LONGER hides the glass pills. The back pill morphs in place —
-        // close (X) icon + the "N songs" count, tap to clear the selection —
-        // and the trailing pill swaps to the select-all / deselect toggle and
-        // the ⋯ that opens SelectionMediaMetadataMenu, the exact actions the
-        // opaque selection bar offered.
         val currentPlaylistForGlass = playlist
         if (layerBackdropActive && !isSearching && currentPlaylistForGlass != null) {
             LiquidGlassActionPill(
@@ -940,9 +827,7 @@ fun OnlinePlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-                    // Selection actions in glass (2026-09-04): select-all /
-                    // deselect toggle + the ⋯ that opens the selection menu —
-                    // the exact actions the opaque selection bar carried.
+
                     val selectedCount = wrappedSongs.count { it.isSelected }
                     Box(
                         modifier = Modifier.size(48.dp),
@@ -991,7 +876,7 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else {
-                // Search
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1004,7 +889,7 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 }
-                // More
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1029,20 +914,10 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 }
-                } // end non-selection branch of the trailing pill (2026-09-04)
+                }
             }
         }
 
-        // Top App Bar — hidden when the Liquid Glass header buttons are visible
-        // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
-        // search+more pill handle navigation/actions when the hero is visible,
-        // INCLUDING selection mode (2026-09-04: the glass pills now carry the
-        // selection state, so the opaque bar no longer swaps in mid-selection).
-        // The TopAppBar is only rendered during search mode, where it provides
-        // the search TextField. Rendering the TopAppBar on top of the Liquid
-        // Glass buttons (even when transparent and with empty actions) causes
-        // it to intercept pointer events in the top area, making the Liquid
-        // Glass buttons unclickable.
         if (isSearching) {
             val topAppBarColors =
                 if (transparentAppBar) {
@@ -1100,11 +975,7 @@ fun OnlinePlaylistScreen(
                 }
             },
             navigationIcon = {
-                // Hide the back arrow when the SimpMusic-style floating liquid
-                // glass back button is visible (artwork shown, not searching,
-                // not in selection mode, not scrolled). In selection / searching
-                // / scrolled state, the floating button has scrolled out of
-                // view so we need the TopAppBar's own back/close icon.
+
                 if (isSearching || selection || showTopBarTitle) {
                     IconButton(
                         onClick = {
@@ -1184,11 +1055,7 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    // Hide search + more when the SimpMusic-style floating
-                    // liquid glass pill is visible (artwork shown, not
-                    // scrolled). Once scrolled, the floating pill has
-                    // scrolled out of view, so the TopAppBar's own actions
-                    // take over.
+
                     if (showTopBarTitle) {
                         IconButton(onClick = { isSearching = true }, onLongClick = {}) {
                             Icon(
@@ -1223,7 +1090,7 @@ fun OnlinePlaylistScreen(
                 }
             },
         )
-        } // end if (selection || isSearching)
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,

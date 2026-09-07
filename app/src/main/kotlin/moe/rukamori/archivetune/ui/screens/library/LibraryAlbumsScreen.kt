@@ -147,29 +147,19 @@ fun LibraryAlbumsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    // Stable status-bar + cutout top inset (see LibraryArtistsScreen for the
-    // notch rationale) — combined with AppBarHeight it forms the bar-zone
-    // clearance this screen now owns since the Library root went full-bleed.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.sync() },
         modifier = Modifier.fillMaxSize(),
-        // indicatorOffset intentionally omitted: the box now spans the full
-        // window (the Library root no longer pads the top inset below the
-        // bar), so the default (status bar + app bar) places the indicator
-        // just under the pinned bar.
+
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // 2026-09-04 library redesign: the bar zone (status bar +
-                    // app bar) the Library root's windowInsetsPadding used to
-                    // provide now lives here — the sub-header controls start
-                    // just below the pinned bar, matching the Home feed's
-                    // spacing.
+
                     .padding(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),

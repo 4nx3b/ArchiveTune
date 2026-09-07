@@ -94,18 +94,6 @@ private val DiscordLargeTextOptions = listOf("song", "artist", "album", "app", "
 fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     val playerConnection = LocalPlayerConnection.current ?: return
 
-    // ── Home-screen header haze (2026-09-05, revised) ──
-    // The 2026-09-05 morning attempt put a kyant glass pill in the
-    // LargeFlexibleTopAppBar and recorded the Column below it into a
-    // layerBackdrop — but the pill and the recorded layer never overlap,
-    // so the pill rendered opaque with no visible blur (user report:
-    // "liquid glass but the background is opaque and there's no haze
-    // effect"). This now uses the canonical pattern the 30+ approved
-    // settings screens use: transparent TopAppBar + plain FrostedHeaderPill
-    // (the 3-dot actions stay), the scrolling Column as the haze source, and
-    // ScreenHeaderHaze rendering the progressive top-fade blur. The
-    // collapsing scroll behavior goes away with the transparent pinned bar
-    // — the Home behaviour the approved screens show.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val song by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
@@ -470,10 +458,6 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
         LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
-        // Full-screen Box: the Scaffold content slot spans the whole screen
-        // (innerPadding is advisory), so the Column viewport starts at y=0 —
-        // items scroll up THROUGH the transparent bar into the blur. The
-        // Column's own top padding reserves the bar zone INSIDE the scroll.
         Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier =
@@ -756,7 +740,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 title = { Text(stringResource(R.string.logout_confirm_title)) },
                 text = { Text(stringResource(R.string.logout_confirm_message)) },
                 confirmButton = {
-                    KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                    KeepStatusBarHiddenInDialog()
                     TextButton(
                         onClick = {
                             coroutineScope.launch {
@@ -787,14 +771,11 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             )
         }
 
-        // Header haze overlay — progressive top-fade blur over the list
-        // (the Home route's material), drawn AFTER the Column so it sits on
-        // top of the scrolling content, under the transparent top bar.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
-        } // end full-screen haze Box
+        }
     }
 }
 
@@ -1250,7 +1231,7 @@ fun EditablePreference(
         AlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = {
                     onValueChange(if (text.isBlank()) "" else text)
                     showDialog = false

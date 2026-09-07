@@ -71,10 +71,6 @@ import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/**
- * A highly optimized, custom Bezier curve wavy slider.
- * Flattens out automatically during user scrub operations to aid tracking visual precision.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
@@ -119,7 +115,6 @@ fun WavyMusicSlider(
         label = "WaveAmplitudeAnim",
     )
 
-    // Infinitely shifting phase when active
     val phaseShiftAnim = remember { Animatable(0f) }
     val phaseShift = phaseShiftAnim.value
 
@@ -165,18 +160,17 @@ fun WavyMusicSlider(
             ((clampedValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
         }
 
-    // Smoothly animate seeking/playback progress using M3 Expressive Motion physics
     val animatedNormalizedValue by animateFloatAsState(
         targetValue = normalizedValue,
         animationSpec =
             if (normalizedValue == 0f) {
-                // Material 3 Slow Spatial spring (Stiffness: 200f, Damping: 0.75f) for hero song transitions
+
                 spring(
                     dampingRatio = 0.75f,
                     stiffness = 200f,
                 )
             } else {
-                // Material 3 Default Effects spring (Stiffness: 380f, Damping: 1.0f) for linear playback interpolation
+
                 spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = 380f,
@@ -209,7 +203,6 @@ fun WavyMusicSlider(
                         ((newValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
                     }
 
-                // Quantum trigger for drag vibration ticks
                 val currentStep = (normalizedNew * 50f).roundToInt()
                 if (currentStep != lastHapticStep.intValue) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -268,7 +261,6 @@ fun WavyMusicSlider(
                         onDrawWithContent {
                             val currentProgressPxEndVisual = localTrackStart + localTrackWidth * renderNormalizedValue
 
-                            // 1. Draw Inactive Track
                             if (hideInactiveTrackPortion) {
                                 if (currentProgressPxEndVisual < localTrackEnd) {
                                     drawLine(
@@ -289,7 +281,6 @@ fun WavyMusicSlider(
                                 )
                             }
 
-                            // 2. Draw Active Track (Sinusoidal Wave / Line) with Spatial Gradient
                             if (renderNormalizedValue > 0f) {
                                 val activeTrackVisualEnd = currentProgressPxEndVisual - (thumbGapPx * thumbInteractionFraction)
 
@@ -319,7 +310,7 @@ fun WavyMusicSlider(
                                         fun yAt(x: Float): Float {
                                             val s = sin(waveFrequency * x + phaseShift)
                                             val breath = 1f
-                                            // Taper active wave smoothly from the very start of the track
+
                                             val taper = ((x - waveStartDrawX) / taperDistancePx).coerceIn(0f, 1f)
                                             val finalAmplitude = waveAmplitudePxInternal * breath * taper
 
@@ -372,7 +363,6 @@ fun WavyMusicSlider(
                                 }
                             }
 
-                            // 3. Draw Sleek Hollow Halo Ring / Capsule-morphing Thumb
                             val currentThumbCenterX = localTrackStart + localTrackWidth * renderNormalizedValue
 
                             fun fastLerp(

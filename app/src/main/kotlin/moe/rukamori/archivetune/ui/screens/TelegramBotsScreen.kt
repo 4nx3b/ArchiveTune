@@ -162,7 +162,7 @@ fun TelegramBotsScreen(navController: NavController) {
                 Text(stringResource(R.string.telegram_bots_remove_confirm, removing.username))
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = {
                     persistBots(botsState.filter { it.id != removing.id })
                     pendingRemove = null

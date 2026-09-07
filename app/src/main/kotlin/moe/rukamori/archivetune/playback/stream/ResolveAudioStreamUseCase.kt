@@ -127,12 +127,6 @@ class ResolveAudioStreamUseCase
             inFlight.clear()
         }
 
-    // Hybrid resolver: InnerTube (native, BotGuard/QuickJS) first — fast, ~30 MB, no Python.
-    // Only on failure (403, age-gate, signature, timeout) does it fall back to Ytdlnis
-    // (NewPipe → external yt-dlp via CompactYtDlp plugin APK, as YTDLnis does). This mirrors
-    // YTDLnis's own switch (NewPipe ↔ yt-dlp) but keeps the hot path native. History can be
-    // returned by both: InnerTube via YouTube.history() (browse), YTDLnis via yt-dlp watch
-    // history with cookies (ytdlp_watch_history), but ArchiveTune's History uses InnerTube.
     private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
         val nativeFailure = try {
             return nativeRepository.resolve(request)

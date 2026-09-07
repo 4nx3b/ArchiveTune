@@ -95,7 +95,6 @@ fun ContentSettings(
         }
     }
 
-    // Used only before Android 13
     val (appLanguage, onAppLanguageChange) = rememberPreference(key = AppLanguageKey, defaultValue = SYSTEM_DEFAULT)
 
     val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
@@ -111,9 +110,7 @@ fun ContentSettings(
         rememberPreference(key = HomeCatalogueSwitchKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
-    // (Round 13) "Set quick picks" UI removed — the preference is still read
-    // here so the underlying DataStore value is preserved (in case the user
-    // re-enables the UI later), but the values are intentionally unused.
+
     @Suppress("UNUSED_VARIABLE")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
@@ -128,21 +125,9 @@ fun ContentSettings(
             .asPaddingValues()
             .calculateBottomPadding()
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Fixed (2026-09-04, user report: "the header is missing in content
-    // settings"): the TopAppBar used to be emitted as a sibling AFTER the
-    // scrolling Column, so the nav host's layout stacked it below the
-    // full-screen content — off-screen, i.e. invisible. The screen now
-    // uses the same Scaffold shape as every other settings page: the bar
-    // sits in the topBar slot (pinned, transparent, FrostedHeaderPill
-    // navigation), and the content + haze overlay + snackbar live in the
-    // content slot. The top spacing stays inside the scrolling column so
-    // content flows under the bar into the haze.
     androidx.compose.material3.Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -180,7 +165,7 @@ fun ContentSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
         .hazeSource(headerHaze)
@@ -375,21 +360,14 @@ fun ContentSettings(
                     onValueChange = onLengthTopChange,
                 )
             }
-            // (Round 13) "Set quick picks" ListPreference removed per user
-            // request — the quick-picks home tab is no longer configurable
-            // from Content settings. The underlying QuickPicksKey preference
-            // is preserved (not deleted) so any previously-saved value
-            // remains intact; the setting is just no longer exposed in the UI.
+
         }
     }
 
-        // Header haze overlay — later sibling of the scrolling content,
-        // drawn on top of it, beneath the pill header.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
-
 
     Box(Modifier.fillMaxSize()) {
         SnackbarHost(

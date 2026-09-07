@@ -1193,7 +1193,7 @@ fun ThemeCreatorScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showImportErrorDialog = false },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = { showImportErrorDialog = false }, shapes = ButtonDefaults.shapes()) {
                     Text(text = stringResource(android.R.string.ok))
                 }

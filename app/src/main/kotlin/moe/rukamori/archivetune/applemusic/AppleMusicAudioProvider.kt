@@ -68,26 +68,14 @@ object AppleMusicAudioProvider {
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-    /** Storefront resolved from the Media-User-Token (`/v1/me/storefront`), cached 24 h. */
     private const val STOREFRONT_TTL_MS = 24 * 60 * 60 * 1000L
 
-    /**
-     * KEYFORMAT of the Widevine #EXT-X-KEY line — the standard Widevine system id as a URN.
-     * The same playlist also lists FairPlay and PlayReady keys, which are not usable on Android
-     * here.
-     *
-     * Ported from vossgraves/ArchiveTune (claude/pool-lease-kotlin-plan-1rcjuz, 4cacd27b1,
-     * 2026-09-02): taking "the first line with a data: URI" could latch onto PlayReady — whose
-     * payload is a WRM header, not a 16-byte KID — or leave drmUri pointing at FairPlay's skd://
-     * URI. Both yielded a challenge Apple rejects, i.e. silent playback.
-     */
     private const val WIDEVINE_KEYFORMAT = "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
 
     @Volatile private var cachedStorefront: String? = null
     @Volatile private var cachedStorefrontAtMs = 0L
     private val storefrontMutex = Mutex()
 
-    /** Resolved storefront for the token (es/jp/…); "us" when it cannot be determined. */
     suspend fun resolveStorefront(): String {
         val now = System.currentTimeMillis()
         cachedStorefront?.let { if (now - cachedStorefrontAtMs < STOREFRONT_TTL_MS) return it }
@@ -134,13 +122,10 @@ object AppleMusicAudioProvider {
 
     fun mediaUserToken(): String? = AppleMusicProvider.mediaUserTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }
 
-    /** True when both tokens are present — the source cannot resolve anything otherwise. */
     fun isAvailable(): Boolean = devToken() != null && mediaUserToken() != null
 
-    /** Thrown by [searchSongIds]/[webPlayback] on 401/403 — the media-user-token is dead. */
     private class AuthException : Exception("apple media-user-token rejected (401/403)")
 
-    /** One entry of the account ring: a media-user-token plus its pool id (null = personal). */
     private data class RingEntry(val token: String, val poolId: Long?)
 
     @Volatile
@@ -149,15 +134,9 @@ object AppleMusicAudioProvider {
     @Volatile
     private var ringBuiltAt = 0L
 
-    /** Sticky index of the last account that resolved successfully; rotation starts here. */
     @Volatile
     private var ringIndex = 0
 
-    /**
-     * The account ring: the personal media-user-token first (when signed in), then the shared
-     * pool accounts premium-first — mirroring how the Qobuz/Deezer resolvers walk their token
-     * lists. Cached for a minute so per-call rebuilds don't hammer the preference stores.
-     */
     private fun accountRing(): List<RingEntry> {
         val now = System.currentTimeMillis()
         val cached = ring
@@ -172,10 +151,6 @@ object AppleMusicAudioProvider {
         return built
     }
 
-    /**
-     * One playable Apple Music candidate. [playlistUrl] serves the HLS playlist whose
-     * segments are byteranges of the single encrypted fMP4 at [mediaUrl].
-     */
     data class AppleMusicStream(
         val songId: String,
         val playlistUrl: String,
@@ -191,12 +166,6 @@ object AppleMusicAudioProvider {
         val matchedDurationMs: Long?,
     )
 
-    /**
-     * One catalog row for the per-song "Play from" source picker: everything the search
-     * result list needs to render a row (and nothing more). The resolver re-searches by
-     * title + artist when the row is picked — the same contract Tidal/JioSaavn/Deezer rows
-     * follow — so the [songId] is informational, not an address.
-     */
     data class AppleMusicCandidate(
         val songId: String,
         val title: String,
@@ -205,13 +174,6 @@ object AppleMusicAudioProvider {
         val durationMs: Long?,
     )
 
-    /**
-     * Catalog search for the source picker (2026-09-05, user request: "Add apple music in
-     * source picker queue"). Same endpoint and auth as [resolveCandidates] — dev token,
-     * the sticky account ring with 401/403 rotation — but returns the raw search rows
-     * rather than resolving each to a playable stream. Empty when no tokens are configured,
-     * every account in the ring is dead, or the query has no hits.
-     */
     suspend fun searchCandidates(
         query: String,
         limit: Int = 8,
@@ -245,14 +207,13 @@ object AppleMusicAudioProvider {
                         null
                     }
                 if (rows != null) {
-                    ringIndex = index // sticky winner — same policy as resolveCandidates
+                    ringIndex = index
                     return@withContext rows
                 }
             }
             emptyList()
         }
 
-    /** Raw catalog search with one specific token; AuthException propagates to the rotation. */
     private suspend fun searchCatalogRows(
         query: String,
         limit: Int,
@@ -308,12 +269,6 @@ object AppleMusicAudioProvider {
             }
         }
 
-    /**
-     * Search the catalog and resolve every plausible candidate to a playable stream. The
-     * caller applies the shared metadata-match gate ([moe.rukamori.archivetune.audiosource
-     * .TitleMatch]) to pick the winner, so candidates are returned in search-rank order.
-     * Empty when the tokens are missing/unauthorized or nothing resolved.
-     */
     suspend fun resolveCandidates(
         title: String,
         artists: List<String>,
@@ -326,8 +281,6 @@ object AppleMusicAudioProvider {
             val ringEntries = accountRing()
             if (ringEntries.isEmpty()) return@withContext emptyList()
 
-            // Walk the ring starting at the sticky winner; a 401/403 advances to the next
-            // account (reporting dead pool entries) until one resolves or all fail.
             for (attempt in ringEntries.indices) {
                 val index = (ringIndex + attempt) % ringEntries.size
                 val entry = ringEntries[index]
@@ -351,14 +304,13 @@ object AppleMusicAudioProvider {
                         null
                     }
                 if (streams != null) {
-                    ringIndex = index // sticky winner — next playback starts here
+                    ringIndex = index
                     return@withContext streams
                 }
             }
             emptyList()
         }
 
-    /** One resolve pass with a specific media-user-token. Throws [AuthException] on 401/403. */
     private suspend fun resolveWithToken(
         mediaToken: String,
         devToken: String,
@@ -378,8 +330,6 @@ object AppleMusicAudioProvider {
                 val songIds = searchSongIds(query, storefront, devToken, mediaToken)
                 if (songIds.isEmpty()) return@runCatching emptyList()
 
-                // Resolve up to the first few candidates; stop early once we have three
-                // playable ones (webPlayback is the expensive call).
                 val out = mutableListOf<AppleMusicStream>()
                 for (id in songIds.take(5)) {
                     if (out.size >= 3) break
@@ -387,15 +337,13 @@ object AppleMusicAudioProvider {
                 }
                 out
             }.getOrElse { error ->
-                // Auth failures must propagate to the rotation loop — swallowing them here
-                // would pin the ring to a dead account.
+
                 if (error is AuthException) throw error
                 Log.w(TAG, "resolve failed: ${error.message}")
                 emptyList()
             }
         }
 
-    /** Top catalog song ids for [query], in Apple's search-rank order. */
     private fun searchSongIds(
         query: String,
         storefront: String,
@@ -433,7 +381,6 @@ object AppleMusicAudioProvider {
         }
     }
 
-    /** Resolve one catalog id through the web-playback endpoint to a playable playlist. */
     private fun webPlayback(
         songId: String,
         devToken: String,
@@ -464,8 +411,6 @@ object AppleMusicAudioProvider {
             val licenseUrl = song["hls-key-server-url"]?.jsonPrimitive?.contentOrNull
             val assets = song["assets"]?.jsonArray ?: return null
 
-            // Pick the highest-bitrate ctrp (AES-CTR) asset. cbcp flavors are FairPlay
-            // (`skd://` keys) and cannot be decrypted on Android.
             data class Asset(val flavor: String, val url: String, val kbps: Int)
 
             val candidates =
@@ -485,7 +430,6 @@ object AppleMusicAudioProvider {
                 AppleMusicQuality.HI_RES_LOSSLESS -> candidates.firstOrNull()
             } ?: return null
 
-            // The asset URL serves the HLS playlist; segments are byteranges of one mp4.
             val playlistUrl = asset.url
             val parsed = parsePlaylist(playlistUrl) ?: return null
             val metadata = song["metadata"] as? JsonObject
@@ -524,11 +468,6 @@ object AppleMusicAudioProvider {
         val contentLength: Long?,
     )
 
-    /**
-     * Fetch the playlist and derive the absolute mp4 URL. The playlist's segments are
-     * byteranges of a single fMP4 next to it; the EXT-X-KEY `data:` URI carries the KID
-     * (verified to equal the tenc default_KID), and `#EXT-X-MAP` names the mp4 file.
-     */
     private fun parsePlaylist(playlistUrl: String): ParsedPlaylist? {
         val request = Request.Builder().url(playlistUrl).header("User-Agent", UA).get().build()
         client.newCall(request).execute().use { response ->
@@ -545,13 +484,9 @@ object AppleMusicAudioProvider {
                 val line = rawLine.trim()
                 when {
                     line.startsWith("#EXT-X-KEY") && keyIdHex == null -> {
-                        // A playlist carries one #EXT-X-KEY per DRM system: FairPlay
-                        // (KEYFORMAT="com.apple.streamingkeydelivery", an skd:// URI), PlayReady,
-                        // and Widevine. Only the Widevine line is usable here — its data: URI
-                        // payload is the 16-byte tenc KID, and its raw URI is what Apple's licence
-                        // exchange expects as `uri`.
+
                         if (line.contains(WIDEVINE_KEYFORMAT, ignoreCase = true)) {
-                            // The RAW data: URI is what Apple's license exchange expects as `uri`.
+
                             Regex("URI=\"([^\"]+)\"").find(line)?.let { match -> drmUri = match.groupValues[1] }
                             Regex("URI=\"data:[^\"]*base64,([^\"]+)\"").find(line)?.let { match ->
                                 keyIdHex =
@@ -569,7 +504,7 @@ object AppleMusicAudioProvider {
                     !line.startsWith("#") && line.isNotBlank() -> dataLines += line
                 }
             }
-            // Prefer the EXT-X-MAP name; segments reference the same file.
+
             val name = mediaName ?: dataLines.firstOrNull() ?: return null
             val mediaUrl = playlistUrl.substringBeforeLast('/').trimEnd('/') + "/" + name
             return ParsedPlaylist(mediaUrl, keyIdHex, drmUri ?: "", null)

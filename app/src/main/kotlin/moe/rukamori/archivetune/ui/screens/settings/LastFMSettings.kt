@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +31,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -76,7 +74,6 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.LastFmLoginDialogUiModel
-import moe.rukamori.archivetune.viewmodels.LastFmServiceEditorUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmSettingsScreenState
 import moe.rukamori.archivetune.viewmodels.LastFmSettingsUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmSettingsViewModel
@@ -103,15 +100,7 @@ fun LastFMSettings(
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // Fixed (2026-09-04, user report: "Whole screen is not scrollable in
-            // LastFm and stats page in settings and because of that I don't see
-            // haze effect around the header"): the bar used default (opaque)
-            // colors and the content's top padding was applied BEFORE
-            // verticalScroll, so the column scrolled strictly BELOW the bar —
-            // nothing ever flowed under the header, and the header haze had
-            // nothing to frost. The bar is now transparent (the DebugSettings
-            // pattern) and the top padding moves INSIDE the scroll, so the
-            // content scrolls under the pill header into the haze overlay.
+
             TopAppBar(
                 title = {},
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -142,9 +131,7 @@ fun LastFMSettings(
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
-        // Header haze (2026-09-04): the scrolling content is the haze source;
-        // the overlay renders ON TOP of it (a LATER sibling), beneath the
-        // transparent pill header.
+
         val headerHaze = rememberScreenHeaderHaze()
         val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(modifier = Modifier.fillMaxSize()) {
@@ -174,8 +161,6 @@ fun LastFMSettings(
             },
         )
 
-        // Header haze overlay — later sibling of the scrolling content,
-        // drawn on top of it, beneath the transparent pill header.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -225,9 +210,7 @@ private fun LastFmSettingsContent(
 
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
-            // Haze source for the pinned header's top-fade blur (2026-09-04) —
-            // chained AFTER verticalScroll so the top padding below scrolls
-            // away and the content flows under the transparent pill header.
+
             .hazeSource(headerHaze)
             .padding(top = topPadding)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
@@ -533,7 +516,7 @@ private fun LastFmLoginDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(
                 onClick = onLogin,
                 enabled =
@@ -553,118 +536,6 @@ private fun LastFmLoginDialog(
                 shapes = ButtonDefaults.shapes(),
             ) {
                 Text(stringResource(R.string.cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun LastFmServiceEditorDialog(
-    editor: LastFmServiceEditorUiModel,
-    onDismiss: () -> Unit,
-    onProviderChange: (LastFmProvider) -> Unit,
-    onCustomEndpointChange: (String) -> Unit,
-    onApiKeyOverrideChange: (String) -> Unit,
-    onSecretOverrideChange: (String) -> Unit,
-    onSave: () -> Unit,
-) {
-    if (!editor.visible) return
-
-    AlertDialog(
-        onDismissRequest = {
-            if (!editor.isSaving) onDismiss()
-        },
-        title = { Text(stringResource(R.string.lastfm_service)) },
-        text = {
-            Column(
-                modifier =
-                    Modifier
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.lastfm_service_provider),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val providers = remember { LastFmProvider.entries.toList() }
-                    providers.forEach { provider ->
-                        FilterChip(
-                            selected = editor.provider == provider,
-                            onClick = { onProviderChange(provider) },
-                            enabled = !editor.isSaving,
-                            label = { Text(stringResource(provider.titleResId())) },
-                        )
-                    }
-                }
-
-                if (editor.showCustomEndpoint) {
-                    OutlinedTextField(
-                        value = editor.customEndpoint,
-                        onValueChange = onCustomEndpointChange,
-                        label = { Text(stringResource(R.string.lastfm_custom_endpoint)) },
-                        singleLine = true,
-                        isError = editor.errorMessageResId == R.string.lastfm_endpoint_invalid,
-                        enabled = !editor.isSaving,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                if (editor.showApiCredentials) {
-                    OutlinedTextField(
-                        value = editor.apiKeyOverride,
-                        onValueChange = onApiKeyOverrideChange,
-                        label = { Text(stringResource(R.string.lastfm_api_key_override)) },
-                        singleLine = true,
-                        enabled = !editor.isSaving,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    OutlinedTextField(
-                        value = editor.secretOverride,
-                        onValueChange = onSecretOverrideChange,
-                        label = { Text(stringResource(R.string.lastfm_secret_override)) },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        enabled = !editor.isSaving,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    InfoLabel(text = stringResource(R.string.lastfm_api_credentials_hint))
-                }
-
-                editor.errorMessageResId?.let { messageResId ->
-                    Text(
-                        text = stringResource(messageResId),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
-            TextButton(
-                onClick = onSave,
-                enabled = !editor.isSaving,
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !editor.isSaving,
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Text(stringResource(android.R.string.cancel))
             }
         },
     )
@@ -739,7 +610,7 @@ private fun LastFmTimingEditorDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(onClick = onSave, shapes = ButtonDefaults.shapes()) {
                 Text(stringResource(android.R.string.ok))
             }
@@ -825,7 +696,7 @@ private fun LastFmCustomEndpointDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(
                 onClick = {
 

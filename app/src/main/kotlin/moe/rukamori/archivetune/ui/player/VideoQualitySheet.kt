@@ -120,7 +120,7 @@ internal fun VideoQualitySheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         VideoQualitySheetContent(
             preferredHeight = preferredHeight,
             availableHeights = availableHeights,
@@ -331,7 +331,7 @@ internal fun VideoAspectRatioSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier

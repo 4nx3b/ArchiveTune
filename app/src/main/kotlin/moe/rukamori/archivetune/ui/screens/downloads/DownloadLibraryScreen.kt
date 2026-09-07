@@ -467,8 +467,7 @@ private fun DownloadSections(
                         R.string.no_downloads
                     },
                 ),
-            // Subtle Lottie only for the truly-empty state (not for active
-            // search queries or in-progress screens).
+
             lottieRes =
                 if (query.isBlank() && !inProgress) {
                     ArchiveTuneLottie.EmptyStateRes

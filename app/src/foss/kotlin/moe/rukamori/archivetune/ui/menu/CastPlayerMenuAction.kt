@@ -16,10 +16,6 @@ import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 @Composable
 fun rememberCastPlayerMenuAction(@Suppress("UNUSED_PARAMETER") renderSheet: Boolean = true): NewAction? = null
 
-/**
- * Foss flavor stub for the gms real-time liquid-glass Cast route picker —
- * the foss build ships no Cast support, so there is nothing to render.
- */
 @Composable
 fun CastRoutePickerGlassOverlay(
     @Suppress("UNUSED_PARAMETER") backdrop: PlatformBackdrop?,
@@ -27,11 +23,6 @@ fun CastRoutePickerGlassOverlay(
 ) {
 }
 
-/**
- * Foss flavor stub for the gms ROOT-level real-time liquid-glass Cast route
- * picker (gms renders the floating glass card from MainActivity, sampling the
- * menu-glass recorder). The foss build ships no Cast support — no-op.
- */
 @Composable
 fun CastRoutePickerRootOverlay(
     @Suppress("UNUSED_PARAMETER") backdrop: Backdrop?,

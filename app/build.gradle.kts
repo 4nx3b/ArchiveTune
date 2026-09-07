@@ -10,10 +10,7 @@ abstract class ValidateStartIoReleaseConfigurationTask : DefaultTask() {
 
     @TaskAction
     fun validate() {
-        // Official GMS release builds inject START_IO_APP_ID from a secret. Forks and CI that lack
-        // that proprietary secret must still be able to assemble release APKs, so a blank value is a
-        // warning rather than a hard failure. The Start.io identifier is not consumed by the app at
-        // runtime, so building without it is safe (ads are simply not configured).
+
         if (appId.get().isBlank()) {
             logger.warn(
                 "START_IO_APP_ID is not set; building the GMS release without a Start.io identifier.",
@@ -37,10 +34,6 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-// Base version. Bump these manually for a big release (e.g. 13.7.x -> 14.0.x). CI derives the
-// per-commit patch/versionCode from the git commit count and injects them via the
-// VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
-// release/canary workflows can grep the base value reliably.
 val baseVersionName = "14.0.0"
 val baseVersionCode = 1400
 
@@ -63,9 +56,7 @@ val hasReleaseSigningConfig =
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
-// Start.io (StartApp) app identifier used to initialize the support-ads SDK in GMS builds.
-// The fork ships a default committed ID so ads work out of the box; an override can still be
-// supplied via local.properties or the START_IO_APP_ID environment variable (e.g. in CI).
+
 val startIoAppId =
     (
         localProperties.getProperty("START_IO_APP_ID")
@@ -88,11 +79,6 @@ tasks.configureEach {
     }
 }
 
-// Fixed, checked-in debug keystore. Without this, Gradle auto-generates a throwaway debug key on
-// every machine/CI run, so each build is signed differently and Android refuses to update in
-// place (forcing an uninstall + reinstall). Signing every debug build with this committed keystore
-// keeps the signature stable across builds so debug APKs install over one another. Uses the
-// standard Android debug credentials.
 val debugKeystoreFile = file("persistent-debug.keystore")
 
 android {
@@ -103,10 +89,7 @@ android {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        // Version. Locally the committed base values are used. In CI, the release/canary
-        // workflows override them via VERSION_CODE_OVERRIDE / VERSION_NAME_OVERRIDE (derived from
-        // the git commit count) so every push produces a strictly-newer, installable build
-        // without committing a bump back to this file.
+
         versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.trim()?.toIntOrNull() ?: baseVersionCode
         versionName =
             System.getenv("VERSION_NAME_OVERRIDE")?.trim()?.takeIf { it.isNotEmpty() } ?: baseVersionName
@@ -125,22 +108,12 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
 
-        // ArchiveTune Extractor (moriextractor backend) bearer token. Mirrors
-        // vossgraves/ArchiveTune: local.properties → EXTRACTOR_BEARER env → "".
-        // Empty token simply disables the ARCHIVETUNE_EXTRACTOR client's remote
-        // resolution until a token is provided (or refreshed at runtime via
-        // MusicService.updateExtractorBearerToken).
         val extractorBearer =
             localProperties.getProperty("EXTRACTOR_BEARER")
                 ?: System.getenv("EXTRACTOR_BEARER")
                 ?: ""
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
-        // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
-        // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
-        // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
-        // the fork's own registered app. The fallback is the public Telegram Desktop api_id/hash,
-        // which every TDLib client can use out of the box.
         val telegramApiId =
             (
                 localProperties.getProperty("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
@@ -156,31 +129,15 @@ android {
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
 
-        // TDLib's libtdjni.so is 21.7 MB per ABI — 8.7 MB compressed into the APK and the full
-        // 21.7 MB extracted on install (useLegacyPackaging below) — paid by every user, for an
-        // optional integration most never sign in to. `-PslimTdlib=true` leaves it out and the app
-        // fetches it the first time someone opens Telegram; see TdLibNativeLibrary.
-        //
-        // DEFAULTS TO BUNDLED. Do not flip this until the per-ABI libraries are actually published
-        // at TDLIB_NATIVE_BASE_URL, or Telegram breaks for everyone on the slim build. The naming
-        // the loader expects is libtdjni-<version>-<abi>.so, and `./gradlew extractTdLibNatives`
-        // writes exactly those files for uploading.
         val slimTdlib = (project.findProperty("slimTdlib") as String?)?.toBoolean() ?: false
         buildConfigField("boolean", "TDLIB_BUNDLED", "${!slimTdlib}")
         buildConfigField(
             "String",
             "TDLIB_NATIVE_BASE_URL",
             "\"${project.findProperty("tdlibNativeBaseUrl") as String?
-                ?: "https://github.com/vossgraves/ArchiveTune/releases/download/tdlib-1.8.56"}\"",
+                ?: "https:
         )
 
-        // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
-        // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
-        // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in
-        // local.properties to disable remote discovery for a build.
-        // Use .takeIf { it.isNotBlank() } on each source so an explicitly-empty env var or
-        // local.properties entry doesn't shadow the hardcoded fallback (a plain `?: fallback`
-        // chain would leave the URL blank when the env var is set to "" rather than unset).
         val sourceProviderUrl =
             (
                 localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
@@ -189,8 +146,6 @@ android {
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
 
-        // Per-app read key for the Source Pool. Sent as a Bearer token on discovery requests so the
-        // pool can gate access. Optional: blank works fine while the pool runs unenforced.
         val sourceProviderKey =
             (
                 localProperties.getProperty("SOURCE_PROVIDER_KEY")
@@ -199,11 +154,6 @@ android {
                 ).trim()
         buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
 
-        // LEGACY end-to-end decryption key for sensitive Source Pool credentials (base64 32-byte
-        // AES-256 key, matching the site's POOL_CLIENT_KEY). Current builds request the v2 feed
-        // protocol (X-Pool-Client: v2), where the encryption key is derived from the read key
-        // above and this value is only a fallback for older pool deployments. Optional: blank is
-        // fine when every configured pool speaks v2.
         val poolClientKey =
             (
                 localProperties.getProperty("POOL_CLIENT_KEY")
@@ -219,9 +169,7 @@ android {
                     ?: ""
                 ).trim()
         buildConfigField("String", "NIGHTLY_BUILD_HASH", "\"$nightlyBuildHash\"")
-        // True only for builds produced by the canary/nightly workflow (it sets IS_NIGHTLY_BUILD).
-        // Used to default the in-app updater to the CANARY channel and to compare canary builds by
-        // their monotonic versionCode rather than the fixed display versionName.
+
         val isNightlyBuild =
             (System.getenv("IS_NIGHTLY_BUILD") ?: localProperties.getProperty("IS_NIGHTLY_BUILD") ?: "")
                 .trim()
@@ -262,8 +210,7 @@ android {
         }
         create("universal") {
             dimension = "abi"
-            // Keep the universal APK lean: TDLib's libtdjni.so dominates per-ABI
-            // size, so packaging only the two 64-bit ABIs halves the download.
+
             ndk {
                 abiFilters += listOf("arm64-v8a", "x86_64")
             }
@@ -361,15 +308,9 @@ android {
 
     packaging {
         jniLibs {
-            // Compress native libs inside the APK and extract only the device's ABI at install.
-            // TDLib ships ~87 MiB of libtdjni.so across four ABIs; stored uncompressed that alone
-            // made the universal APK ~142 MiB. Compressed packaging cuts the universal APK by
-            // ~51 MiB (and each per-ABI APK by ~12 MiB) at the cost of a slightly slower install.
+
             useLegacyPackaging = true
-            // Slim build: the loader fetches it on first Telegram use instead. Excluded here
-            // rather than by swapping the dependency, so TdApi and the Client class — which the
-            // app compiles against and which survives a missing native library, catching the
-            // UnsatisfiedLinkError in its static initialiser — still ship.
+
             if ((project.findProperty("slimTdlib") as String?)?.toBoolean() == true) {
                 excludes += "**/libtdjni.so"
             }
@@ -383,22 +324,9 @@ android {
             excludes += "META-INF/NOTICE.md"
             excludes += "META-INF/CONTRIBUTORS.md"
             excludes += "META-INF/LICENSE.md"
-            // Installed on demand from Lyrics settings; saves roughly 13 MiB per APK.
+
             excludes += "com/atilika/kuromoji/ipadic/*.bin"
-            // Additional safe META-INF / metadata excludes — none of these are read at runtime by
-            // the app or any of its libraries (verified by checking for ServiceLoader / reflection
-            // usage on each). They are pure build-time / IDE metadata and just bloat every APK.
-            // - META-INF/DEPENDENCIES: Maven dependency manifest, only used by build tooling.
-            // - META-INF/INDEX.LIST: JAR index used by desktop ClassLoaders, never by Android.
-            // - META-INF/io.netty.versions.properties: Netty version manifest, runtime-irrelevant.
-            // - META-INF/*.version: per-library version files (e.g. kotlin-stdlib.version).
-            // - DebugProbesKt.bin: kotlinx.coroutines debug binary, only consulted by debugger.
-            // - kotlin-tooling-metadata.json: Kotlin tooling manifest, build-time only.
-            // - META-INF/buildinfo.properties / build.archives: Gradle/AGP build metadata.
-            // - META-INF/com.android.tools/**: AGP build-metadata, not consumed at runtime.
-            // - META-INF/proguard/**: bundled proguard configs, only needed at minify time.
-            // DO NOT add: META-INF/services/** (ServiceLoader), META-INF/MANIFEST.MF (signing +
-            // attributes), META-INF/*.kotlin_module (Kotlin reflection) — those are load-bearing.
+
             excludes += "META-INF/DEPENDENCIES"
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/io.netty.versions.properties"
@@ -453,7 +381,7 @@ dependencies {
 
     implementation(libs.material3)
     implementation(libs.androidx.graphics.shapes)
-    
+
     implementation(libs.palette)
     implementation(libs.androidsvg)
     implementation(libs.aboutlibraries.core)
@@ -471,16 +399,11 @@ dependencies {
     implementation(libs.coil.network.okhttp)
 
     implementation(libs.shimmer)
-    // Lottie Compose — animation layer for like bursts, download completion
-    // and empty states. Only the official Airbnb artifact; no extra plugins.
+
     implementation(libs.lottie.compose)
-    // Baseline Profile installer — packages app/src/main/baseline-prof.txt
-    // into release builds so ART pre-compiles the hot user journeys (startup,
-    // home, player, lyrics, liquid-glass rendering) on first install instead
-    // of JIT-compiling them on first use. No runtime API surface.
+
     implementation(libs.profileinstaller)
 
-    // Glance Widget support
     implementation("androidx.glance:glance:1.1.1")
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
@@ -495,10 +418,7 @@ dependencies {
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
 
-    // Prebuilt TDLib (Telegram MTProto client) with bundled JNI natives for all ABIs.
-    // Powers the Telegram channel lossless-streaming integration (telegram/ package).
     implementation("com.github.tdlibx:td:1.8.56")
-
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
@@ -507,8 +427,6 @@ dependencies {
 
     implementation(libs.apache.lang3)
 
-    // Liquid glass / backdrop blur effect for the SimpMusic-style floating
-    // header pills on album / artist / playlist screens.
     implementation(libs.liquid.glass)
 
     implementation(libs.hilt)
@@ -520,8 +438,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":lyrics:kugou"))
     implementation(project(":lyrics:lrclib"))
-    // :lyrics:simpmusic and :lyrics:paxsenix module dependencies removed per user
-    // request (2026-08-30) — see settings.gradle.kts comment for the full rationale.
+
     implementation(project(":lyrics:betterlyrics"))
     implementation(project(":lyrics:unison"))
     implementation(project(":lyrics:youlyplus"))
@@ -559,33 +476,12 @@ dependencies {
 
     implementation("org.json:json:20240303")
 
-    // PRDownloader — lightweight (~45 KB) file download library with
-    // pause/resume, retry, and progress callbacks. Used as the HTTP
-    // fetcher inside PRDownloaderDataSource (a Media3 DataSource wrapper).
-    // Replaces Ketch — Ketch's WorkManager + Flow observation added
-    // overhead without improving throughput, and its temp-file lifecycle
-    // occasionally left partial files that corrupted subsequent exports.
-    // PRDownloader is simpler (single OkHttp call per download, callback
-    // API instead of Flow), which makes the temp-file lifecycle easier
-    // to reason about.
     implementation(libs.prdownloader)
 
-    // jaudiotagger — pure-Java audio metadata tagger (ID3v2 / Vorbis Comments
-    // / MP4 / FLAC). Used by AudioTagger to write title / artist / album /
-    // year / track-number / artwork tags onto exported downloaded songs so
-    // they show up correctly in external music players. Pinned to 1.4.x
-    // (Java 21 bytecode) — the 2.x line targets Java 25 which Android cannot
-    // consume.
     implementation("com.github.RouHim:jaudiotagger:1.4.31")
-    // SLF4J binding required by jaudiotagger at runtime — jaudiotagger
-    // depends on slf4j-api but does not bundle a binding. slf4j-jdk14
-    // routes log calls through java.util.logging (which Android forwards
-    // to logcat). Without this, jaudiotagger logs a single "no SLF4J
-    // providers found" warning at startup and silently no-ops logging.
+
     implementation("org.slf4j:slf4j-jdk14:2.0.17")
 
-    // QuickJS + BouncyCastle for yt-dlp stream resolution (signature
-    // verification of yt-dlp releases + JS challenge evaluation).
     implementation(libs.quickjs.kt)
     implementation(libs.bcpg)
 }
@@ -656,14 +552,6 @@ configurations.configureEach {
     )
 }
 
-/**
- * Extracts TDLib's per-ABI native libraries from the resolved `td` AAR, named the way
- * `TdLibNativeLibrary` asks for them, ready to attach to a GitHub release.
- *
- * Only needed to publish the assets a `-PslimTdlib=true` build downloads. Run it once per TDLib
- * version bump, upload the four files to the tag named in TDLIB_NATIVE_BASE_URL, and update the
- * digests in TdLibNativeLibrary — the task prints them.
- */
 tasks.register("extractTdLibNatives") {
     group = "distribution"
     description = "Extract libtdjni.so per ABI from the td AAR for publishing as release assets."

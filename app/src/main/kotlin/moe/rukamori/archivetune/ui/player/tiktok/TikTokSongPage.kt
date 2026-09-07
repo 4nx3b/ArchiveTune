@@ -5,20 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * TikTok player style — one feed page.
- *
- * A page is the full-bleed treatment TikTok gives a post: a mesh-gradient
- * backdrop blended from the artwork's own palette (the Bitchord player
- * style's blend, ported — see TikTokMeshBackdrop.kt), the sharp artwork as
- * the hero in the middle (tapping it toggles playback, TikTok's
- * tap-to-pause; its edges dissolve into the backdrop so the cover never
- * meets the colours it was sampled from in a hard line), the action rail
- * pinned to the lower right of it, and the track's identity pinned along
- * the bottom. Everything is edge-to-edge; legibility comes from the scrim,
- * not from panels.
- */
-
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import androidx.compose.animation.AnimatedContent
@@ -103,54 +89,24 @@ import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import moe.rukamori.archivetune.ui.utils.resize
 
-/** The inactive gray the reference uses for everything unselected/secondary. */
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
 
-/**
- * Fixed height of the caption row (the queue chip / lyrics X + dots row) —
- * constant across every state so the info block never resizes when the
- * lyrics controls appear or disappear (which used to visibly shift the
- * artwork). See TikTokSongInfo.
- */
 internal val TIKTOK_CAPTION_ROW_HEIGHT = 40.dp
 
-/**
- * End padding for the title / secondary text so neither ever runs under the
- * action rail, which now hangs down alongside the caption block (see the
- * page-level TikTokRail in TikTokSongPage). Matches the reference's
- * constrained caption width.
- */
 internal val TIKTOK_CAPTION_TEXT_CLEARANCE = 56.dp
 
-/**
- * One page of the feed. Sizing is derived from the page's own constraints, so
- * the layout adapts to any screen ratio without hardcoded coordinates: the
- * artwork is the largest square that fits the middle zone (width-limited on
- * tall screens, height-limited on wide ones), and the rail and info block
- * overlay or stack around it the same way everywhere.
- *
- * The current page can trade its artwork for the Apple Music inline lyrics
- * pane — the same component the Apple Music style morphs to, with the same
- * karaoke sweep and tap-to-seek — while other pages keep their artwork, so
- * swiping always previews the neighbouring cover.
- */
 @Composable
 internal fun TikTokSongPage(
     pageMetadata: MediaMetadata,
     isCurrentPage: Boolean,
     isPlaying: Boolean,
-    // While the stream is loading or the feed is playing an engine-initiated
-    // swipe, the current page is not "paused" — buffering and auto-advance
-    // must not flash the play glyph (user report 2026-09-02: "when the song
-    // ends it pauses").
+
     suppressPauseOverlay: Boolean,
     playerConnection: PlayerConnection,
     queueTitle: String?,
     immersive: Boolean,
     lyricsOpen: Boolean,
-    // Looping canvas video (Spotify-style vertical) for THIS page — only the
-    // current page ever receives non-null URLs (see TikTokPlayerContent), so
-    // neighbour pages never spin up an ExoPlayer of their own.
+
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     sliderPositionProvider: () -> Long?,
@@ -169,32 +125,19 @@ internal fun TikTokSongPage(
     bottomSheetPageState: BottomSheetPageState,
 ) {
     val haptics = LocalHapticFeedback.current
-    // The page's one like action — shared by the rail's heart (a plain
-    // toggle) and the artwork's double-tap (like-only, TikTok's rule that
-    // a double-tap never unlikes). Same Room row + sync path the song
-    // menu uses; see rememberTikTokLikeAction in TikTokRail.kt.
+
     val likeAction =
         rememberTikTokLikeAction(
             pageMetadata = pageMetadata,
             isCurrentPage = isCurrentPage,
             playerConnection = playerConnection,
         )
-    // Live hearts for double-taps: each burst removes itself when its own
-    // animation finishes, so rapid double-taps stack like the reference's.
+
     val heartBursts = remember { mutableStateListOf<TikTokHeartBurst>() }
     var nextHeartBurstId by remember { mutableStateOf(0L) }
-    // In immersive mode the page keeps only the notch-safe top inset (the
-    // chrome is hidden), so the artwork grows but never underlaps the notch
-    // even while the status bar is hidden. The stable inset floors against
-    // the display cutout, which stays non-zero regardless of bar visibility.
+
     val stableTopInset = LocalStableSystemBarsTopPadding.current
 
-    // One URL for the page's artwork, pre-sized so the sharp hero decodes at
-    // full resolution. The mesh backdrop pulls its palette from the same URL
-    // at a thumbnail decode size (it only ever needs colours), so Coil keeps
-    // the two requests as separate cache entries — the hero stays crisp, the
-    // palette stays cheap, and pages returning to the feed hit the cache
-    // both ways.
     val artUrl =
         remember(pageMetadata.id, pageMetadata.thumbnailUrl) {
             pageMetadata.thumbnailUrl?.resize(
@@ -206,54 +149,21 @@ internal fun TikTokSongPage(
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
-        // ── Backdrop: the Bitchord mesh blend + the page's legibility scrim ──
-        // The mesh is built from THIS page's artwork palette, crossfading
-        // over ~1.4s when the page's track changes, and the hero dissolves
-        // into it — the Bitchord player style's artwork-background blend,
-        // ported verbatim per the user request 2026-09-02 ("copy how Bitchord
-        // player style blends the artwork along with the background").
+
         val meshColors = rememberTikTokArtworkColors(artUrl)
         TikTokMeshBackdrop(
             palette = meshColors,
             trackKey = pageMetadata.id,
             reduceAnimation = LocalAnimationsDisabled.current,
         )
-        // ── Full-bleed canvas video (2026-09-04) ──────────────────────────
-        // When the current song has a looping canvas (ArchiveTune/Apple
-        // Music canvas or Spotify Canvas), it now plays FULL SCREEN like a
-        // real TikTok video instead of being zoom-cropped into the fixed
-        // square hero (user requests 2026-09-04: "the videos box is bigger
-        // and the dimensions of the video is different" + "the canvas
-        // should play in full screen when available"). RESIZE_MODE_ZOOM
-        // keeps TikTok's own fill behaviour (a 9:16 canvas matches a phone
-        // screen exactly, so nothing is actually lost), the layer carries
-        // only a rounded clip — no border, no shadow ("rounded and
-        // borderless") — and the legibility scrim above it keeps the chrome
-        // readable over bright footage. The artwork hero stays as the
-        // buffering/error fallback: it fades out once the canvas renders its
-        // first frame (see onPlaybackAvailabilityChange below) and comes
-        // back if playback dies. Paused while the inline lyrics pane owns
-        // the page. Only the current page ever receives non-null URLs, so
-        // neighbour pages never spin up an ExoPlayer.
+
         var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
             CanvasArtworkPlayer(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying && !lyricsOpen,
-                // While the inline lyrics pane owns the current page, the
-                // video SURFACE is removed from composition too (the Apple
-                // Music player's own recipe for its backdrop canvas): the
-                // pane is designed to ride the page's mesh backdrop — the
-                // artwork's colours read through the karaoke text — and a
-                // sharp full-bleed video behind it is exactly the "background
-                // is transparent" the user reported (2026-09-04: "In Tiktok
-                // player style when a canvas is playing and I open lyrics the
-                // background is transparent. Fix it"): the lyrics sat directly
-                // on the bright footage with no legibility layer. Hiding the
-                // TextureView (the player stays alive, paused) restores the
-                // mesh + edge scrim the pane was designed for — and closing
-                // the pane re-attaches instantly with no reload delay.
+
                 visible = !(isCurrentPage && lyricsOpen),
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 onPlaybackAvailabilityChange = { canvasShowing = it },
@@ -272,10 +182,7 @@ internal fun TikTokSongPage(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                // The largest square the middle zone can hold. On a tall phone
-                // that is the page width; on a landscape or short screen it is
-                // the zone height — either way the art never clips the rail or
-                // the controls, and never letterboxes.
+
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -287,9 +194,7 @@ internal fun TikTokSongPage(
                         animationSpec = tween(250),
                         label = "tiktokArtworkScale",
                     )
-                    // The Apple Music inline lyrics pane owns the middle zone
-                    // while it is open on the playing page; every other page
-                    // (and closing it) shows the artwork.
+
                     val showInlineLyrics = isCurrentPage && lyricsOpen
 
                     AnimatedContent(
@@ -314,13 +219,7 @@ internal fun TikTokSongPage(
                                             scaleX = artworkScale
                                             scaleY = artworkScale
                                         }
-                                        // Blend the artwork's top and bottom edges into
-                                        // the blurred backdrop behind it. The sharp art
-                                        // and the backdrop are the same image, so an
-                                        // alpha ramp at each edge reads as focus falling
-                                        // off — without it the two renderings meet in a
-                                        // hard straight line (user report 2026-09-02:
-                                        // "straight lines / color inconsistency").
+
                                         .graphicsLayer {
                                             compositingStrategy =
                                                 CompositingStrategy.Offscreen
@@ -332,14 +231,7 @@ internal fun TikTokSongPage(
                                                 blendMode = BlendMode.DstIn,
                                             )
                                         }.let { m ->
-                                            // Tap on the hero = play/pause, TikTok's
-                                            // tap-the-video gesture; a double-tap
-                                            // anywhere on it likes the song — the
-                                            // detector disambiguates the two the
-                                            // platform way (the single tap waits
-                                            // out the double-tap timeout first).
-                                            // Only the page that is actually
-                                            // playing responds.
+
                                             if (isCurrentPage) {
                                                 m.pointerInput(pageMetadata.id) {
                                                     detectTapGestures(
@@ -368,16 +260,7 @@ internal fun TikTokSongPage(
                                             }
                                         },
                             ) {
-                                // The artwork hero doubles as the full-bleed
-                                // canvas's fallback: while the canvas buffers
-                                // (or failed), the cover shows exactly as
-                                // before; once the video renders its first
-                                // frame it fades out over ~300ms so the
-                                // full-screen canvas owns the page, and it
-                                // fades back in if the canvas dies. The hero
-                                // Box itself (gesture detector, paused
-                                // overlay, double-tap hearts) stays live the
-                                // whole time — taps keep toggling playback.
+
                                 val artworkFallbackAlpha by animateFloatAsState(
                                     targetValue = if (canvasShowing) 0f else 1f,
                                     animationSpec = tween(300),
@@ -404,13 +287,10 @@ internal fun TikTokSongPage(
                                             ),
                                 )
 
-                                // Paused affordance (current page only) — TikTok's
-                                // translucent play glyph while a video is paused.
                                 TikTokPausedOverlay(
                                     visible = isCurrentPage && !isPlaying && !suppressPauseOverlay,
                                 )
 
-                                // Double-tap hearts, spawned at the tap point.
                                 heartBursts.forEach { burst ->
                                     key(burst.id) {
                                         TikTokHeartBurstView(
@@ -425,23 +305,6 @@ internal fun TikTokSongPage(
                         }
                     }
 
-                    // The soft dark wash the reference keeps behind its action
-                    // rail: over light artwork the rail's white glyphs would
-                    // otherwise wash out. It fades to clear well inside the
-                    // media so it reads as part of the cover, never as a panel —
-                    // and it fades to clear at its own top and bottom too, so it
-                    // never starts or ends in a straight line (the wash used to
-                    // span the full zone height, drawing two hard horizontal
-                    // edges behind the top tabs and above the song info).
-                    // Hidden while the lyrics pane owns the zone: a dark wash
-                    // over the karaoke text is exactly the "black layer over the
-                    // lyrics" the user reported, and the glyphs' own drop
-                    // shadows carry their legibility without it.
-                    //
-                    // The rail itself no longer lives in the zone (it hangs down
-                    // alongside the song info at the page level below, so its
-                    // bottom aligns with the artist/album line) — but its upper
-                    // buttons still ride this edge, so the wash stays.
                     if (!immersive && !showInlineLyrics) {
                         Box(
                             modifier =
@@ -465,16 +328,12 @@ internal fun TikTokSongPage(
                 }
             }
 
-            // ── Bottom-left: the page's identity ──
             if (!immersive) {
                 TikTokSongInfo(
                     pageMetadata = pageMetadata,
                     queueTitle = queueTitle,
                     onQueueClick = onQueueClick,
-                    // The caption row carries the lyrics pane's own controls
-                    // while it owns the page (the rail is fully hidden then):
-                    // X closes the pane, the horizontal dots open the lyrics
-                    // overflow popup anchored to themselves.
+
                     lyricsControlsVisible = isCurrentPage && lyricsOpen,
                     onCloseLyrics = onToggleLyrics,
                     onOpenLyricsMenu = onOpenLyricsMenu,
@@ -490,27 +349,6 @@ internal fun TikTokSongPage(
             Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
         }
 
-        // ── The action rail, hanging down alongside the song info ──
-        // A SIBLING of the whole Column (page level) rather than a child of
-        // the media zone, so the rail's BOTTOM sits level with the caption
-        // block's last line — the artist • album text (user request
-        // 2026-09-03: "Shift the like button, profile and the other control
-        // icons down and align it with the name of the album of the song and
-        // the name of the artist which is just below the name of the song").
-        // The rail's bottom edge is anchored to the same reference the info
-        // block ends on (the bottom chrome) plus the info block's own 8dp
-        // bottom padding, so the last rail button (more) straddles the
-        // title/secondary boundary exactly like the reference's rail hangs
-        // its spinning record beside the caption. The upper buttons still
-        // ride over the artwork's right edge as before — the zone-level
-        // right-edge wash above keeps their legibility.
-        //
-        // Overlap is safe by construction: the rail's horizontal footprint
-        // (48dp buttons + 10dp end padding) is cleared from the title and
-        // secondary text by their dedicated end padding (see TikTokSongInfo),
-        // and every caption-row control (queue chip, lyrics X/dots) only
-        // exists while the lyrics pane is open — exactly when the rail is
-        // fully hidden.
         if (!immersive) {
             TikTokRail(
                 pageMetadata = pageMetadata,
@@ -533,15 +371,6 @@ internal fun TikTokSongPage(
     }
 }
 
-/**
- * TikTok's paused-video affordance: a soft scrim with a play glyph.
- *
- * The glyph ANIMATES on every play/pause flip (user request 2026-09-03:
- * "the play pause button should animate when I play or pause the song"):
- * it springs up from a small scale with a bounce when the song pauses, and
- * shrinks away when playback resumes — the tap-to-play gesture gets the
- * same tactile feedback the reference's video pause affordance has.
- */
 @Composable
 private fun TikTokPausedOverlay(visible: Boolean) {
     AnimatedVisibility(
@@ -577,20 +406,6 @@ private fun TikTokPausedOverlay(visible: Boolean) {
     }
 }
 
-/**
- * The Apple Music inline lyrics pane, component and behaviour verbatim: the
- * karaoke view in place of the artwork, following the playing song, with its
- * own tap-a-line-to-seek and per-line sync. The pane rides directly on the
- * page's mesh backdrop — no background of its own, the Apple Music
- * treatment: the artwork's colours read through the lyrics, darkened only
- * by the page gradient that already covers the top and bottom edges. (A
- * previous revision added a scrim here; that was the "black layer over the
- * lyrics" the user reported twice, so the pane now owns no background at
- * all.) While the pane is open the rail is entirely hidden (every action,
- * the lyrics toggle included), so the pane's horizontal insets are plain
- * symmetric breathing room — the pane's controls live in the caption row
- * below it (X close + horizontal-dots overflow; see TikTokSongInfo).
- */
 @Composable
 private fun TikTokInlineLyricsPane(
     sliderPositionProvider: () -> Long?,
@@ -614,21 +429,6 @@ private fun TikTokInlineLyricsPane(
     }
 }
 
-/**
- * The track identity pinned at the bottom-left of the page: the queue it
- * comes from as a small chip (tap opens the queue sheet), then the big bold
- * title and the "artist • album" secondary line — the reference's username +
- * caption treatment.
- *
- * While the inline lyrics pane owns the page, the chip row gains the pane's
- * own controls (user request 2026-09-02): a close (X) icon right of the
- * queue chip that dismisses the lyrics, and a horizontal-dots icon that
- * opens the lyrics overflow popup. The rail's buttons are all hidden while
- * the pane is open, so this row is the pane's whole control surface. The
- * dots also REPORT their on-screen rect (root space) — the popup anchors to
- * it and grows out of it, the same morph the Apple Music style's popup
- * plays from its own overflow chip.
- */
 @Composable
 private fun TikTokSongInfo(
     pageMetadata: MediaMetadata,
@@ -643,18 +443,7 @@ private fun TikTokSongInfo(
     Column(modifier = modifier) {
         val showChipRow = lyricsControlsVisible || !queueTitle.isNullOrBlank()
         if (showChipRow) {
-            // FIXED-HEIGHT caption row (user report 2026-09-03: "When I open
-            // lyrics in tiktok style and then close it I see artwork shifting
-            // it's position a bit for a split second"). The row used to size
-            // itself to its tallest child: the queue chip alone (~24dp), or
-            // the lyrics X/dots (40dp) while the pane was open. Their exit
-            // animation held the space for 200ms and then COLLAPSED it — the
-            // info block shrank, the media zone above grew, and the artwork
-            // (re-appearing through the very same crossfade) visibly jumped
-            // down. A fixed 40dp height makes the row's height identical in
-            // every state, so the layout below (and above) never moves:
-            // the chip centers vertically when the controls are gone, and
-            // the X/dots fit exactly when they are present.
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.height(TIKTOK_CAPTION_ROW_HEIGHT),
@@ -686,11 +475,6 @@ private fun TikTokSongInfo(
                     }
                 }
 
-                // The lyrics pane's controls, in the caption row: X to close
-                // ("a cross icon on the right side of recently played text"),
-                // then the horizontal dots ("one more three dots horizontally
-                // that opens lyrics overflow menu"). They fade in with the
-                // pane and out with it.
                 AnimatedVisibility(
                     visible = lyricsControlsVisible,
                     enter = fadeIn(tween(200)),
@@ -720,10 +504,7 @@ private fun TikTokSongInfo(
                                 Modifier
                                     .size(40.dp)
                                     .tiktokNoRippleClickable(onClick = onOpenLyricsMenu)
-                                    // The lyrics overflow popup's anchor: report
-                                    // the dots' rect in root space, kept live —
-                                    // the popup positions itself against it and
-                                    // grows out of this exact spot.
+
                                     .onGloballyPositioned {
                                         onLyricsOverflowAnchorChange(it.boundsInRoot())
                                     },
@@ -740,12 +521,7 @@ private fun TikTokSongInfo(
             }
             Spacer(Modifier.height(8.dp))
         }
-        // The title and secondary line keep their right edge clear of the
-        // action rail, which now hangs down alongside this block (see the
-        // page-level TikTokRail in TikTokSongPage): 56dp of end padding
-        // clears the rail's 48dp buttons + 10dp end padding with room to
-        // spare, exactly like the reference constrains its caption text —
-        // a constant inset so the text never reflows when the rail hides.
+
         Text(
             text = pageMetadata.title,
             color = Color.White,
@@ -776,21 +552,12 @@ private fun TikTokSongInfo(
     }
 }
 
-/** One live double-tap heart, at the tap point (artwork-box coordinates). */
 private data class TikTokHeartBurst(
     val id: Long,
     val x: Dp,
     val y: Dp,
 )
 
-/**
- * TikTok's double-tap heart: a big red heart pops in at the tap point with a
- * spring overshoot, then drifts up and fades out. The rotation is derived
- * from the burst id so rapid double-taps never stack perfectly aligned, and
- * the whole view removes itself from the burst list once its animation
- * finishes. The like it celebrates lands through the same Room row the
- * rail's heart uses, so the rail button pops in sync.
- */
 @Composable
 private fun TikTokHeartBurstView(
     burst: TikTokHeartBurst,
@@ -805,8 +572,7 @@ private fun TikTokHeartBurstView(
         onFinished()
     }
     val p = progress.value
-    // Pop in fast with overshoot, settle, hold; rise and fade through the
-    // second half — the reference's double-tap beat, in one progress value.
+
     val scale = when {
         p < 0.22f -> 0.2f + (p / 0.22f) * 1.15f
         p < 0.38f -> 1.35f - ((p - 0.22f) / 0.16f) * 0.35f
@@ -834,34 +600,17 @@ private fun TikTokHeartBurstView(
     )
 }
 
-/** Size of the double-tap heart glyph. */
 private val TIKTOK_HEART_BURST_SIZE = 88.dp
 
-/** How long a double-tap heart lives, start to fade-out end. */
 private const val TIKTOK_HEART_BURST_MS = 650
 
-/** Width of the rail's right-edge legibility wash. */
 private val TIKTOK_RAIL_WASH_WIDTH = 120.dp
 
-/**
- * The soft right-edge wash behind the action rail — clear at its left edge
- * so it blends into the cover: plain black fading in toward the rail, which
- * is what keeps the white glyphs legible over light artwork without
- * touching the rest of the media.
- */
 private val TIKTOK_RAIL_WASH =
     Brush.horizontalGradient(
         listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f)),
     )
 
-/**
- * The wash's vertical mask: strongest through the lower two thirds (where
- * the rail's buttons live now that the rail is pinned to the zone's
- * bottom), fading to clear over the top third and the last sliver at the
- * bottom so the wash never begins or ends in a visible straight line.
- * Applied with BlendMode.DstIn inside an offscreen layer, in the same place
- * the wash is drawn.
- */
 private val TIKTOK_RAIL_WASH_VERTICAL_FADE =
     Brush.verticalGradient(
         0.00f to Color.Transparent,
@@ -870,17 +619,6 @@ private val TIKTOK_RAIL_WASH_VERTICAL_FADE =
         1.00f to Color.Transparent,
     )
 
-/**
- * The artwork's edge blend, applied with BlendMode.DstIn in an offscreen
- * layer: opaque through the art, clear at the top and bottom so the sharp
- * rendering dissolves into the mesh backdrop its palette was sampled
- * from, instead of meeting it in a hard straight edge. The fade band is
- * ~14% of the artwork's height per edge — Bitchord-generous, because the
- * mesh behind is NOT a copy of this image (no "same picture" seam to
- * reveal), so the dissolve can afford to run deep and read as the cover
- * melting into its own colours (user report 2026-09-02: "the artwork
- * blend is still imperfect").
- */
 private val TIKTOK_ART_EDGE_FADE =
     Brush.verticalGradient(
         0.00f to Color.Transparent,
@@ -889,39 +627,14 @@ private val TIKTOK_ART_EDGE_FADE =
         1.00f to Color.Transparent,
     )
 
-/** TikTok's legibility scrim: dark at both edges (where the header and the
- * info zone live) and clear through the middle (where the artwork carries
- * itself). One static gradient, drawn in the draw phase.
- */
 internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCRIM) }
 
-/** Decode size for the hero artwork, in pixels. */
 internal const val TIKTOK_ART_PX = 1080
 
-/**
- * Corner radius of the full-bleed canvas video layer. The video runs edge to
- * edge like a real TikTok post, but carries this rounded clip (and nothing
- * else — no border, no shadow) per the user's 2026-09-04 request that "the
- * videos should be rounded and borderless"; the mesh backdrop peeks through
- * the corners so the rounding reads as intentional rather than clipped.
- */
 internal val TIKTOK_CANVAS_CORNER = 20.dp
 
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)
 
-/**
- * The single scrim gradient shared by every page — hoisted to a constant so
- * no page ever allocates a new Brush in composition or per draw.
- *
- * Lightened for the mesh backdrop (which arrives already dimmed and
- * scrimmed — its base is the palette's first colour at lightness 0.12, and
- * it carries Bitchord's own gentle 0.10-0.38 gradient): the old values
- * (0.50/0.12/0.18/0.72) were tuned against a raw blurred artwork, and
- * stacked on the mesh they would bury the colour blend this backdrop
- * exists for. The top and bottom stops stay strong enough to carry the
- * white top-nav glyphs and the song info; the middle all but clears so
- * the artwork's dissolve reads as Bitchord's.
- */
 private val TIKTOK_SCRIM =
     Brush.verticalGradient(
         colorStops =

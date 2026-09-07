@@ -186,12 +186,7 @@ fun HistoryScreen(
     val focusRequester = remember { FocusRequester() }
     val localListState = rememberLazyListState()
     val remoteListState = rememberLazyListState()
-    // Dedicated LazyListState instances for the search-mode list. Previously
-    // the search-mode LazyColumn shared `localListState` / `remoteListState`
-    // with the non-search LazyColumn, and during the AnimatedVisibility exit
-    // window BOTH LazyColumns were composed simultaneously — fighting over
-    // the same LazyListState and causing the list to disappear or stick on
-    // the skeleton loader when the back button was pressed.
+
     val localSearchListState = rememberLazyListState()
     val remoteSearchListState = rememberLazyListState()
     val scrollBehavior =
@@ -295,22 +290,6 @@ fun HistoryScreen(
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    // ── Liquid Glass header setup ──────────────────────────────────────────
-    // The History page's FrostedHeaderPill components (back + "Library" pill
-    // at top-start, search pill at top-end) currently scroll away with the
-    // LargeFlexibleTopAppBar. The user reports "There's no liquid glass in
-    // history page headers. add it and it should also be constant like other
-    // pages." — meaning the pills should (a) actually render with real
-    // liquid glass (vibrancy + blur + lens) and (b) stay pinned at the top
-    // while the user scrolls (matching LocalPlaylistScreen /
-    // AutoPlaylistScreen / CachePlaylistScreen / LocalSongScreen).
-    //
-    // Pattern: create a screen-scoped `backdrop` and apply
-    // `Modifier.layerBackdrop(backdrop)` to the LazyColumn. Then add
-    // persistent LiquidGlassActionPill siblings of the LazyColumn (inside
-    // the content Box, NOT inside the recorded LazyColumn — that would
-    // crash the RuntimeShader). Hide the LargeFlexibleTopAppBar when
-    // liquid glass is active so the persistent pills take over.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
     val liquidGlassHeaderActive =
@@ -319,17 +298,7 @@ fun HistoryScreen(
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val backdrop = rememberBackdrop(surfaceColor)
-    // The persistent liquid glass pills only render when:
-    //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-    //  - Not in search mode (the TopSearch overlay has its own back button)
-    //
-    // Fixed (2026-09-04, user report: "When I select songs in history page the
-    // liquid glass pills disappear and opaque rounded pill appears. Fix this"):
-    // selection mode NO LONGER hides the liquid glass pills. The back pill
-    // morphs in place — close (X) icon + the "N songs" count, tapping it
-    // clears the selection — and the search pill hides (matching the previous
-    // selection-mode top bar, which also had no actions). The opaque
-    // FrostedHeaderPill top bar is now only used when Liquid Glass is off.
+
     val showPersistentLiquidGlassHeader =
         liquidGlassHeaderActive && !showSearchBar
 
@@ -366,11 +335,7 @@ fun HistoryScreen(
     }
 
     val historySourceDock: @Composable () -> Unit = {
-        // iOS-inspired hero with small pink accent label, large bold title,
-        // metadata line, and rounded Play/Shuffle/Clear pill controls. The
-        // existing local/remote source selector is preserved below the hero
-        // actions so the user can still switch between local and YouTube
-        // remote history — only the visual treatment changed, not the logic.
+
         Column(modifier = Modifier.fillMaxWidth()) {
             AppleMusicPlaylistHero(
                 sectionLabel = stringResource(R.string.recently_played),
@@ -425,16 +390,7 @@ fun HistoryScreen(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        // When the persistent Liquid Glass header pills are
-                        // shown, the LargeFlexibleTopAppBar is hidden and the
-                        // LazyColumn starts at the very top of the screen
-                        // (under the status bar). Push the hero down by
-                        // `systemBarsTopPadding + AppBarHeight + 8.dp` so it
-                        // sits below the persistent pills (matching the
-                        // LocalPlaylistScreen pattern). When liquid glass is
-                        // off, the LargeFlexibleTopAppBar reserves the top
-                        // space and the hero's existing 8.dp top padding is
-                        // enough.
+
                         .padding(
                             top = if (showPersistentLiquidGlassHeader) {
                                 systemBarsTopPadding + AppBarHeight + 8.dp
@@ -448,16 +404,7 @@ fun HistoryScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // Per user request (2026-08-28 follow-up):
-                            // "Shift it to the left and align it with the
-                            // red play pill". The AppleMusicPlaylistHero
-                            // above uses `padding(start = 20.dp, ...)` for
-                            // its inner content (so the play pill's left
-                            // edge sits at 20dp from the page edge). Using
-                            // the same 20dp start padding here places the
-                            // HistorySourcePill's left edge at the same
-                            // 20dp inset — visually aligned with the play
-                            // pill above it.
+
                             .padding(top = 12.dp, start = 20.dp, end = 20.dp),
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically,
@@ -492,10 +439,7 @@ fun HistoryScreen(
     }
 
     val historyContent: @Composable (Dp, Boolean) -> Unit = { topPadding, searchMode ->
-        // Pick the LazyListState appropriate for this composition. Search-mode
-        // uses its own dedicated state instances so the two LazyColumns that
-        // briefly co-exist during the AnimatedVisibility exit transition
-        // don't fight over the same state.
+
         val activeLocalState = if (searchMode) localSearchListState else localListState
         val activeRemoteState = if (searchMode) remoteSearchListState else remoteListState
         Crossfade(
@@ -618,23 +562,20 @@ fun HistoryScreen(
         }
     }
 
-    // A. When screen opens + user is logged in → fetch remote history in background
     LaunchedEffect("prefetch", isLoggedIn) {
         if (!isLoggedIn) return@LaunchedEffect
         if (remoteHistoryState is RemoteHistoryUiState.Success) return@LaunchedEffect
-        delay(1_000) // wait for screen
+        delay(1_000)
 
         viewModel.fetchRemoteHistorySilent()
     }
 
-    // B. When playback sync happens → retry with backoff
     LaunchedEffect("sync", isLoggedIn) {
         YouTube.historySyncEvent.collect {
             if (!isLoggedIn) return@collect
 
-            // Retry 3 times with increasing delay (handles slow internet)
             repeat(3) { attempt ->
-                delay(3000L * (attempt + 1)) // 3s, 6s, 9s
+                delay(3000L * (attempt + 1))
                 viewModel.fetchRemoteHistorySilent()
                 if (remoteHistoryState is RemoteHistoryUiState.Success) return@collect
             }
@@ -657,31 +598,11 @@ fun HistoryScreen(
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // ── Top bar conditional rendering ───────────────────────────────
-            // When the persistent Liquid Glass header is shown
-            // (showPersistentLiquidGlassHeader), the LargeFlexibleTopAppBar is
-            // skipped entirely — the persistent LiquidGlassActionPill siblings
-            // of the LazyColumn (rendered below in the content Box) take over
-            // the back + "Library" + search affordances, and they stay pinned
-            // at the top while the user scrolls (matching the iOS Music
-            // reference and the other redesigned pages).
-            //
-            // In all other cases (Liquid Glass off, search mode, selection
-            // mode, full-screen lyrics), the LargeFlexibleTopAppBar is
-            // rendered as before with the FrostedHeaderPill (surface
-            // fallback) components inside.
+
             if (!showSearchBar && !showPersistentLiquidGlassHeader) {
                 LargeFlexibleTopAppBar(
                     title = {
-                        // Only show a title pill here when the user is in
-                        // multi-selection mode (the count makes sense as a
-                        // header pill in that context). Otherwise the title
-                        // pill is omitted entirely so the hero below
-                        // (AppleMusicPlaylistHero) is the ONLY place "History"
-                        // appears as a large title — matching the iOS Music
-                        // reference and avoiding the duplicate "History"
-                        // header the previous implementation rendered (one in
-                        // the top app bar pill, one in the hero).
+
                         if (selectionCount > 0) {
                             FrostedHeaderPill {
                                 Text(
@@ -692,12 +613,7 @@ fun HistoryScreen(
                         }
                     },
                     navigationIcon = {
-                        // iOS-inspired back pill: translucent frosted capsule
-                        // containing a left-pointing chevron followed by the
-                        // text "Library", matching the user's reference
-                        // screenshot. Tapping it pops back to the previous
-                        // destination (or clears the multi-selection);
-                        // long-pressing it jumps straight to the Home tab.
+
                         FrostedHeaderPill {
                             AppIconButton(
                                 onClick = {
@@ -755,17 +671,7 @@ fun HistoryScreen(
             }
         },
     ) { innerPadding ->
-        // Header haze (2026-09-04, revised): the home page's blurred top haze,
-        // ported to this screen. The haze SOURCE below wraps the scrolling
-        // content only, and the ScreenHeaderHaze overlay renders ON TOP of it
-        // (a LATER sibling), beneath the pinned Liquid Glass pills. The
-        // overlay was previously the FIRST child — the full-screen list drew
-        // straight over it, so the haze was never visible at all (user report
-        // 2026-09-04: "I don't see the haze effect I asked you to add"). The
-        // source/effect split also mirrors the home page's top-bar blur and
-        // the PlayerComponents pattern, keeping the effect OUT of the layer
-        // the source records (haze does not support a hazeEffect nested
-        // inside its own hazeSource content).
+
         val headerHaze = rememberScreenHeaderHaze()
         Box(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -775,17 +681,7 @@ fun HistoryScreen(
                         .hazeSource(headerHaze),
             ) {
                 if (!showSearchBar) {
-                    // When the persistent Liquid Glass header pills are shown,
-                    // the LargeFlexibleTopAppBar is hidden so innerPadding's
-                    // top is 0 — the LazyColumn starts at the very top of the
-                    // screen (under the persistent pills). The hero item inside
-                    // the LazyColumn carries its own top padding (see
-                    // historySourceDock above) to sit below the pills.
-                    //
-                    // When Liquid Glass is off (or in selection mode), the
-                    // LargeFlexibleTopAppBar reserves the top space and the
-                    // LazyColumn's top padding equals the topBar's height — same
-                    // as before.
+
                     val topPaddingForContent =
                         if (showPersistentLiquidGlassHeader) 0.dp
                         else innerPadding.calculateTopPadding()
@@ -797,33 +693,8 @@ fun HistoryScreen(
                 systemBarsTopPadding = systemBarsTopPadding,
             )
 
-            // ── Persistent Liquid Glass header pills ───────────────────────
-            // Siblings of the LazyColumn (inside this content Box). They
-            // sample the `backdrop` (recorded by `Modifier.layerBackdrop`
-            // applied to the LazyColumn inside LocalHistoryFeed /
-            // RemoteHistoryFeed) to render real liquid glass — vibrancy +
-            // blur + lens. PERSISTENT — they stay pinned at the top while
-            // the user scrolls, matching the iOS Music reference and the
-            // LocalPlaylistScreen / AutoPlaylistScreen / CachePlaylistScreen
-            // / LocalSongScreen pattern.
-            //
-            // Visible only when the Liquid Glass master toggle is on AND
-            // not searching. Selection mode keeps them (2026-09-04); when
-            // Liquid Glass is off the LargeFlexibleTopAppBar (with
-            // FrostedHeaderPill fallbacks) handles the back + search
-            // affordances instead.
             if (showPersistentLiquidGlassHeader) {
-                // iOS-inspired back pill: persistent translucent liquid-glass
-                // capsule containing a left-pointing chevron followed by the
-                // text "Library", matching the user's reference screenshot.
-                // The pill samples the backdrop to render the liquid-glass
-                // blur. Tapping it pops back to the previous destination;
-                // long-pressing it jumps straight to the Home tab.
-                //
-                // In selection mode (2026-09-04 fix) the SAME glass pill
-                // carries the selection state instead of swapping to the
-                // opaque FrostedHeaderPill top bar: close (X) icon, the
-                // "N songs" count, and a tap that clears the selection.
+
                 LiquidGlassActionPill(
                     backdrop = backdrop,
                     interactive = true,
@@ -864,19 +735,7 @@ fun HistoryScreen(
                         modifier = Modifier.padding(end = 12.dp),
                     )
                 }
-                // Search pill at top-end. Same LiquidGlassActionPill styling
-                // as the back pill so the two read as a pair. `interactive`
-                // is left at its default (false) because callers wrap their
-                // own clickable children — the kyant press detector would
-                // otherwise compete with the inner IconButton.onClick and
-                // can swallow the UP event on some devices. The back pill
-                // above opts in to `interactive = true` for the press-based
-                // lens animation because it carries both onClick and
-                // onLongClick (matching the LocalPlaylistScreen pattern).
-                //
-                // Hidden in selection mode (2026-09-04): the selection
-                // state lives in the back pill and the floating bottom
-                // selection bar; a search affordance would only be noise.
+
                 if (selectionCount == 0) {
                     LiquidGlassActionPill(
                         backdrop = backdrop,
@@ -904,18 +763,6 @@ fun HistoryScreen(
                 }
             }
 
-            // Bottom fade overlay — a vertical gradient that fades the bottom
-            // of the scrolling history list into the page background, matching
-            // the iOS Music reference screenshot. Only visible when the user
-            // has scrolled past the hero header, so the first frame (hero
-            // visible, list not yet scrolling) doesn't show a stray fade band
-            // overlapping the hero's Play/Shuffle/Clear pills.
-            //
-            // When a mini player is visible, the fade anchors THROUGH the mini
-            // player's area (instead of cutting off at the top of the mini
-            // player) so there's no straight-cut horizontal line at the mini
-            // player's top edge. When no mini player is visible, the fade
-            // anchors at the home-icon dock pill as before.
             val isListScrolling by remember {
                 derivedStateOf {
                     val activeState = if (historySource == HistorySource.REMOTE) remoteListState else localListState
@@ -923,12 +770,6 @@ fun HistoryScreen(
                         activeState.firstVisibleItemScrollOffset > 0
                 }
             }
-            // Bottom fade overlay + Floating Home dock button were removed
-            // per user request (2026-08-28). The scrollable list now ends
-            // cleanly at the bottom of the page surface; the floating
-            // liquid-glass "Home" dock button at bottom-start is also gone
-            // — both were reported as visual clutter on the playlist detail
-            // screens.
 
             AnimatedVisibility(
                 visible = showSearchBar,
@@ -948,11 +789,7 @@ fun HistoryScreen(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    // Match the page background so the search overlay doesn't
-                    // show a different shade of surface than the underlying
-                    // Scaffold. Without this override TopSearch defaults to
-                    // surfaceContainerLow + 6.dp tonal elevation, which is
-                    // visibly different from the page's `surface`.
+
                     colors = SearchBarDefaults.colors(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
@@ -1065,15 +902,7 @@ private fun LocalHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-                // Liquid Glass backdrop source: when `backdrop` is non-null
-                // (Liquid Glass master toggle on, Android 12+, not in
-                // full-screen lyrics), record this LazyColumn's content into
-                // the backdrop so the persistent LiquidGlassActionPill
-                // siblings of this LazyColumn (rendered in HistoryScreen's
-                // content Box) can sample it via the kyant `drawBackdrop`
-                // effect stack. MUST be applied here (sibling of the
-                // persistent pills) — nesting inside the recorded layer
-                // crashes the RuntimeShader.
+
                 .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
@@ -1213,9 +1042,7 @@ private fun RemoteHistoryFeed(
                 .wrapContentWidth(Alignment.CenterHorizontally)
                 .widthIn(max = 840.dp)
                 .padding(top = topPadding)
-                // Liquid Glass backdrop source: see LocalHistoryFeed above
-                // for the same comment. The persistent LiquidGlassActionPill
-                // siblings of this LazyColumn sample this backdrop.
+
                 .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
@@ -1432,31 +1259,7 @@ private fun HistorySourcePill(
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-    // Per user request (2026-08-28): "below the play and shuffle icon in
-    // history page remove the remote and history pill and instead there
-    // should be a single pill which one click opens a drop-down menu for
-    // switching between local and remote history".
-    //
-    // Previously this rendered a Material3 Expressive `ToggleButton`
-    // segmented control (two connected buttons side-by-side, each 52dp
-    // tall, taking the full row width). The new design matches the Play
-    // and Shuffle pills above it: a single 46dp pill button (mirroring
-    // `PillActionButton` from `AppleMusicPlaylistHero`) that, when
-    // clicked, opens a DropdownMenu with one item per available source.
-    // If only one source is available (e.g. user is not logged in to
-    // InnerTube so Remote is hidden), the pill still renders but the
-    // dropdown has only one entry — tapping it is a no-op.
-    //
-    // Per user request (2026-08-28 follow-up): "The local switch pill in
-    // history page is still in the middle. Shift it to the left and align
-    // it with the red play pill and also change the accent like the
-    // play/shuffle button too." The accent is switched from
-    // `colorScheme.primary` to `AppleMusicStyleAccentColor` (the same
-    // red/pink used by Play and Shuffle in `AppleMusicPlaylistHero`),
-    // and the outer Box no longer forces `.fillMaxWidth()` + center
-    // alignment — the caller's Row (`Arrangement.Start` + start padding)
-    // now naturally anchors the pill at the same left inset as the play
-    // pill.
+
     var expanded by remember { mutableStateOf(false) }
     val accent = AppleMusicStyleAccentColor
     val onBackgroundColor = MaterialTheme.colorScheme.onBackground
@@ -1473,13 +1276,7 @@ private fun HistorySourcePill(
     Box(
         modifier =
             Modifier
-                // Left-anchor the source pill at the same horizontal inset
-                // as the Play/Shuffle pill row inside
-                // AppleMusicPlaylistHero (`padding(start = 20.dp, ...)`).
-                // The parent Row's own `start = 20.dp` padding (set by
-                // the caller) places the pill's left edge at exactly
-                // 20dp from the screen's left edge — matching the play
-                // pill's left edge.
+
                 .wrapContentWidth(align = Alignment.Start),
         contentAlignment = Alignment.TopStart,
     ) {
@@ -1493,9 +1290,7 @@ private fun HistorySourcePill(
                 shape = RoundedCornerShape(percent = 50),
                 color = containerColor,
             ) {
-                // fillMaxHeight() so the icon+label cluster is vertically
-                // centered within the 46dp pill (matching the
-                // PillActionButton fix in AppleMusicPlaylistHero).
+
                 Row(
                     modifier =
                         Modifier

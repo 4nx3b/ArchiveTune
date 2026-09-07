@@ -36,19 +36,14 @@ object TidalAccountManager {
         val durationMs: Long?,
     )
 
-    // Well-known public Tidal "TV/device" OAuth client used by open-source Tidal tooling for the
-    // device authorization grant. These are not secret user credentials.
     private const val CLIENT_ID = "zU4XHVVkc2tDPo4t"
     private const val CLIENT_SECRET = "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
 
-    // PKCE web-login client (used by open-source Tidal tooling for the authorization-code + PKCE
-    // flow). Unlike the device client, this yields a durable refresh token and can unlock HiRes.
     private const val PKCE_CLIENT_ID = "6BDSRdpK9hqEBTgU"
     private const val PKCE_CLIENT_SECRET = "xeuPmY7nbpZ9IIbLAcQ93shka1VNheUAqN6IcszjTG8="
     private const val PKCE_AUTHORIZE_ENDPOINT = "https://login.tidal.com/authorize"
     const val PKCE_REDIRECT_URI = "https://tidal.com/android/login/auth"
 
-    // Values for [TidalAuthFlowKey], telling the refresh path which client/behaviour applies.
     const val FLOW_OAUTH = "oauth"
     const val FLOW_PKCE = "pkce"
     const val FLOW_WEBCAPTURE = "webcapture"
@@ -61,22 +56,12 @@ object TidalAccountManager {
     private val client =
         OkHttpClient
             .Builder()
-            .dns(TidalDns) // DoH fallback so login works on ISPs that DNS-block tidal.com
+            .dns(TidalDns)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
             .build()
 
-    /**
-     * Same connection pool and dispatcher as [client] (newBuilder shares both), with deadlines
-     * short enough to abandon one account and move to the next.
-     *
-     * The 20s ceiling on [client] is right for a login or a token exchange, where the user is
-     * waiting on that one request and a slow network should be tolerated. It is wrong inside the
-     * pool-account loop, where each attempt is disposable: three unreachable accounts cost a
-     * minute of silence before playback even reaches Qobuz. Resolution is two small JSON calls
-     * against api.tidal.com, so anything past 8s is a dead account, not a slow one.
-     */
     private val resolveClient =
         client
             .newBuilder()
@@ -85,7 +70,6 @@ object TidalAccountManager {
             .callTimeout(8, TimeUnit.SECONDS)
             .build()
 
-    /** Result of a successful token exchange. [expiresAtMillis] is an absolute epoch time. */
     data class TokenResult(
         val accessToken: String,
         val refreshToken: String?,
@@ -95,24 +79,12 @@ object TidalAccountManager {
         val countryCode: String? = null,
     )
 
-    /** Subscription tier resolved from the Tidal API. */
     enum class Subscription {
         UNKNOWN,
         PREMIUM,
         FREE,
     }
 
-    /**
-     * Exchanges a stored refresh token for a fresh access token via the OAuth `refresh_token`
-     * grant. Tidal typically does not return a new refresh_token here, so callers should keep the
-     * existing one when [TokenResult.refreshToken] is null. Returns null on failure (expired /
-     * revoked / offline), signalling the caller to fall back to the public instances.
-     *
-     * [flow] selects which OAuth client the refresh runs against: a PKCE session must refresh with
-     * the PKCE client, a device session with the device client. A [FLOW_WEBCAPTURE] session has no
-     * refresh token at all, so refresh is impossible and returns null immediately (the caller then
-     * prompts a re-login).
-     */
     suspend fun refreshAccessToken(
         refreshToken: String,
         flow: String = FLOW_OAUTH,
@@ -164,14 +136,6 @@ object TidalAccountManager {
             }
         }
 
-    // ---------------------------------------------------------------------------------------------
-    // PKCE web login (primary WebView flow) + Bearer capture (fallback).
-    // ---------------------------------------------------------------------------------------------
-
-    /**
-     * A generated PKCE challenge. [authUrl] is the URL to load in the login WebView; [verifier] and
-     * [uniqueKey] must be kept and passed to [exchangePkceCode] once the redirect returns a code.
-     */
     data class PkceChallenge(
         val verifier: String,
         val challenge: String,
@@ -179,14 +143,9 @@ object TidalAccountManager {
         val authUrl: String,
     )
 
-    /** URL-safe, unpadded base64 (RFC 7636) of [bytes]. */
     private fun base64UrlNoPad(bytes: ByteArray): String =
         Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
 
-    /**
-     * Builds a fresh PKCE challenge (S256) and the corresponding Tidal authorize URL. The verifier
-     * is a high-entropy URL-safe random string; the challenge is its SHA-256, base64url-encoded.
-     */
     fun buildPkceChallenge(): PkceChallenge {
         val random = SecureRandom()
         val verifierBytes = ByteArray(64).also { random.nextBytes(it) }
@@ -213,11 +172,6 @@ object TidalAccountManager {
         return PkceChallenge(verifier, challenge, uniqueKey, authUrl)
     }
 
-    /**
-     * Exchanges a PKCE authorization [code] (extracted from the redirect) for access + refresh
-     * tokens. Returns null on failure. The resulting [TokenResult] carries the durable refresh
-     * token, so the session survives long-term via [refreshAccessToken] with [FLOW_PKCE].
-     */
     suspend fun exchangePkceCode(
         code: String,
         verifier: String,
@@ -267,13 +221,6 @@ object TidalAccountManager {
             }
         }
 
-    /**
-     * Validates a Bearer access token captured from the Tidal web player and resolves the account
-     * identity (userId + countryCode) via the `/sessions` endpoint. Used by the WebView fallback
-     * path when PKCE is unavailable. The returned [TokenResult] has no refresh token (web-player
-     * tokens are short-lived); the session expiry is set conservatively so the app re-validates
-     * before it goes stale. Returns null if the token is invalid.
-     */
     suspend fun buildSessionFromBearer(accessToken: String): TokenResult? =
         withContext(Dispatchers.IO) {
             val request =
@@ -294,7 +241,7 @@ object TidalAccountManager {
                     TokenResult(
                         accessToken = accessToken,
                         refreshToken = null,
-                        // Web-player tokens are short-lived; assume ~1h and let the app re-validate.
+
                         expiresAtMillis = System.currentTimeMillis() + 3600L * 1000L,
                         userId = json.optLong("userId").takeIf { it > 0 },
                         username = json.optString("username").ifBlank { null },
@@ -307,12 +254,6 @@ object TidalAccountManager {
             }
         }
 
-    /**
-     * Resolves the subscription tier for the signed-in account. Prefers Tidal's authoritative
-     * `premiumAccess` boolean, then falls back to `highestSoundQuality` and the `subscription.type`
-     * string. A real paying account maps to [Subscription.PREMIUM]; a free account maps to
-     * [Subscription.FREE]; anything indeterminate is [Subscription.UNKNOWN]. Runs on IO.
-     */
     suspend fun fetchSubscription(
         accessToken: String,
         userId: Long,
@@ -340,11 +281,7 @@ object TidalAccountManager {
                             ?.uppercase()
                             .orEmpty()
                     val soundQuality = json.optString("highestSoundQuality").uppercase()
-                    // `premiumAccess` is Tidal's authoritative entitlement flag and is the only
-                    // signal that reliably separates a real paying account from a free one. Free
-                    // accounts frequently still report a non-blank subscription.type (e.g. an
-                    // "INTRO"/"PREMIUM" placeholder), which is exactly why the old
-                    // "anything not FREE = premium" check reported free accounts as premium.
+
                     when {
                         json.has("premiumAccess") ->
                             if (json.optBoolean("premiumAccess", false)) {
@@ -353,12 +290,12 @@ object TidalAccountManager {
                                 Subscription.FREE
                             }
                         type.contains("FREE") -> Subscription.FREE
-                        // Lossless-capable tiers are unambiguously paid.
+
                         soundQuality.contains("LOSSLESS") || soundQuality.contains("HI_RES") ->
                             Subscription.PREMIUM
-                        // A low-quality ceiling with no premium flag means a free account.
+
                         soundQuality == "LOW" -> Subscription.FREE
-                        // Known paid tier names, as a last resort when no better signal exists.
+
                         type.contains("HIFI") || type.contains("PREMIUM") || type.contains("PLUS") ->
                             Subscription.PREMIUM
                         else -> Subscription.UNKNOWN
@@ -370,19 +307,6 @@ object TidalAccountManager {
             }
         }
 
-    /**
-     * Resolves a directly-playable stream for the given metadata using the signed-in user's own
-     * Tidal account (official API), rather than a public instance. Returns null if the account
-     * cannot stream the track (not found, no entitlement, or an unexpected manifest type), so the
-     * caller can fall back to the public instances and then YouTube.
-     *
-     * [audioQuality] is a Tidal API quality string: "LOW", "HIGH", "LOSSLESS" or "HI_RES_LOSSLESS".
-     */
-    /**
-     * Thrown when the official API rejects the access token (HTTP 401). Signals the caller to
-     * refresh the token via the stored refresh token and retry once, instead of silently falling
-     * back to the (preview-only) public instances.
-     */
     class TidalUnauthorizedException : Exception("TIDAL access token rejected (401)")
 
     suspend fun resolveDirectStream(
@@ -413,7 +337,6 @@ object TidalAccountManager {
             )
         }
 
-    /** Searches the official API for the best-matching track id. */
     private fun searchTrack(
         accessToken: String,
         title: String,
@@ -478,7 +401,7 @@ object TidalAccountManager {
                             )
                     }
                 }
-                // Require at least a title or artist hit to avoid false matches.
+
                 if (bestScore >= 40) bestMatch else null
             }
         }.getOrElse {
@@ -488,13 +411,6 @@ object TidalAccountManager {
         }
     }
 
-    /**
-     * Fetches playback info for a track from the official API, then delegates manifest handling to
-     * [TidalAudioProvider.resolveAccountManifest] so both BTS (direct URL) and DASH (segmented
-     * lossless/HiRes) manifests produce a playable stream. Previously this only accepted the BTS
-     * manifest, so lossless/HiRes — which Tidal returns as DASH — always fell through, which is why
-     * the signed-in account path never actually played.
-     */
     private fun resolvePlaybackInfo(
         accessToken: String,
         trackId: String,
@@ -522,7 +438,7 @@ object TidalAccountManager {
                     return@use null
                 }
                 val json = JSONObject(payload)
-                // Never serve a preview clip from the account path (we requested FULL, but be safe).
+
                 if (json.optString("assetPresentation").equals("PREVIEW", ignoreCase = true)) {
                     Timber.tag("TidalAccount").w("playbackinfo returned PREVIEW; skipping account stream")
                     return@use null
@@ -546,15 +462,6 @@ object TidalAccountManager {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Lyrics (official API, needs a bearer token)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Fetches Tidal lyrics for a track via the official API `tracks/{id}/lyrics` using
-     * [accessToken]. Searches for the best-matching track, then returns the lyrics text.
-     * Returns failure when no match or no lyrics are available.
-     */
     suspend fun getLyrics(
         accessToken: String,
         title: String,
@@ -586,7 +493,6 @@ object TidalAccountManager {
             }
         }
 
-    /** Detects TidalUnauthorizedException in a throwable's cause or suppressed chain (ExoPlayer interruptions). */
     fun isUnauthorized(root: Throwable?): Boolean {
         val stack = ArrayDeque<Throwable>()
         val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())

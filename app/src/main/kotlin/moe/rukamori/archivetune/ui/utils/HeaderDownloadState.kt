@@ -144,15 +144,6 @@ fun sendRemoveDownloads(
     }
 }
 
-/**
- * Pause (2026-09-05, user request: "There should be a proper Pause/Resume Download option that
- * only pauses the currently pending downloads without affecting the songs that are already
- * downloaded") — stops every RUNNING download of [songIds] with the collection pause stop reason.
- *
- * Completed downloads are not downloads that can stop — [DownloadManager] keeps them completed
- * whatever the stop reason — but they are filtered out anyway so the intent is explicit: only
- * the pending ones are touched. Paused (STATE_STOPPED) downloads keep their stop reason.
- */
 fun sendPauseRunningDownloads(
     context: Context,
     songIds: List<String>,
@@ -180,7 +171,6 @@ fun sendPauseRunningDownloads(
         }
 }
 
-/** Resume the downloads this collection paused — stop reason back to none restarts them. */
 fun sendResumePausedDownloads(
     context: Context,
     songIds: List<String>,

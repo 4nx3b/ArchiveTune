@@ -105,9 +105,6 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
-/**
- * Walk the [ContextWrapper] chain to find the hosting [Activity].
- */
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {
         is Activity -> this
@@ -115,164 +112,34 @@ private tailrec fun Context.findActivity(): Activity? =
         else -> null
     }
 
-/**
- * Holder for the video fullscreen state, shared between the inline
- * [InlineVideoPlayer] and the host [BottomSheetPlayer] which renders the
- * [FullscreenVideoOverlay].
- *
- * WHY THIS EXISTS:
- * The fullscreen flag is hoisted above the BottomSheet so that the
- * [FullscreenVideoOverlay] (rendered as a sibling of the BottomSheet) can
- * read it. The overlay is NOT a Dialog — it's a regular composable that
- * fills the screen. This avoids the Compose `Dialog` window's orientation
- * issues that caused the "horizontal for a split second then back" flicker.
- *
- * The ExoPlayer itself is hoisted even higher — to the BottomSheetPlayer
- * function level via [rememberVideoArtworkStateOrNull] — so it survives
- * orientation changes, sheet collapse/expand, and fullscreen toggles
- * without being released or recreated.
- */
 @Stable
 class VideoFullscreenStateHolder {
     var isFullscreen: Boolean by mutableStateOf(false)
         internal set
 }
 
-/**
- * CompositionLocal that provides the [VideoFullscreenStateHolder] to all
- * [InlineVideoPlayer] instances in the subtree. The host (e.g.
- * [BottomSheetPlayer]) is responsible for providing this via
- * [ProvideVideoFullscreenState].
- *
- * If no provider is found, a no-op holder is used (fullscreen button will
- * still work locally but the overlay won't be rendered by the host).
- */
 val LocalVideoFullscreenState = compositionLocalOf {
     VideoFullscreenStateHolder()
 }
 
-/**
- * CompositionLocal that provides the hoisted [VideoArtworkState] to all
- * [InlineVideoPlayer] instances in the subtree.
- *
- * This allows composables deep in the tree (e.g. V8PlayerContent,
- * AppleMusicPlayer, Thumbnail) to access the shared ExoPlayer without
- * needing it passed as an explicit parameter through every layer.
- *
- * If no provider is found, null is used — [InlineVideoPlayer] will call
- * [onPlaybackFailed] and render nothing.
- */
 val LocalVideoArtworkState = compositionLocalOf<VideoArtworkState?> { null }
 
-/**
- * CompositionLocal for the user's preferred video quality (null = auto).
- * @see LocalVideoArtworkState
- */
 val LocalVideoPreferredHeight = compositionLocalOf<Int?> { null }
 
-/**
- * CompositionLocal for the callback when the user changes the preferred
- * video quality.
- * @see LocalVideoArtworkState
- */
 val LocalVideoOnPreferredHeightChange = compositionLocalOf<(Int?) -> Unit> { {} }
 
-/**
- * CompositionLocal for the list of available video heights from YouTube.
- * @see LocalVideoArtworkState
- */
 val LocalVideoAvailableHeights = compositionLocalOf<List<Int>> { emptyList() }
 
-/**
- * CompositionLocal for the height actually being played, so the quality UI can report what the
- * Auto / Data saver / High quality modes resolved to. Null until a stream resolves, or when
- * YouTube did not label the chosen format.
- * @see LocalVideoArtworkState
- */
 val LocalVideoSelectedHeight = compositionLocalOf<Int?> { null }
 
-/**
- * CompositionLocal that tracks whether the host Activity is currently in
- * Picture-in-Picture mode. When true, the player UI hides non-essential
- * controls (overlays, gesture handlers, etc.) so the PiP window shows
- * only the video surface — matching the standard Android PiP experience.
- *
- * Provided by [MainActivity] via [LocalIsInPipMode]. Defaults to false
- * when no provider is present (e.g. in previews or non-Activity hosts).
- */
 val LocalIsInPipMode = compositionLocalOf { false }
 
-/**
- * Back-priority guard (2026-09-04): true while any ROOT-level overlay is
- * showing over the app surface — the song-overflow glass popup
- * ([BottomSheetMenu]), the Cast route picker's root glass card, or the
- * details [BottomSheetPage] — including the ~260 ms exit-fade tail after
- * the popup's visibility flag has already flipped false.
- *
- * Provided by [MainActivity]. Read by BOTH player-collapse back handlers
- * (MainActivity's root fallback and Player.kt's internal lyrics→queue→
- * collapse handler): while a root overlay is open they disable themselves,
- * so the back gesture can only ever reach the overlay's own dismissal
- * handler — back closes the popup and the full player stays exactly where
- * it was, instead of the gesture racing ahead and minimizing the player
- * (user report 2026-09-04: "when I use back navigation gesture it should
- * return to the full player and not close it instead. Right now whenever I
- * open these popups the navigation bar gesture first closes the main player
- * and minimises it. Second time using the gesture closes the popup").
- *
- * Gating the collapse handlers explicitly makes the outcome independent of
- * back-callback registration order, which is not a guarantee worth relying
- * on across Compose/activity versions and predictive-back paths.
- *
- * Default: false (no provider — e.g. in previews or non-Activity hosts).
- */
 val LocalRootOverlayActive = compositionLocalOf { false }
 
-/**
- * Tracks whether the full-screen lyrics overlay (MikoLyricsTransition) is
- * currently visible on top of the player.
- *
- * Provided by MainActivity (which receives the state from BottomSheetPlayer
- * via onLyricsVisibilityChange). Read by back-stack screens (playlist, album,
- * artist) to suspend their per-frame GPU work — LiquidGlass layerBackdrop
- * recording, RuntimeShader backdrop sampling, and CanvasArtworkPlayer —
- * while the karaoke lyrics sweep is running on top. The lyrics overlay is
- * opaque, so the underlying screen's pixels are never visible; continuing
- * to draw them wastes the entire GPU frame budget and starves the 60 Hz
- * lyrics animation.
- *
- * Default: false (no provider — e.g. in previews or non-Activity hosts).
- */
 val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
 
-/**
- * Tracks whether the current screen wants the [MiniPlayer] to shrink into
- * a compact "docked" form factor and position itself at the bottom-start
- * corner, immediately to the right of the floating Home dock button.
- *
- * Set to `true` by the playlist-style screens (Liked / Cached / Local
- * storage / Local / Online / Spotify playlist) when the user has scrolled
- * past the hero header. The MiniPlayer reads this and applies a
- * `graphicsLayer` scale + translationX transformation so it visually
- * shrinks and slides to the bottom-start corner — matching the
- * SimpMusic behavior the user referenced (mini player "shrinks
- * automatically and sits between Home button on the left and search
- * button on the right").
- *
- * Default: false (most screens don't shrink the mini player).
- */
 val LocalMiniPlayerDocked = compositionLocalOf { false }
 
-/**
- * Provides a [VideoFullscreenStateHolder] to the content subtree.
- *
- * The holder is created with `remember` (not `rememberSaveable`) because
- * the host Activity declares `configChanges="orientation|screenSize|..."` in
- * the manifest, which means the Activity (and its Compose tree) is NOT
- * recreated on orientation changes. `remember` is therefore sufficient to
- * survive orientation changes. `rememberSaveable` would require a custom
- * Saver and adds complexity for no benefit in this configuration.
- */
 @Composable
 fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
     val holder = remember { VideoFullscreenStateHolder() }
@@ -281,29 +148,6 @@ fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
     }
 }
 
-/**
- * Inline video player + controls overlay.
- *
- * This composable renders ONLY the inline surface + controls. It does NOT
- * create the [VideoArtworkState] — that's hoisted to the host
- * ([BottomSheetPlayer]) via [rememberVideoArtworkStateOrNull] so the
- * ExoPlayer survives orientation changes and sheet collapse/expand.
- *
- * The fullscreen overlay is also rendered by the host (as a sibling of the
- * BottomSheet), NOT by this composable. This avoids the Compose `Dialog`
- * window's orientation issues that caused the "horizontal for a split second
- * then back" flicker.
- *
- * Controls: quality picker + captions toggle + fullscreen button.
- *
- * @param state The hoisted [VideoArtworkState] (ExoPlayer + playback state).
- *   Null when there's no music video.
- * @param preferredHeight The user's preferred video quality (null = auto).
- * @param onPreferredHeightChange Called when the user picks a new quality.
- * @param availableHeights The list of available video heights from YouTube.
- * @param onPlaybackFailed Called when the player cannot play the video.
- *   The parent should fall back to album artwork.
- */
 @Composable
 fun InlineVideoPlayer(
     state: VideoArtworkState? = LocalVideoArtworkState.current,
@@ -325,23 +169,11 @@ fun InlineVideoPlayer(
 
     var qualityMenuOpen by remember { mutableStateOf(false) }
 
-    // Ambient mode is intentionally NOT applied here. The drifting blurred
-    // backdrop only makes sense in the fullscreen landscape overlay where
-    // the video is letterboxed against a black background — in the inline
-    // portrait player the artwork is already displayed next to the video,
-    // so an additional blurred copy would just be visual noise. The
-    // fullscreen overlay reads the same preference and applies it.
     val playerConnection = LocalPlayerConnection.current
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
     val mediaMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsStateWithLifecycle()
     val thumbnailUrl = mediaMetadata?.thumbnailUrl
 
-    // ── Inline surface + controls (rendered only when NOT fullscreen) ──
-    //
-    // When isFullscreen is true, we skip rendering the inline surface
-    // entirely. The FullscreenVideoOverlay (rendered by the host) takes
-    // over — attaching to the same ExoPlayer. This ensures only ONE
-    // surface is attached to the ExoPlayer at any time.
     if (!isFullscreen) {
         Box(modifier = modifier) {
             VideoArtworkSurface(
@@ -352,9 +184,6 @@ fun InlineVideoPlayer(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // Loading overlay — shown during initial load, quality swap,
-            // and seekbar resync. The video surface's alpha also animates
-            // to 0 while loading.
             if (isLoadingState(state)) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -368,12 +197,6 @@ fun InlineVideoPlayer(
                 }
             }
 
-            // Controls overlay: quality picker + fullscreen button.
-            // (Captions button removed per spec — captions are no longer
-            // user-togglable.)
-            //
-            // Both buttons are grouped inside a single dark pill so the
-            // inline and fullscreen controls look consistent.
             Row(
                 modifier =
                     Modifier
@@ -386,9 +209,7 @@ fun InlineVideoPlayer(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Quality picker — only render if YouTube offered more than one height.
-                // Opens the same VideoQualitySheet the fullscreen overlay uses, so the two
-                // surfaces offer identical choices.
+
                 if (availableHeights.size > 1) {
                     IconButton(
                         onClick = { qualityMenuOpen = true },
@@ -403,8 +224,6 @@ fun InlineVideoPlayer(
                     }
                 }
 
-                // Fullscreen toggle — writes to the hoisted holder so the
-                // host can render the FullscreenVideoOverlay.
                 IconButton(
                     onClick = { fullscreenHolder.isFullscreen = true },
                     modifier = Modifier.size(40.dp),
@@ -420,9 +239,6 @@ fun InlineVideoPlayer(
         }
     }
 
-    // ── Quality bottom sheet ──
-    // Outside the `!isFullscreen` block on purpose: the sheet is a window of its own, so leaving it
-    // outside keeps it from being torn down mid-animation if fullscreen is entered while it is up.
     if (qualityMenuOpen) {
         VideoQualitySheet(
             preferredHeight = preferredHeight,
@@ -434,39 +250,6 @@ fun InlineVideoPlayer(
     }
 }
 
-/**
- * Fullscreen video overlay — a regular composable (NOT a Dialog).
- *
- * Renders the video in a system-immersive (fullscreen, no status/nav bar)
- * overlay using the SAME [VideoArtworkState] used by the inline player.
- * The ExoPlayer is shared — no re-creation, no re-loading. The video
- * continues playing seamlessly as the surface moves from the inline slot
- * to this overlay.
- *
- * WHY NOT A DIALOG:
- * The previous implementation used a Compose `Dialog`, which creates a
- * separate window. Setting `Activity.requestedOrientation = SENSOR_LANDSCAPE`
- * affects the Activity's main window, but the Dialog's window may not
- * reliably follow — causing the "horizontal for a split second then back"
- * flicker. By rendering this overlay as a regular composable in the same
- * window, the orientation change applies cleanly to the entire Activity.
- *
- * Forces landscape orientation on entry, restores the original orientation
- * on exit. System bars are hidden for immersive playback and restored on
- * dismiss.
- *
- * Controls (YouTube-style overlay):
- *   - HIDDEN by default. Tap the video to reveal. Tap again to hide.
- *   - Auto-hide after [FullscreenControlsAutoHideMs] of inactivity.
- *   - Top row: quality picker (if >1 height) + fullscreen-exit.
- *   - Center row: previous | play/pause | next.
- *   - Bottom row: seekbar + current/total time labels.
- *
- * Transport controls (play/pause/next/prev/seek) drive the MAIN audio player
- * via [LocalPlayerConnection]. The video follows via the existing A/V sync
- * logic in [rememberVideoArtworkState] — the audio player is the source of
- * truth for position, and the video drift poller keeps them aligned.
- */
 @Composable
 fun FullscreenVideoOverlay(
     state: VideoArtworkState,
@@ -479,14 +262,11 @@ fun FullscreenVideoOverlay(
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
-    // PIP: when the activity is in Picture-in-Picture mode we hide all
-    // controls and gestures — the PiP window shows only the video surface.
-    // Tap-to-toggle, gestures, and the overflow sheet are all suppressed.
+
     val isInPipMode = LocalIsInPipMode.current
     var qualityMenuOpen by remember { mutableStateOf(false) }
     var aspectRatioMenuOpen by remember { mutableStateOf(false) }
-    // In PiP mode, controls are ALWAYS hidden (the user can't interact
-    // with the PiP window beyond tap-to-expand, which the system handles).
+
     var controlsVisible by remember { mutableStateOf(false) }
     var isUserSeeking by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableStateOf<Long?>(null) }
@@ -494,61 +274,30 @@ fun FullscreenVideoOverlay(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
 
-    // ── Gesture state ──
-    // Transient on-screen indicator shown when the user performs a swipe
-    // (brightness / volume) or double-tap (seek ±10s) gesture. Auto-clears
-    // a short delay after the gesture ends.
     var gestureFeedback by remember { mutableStateOf<GestureFeedback?>(null) }
 
-    // Brightness drag tracker — set to true while the user is actively
-    // dragging on the left half of the screen, used to gate the onVerticalDrag
-    // callback (which fires for both halves).
     var brightnessDragActive by remember { mutableStateOf(false) }
 
-    // Volume drag tracker — same pattern as brightness, for the right half.
     var volumeDragActive by remember { mutableStateOf(false) }
 
-    // The Job holders use `mutableStateOf<Job?>` but are NEVER read in the
-    // composable body — only inside event lambdas — so changes to them do
-    // not trigger recomposition.
     var brightnessGestureJob by remember { mutableStateOf<Job?>(null) }
     var volumeGestureJob by remember { mutableStateOf<Job?>(null) }
 
-    // ── User-tunable fullscreen-overlay preferences ──
-    // Slider style: shared with the main player via SliderStyleKey — same 5 styles.
-    // Playback speed: applied to BOTH the audio ExoPlayer (here) and the video
-    //   ExoPlayer (in rememberVideoArtworkState via a sibling LaunchedEffect).
-    // Ambient mode: toggles the blurred-thumbnail backdrop behind the video.
-    // Aspect ratio: cycles FIT / CROP / STRETCH / FILL — overrides [resizeMode]
-    //   passed in by the host when the user picks a non-default aspect.
     val (sliderStyle, onSliderStyleChange) = rememberEnumPreference(SliderStyleKey, defaultValue = SliderStyle.Standard)
     val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(VideoPlaybackSpeedKey, defaultValue = 1.0f)
     val (ambientMode, onAmbientModeChange) = rememberPreference(VideoAmbientModeKey, defaultValue = false)
     val (aspectRatio, onAspectRatioChange) = rememberEnumPreference(VideoAspectRatioKey, defaultValue = VideoAspectRatio.FIT)
 
-    // Effective resize mode: the user's aspect-ratio pick overrides the host's
-    // default. This lets the user cycle through Fit/Crop/Stretch/Fill without
-    // the host needing to know.
     val effectiveResizeMode = aspectRatio.toExoResizeMode()
 
-    // Intercept the back button so it dismisses the fullscreen overlay
-    // instead of collapsing the BottomSheet (which is what the sheet's own
-    // BackHandler would do). This BackHandler takes priority because it's
-    // composed after the BottomSheet's BackHandler.
     BackHandler { onDismiss() }
 
-    // Dismiss the overlay if playback fails — don't leave the user stuck
-    // in a fullscreen black screen with no way out.
     LaunchedEffect(state.hasPlaybackFailed) {
         if (state.hasPlaybackFailed) {
             onDismiss()
         }
     }
 
-    // ── Apply playback speed to the AUDIO ExoPlayer ──
-    // The video ExoPlayer is updated by a sibling LaunchedEffect in
-    // rememberVideoArtworkState reading the same preference. Keeping both
-    // at the same speed is what keeps audio + video aligned at non-1.0x.
     LaunchedEffect(playbackSpeed) {
         if (playerConnection == null) return@LaunchedEffect
         val safeSpeed = playbackSpeed.coerceIn(0.25f, 2f)
@@ -562,13 +311,6 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    // Mirror the audio player's current speed back into the preference so
-    // the overflow menu shows the right value if it was changed elsewhere
-    // (e.g. via the existing TempoPitchDialog). Poll every 2s — cheap.
-    //
-    // rememberUpdatedState is used so the while-loop polls the latest
-    // playbackSpeed value across recompositions (a LaunchedEffect(Unit)
-    // would otherwise capture the initial value forever).
     val latestPlaybackSpeed by rememberUpdatedState(playbackSpeed)
     val latestOnPlaybackSpeedChange by rememberUpdatedState(onPlaybackSpeedChange)
     LaunchedEffect(Unit) {
@@ -582,38 +324,13 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    // ── Force landscape orientation + hide system bars ──
-    //
-    // On enter: set orientation to SENSOR_LANDSCAPE (allows both
-    // landscape orientations based on device tilt) and hide system
-    // bars for true immersive playback.
-    // On dispose: restore the original orientation, show system bars, AND
-    // restore the original screen brightness.
-    //
-    // This is a DisposableEffect tied to the overlay's lifecycle. As long
-    // as the overlay is in the composition tree, the orientation stays
-    // landscape. When the overlay is removed (onDismiss sets isFullscreen
-    // = false → host stops rendering this composable), the orientation
-    // is restored.
-    //
-    // BRIGHTNESS RESTORATION: The user can adjust the screen brightness by
-    // dragging on the left half of the fullscreen overlay (see
-    // [currentWindowBrightness] / [applyWindowBrightness]). This override
-    // is applied to the Activity's window attributes and does NOT auto-
-    // revert when the overlay is dismissed. We MUST explicitly save the
-    // original brightness on enter and restore it on dispose — otherwise
-    // the user's manual brightness change persists after the video is
-    // closed, which is surprising and annoying (e.g., the phone stays
-    // dimmed at 10% brightness even after exiting the video).
     DisposableEffect(Unit) {
         val activity = context.findActivity()
         val originalOrientation = activity?.requestedOrientation
         val window = activity?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         val originalBehavior = controller?.systemBarsBehavior
-        // Save the original window brightness so we can restore it on
-        // dispose. BRIGHTNESS_OVERRIDE_NONE (-1f) means "use system
-        // default" — we save that as-is and restore it the same way.
+
         val originalBrightness = window?.attributes?.screenBrightness
 
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -631,13 +348,7 @@ fun FullscreenVideoOverlay(
                 controller.systemBarsBehavior =
                     originalBehavior ?: WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
             }
-            // ── Restore the original screen brightness ──
-            // Without this, any brightness adjustment the user made via
-            // the drag gesture would persist after the video is closed.
-            // Restoring to [originalBrightness] (which is either the
-            // system default of -1f or a previous override) ensures the
-            // phone returns to the brightness it was at BEFORE the user
-            // opened the fullscreen video.
+
             if (window != null && originalBrightness != null) {
                 val params = window.attributes
                 params.screenBrightness = originalBrightness
@@ -646,17 +357,8 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    // ── Auto-hide controls after inactivity ──
-    //
-    // Each time controlsVisible flips to true, start (or restart) a timer.
-    // When it fires, hide the controls — UNLESS the user is actively
-    // dragging the seekbar, has the quality menu open, or has the 3-dot
-    // overflow sheet open (those interactions need the controls to stay
-    // visible).
     LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet, isInPipMode) {
-        // In PiP mode the controls are never shown — skip the auto-hide
-        // timer entirely (it would be a no-op since controlsVisible is
-        // forced false by the click handler below, but skipping is cleaner).
+
         if (isInPipMode) {
             controlsVisible = false
             return@LaunchedEffect
@@ -667,10 +369,6 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    // Thumbnail URL — collected once at the top level so we can pass it
-    // into VideoArtworkSurface for ambient mode. Uses a fallback empty
-    // flow when playerConnection is null so collectAsState has a stable
-    // call site (Compose requires composables to be called unconditionally).
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
     val headerMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsStateWithLifecycle()
     val thumbnailUrl = headerMetadata?.thumbnailUrl
@@ -680,34 +378,28 @@ fun FullscreenVideoOverlay(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                // Tap detector — toggles controls on single tap, dismisses
-                // the overflow sheet if open, and seeks ±10s on double tap
-                // (left half rewind, right half forward).
+
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
-                            // PIP: suppress tap-to-toggle in PiP mode — the
-                            // system handles tap-to-expand on the PiP window
-                            // itself, and our controls would be unreadable
-                            // in the small PiP window anyway.
+
                             if (isInPipMode) return@detectTapGestures
                             if (showOverflowSheet) {
-                                // Tapping outside the sheet dismisses it instead of toggling overlay.
+
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
                                     if (!sheetState.isVisible) showOverflowSheet = false
                                 }
                             } else {
-                                // Single tap toggles the controls overlay.
+
                                 controlsVisible = !controlsVisible
-                                // Reset any visible gesture feedback so it doesn't linger.
+
                                 gestureFeedback = null
                             }
                         },
                         onDoubleTap = { offset ->
-                            // PIP: suppress double-tap seek in PiP mode.
+
                             if (isInPipMode) return@detectTapGestures
-                            // Double-tap seek: left half rewinds 10s, right half skips 10s.
-                            // Suppress when the overflow sheet is open.
+
                             if (!showOverflowSheet && playerConnection != null) {
                                 val width = size.width.toFloat()
                                 val isLeftHalf = offset.x < width / 2f
@@ -728,7 +420,7 @@ fun FullscreenVideoOverlay(
                                         forward = !isLeftHalf,
                                         showAt = System.currentTimeMillis(),
                                     )
-                                // Auto-clear the seek feedback shortly after release.
+
                                 volumeGestureJob?.cancel()
                                 brightnessGestureJob?.cancel()
                                 brightnessGestureJob =
@@ -738,19 +430,13 @@ fun FullscreenVideoOverlay(
                                             gestureFeedback = null
                                         }
                                     }
-                                // Keep the controls visible so the user sees the seekbar move.
+
                                 controlsVisible = true
                             }
                         },
                     )
                 }
-                // Vertical drag detector — routes by initial x position:
-                // left half = screen brightness, right half = media volume.
-                // Stacked as a separate pointerInput so it doesn't fight the
-                // tap detector above — Compose dispatches the same pointer
-                // events to both, and each only consumes what it handles
-                // (tap detector ignores drags beyond slop, drag detector
-                // ignores taps below slop).
+
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragStart = { offset ->
@@ -793,10 +479,7 @@ fun FullscreenVideoOverlay(
                         onVerticalDrag = { change, dragAmount ->
                             val isLeftHalf = change.position.x < size.width / 2f
                             if (isLeftHalf && brightnessDragActive) {
-                                // dragAmount is the incremental vertical delta
-                                // since the last event. We invert it so swiping
-                                // UP (negative) increases brightness. Each 400px
-                                // of cumulative drag sweeps the full 0..1 range.
+
                                 val delta = -dragAmount / 400f
                                 val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
                                 applyWindowBrightness(context, next)
@@ -809,11 +492,7 @@ fun FullscreenVideoOverlay(
                             } else if (!isLeftHalf && volumeDragActive) {
                                 val maxVol = maxMediaVolume(context)
                                 if (maxVol > 0) {
-                                    // Volume is more sensitive than brightness:
-                                    // 150px sweeps the full 0..maxVol range so
-                                    // the user doesn't have to swipe repeatedly
-                                    // to make a noticeable change. The previous
-                                    // 600px divisor made it feel "stuck".
+
                                     val delta = (-dragAmount / 150f) * maxVol
                                     val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                     val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
@@ -830,13 +509,7 @@ fun FullscreenVideoOverlay(
                     )
                 },
     ) {
-        // Same ExoPlayer — just a different surface. NO re-loading.
-        // The user's aspect-ratio pick overrides the host's resizeMode.
-        // Ambient mode renders a blurred-thumbnail backdrop behind the video
-        // when toggled on in the 3-dot overflow menu. Ambient mode is only
-        // applied here in the fullscreen landscape overlay — the inline
-        // portrait player ignores the ambientMode preference (see
-        // [InlineVideoPlayer]).
+
         VideoArtworkSurface(
             state = state,
             resizeMode = effectiveResizeMode,
@@ -845,15 +518,8 @@ fun FullscreenVideoOverlay(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // ── Gesture feedback overlay (brightness / volume / double-tap seek) ──
-        // Renders a pill-shaped indicator near the center of the screen with
-        // the appropriate icon + percentage or "+10s / -10s" label. Fades out
-        // 800ms after the gesture ends (handled by the onDragEnd / onDoubleTap
-        // launch above).
         gestureFeedback?.let { feedback -> GestureFeedbackBubble(feedback) }
 
-        // Loading overlay — same rationale as the inline player. Always
-        // visible during loading regardless of controlsVisible.
         if (isLoadingState(state)) {
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -867,18 +533,6 @@ fun FullscreenVideoOverlay(
             }
         }
 
-        // ── Controls overlay (YouTube-style) ──
-        //
-        // Fades in/out based on controlsVisible. Four regions:
-        //   - Top-left: song title + artist (marquee)
-        //   - Top-right: quality picker (if >1 height) + 3-dot overflow + fullscreen-exit
-        //   - Center: previous | play/pause | next
-        //   - Bottom: seekbar (uses selected slider style) + time labels
-        //
-        // PIP: the entire controls overlay is suppressed when in PiP mode
-        // (controlsVisible is forced false by the LaunchedEffect above, and
-        // we also gate the AnimatedVisibility on !isInPipMode for belt-and-
-        // suspenders safety).
         AnimatedVisibility(
             visible = controlsVisible && !showOverflowSheet && !isInPipMode,
             enter = fadeIn(animationSpec = tween(200)),
@@ -886,11 +540,7 @@ fun FullscreenVideoOverlay(
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
-                // ── Top-left: song title + artist ──
-                // Displayed only when controls are visible, alongside the
-                // top-right action row. Marquee-clipped to one line.
-                // Uses the hoisted [headerMetadata] collected above (avoids
-                // a second collectAsState call here).
+
                 headerMetadata?.let { meta ->
                     PlayerTextBackdrop(
                         textColor = Color.White,
@@ -931,11 +581,6 @@ fun FullscreenVideoOverlay(
                     }
                 }
 
-                // ── Top-right pill: quality + aspect-ratio + overflow + fullscreen-exit ──
-                // All controls are grouped inside a single dark pill so the
-                // overlay reads as one cohesive unit rather than a row of loose
-                // circular buttons. The pill uses a semi-transparent dark fill
-                // that, against the moving video, reads as frosted glass.
                 Row(
                     modifier =
                         Modifier
@@ -949,12 +594,7 @@ fun FullscreenVideoOverlay(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // ── Quality pill ──
-                    // Icon + current-quality label, so the pill reports what is playing instead of
-                    // only being a way in. Tapping it raises VideoQualitySheet from the bottom of
-                    // the screen (the old DropdownMenu opened as a cramped popup pinned to this
-                    // corner, which is the far side of the screen from the user's thumb in
-                    // landscape).
+
                     if (availableHeights.isNotEmpty()) {
                         Row(
                             modifier =
@@ -984,13 +624,6 @@ fun FullscreenVideoOverlay(
                         }
                     }
 
-                    // ── Aspect ratio picker ──
-                    // Moved out of the overflow sheet so the user can quickly
-                    // cycle aspect ratios without opening the sheet. Raises the
-                    // same sliding sheet the quality pill uses (see
-                    // VideoAspectRatioSheet) rather than a corner-pinned
-                    // dropdown, which in landscape opened on the far side of the
-                    // screen from the user's thumb.
                     IconButton(
                         onClick = { aspectRatioMenuOpen = true },
                         modifier = Modifier.size(40.dp),
@@ -1003,8 +636,6 @@ fun FullscreenVideoOverlay(
                         )
                     }
 
-                    // 3-dot overflow button — opens the ModalBottomSheet
-                    // with slider style / playback speed / ambient mode.
                     IconButton(
                         onClick = { showOverflowSheet = true },
                         modifier = Modifier.size(40.dp),
@@ -1030,17 +661,6 @@ fun FullscreenVideoOverlay(
                     }
                 }
 
-                // ── Center row: previous | play/pause | next ──
-                //
-                // Transport controls drive the MAIN audio player. The video
-                // follows via the A/V sync logic. If the user pauses, both
-                // audio and video pause; if the user skips, the new song's
-                // video loads with the "start together" hold.
-                //
-                // Uses the SAME player_skip_previous / player_skip_next /
-                // player_play / player_pause / player_replay drawables as
-                // the normal (portrait) player so the icons match across
-                // layouts.
                 if (playerConnection != null) {
                     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
                     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
@@ -1109,17 +729,6 @@ fun FullscreenVideoOverlay(
                             }
                         }
 
-                    // ── Bottom row: seekbar + time labels ──
-                    //
-                    // The seekbar reads from the MAIN audio player's position
-                    // (source of truth). On seek-finish, it calls
-                    // playerConnection.player.seekTo() and then
-                    // state.requestResync() so the video performs a
-                    // pause-load-resume to the new position.
-                    //
-                    // The slider uses [StyledPlaybackSlider] with the user's
-                    // selected [sliderStyle] — same 5 styles (Standard / Wavy
-                    // / Thick / Circular / Simple) as the main player.
                     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
                     val currentPosition = remember(mediaMetadata?.id) {
                         mutableLongStateOf(playerConnection.player.currentPosition)
@@ -1165,8 +774,7 @@ fun FullscreenVideoOverlay(
                             onValueChangeFinished = {
                                 sliderPosition?.let { target ->
                                     playerConnection.player.seekTo(target)
-                                    // Request a pause-load-resume on the video so it
-                                    // jumps to the new position in sync with audio.
+
                                     state.requestResync(target, playerConnection.player.playWhenReady)
                                 }
                                 isUserSeeking = false
@@ -1197,9 +805,6 @@ fun FullscreenVideoOverlay(
         }
     }
 
-    // ── Quality bottom sheet ──
-    // Slides up from the bottom over the fullscreen overlay. It carries its own SheetState, so it
-    // and the overflow sheet below can never fight over one animation.
     if (qualityMenuOpen) {
         VideoQualitySheet(
             preferredHeight = preferredHeight,
@@ -1210,8 +815,6 @@ fun FullscreenVideoOverlay(
         )
     }
 
-    // ── Aspect-ratio bottom sheet ──
-    // Same treatment as the quality sheet above, and likewise its own SheetState.
     if (aspectRatioMenuOpen) {
         VideoAspectRatioSheet(
             aspectRatio = aspectRatio,
@@ -1220,16 +823,13 @@ fun FullscreenVideoOverlay(
         )
     }
 
-    // ── 3-dot overflow bottom sheet ──
-    // Renders on top of the fullscreen overlay when showOverflowSheet is
-    // true. Tapping outside the sheet dismisses it.
     if (showOverflowSheet) {
         ModalBottomSheet(
             onDismissRequest = { showOverflowSheet = false },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+            KeepStatusBarHiddenInDialog()
             VideoOverflowSheetContent(
                 sliderStyle = sliderStyle,
                 onSliderStyleChange = onSliderStyleChange,
@@ -1242,34 +842,8 @@ fun FullscreenVideoOverlay(
     }
 }
 
-/**
- * Auto-hide delay for the fullscreen controls overlay. Matches YouTube's
- * ~3s feel — long enough to read the time labels, short enough to not
- * obscure the video.
- */
 private const val FullscreenControlsAutoHideMs = 3_500L
 
-/**
- * Content of the 3-dot overflow [ModalBottomSheet] shown from the fullscreen
- * video overlay. Renders three user-tunable options:
- *
- *  1. **Slider style** — 5 pill toggles (Standard / Wavy / Thick / Circular /
- *     Simple). Shares [SliderStyleKey] with the main player so a change here
- *     applies globally to the next render of any seekbar using
- *     [StyledPlaybackSlider].
- *  2. **Playback speed** — Slider (0.25–2.0x, 0.25 step) + "Normal" pill.
- *     Applies to BOTH the audio ExoPlayer (in MusicService) and the video
- *     ExoPlayer (in VideoArtworkState) so audio + video stay aligned at
- *     non-1.0x speeds.
- *  3. **Ambient mode** — Switch. When on, a slowly drifting blurred copy of
- *     the song thumbnail is rendered behind the video surface so the
- *     letterbox bars glow with the artwork's colors (YouTube-style ambient
- *     mode).
- *
- * Aspect ratio was previously the 4th option here but has been moved to a
- * dedicated button in the top bar of the fullscreen overlay so it's one tap
- * away instead of two.
- */
 @Composable
 private fun VideoOverflowSheetContent(
     sliderStyle: SliderStyle,
@@ -1287,7 +861,7 @@ private fun VideoOverflowSheetContent(
                 .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        // ── 1. Slider style ──
+
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = stringResource(R.string.video_slider_style),
@@ -1317,7 +891,6 @@ private fun VideoOverflowSheetContent(
             }
         }
 
-        // ── 2. Playback speed ──
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1339,7 +912,7 @@ private fun VideoOverflowSheetContent(
                 value = playbackSpeed.coerceIn(0.25f, 2f),
                 onValueChange = { onPlaybackSpeedChange(it) },
                 valueRange = 0.25f..2f,
-                steps = 6, // 0.25-step granularity: 0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00
+                steps = 6,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1363,7 +936,6 @@ private fun VideoOverflowSheetContent(
             }
         }
 
-        // ── 3. Ambient mode ──
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1387,9 +959,6 @@ private fun VideoOverflowSheetContent(
             )
         }
 
-        // Aspect ratio has been moved to a dedicated button in the top bar
-        // of the fullscreen overlay (next to the quality picker) so it's
-        // reachable without opening this sheet. See FullscreenVideoOverlay.
     }
 }
 
@@ -1423,9 +992,6 @@ private fun PillToggle(
     }
 }
 
-/**
- * Format milliseconds as M:SS or H:MM:SS.
- */
 private fun formatTime(ms: Long): String {
     if (ms <= 0) return "0:00"
     val totalSeconds = ms / 1000
@@ -1439,21 +1005,6 @@ private fun formatTime(ms: Long): String {
     }
 }
 
-/**
- * Compute the loading state from the [VideoArtworkState].
- *
- * The player is considered "loading" when:
- *   - It hasn't failed (failed states show an error, not a spinner).
- *   - AND any of:
- *     - The stream URL is being resolved ([VideoArtworkState.isResolvingUrl]).
- *     - A seekbar resync is in progress ([VideoArtworkState.isResyncing]).
- *     - The stream URL is set but the first frame hasn't rendered yet
- *       ([VideoArtworkState.streamUrl] != null && ![VideoArtworkState.isVideoReady]).
- *
- * Quality changes are NOT included here because the inline surface stays
- * visible (with the old frame) during a quality swap — only the fullscreen
- * overlay shows a spinner during quality changes.
- */
 private fun isLoadingState(state: VideoArtworkState): Boolean =
     !state.hasPlaybackFailed &&
         (
@@ -1462,58 +1013,18 @@ private fun isLoadingState(state: VideoArtworkState): Boolean =
                 (state.streamUrl != null && !state.isVideoReady)
         )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Fullscreen overlay gesture support
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * How long the gesture feedback bubble stays visible after the gesture ends.
- * Tuned to match YouTube's ~700ms feel — long enough to read, short enough
- * not to feel laggy.
- */
 private const val GestureFeedbackLingerMs = 800L
 
-/**
- * Sealed hierarchy of transient on-screen indicators shown when the user
- * performs a swipe (brightness / volume) or double-tap (seek ±10s) gesture
- * on the fullscreen video overlay.
- *
- * Each variant carries a `showAt` epoch-millis timestamp so the renderer
- * can animate the bubble's fade-out relative to the gesture's end time.
- */
 private sealed interface GestureFeedback {
     val showAt: Long
 
-    /**
-     * Brightness gesture. [percent] is the current window brightness as an
-     * integer 0..100 (rounded from the underlying 0..1 float).
-     */
     data class Brightness(val percent: Int, override val showAt: Long) : GestureFeedback
 
-    /**
-     * Volume gesture. [percent] is the current media volume as an integer
-     * 0..100 of the device's max media volume.
-     */
     data class Volume(val percent: Int, override val showAt: Long) : GestureFeedback
 
-    /**
-     * Double-tap seek gesture. [forward] is true for skip-forward (right
-     * half) and false for rewind (left half).
-     */
     data class Seek(val forward: Boolean, override val showAt: Long) : GestureFeedback
 }
 
-/**
- * Renders the transient gesture feedback bubble centered on the screen.
- *
- * Layout: a dark pill with the appropriate icon on top and a percentage
- * (brightness / volume) or "+10s / -10s" label below. The bubble does NOT
- * auto-animate out — that's handled by the caller, which clears the
- * [GestureFeedback] state after [GestureFeedbackLingerMs] via a coroutine.
- *
- * Must be called from inside a [Box] composable so the [BoxScope.align]
- * modifier can position the bubble at the center.
- */
 @Composable
 private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
     val (iconRes, label) =
@@ -1571,48 +1082,24 @@ private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
     }
 }
 
-// ── Brightness helpers ──
-//
-// The screen brightness is applied to the Activity's window via
-// WindowManager.LayoutParams.screenBrightness. A value of
-// BRIGHTNESS_OVERRIDE_NONE (-1f) means "use system default"; any value in
-// 0..1f overrides it for the duration of this window.
-//
-// IMPORTANT: The brightness override does NOT auto-revert when the
-// composable leaves the tree. We MUST explicitly restore the original
-// brightness in [FullscreenVideoOverlay]'s DisposableEffect.onDispose —
-// otherwise the user's manual brightness change persists after the video
-// is closed, which is surprising and annoying.
-
-/**
- * Read the current window brightness. Returns a value in 0..1f, or the
- * system default (interpreted as 0.5f for UI purposes) if the window is
- * using BRIGHTNESS_OVERRIDE_NONE.
- */
 private fun currentWindowBrightness(context: Context): Float {
     val activity = context.findActivity() ?: return 0.5f
     val attrs = activity.window.attributes
     return if (attrs.screenBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
-        // Read the system brightness as the baseline.
+
         val system =
             try {
                 Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
             } catch (e: Settings.SettingNotFoundException) {
                 128
             }
-        // System brightness is 0..255 — normalize to 0..1.
+
         system / 255f
     } else {
         attrs.screenBrightness
     }
 }
 
-/**
- * Apply a window brightness override in the 0..1 range. Values outside
- * that range are coerced. A value of 0 fully dims the screen (the
- * Backlight can't actually go to 0 on most devices, but 0.01f is close
- * enough for UX purposes).
- */
 private fun applyWindowBrightness(context: Context, brightness: Float) {
     val activity = context.findActivity() ?: return
     val window = activity.window ?: return
@@ -1620,13 +1107,6 @@ private fun applyWindowBrightness(context: Context, brightness: Float) {
     params.screenBrightness = brightness.coerceIn(0f, 1f)
     window.attributes = params
 }
-
-// ── Volume helpers ──
-//
-// We adjust STREAM_MUSIC via AudioManager — this is the same stream the
-// main MusicService ExoPlayer uses, so the change is global and persists
-// after the overlay is dismissed. This matches user expectations: they
-// explicitly asked to change the volume, so the change should stick.
 
 private fun audioManager(context: Context): AudioManager? =
     context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager

@@ -7,7 +7,6 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -28,24 +27,10 @@ class CipherWebView private constructor(
 ) {
     private val webView = WebView(context)
 
-    // Single-shot continuation slots. All resumes go through takeAndNull-style helpers so a late
-    // or duplicate JS-bridge callback (or a renderer-gone racing a normal resume) can never
-    // double-resume and crash inside a @JavascriptInterface method. The sig/n slots additionally
-    // carry a per-request id, echoed back by the JS bridge: a late result from a cancelled/
-    // abandoned request must never resume the NEXT request's continuation with the wrong value.
     private var initContinuation: Continuation<CipherWebView>? = initContinuation
     private val sigSlot = RequestSlot<String>()
     private val nSlot = RequestSlot<String>()
 
-    /**
-     * Single-shot continuation slot with an id-checked take. arm() returns the request id the
-     * JS call must echo back; takeIfCurrent(id) ignores late callbacks from superseded
-     * requests (the stale-result guard); takeAny() is for renderer-gone/timeout paths, which
-     * must clear whatever is pending. Synchronized because JS-bridge callbacks arrive on a
-     * WebView-internal thread while onRenderProcessGone/timeouts run on the main thread.
-     * The distinct method names are deliberate: same-name overloads made dropping the id a
-     * silent, compile-clean way to reintroduce the race.
-     */
     private class RequestSlot<T> {
         private var continuation: Continuation<T>? = null
         private var requestId = 0
@@ -64,11 +49,6 @@ class CipherWebView private constructor(
         fun takeAny(): Continuation<T>? = continuation.also { continuation = null }
     }
 
-    /**
-     * Set once the WebView's renderer process has died (or an evaluate timed out, which on a
-     * wedged renderer is indistinguishable). A dead instance must be discarded and recreated —
-     * per Android docs a WebView whose render process is gone cannot be reused.
-     */
     @Volatile
     var isDead: Boolean = false
         private set
@@ -130,16 +110,14 @@ class CipherWebView private constructor(
         }
 
         webView.webViewClient = object : WebViewClient() {
-            // API 26+ callback (never fires below 26; the withTimeout nets in create()/
-            // deobfuscateSignature()/transformN() carry recovery on providers that don't
-            // deliver it, e.g. Chromium-61-era WebViews).
+
             @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 Timber.tag(TAG).e(
                     "=== RENDER PROCESS GONE === didCrash=${runCatching { detail.didCrash() }.getOrNull()}"
                 )
                 onRendererGone("WebView render process gone (didCrash=${runCatching { detail.didCrash() }.getOrNull()})")
-                // Consume the event so the framework doesn't kill the app process.
+
                 return true
             }
         }
@@ -147,12 +125,6 @@ class CipherWebView private constructor(
         Timber.tag(TAG).d("WebView settings configured")
     }
 
-    /**
-     * The renderer died (or is treated as dead after a timeout): fail every pending continuation
-     * with [CipherRendererGoneException] so create()/decipher fail fast instead of hanging forever
-     * on JS-bridge callbacks that will never come (and so CipherDeobfuscator's mutex is released),
-     * then destroy the WebView — it cannot be reused after a render-process crash.
-     */
     private fun onRendererGone(reason: String) {
         isDead = true
         val e = CipherRendererGoneException(reason)
@@ -162,23 +134,15 @@ class CipherWebView private constructor(
         destroyWebView()
     }
 
-    // Single-shot take — synchronized because JS-bridge callbacks arrive on a WebView-internal
-    // thread while onRenderProcessGone/timeouts run on the main thread.
     @Synchronized
     private fun takeInitContinuation(): Continuation<CipherWebView>? =
         initContinuation.also { initContinuation = null }
 
     private inline fun <T> T.resumeSafely(block: (T) -> Unit) {
-        // A continuation cancelled by withTimeout may already be completed; never let that
-        // throw out of a WebView callback.
+
         runCatching { block(this) }
     }
 
-    /**
-     * Loads the already-prepared player.js (written by create() on an IO dispatcher via
-     * [buildModifiedPlayerJsImpl]) into the WebView. Only the cheap WebView work happens here
-     * on Main.
-     */
     private fun loadPreparedPlayerJs(cacheDir: File) {
         usingHardcodedMode = sigInfo?.isHardcoded == true || nFuncInfo?.isHardcoded == true
 
@@ -455,8 +419,7 @@ function discoverAndInit() {
                 }
             }
         } catch (e: TimeoutCancellationException) {
-            // A renderer that never answers evaluateJavascript is wedged/dead — safety net for
-            // providers where onRenderProcessGone doesn't fire.
+
             Timber.tag(TAG).e("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms — treating renderer as gone")
             failAsRendererGone("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
         }
@@ -531,7 +494,6 @@ function discoverAndInit() {
         }
     }
 
-    /** Timeout path: mark this instance dead, clear pending slots, throw renderer-gone. */
     private fun failAsRendererGone(reason: String): Nothing {
         isDead = true
         sigSlot.takeAny()
@@ -548,7 +510,7 @@ function discoverAndInit() {
     private fun destroyWebView() {
         if (destroyed) return
         destroyed = true
-        // After a render-process crash some WebView methods can throw — never let teardown crash.
+
         runCatching {
             webView.clearHistory()
             webView.clearCache(true)
@@ -572,19 +534,10 @@ function discoverAndInit() {
         private const val TAG = "Metrolist_CipherWebView"
         private const val JS_INTERFACE = "CipherBridge"
 
-        // Loading + parsing ~2.8 MB player.js on a slow device takes seconds; a renderer that
-        // hasn't answered after this long is dead or wedged (observed OOM kills happen ~1.2 s in).
         private const val CREATE_TIMEOUT_MS = 30_000L
 
-        // A live renderer answers sig/n evaluate calls in milliseconds; this only fires when the
-        // renderer died without onRenderProcessGone being delivered (old providers).
         private const val EVAL_TIMEOUT_MS = 15_000L
 
-        /**
-         * Builds the export-injected player.js. This scans and copies a ~2.8 MB string — it MUST run
-         * off the main thread (create() calls it on Dispatchers.IO before any WebView work), or every
-         * WebView (re)build would freeze the UI thread for the duration.
-         */
         private fun buildModifiedPlayerJsImpl(
             playerJs: String,
             sigInfo: FunctionNameExtractor.SigFunctionInfo?,
@@ -604,8 +557,7 @@ function discoverAndInit() {
             val exports = buildList {
                 val sigJsExpr = sigInfo?.jsExpression
                 if (sigJsExpr != null) {
-                    // Expression-based sig decipher (VM-dispatch players like 9c249f6f).
-                    // INPUT is replaced with the sig argument.
+
                     val expr = sigJsExpr.replace("INPUT", "sig")
                     Timber.tag(TAG).d("Sig: expression-based export: $expr")
                     add("window._cipherSigFunc = function(sig) { try { return $expr; } catch(e) { return null; } };")
@@ -633,7 +585,7 @@ function discoverAndInit() {
                 }
                 val nJsExpr = nFuncInfo?.jsExpression
                 if (nJsExpr != null) {
-                    // Expression-based n-transform (VM-dispatch players).
+
                     val expr = nJsExpr.replace("INPUT", "n")
                     Timber.tag(TAG).d("N: expression-based export: ${expr.take(80)}")
                     add("window._nTransformFunc = function(n) { try { return $expr; } catch(e) { return n; } };")
@@ -686,8 +638,6 @@ function discoverAndInit() {
             Timber.tag(TAG).d("sigInfo: $sigInfo")
             Timber.tag(TAG).d("nFuncInfo: $nFuncInfo")
 
-            // Heavy prep (multi-MB string transform + disk write) runs on IO; only WebView
-            // construction and the load call happen on the main thread below.
             val cacheDir = withContext(Dispatchers.IO) {
                 val modifiedJs = buildModifiedPlayerJsImpl(playerJs, sigInfo, nFuncInfo)
                 val dir = File(context.cacheDir, "cipher")
@@ -714,10 +664,7 @@ function discoverAndInit() {
                 destroyQuietly(created)
                 throw CipherRendererGoneException("CipherWebView init timed out after ${CREATE_TIMEOUT_MS}ms")
             } catch (e: Exception) {
-                // Covers both caller cancellation (CancellationException is rethrown, never
-                // swallowed) and init failure via an error resume (e.g. onPlayerJsError ->
-                // CipherException): destroy the half-initialized WebView either way, or every
-                // failed create() leaks a live renderer that the retry path then multiplies.
+
                 destroyQuietly(created)
                 throw e
             }
@@ -727,7 +674,7 @@ function discoverAndInit() {
             if (wv == null) return
             withContext(NonCancellable + Dispatchers.Main) {
                 wv.isDead = true
-                wv.takeInitContinuation() // never resume a cancelled continuation later
+                wv.takeInitContinuation()
                 wv.destroyWebView()
             }
         }
@@ -736,9 +683,4 @@ function discoverAndInit() {
 
 class CipherException(message: String) : Exception(message)
 
-/**
- * The cipher WebView's render process died (kernel OOM kill, crash) or stopped responding.
- * The instance is unusable; callers must drop it and decide whether recreating is worth it
- * (see [RendererRecoveryPolicy]).
- */
 class CipherRendererGoneException(message: String) : Exception(message)

@@ -100,57 +100,26 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
 
-// ============================================================================
-// BitChord home-feed design system (ported from kushagrasinghx/BitChord).
-//
-// The metrics below are the single source of truth for the home page's visual
-// language: the left/right gutter every shelf aligns to, the width of a
-// compact shelf card, the hero card's share-of-row and ceiling, and the
-// vertical breathing room a shelf leaves below itself. Everything the feed
-// renders — the real cards and the skeletons that stand in for them — reads
-// these so nothing jumps when data lands.
-// ============================================================================
-
-/** The left and right inset every home page's content sits at (BitChord PAGE_GUTTER). */
 val HomeFeedGutter = 10.dp
 
-/** Width of a card in the compact carousels (BitChord SHELF_CARD_WIDTH). */
 val HomeShelfCardWidth = 150.dp
 
-/** Corner radius of a compact shelf card. */
 val HomeShelfCardCorner = 12.dp
 
-/** Horizontal gap between cards in a shelf row (BitChord: 14dp). */
 val HomeShelfCardSpacing = 14.dp
 
-/** Vertical gap between the end of one shelf and the header of the next (BitChord: 26dp). */
 val HomeShelfBottomSpacing = 26.dp
 
-/** Share of the row a lead-shelf hero card takes, so the next one peeks in past it. */
 private const val HomeHeroCardFraction = 0.70f
 
-/** How wide a hero card is ever allowed to get (tablet ceiling). */
 private val HomeHeroCardMaxWidth = 320.dp
 
-/** A hero card's proportions: a touch taller than it is wide. */
 const val HomeHeroCardRatio = 0.92f
 
-/** Corner radius of a hero card. */
 val HomeHeroCardCorner = 18.dp
 
-/**
- * How wide a hero card should be in a row [available] wide — the shared answer
- * for the real shelf and for the skeleton that stands in for it, which have to
- * agree to the pixel or the feed jumps when the data lands.
- */
 fun homeHeroCardWidth(available: Dp): Dp = minOf(available * HomeHeroCardFraction, HomeHeroCardMaxWidth)
 
-/**
- * The hairline border every thumbnail carries (BitChord thumbnailBorder):
- * 1dp at 15% alpha, white on dark themes and black on light ones, clipped to
- * the artwork's shape. Keeps pale sleeves from dissolving into the background
- * (and dark ones into a dark theme).
- */
 fun Modifier.homeFeedThumbnailBorder(shape: Shape): Modifier =
     composed {
         val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -163,59 +132,20 @@ fun Modifier.homeFeedThumbnailBorder(shape: Shape): Modifier =
         )
     }
 
-/**
- * Shared HazeState for the home page's top progressive blur (BitChord
- * TopFadeBlur). MainActivity provides the instance and renders the blurred
- * strip inside the top bar for the Home route; HomeScreen tags its own root
- * Box as the blur's source. A CompositionLocal is used because the bar and the
- * feed live in different parts of the tree (Scaffold.topBar vs NavHost
- * content) and must share the exact same state object.
- */
 val LocalHomeHazeState = compositionLocalOf<HazeState?> { null }
 
-/**
- * The Search route's twin of [LocalHomeHazeState] (2026-09-04 search-page
- * redesign: "Redesign the whole search page from scratch with the same
- * behaviour and reference from Home page... search text in the middle with
- * haze"). A separate instance from the Home one so the two routes never
- * cross-sample during the slide transition; SearchScreen tags its root Box
- * as this blur's source and MainActivity renders the same [HomeTopFadeBlur]
- * material over the Search top bar.
- */
 val LocalSearchHazeState = compositionLocalOf<HazeState?> { null }
 
-/**
- * The Library tab's twin of [LocalHomeHazeState] (2026-09-04: "Implement the
- * same home page ui and behaviour for setting main page and library tab main
- * page too"). A separate instance so the top-level routes never cross-sample
- * during the fade-through transition; LibraryScreen tags its root Box as this
- * blur's source and MainActivity renders the same [HomeTopFadeBlur] material
- * over the Library top bar, whose content scrolls under it.
- */
 val LocalLibraryHazeState = compositionLocalOf<HazeState?> { null }
 
-// ============================================================================
-// Shimmer skeletons (ported from BitChord Skeletons.kt). Grey stand-ins for
-// content still on the wire, laid out to the same metrics as the real rows
-// and cards so nothing jumps when the data lands.
-// ============================================================================
-
-/** How long one highlight sweep takes to cross a placeholder. */
 private const val HomeShimmerPeriodMs = 1400
 
 private val HomeBlockShape = RoundedCornerShape(6.dp)
 private val HomeLineShape = RoundedCornerShape(4.dp)
 
-// Ragged widths, so a run of rows reads as text rather than as a barcode.
 private val HomeTitleWidths = listOf(0.68f, 0.46f, 0.58f, 0.74f, 0.52f)
 private val HomeSubtitleWidths = listOf(0.34f, 0.44f, 0.27f, 0.38f, 0.31f)
 
-/**
- * One placeholder block, with a highlight sweeping across it. The sweep is
- * read inside the draw block rather than the composable body: a screenful of
- * these would otherwise recompose on every animation frame, and all any of
- * them needs per frame is a fresh gradient.
- */
 @Composable
 fun HomeShimmerBox(modifier: Modifier = Modifier, shape: Shape = HomeBlockShape) {
     val base = MaterialTheme.colorScheme.surfaceVariant
@@ -234,9 +164,7 @@ fun HomeShimmerBox(modifier: Modifier = Modifier, shape: Shape = HomeBlockShape)
         modifier
             .clip(shape)
             .drawWithCache {
-                // The band travels from fully off one edge to fully off the other, which
-                // leaves a beat of flat grey between passes rather than a highlight
-                // permanently parked somewhere on the block.
+
                 val band = size.width * 0.5f
                 val startX = -band + sweep.value * (size.width + band * 2)
                 val brush =
@@ -250,7 +178,6 @@ fun HomeShimmerBox(modifier: Modifier = Modifier, shape: Shape = HomeBlockShape)
     )
 }
 
-/** A placeholder for one line of text, sized as a fraction of its parent. */
 @Composable
 private fun HomeSkeletonLine(fraction: Float, height: Dp, modifier: Modifier = Modifier) {
     HomeShimmerBox(
@@ -259,7 +186,6 @@ private fun HomeSkeletonLine(fraction: Float, height: Dp, modifier: Modifier = M
     )
 }
 
-/** Stands in for a section heading. */
 @Composable
 private fun HomeSectionHeaderSkeleton(index: Int = 0) {
     Column(Modifier.padding(horizontal = HomeFeedGutter, vertical = 10.dp)) {
@@ -267,11 +193,6 @@ private fun HomeSectionHeaderSkeleton(index: Int = 0) {
     }
 }
 
-/**
- * The lead shelf skeleton: near-page-width cards. Built on a [LazyRow] with
- * scrolling off rather than a plain [Row], so a card running past the right
- * edge is measured and clipped exactly as the real shelf's is.
- */
 @Composable
 private fun HomeHeroShelfSkeleton() {
     Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
@@ -297,7 +218,6 @@ private fun HomeHeroShelfSkeleton() {
     }
 }
 
-/** The compact carousel of square cards used by every shelf below the first. */
 @Composable
 fun HomeShelfSkeleton(index: Int = 0) {
     Column(Modifier.padding(bottom = HomeShelfBottomSpacing)) {
@@ -332,7 +252,6 @@ fun HomeShelfSkeleton(index: Int = 0) {
     }
 }
 
-/** Home while the first page of shelves is still loading. */
 fun LazyListScope.homeFeedSkeleton(shelves: Int = 3) {
     item(key = "home_skeleton_hero") { HomeHeroShelfSkeleton() }
     items(shelves - 1, key = { "home_skeleton_shelf_$it" }) { index ->
@@ -340,25 +259,10 @@ fun LazyListScope.homeFeedSkeleton(shelves: Int = 3) {
     }
 }
 
-/** Appended to the feed while a further page of shelves is on its way. */
 fun LazyListScope.homeFeedMoreSkeleton() {
     item(key = "home_skeleton_more") { HomeShelfSkeleton() }
 }
 
-// ============================================================================
-// Section header — the BitChord "Shelf" heading: a heavy title with an
-// optional second line, typography-led rather than chrome-led.
-// ============================================================================
-
-/**
- * BitChord-style section header: title at BitChord's headlineMedium scale
- * (22sp, W700, tight tracking) with an optional subtitle below at the card
- * title scale, sitting at the page gutter with 10dp of vertical padding.
- *
- * [leadingIcon] and [thumbnail] keep the fork's existing affordances (account
- * avatar, per-section glyph) rendered inline before the title; [onClick]
- * navigates when the header is tappable, matching the fork's headers.
- */
 @Composable
 fun HomeFeedSectionHeader(
     title: String,
@@ -406,10 +310,6 @@ fun HomeFeedSectionHeader(
     }
 }
 
-// ============================================================================
-// Cards
-// ============================================================================
-
 private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
     composed {
         clickable(
@@ -419,19 +319,6 @@ private fun Modifier.headerClickable(onClick: () -> Unit): Modifier =
         )
     }
 
-/**
- * The compact square card every non-hero shelf renders (BitChord ShelfCard):
- * artwork with the hairline border, the title one line below, the subtitle
- * under that. Interactions (tap to open / play, hold for the menu) and the
- * active-track visuals come from the fork's existing components.
- *
- * [thumbnailAspectRatio] defaults to the square BitChord card, but video
- * shelves pass the thumbnail's REAL ratio (16:9) so music-video thumbnails
- * keep their actual breadth and width instead of being cropped into the
- * square — and those landscape frames skip the hairline border entirely
- * (user request 2026-09-04: "The thumbnails should have their actual breadth
- * and width without any borders").
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedShelfCard(
@@ -448,8 +335,7 @@ fun HomeFeedShelfCard(
     trailing: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (isCircular) CircleShape else RoundedCornerShape(HomeShelfCardCorner)
-    // Landscape (video) frames render borderless; square sleeves keep the
-    // hairline that keeps pale covers from dissolving into the page.
+
     val isVideoFrame = !isCircular && kotlin.math.abs(thumbnailAspectRatio - 1f) > 0.001f
     Column(
         modifier =
@@ -502,12 +388,6 @@ fun HomeFeedShelfCard(
     }
 }
 
-/**
- * The big card the lead shelf pages sideways (BitChord HeroCard): artwork with
- * the caption laid over a scrim, as on Listen Now. The whole card toggles
- * play/pause when the track is the active one, matching the fork's hero
- * behaviour.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedHeroCard(
@@ -572,8 +452,7 @@ fun HomeFeedHeroCard(
                 )
             }
         }
-        // Active / playing indicator — small dot at top-right (kept from the
-        // fork's hero so the current track stays findable at a glance).
+
         if (isActive) {
             Box(
                 modifier =
@@ -590,13 +469,6 @@ fun HomeFeedHeroCard(
     }
 }
 
-// ============================================================================
-// Typed cards — map the fork's data types onto the generic cards above while
-// preserving every existing interaction (section queue playback, navigation,
-// long-press menus).
-// ============================================================================
-
-/** A compact shelf card for a local [Song]. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedSongCard(
@@ -638,7 +510,6 @@ fun HomeFeedSongCard(
     )
 }
 
-/** A compact shelf card for a remote YouTube item (song/album/artist/playlist). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedYTItemCard(
@@ -659,13 +530,7 @@ fun HomeFeedYTItemCard(
             is ArtistItem -> item.subscriberCountText.orEmpty()
             is PlaylistItem -> item.songCountText.orEmpty()
         }
-    // Video thumbnails keep their REAL aspect ratio (user request 2026-09-04:
-    // "The thumbnails should have their actual breadth and width without any
-    // borders") — YouTube music-video thumbnails are 16:9, so song cards from
-    // the remote shelves render as landscape cards instead of the 16:9 image
-    // being cropped into the old square frame (the earlier "white empty
-    // borders" fix's Crop behaviour, which the user rejected). Square artwork
-    // (albums, playlists) and circular avatars (artists) are unchanged.
+
     val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
     val resolvedThumbnailRatio = item.preferredThumbnailRatio(cropThumbnailToSquare)
     HomeFeedShelfCard(
@@ -721,7 +586,6 @@ fun HomeFeedYTItemCard(
     )
 }
 
-/** A compact shelf card for a library [LocalItem] (song/album/artist). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeFeedLocalItemCard(
@@ -795,20 +659,8 @@ fun HomeFeedLocalItemCard(
     }
 }
 
-// ============================================================================
-// Pull-to-refresh — BitChord behaviour: the usual circular puck suppressed,
-// the drag feedback instead being a loader line along the bottom edge of the
-// top bar. The line fills left-to-right as the pull approaches the threshold,
-// then sweeps indefinitely once the refresh is away, so the two phases read
-// as one continuous gesture.
-// ============================================================================
-
 private val HomeRefreshLineHeight = 2.5.dp
 
-/**
- * The refresh indicator line, tracking the drag on [distanceFraction] and
- * sweeping while [refreshing]. Position it at the bottom edge of the top bar.
- */
 @Composable
 fun HomePullRefreshLine(
     refreshing: Boolean,
@@ -847,46 +699,14 @@ fun HomePullRefreshLine(
     }
 }
 
-// ============================================================================
-// TopFadeBlur — the glass behind the home top bar (BitChord TopFadeBlur).
-// Full blur along the top edge, ramping to nothing on the way down: a bar
-// carrying a uniform pane is a rectangle sitting on the page, and its bottom
-// edge is a line drawn across whatever scrolls under it. Fading out instead
-// leaves the title and actions something to be legible against and the page
-// nothing to be interrupted by.
-// ============================================================================
-
-/**
- * The run the fade needs below the bar to get from full blur to none without
- * the eye finding where it got there. Shortened from BitChord's 120 to 88:
- * the page's first heading sits a fixed distance down the screen, well
- * inside this run, and over 120dp the ramp still had a tenth of its blur
- * left there. The tail is what hides the layer's end, so it cannot be cut;
- * 88 is as short as it goes before the ramp starts to be findable.
- */
 private val HomeTopFadeRun = 88.dp
 
-/** How much blur the fade reaches at its outer edge — short of all of it. */
 private const val HomeTopFadePeak = 0.75f
 
-/**
- * How dark the readability scrim starts, at the very top of the strip.
- * Modest on purpose: it is there to give the glyphs a floor on a pale sleeve,
- * not to grey out the artwork.
- */
 private const val HomeTopScrimPeak = 0.42f
 
-/** Enough stops that the ramp does not band across a near-flat colour. */
 private const val HomeTopScrimStops = 12
 
-/**
- * The progressive top-fade blur behind the home top bar. Keyed to the colour
- * of the page underneath rather than the theme's background: both halves of
- * the material are flat colour, and wherever the blur has least to say, that
- * flat colour is most of what is left. The scrim is laid *over* the blur
- * (the only order that works: haze samples the content tagged as its source,
- * so a scrim underneath would be painted over by the blurred content).
- */
 @OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 fun HomeTopFadeBlur(
@@ -903,30 +723,24 @@ fun HomeTopFadeBlur(
                 .height(height)
                 .hazeEffect(
                     state = hazeState,
-                    // Keyed to the colour of the page underneath, not the theme's.
+
                     style = HazeMaterials.ultraThin(pageColor),
                 ) {
-                    // Cubic rather than haze's quadratic, and eased out rather than
-                    // in: the ramp falls away quickly under the bar and then spends
-                    // the rest of its run near nothing, which is what hides where
-                    // the layer ends.
+
                     progressive =
                         HazeProgressive.verticalGradient(
                             easing = EaseOutCubic,
                             startIntensity = HomeTopFadePeak,
                             endIntensity = 0f,
                         )
-                    // Uniform across the layer, so it would show as texture over
-                    // the untouched foot of the ramp — the edge being hidden.
+
                     noiseFactor = 0f
                 },
     )
     val scrim =
         remember(pageColor) {
             Brush.verticalGradient(
-                // The same eased-out shape as the blur above it, so the two arrive
-                // at nothing together. A scrim that outlasted the blur would leave
-                // a tinted band hanging below a fade that had already finished.
+
                 colorStops =
                     Array(HomeTopScrimStops) { i ->
                         val t = i / (HomeTopScrimStops - 1f)
@@ -943,40 +757,9 @@ fun HomeTopFadeBlur(
     )
 }
 
-// ============================================================================
-// ScreenHeaderHaze — the home page's header haze, ported to every other
-// list screen (2026-09-04). The user asked for "the blurred haze around
-// the header in home page" to be enabled on History, playlists, online
-// playlists, cached and the other screens with pinned header pills too.
-// ============================================================================
-
-/**
- * Creates the [HazeState] a screen tags its scrolling content with (via
- * `Modifier.hazeSource(...)`) so [ScreenHeaderHaze] can blur over it.
- */
 @Composable
 fun rememberScreenHeaderHaze(): HazeState = remember { HazeState() }
 
-/**
- * The pinned progressive top-fade blur for the pill-header screens — the
- * exact material the Home route's top bar uses ([HomeTopFadeBlur]), sized to
- * the zone those screens' pinned header pills occupy (status bar + a 64dp
- * pill row, plus the fade run beneath).
- *
- * Usage per screen:
- * ```
- * val headerHaze = rememberScreenHeaderHaze()
- * Box(Modifier.fillMaxSize().hazeSource(headerHaze)) {   // content root
- *     ScreenHeaderHaze(headerHaze, systemBarsTopPadding) // FIRST child
- *     LazyColumn(...)                                     // scrolling content
- *     LiquidGlassActionPill(...)                          // pinned pills above the haze
- * }
- * ```
- *
- * The overlay is skipped below Android 12 (haze's RenderEffect path) and
- * while the player sheet is expanded (the screen is covered anyway — pass
- * `enabled` accordingly if a cheap gate is available).
- */
 @Composable
 fun ScreenHeaderHaze(
     hazeState: HazeState,
@@ -994,5 +777,4 @@ fun ScreenHeaderHaze(
     )
 }
 
-/** The pill row the haze's solid zone covers: the 48dp pills + their 12dp top offset + a little slack. */
 private val ScreenHeaderHazeBarZone = 64.dp

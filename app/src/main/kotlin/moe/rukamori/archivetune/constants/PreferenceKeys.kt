@@ -27,14 +27,8 @@ val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
 val WallpaperExtractionFailedKey = booleanPreferencesKey("wallpaperExtractionFailed")
 val HideStatusBarKey = booleanPreferencesKey("hideStatusBar")
 
-// UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
-// 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.
-// Stored as a float so the slider is continuous (1% steps via 46 discrete positions).
 val UiScaleFactorKey = floatPreferencesKey("uiScaleFactor")
 
-// When true, forces the two-pane NavigationRail layout (normally reserved for
-// tablet-width windows) on phone-sized windows too. Useful on landscape phones
-// and on tablets where the dp breakpoint misclassifies the window.
 val TabletModeEnabledKey = booleanPreferencesKey("tabletModeEnabled")
 val EnableHapticFeedbackKey = booleanPreferencesKey("enableHapticFeedback")
 val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
@@ -47,12 +41,6 @@ val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
 
-/**
- * Which lyrics surface the SimpMusic player style opens: SimpMusic's own (true) or the app's
- * Enhanced renderer (false, the default). Only the SimpMusic style reads this — every other style
- * follows [LyricsModeKey] — so the setting is only offered while that style is selected. Default
- * false so choosing the style does not silently replace the lyrics view the user already had.
- */
 val SimpMusicLyricsKey = booleanPreferencesKey("simpMusicLyrics")
 
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
@@ -60,23 +48,8 @@ val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
 
-/**
- * Whether an album page plays the album's looping motion artwork behind its header.
- *
- * Deliberately separate from [ArchiveTuneCanvasKey], which governs the *player's*
- * now-playing canvas: the two are different surfaces with different costs (the album
- * header loop starts as soon as a page opens, whether or not anything is playing), and
- * a user who wants one does not necessarily want the other. Default on, so albums that
- * have motion artwork animate the way they do in Apple Music.
- */
 val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
 
-/**
- * Newline-separated list of extra Spotify Canvas resolver endpoints, tried in order after
- * Spotify's own Canvas endpoint. Empty (the default) means only the built-in resolver is
- * used. See [moe.rukamori.archivetune.utils.CanvasResolverEndpoints] for why this is user
- * supplied rather than a shipped list.
- */
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
@@ -99,48 +72,28 @@ val AodTextAlignmentKey = stringPreferencesKey("aodTextAlignment")
 val AodControlStyleKey = stringPreferencesKey("aodControlStyle")
 val AodControlSizeKey = floatPreferencesKey("aodControlSize")
 
-/**
- * Slider style for the AOD progress bar. Reuses the [SliderStyle] enum so the
- * same five styles (Standard / Wavy / Thick / Circular / Simple) are available
- * as for the main player. Stored separately from [SliderStyleKey] so users can
- * pick a different style for AOD without affecting the main player.
- */
 val AodSliderStyleKey = stringPreferencesKey("aodSliderStyle")
 val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
-// Show a compact, dimmed lyrics line on the AOD screen while music plays.
+
 val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
-// When > 0, automatically enter AOD mode after this many seconds of the player sheet being
-// collapsed (i.e. the user is no longer actively interacting with the player). 0 disables.
+
 val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
-// When true, AOD mode auto-triggers when the screen is about to turn off due to inactivity
-// (driven via the system lock intent). Disabled by default to avoid surprises.
+
 val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
-// Experimental native Musixmatch provider (token.get + macro.subtitles + richsync→TTML).
-// Off by default; toggle surfaces in Lyrics settings under "Experimental".
+
 val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")
 
-// Backdrop blur for detail pages
 val BackdropEnabledKey = booleanPreferencesKey("backdropEnabled")
 val BackdropBlurAmountKey = intPreferencesKey("backdropBlurAmount")
 val MiniPlayerLastAnchorKey = intPreferencesKey("miniPlayerLastAnchor")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundStyle")
 
-// ── Liquid Glass effects ──────────────────────────────────────────────────────
-// Master toggle: when off, all Liquid Glass surfaces (header pills on detail
-// pages, the Liquid Glass mini player background, and the Liquid Glass nav bar
-// style) are unavailable / hidden / forced to their non-glass fallback.
-//
-// Sub-toggles:
-//  - LiquidGlassNavBarEnabledKey: opt-in Liquid Glass style for the bottom
-//    navigation bar (uses kyant-backdrop LayerBackdrop). Independent of the
-//    existing frostedBlur / tintFrostedBlur booleans, which use a different
-//    RenderEffect-based recipe.
 val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
 val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
 
@@ -220,13 +173,7 @@ enum class PlaylistSuggestionSource {
 val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
-// Region spoofer for YouTube Music — overrides `YouTube.locale.gl` independently of
-// `ContentCountryKey`. Set from Internet Settings so users can keep their content
-// language/culture but pretend to YouTube Music that they are connecting from a
-// different country (e.g. to play region-locked songs). Applied AFTER
-// `ContentCountryKey` in `App.initializeDeferredAsync()` so the more specific
-// Internet/region setting wins. `SYSTEM_DEFAULT` means "fall back to device locale
-// or `ContentCountryKey`".
+
 val YouTubeMusicRegionKey = stringPreferencesKey("youtubeMusicRegion")
 val PlaylistSuggestionSourceKey = stringPreferencesKey("playlistSuggestionSource")
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
@@ -234,35 +181,15 @@ val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
-// MegalobizLyricsProvider, SimpMusicLyricsProvider and BiniLyricsProvider all
-// removed per user requests (2026-08-28 for Megalobiz; 2026-08-30 for
-// SimpMusic + BiniLyrics). The underlying DataStore keys are kept defined
-// here so any user who previously toggled them does not crash on read —
-// they're just no-ops now. The provider files, enum entries, settings
-// toggles and gradle module includes have all been deleted.
+
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
-// PaxsenixApiKeyKey / PaxsenixEndpointKey were retained while BiniLyrics
-// was routing through the PaxsenixLyrics backend. With BiniLyrics removed
-// (2026-08-30), the PaxsenixLyrics backend module ":lyrics:paxsenix" is
-// also gone, so these keys are now pure no-ops. Kept defined for source
-// compatibility with any code still referencing them.
+
 val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
 val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
-// Paxsenix/Tidal/Deezer enable keys are kept defined for source
-// compatibility — the LyricsProvidersSettings screen still has toggles
-// for these providers, and removing the keys would break compilation of
-// that screen. The providers themselves have been removed from
-// [LyricsHelper.baseProviders] and from the [PreferredLyricsProvider]
-// enum / [DefaultLyricsProviderOrder] (see user request 2026-08-28:
-// "Remove paxesnix, tidal and deezer lyrics and add BiniLyrics ... and
-// also add it to the lyrics priority list"), so the toggles are now
-// no-ops: flipping them writes a value to DataStore that no code path
-// reads. The settings UI cleanup (removing the toggle rows) is left
-// for a follow-up; this commit focuses on removing the providers from
-// the runtime lyrics pipeline and the priority list.
+
 val EnablePaxsenixLyricsKey = booleanPreferencesKey("enablePaxsenixLyrics")
 val EnablePaxsenixAppleMusicLyricsKey = booleanPreferencesKey("enablePaxsenixAppleMusicLyrics")
 val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteaseLyrics")
@@ -271,79 +198,30 @@ val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMus
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
 val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
 val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
-// When ON, lyrics lookup first queries the four word-sync-capable providers
-// (BetterLyrics, BetterLyrics Portato, YouLyPlus, Unison) in parallel and uses
-// whichever returns word-synced lyrics (QRC/YRC/TTML with word timings). If none
-// of those four return word-synced lyrics, the lookup falls back to the normal
-// priority flow across all enabled providers.
+
 val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
-// When ON, the YouTube ⇄ Spotify home switcher (HomeSourceSwitcher) renders at
-// the top of the Home page. Default OFF: the switcher was removed from the home
-// page per the user request 2026-09-04 ("remove the switch text between
-// youtube and Spotify catalogue on the home page. Instead give an option for
-// that in Content named Enable Catalogue switch") — the option lives in
-// Settings → Content → "Enable Catalogue switch".
+
 val HomeCatalogueSwitchKey = booleanPreferencesKey("homeCatalogueSwitch")
-// When ON, music videos render an inline video surface in the player. Default OFF so songs
-// play as plain audio (album artwork shown, no video stream is loaded) unless the user opts in.
-// Distinct from HideVideoKey which filters videos out of the library/queue entirely.
+
 val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
-// When ON (default OFF), leaving the app while a music video is playing enters Picture-in-
-// Picture mode so the video keeps playing in a small floating window. Requires video playback
-// to be enabled (EnableVideoPlaybackKey) — if video playback is off, this setting has no
-// effect because there is no video surface to float.
+
 val EnablePipModeKey = booleanPreferencesKey("enablePipMode")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
-    /**
-     * Picks the best available source per song: tries Qobuz → Tidal → Deezer
-     * (lossless FLAC) and falls back to YouTube Music (lossy MP3/AAC) only
-     * when none of the lossless backends can resolve the track. This is the
-     * default and the recommended setting — it guarantees FLAC whenever a
-     * configured lossless provider has the track, without forcing the user
-     * to manually switch sources.
-     */
+
     AUTO,
 
     QOBUZ,
 
-    /**
-     * Community-hosted Qobuz mirror (mlc-ytify.kouzu.in), keyed by YouTube video id
-     * rather than a Qobuz catalogue id, so it needs no Source Pool account at all.
-     * Mirrors [AudioSourceType.QOBUZ_BACKUP] on the playback side and is gated by the
-     * same `QobuzBackupEnabledKey` toggle. Not in [DownloadSourceConfig.REQUIRES_POOL].
-     */
     QOBUZ_BACKUP,
     TIDAL,
 
-    /**
-     * Apple Music lookup (2026-09-04, user request: "Add apple music in
-     * download source priority"). Resolves the track through the SAME
-     * Apple-Music account ring playback uses (Settings → Apple Music sign-in
-     * or Source Pool accounts), materializes the Widevine-L3 virtual stream
-     * to a local file and copies those bytes into the download cache — the
-     * exact bytes Apple playback would stream. NOT in
-     * [DownloadSourceConfig.REQUIRES_POOL]: the user's own Apple Music
-     * sign-in is enough (the ring internally includes pool accounts when
-     * available).
-     */
     APPLE,
 
-    /**
-     * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
-     * stream URL. Falls back to the next source in [AUTO] order when the
-     * track isn't on Deezer or the API can't resolve a full stream.
-     */
     DEEZER,
 
-    /**
-     * JioSaavn lookup — uses the public JioSaavn API to resolve a 96/160/320 kbps
-     * AAC stream URL. Falls back to the next source in [AUTO] order when the
-     * track isn't on JioSaavn. Does NOT require a Source Pool account (the
-     * public API is used directly), so it is NOT in [DownloadSourceConfig.REQUIRES_POOL].
-     */
     JIOSAAVN,
 
     YOUTUBE_MUSIC,
@@ -351,20 +229,8 @@ enum class DownloadSource {
 
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
 
-// CSV of DownloadSource names in the user's chosen priority order. Empty/null falls back to
-// DownloadSourceConfig.DEFAULT_ORDER (Qobuz, Tidal, Deezer, YouTube Music). Consumed by
-// DownloadUtil to drive the per-song download source chain — replacing the old single-pick
-// DownloadSourceKey. The old key is kept for migration / backup compatibility.
 val DownloadSourceOrderKey = stringPreferencesKey("downloadSourceOrder")
 
-/**
- * Helpers for the download-source priority list. Mirrors [AudioSourceConfig] in the audiosource
- * package — same CSV serialization, append-missing-on-parse semantics, and a single DEFAULT_ORDER.
- *
- * The three sources [QOBUZ], [TIDAL], [DEEZER] require a Source Pool account to be configured
- * (see `PoolAccountManager.isEnabled`). [JIOSAAVN] uses the public JioSaavn API (no pool needed).
- * [YOUTUBE_MUSIC] always works.
- */
 object DownloadSourceConfig {
     val DEFAULT_ORDER: List<DownloadSource> =
         listOf(
@@ -377,27 +243,9 @@ object DownloadSourceConfig {
             DownloadSource.YOUTUBE_MUSIC,
         )
 
-    /** Sources that need a Source Pool account configured to be usable for downloads. */
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
 
-    /**
-     * Cache-key prefix a source's downloaded bytes are stored under, e.g. `"qobuz_backup:"`.
-     *
-     * `DownloadUtil` namespaces each source's cache entries so bytes from one source can never be
-     * served for another, then has to check every prefix when deciding whether a song is already
-     * fully cached. Deriving the list here rather than writing it out at each of those call sites
-     * is what keeps a newly added source from being silently skipped by the cache lookups — which
-     * is exactly what happened to [DownloadSource.QOBUZ_BACKUP] and [DownloadSource.JIOSAAVN]: they
-     * resolved and downloaded fine, but their cached bytes were invisible to the completeness check
-     * and to the purge-on-failure path, so a download that had already succeeded was fetched again.
-     *
-     * [DownloadSource.AUTO] and [DownloadSource.YOUTUBE_MUSIC] are excluded: neither ever writes a
-     * prefixed key (the YouTube fallback uses the bare media id).
-     *
-     * `Locale.US` matters — `TIDAL` and `JIOSAAVN` both contain `I`, which lowercases to a dotless
-     * `ı` under a Turkish locale and would not match the key that was written.
-     */
     val CACHE_KEY_PREFIXES: List<String> =
         DownloadSource.entries
             .filterNot { it == DownloadSource.AUTO || it == DownloadSource.YOUTUBE_MUSIC }
@@ -406,16 +254,6 @@ object DownloadSourceConfig {
     private fun parseType(name: String): DownloadSource? =
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
 
-    /**
-     * Resolves the effective ordered list of all download sources from the stored CSV, preserving
-     * the user's chosen order and slotting any missing sources in above [DownloadSource.YOUTUBE_MUSIC].
-     *
-     * Mirrors `AudioSourceConfig.parseOrder`, and for the same reason: appending meant that a user
-     * who had touched the order picker before a source existed got that source listed *below*
-     * YouTube Music, where the list reads as if it ends. Every real download source sits above
-     * YouTube Music in [DEFAULT_ORDER], so inserting there is both correct and the one placement
-     * that cannot disturb the order the user actually chose.
-     */
     fun parseOrder(rawOrder: String?): List<DownloadSource> {
         val stored =
             rawOrder
@@ -437,13 +275,11 @@ object DownloadSourceConfig {
             }
             merged.add(source)
         }
-        // YouTube Music absent from the stored order means it is itself missing, and it is last in
-        // DEFAULT_ORDER, so appending the block still leaves it as the final fallback.
+
         if (!inserted) merged.addAll(missing)
         return merged
     }
 
-    /** Serialize an order back to the CSV form for storage. */
     fun serialize(order: List<DownloadSource>): String = order.joinToString(",") { it.name }
 }
 
@@ -480,7 +316,6 @@ val TogetherRequireHostApprovalToJoinKey = booleanPreferencesKey("together_requi
 val TogetherLastJoinLinkKey = stringPreferencesKey("together_last_join_link")
 val TogetherWelcomeShownKey = booleanPreferencesKey("together_welcome_shown")
 
-// ListenBrainz scrobbling
 val ListenBrainzEnabledKey = booleanPreferencesKey("listenbrainz_enabled")
 val ListenBrainzTokenKey = stringPreferencesKey("listenbrainz_token")
 
@@ -491,69 +326,34 @@ val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 
-// --- DeepL / OpenRouter / Mistral translation providers (ported from vivi-music) ---
-// DeepL: API key with `:fx` suffix routes through api-free.deepl.com; otherwise api.deepl.com.
 val DeeplApiKeyKey = stringPreferencesKey("deeplApiKey")
-// "default" / "more" / "less" — controls DeepL's formality parameter.
+
 val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
 
-// OpenRouter: chat-completions style translation. User can override base URL and model.
 val OpenRouterApiKeyKey = stringPreferencesKey("openRouterApiKey")
 val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")
 val OpenRouterModelKey = stringPreferencesKey("openRouterModel")
 
-// Translation mode for OpenRouter: "translate" (full translation) or "romanize" (transliteration).
 val TranslateModeKey = stringPreferencesKey("translateMode")
-// Target language code for translation (e.g. "en", "zh-CN", "ja").
+
 val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
-// Optional source language hint (null = auto-detect).
+
 val TranslateSourceLanguageKey = stringPreferencesKey("translateSourceLanguage")
 
-// Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
-// Whether the user pressed the pause button on the Debug Logs screen. Persisted so the pause
-// state survives screen navigation AND process restarts — previously the flag lived in a
-// HiltViewModel's MutableStateFlow, which was destroyed on screen exit, so the user's pause
-// was silently dropped every time they navigated away.
 val LogcatPausedKey = booleanPreferencesKey("logcatPaused")
 
-// When on, any foreign-language lyrics that have an AI provider configured will be translated
-// to the user's preferred language automatically on lyrics load — no manual tap through the
-// translate dialog required. The "Translation saved" toast is also suppressed in this mode so
-// background translations don't fire a notification every time a new song starts.
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
 
-// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE_SIMPLIFIED") that should NOT
-// be auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
-// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLang.code` in
-// assets/translator_languages.json — note that there is no plain "CHINESE" there, which is why the
-// comparison goes through `LyricsUtils.matchesExcludedLanguage` rather than a direct set lookup.
 val AutoTranslateExcludedLanguagesKey = stringSetPreferencesKey("autoTranslateExcludedLanguages")
 
-// ── AI romanisation ──
-// Master switch. When on, the configured AI provider supplies the romanisation shown above each
-// lyric line, and the built-in engines (Kuromoji for Japanese, the hand-written Korean/Hindi tables,
-// ICU for everything else) stop running entirely — see `LyricsRomanizationPreferences.aiHandled`.
-// Two engines at once would mix romanisation schemes within one song, and the whole reason to reach
-// for a model is that its output is better than the tables'.
 val AiRomanizeLyricsKey = booleanPreferencesKey("aiRomanizeLyrics")
 
-// Fetch the romanisation as soon as lyrics are shown, rather than waiting for the user to ask via
-// Lyrics menu → Romanise with AI. Separate from [AiRomanizeLyricsKey] because these are billed
-// network calls: switching the feature on should not commit the user to one request per track.
 val AutoAiRomanizeLyricsKey = booleanPreferencesKey("autoAiRomanizeLyrics")
 
-// Uppercase language codes (e.g. "JAPANESE", "KOREAN") to leave alone even when AI romanisation is
-// on — for scripts the user already reads. Same code space and same multi-select dialog as
-// [AutoTranslateExcludedLanguagesKey]; codes match `TranslatorLang.code` in
-// assets/translator_languages.json.
 val AiRomanizeExcludedLanguagesKey = stringSetPreferencesKey("aiRomanizeExcludedLanguages")
 
-// Set by the "Never show again" pill on the startup update popup. Stores the
-// "<versionName>|<versionCode>" of the version the user suppressed the popup for, so we
-// can detect when they've upgraded and re-enable the popup for the next new release.
-// Empty string means "not suppressed".
 val NeverShowUpdatePopupKey = stringPreferencesKey("neverShowUpdatePopupVersion")
 
 val HideLikedSongsCardKey = booleanPreferencesKey("hide_liked_songs_card")
@@ -578,7 +378,6 @@ enum class AiApiValidationStatus {
     FAILED,
 }
 
-// Last.fm scrobbling
 val LastFMSessionKey = stringPreferencesKey("lastfmSession")
 val LastFMUsernameKey = stringPreferencesKey("lastfmUsername")
 val LastFMProviderKey = stringPreferencesKey("lastfmProvider")
@@ -650,21 +449,6 @@ val PlaylistTagsFilterKey = stringPreferencesKey("playlistTagsFilter")
 val ShowHomeCategoryChipsKey = booleanPreferencesKey("showHomeCategoryChips")
 val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 
-/**
- * When `true`, the Home feed collapses to a focused subset:
- *   - Jump-back-in hero (always rendered, regardless of this toggle)
- *   - Recently Played
- *   - Keep Listening
- *   - Live Performances (the "Live performance"-titled remote shelf)
- *
- * All other home sections (category chips, remote/local quick picks,
- * speed dial, account playlists, forgotten favorites, similar
- * recommendations, and the rest of the remote homePage sections such
- * as "Fresh finds" / "Old favourites") are hidden.
- *
- * Default is `false` so a fresh install shows the full home feed
- * (matches upstream rukamori/ArchiveTune).
- */
 val MinimalHomeModeKey = booleanPreferencesKey("minimalHomeMode")
 
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
@@ -692,24 +476,12 @@ val StorageFolderDisplayNameKey = stringPreferencesKey("storageFolderDisplayName
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 
-// When true (default), plays are reported to the logged-in YouTube account's listen history even
-// when the audio was streamed from another source (Tidal/Qobuz). History is keyed off the YouTube
-// video id, so it stays source-independent; this toggle lets the user opt out of the remote report
-// without affecting the local play-count/history DB (governed by PauseListenHistoryKey).
 val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 
-// Integration screen: account cards. YouTube is always shown; Last.fm and Discord
-// cards can be pinned to the top of the Integration screen by the user.
 val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
 val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
 
-// Last.fm dashboard: prefer YouTube hq720 thumbnails over the Last.fm image
-// array. When enabled, the dashboard skips bestArtwork(track.image) (which
-// can return non-square / brown-matted images from Last.fm's catalogue) and
-// goes straight to resolveCatalogueCover, which starts with YouTube hq720
-// (clean 16:9, no baked-in bars). Useful for users whose Last.fm catalogue
-// has many low-quality or padded artwork images.
 val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnails")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
@@ -721,12 +493,10 @@ val DiscordNameKey = stringPreferencesKey("discordName")
 val DiscordAvatarUrlKey = stringPreferencesKey("discordAvatarUrl")
 val EnableDiscordRPCKey = booleanPreferencesKey("discordRPCEnable")
 
-// Discord activity customization keys
 val DiscordActivityNameKey = stringPreferencesKey("discordActivityName")
 val DiscordActivityDetailsKey = stringPreferencesKey("discordActivityDetails")
 val DiscordActivityStateKey = stringPreferencesKey("discordActivityState")
 
-// Custom button labels and urls for Discord activity buttons
 val DiscordActivityButton1LabelKey = stringPreferencesKey("discordActivityButton1Label")
 val DiscordActivityButton1UrlSourceKey = stringPreferencesKey("discordActivityButton1UrlSource")
 val DiscordActivityButton1CustomUrlKey = stringPreferencesKey("discordActivityButton1CustomUrl")
@@ -737,12 +507,9 @@ val DiscordActivityButton1EnabledKey = booleanPreferencesKey("discordActivityBut
 val DiscordActivityButton2EnabledKey = booleanPreferencesKey("discordActivityButton2Enabled")
 val DiscordShowWhenPausedKey = booleanPreferencesKey("discordShowWhenPaused")
 
-// Activity type for Discord presence (PLAYING, STREAMING, LISTENING, WATCHING, COMPETING)
 val DiscordActivityTypeKey = stringPreferencesKey("discordActivityType")
-val DiscordPresenceStatusKey = stringPreferencesKey("discordPresenceStatus") // "ONLINE", "IDLE", "DND", "INVISIBLE"
+val DiscordPresenceStatusKey = stringPreferencesKey("discordPresenceStatus")
 
-// Discord image selection keys
-// Values for type keys: "thumbnail", "artist", "appicon", "custom"
 val DiscordLargeImageTypeKey = stringPreferencesKey("discordLargeImageType")
 val DiscordLargeTextSourceKey = stringPreferencesKey("discordLargeTextSource")
 val DiscordLargeTextCustomKey = stringPreferencesKey("discordLargeTextCustom")
@@ -750,7 +517,6 @@ val DiscordLargeImageCustomUrlKey = stringPreferencesKey("discordLargeImageCusto
 val DiscordSmallImageTypeKey = stringPreferencesKey("discordSmallImageType")
 val DiscordSmallImageCustomUrlKey = stringPreferencesKey("discordSmallImageCustomUrl")
 
-// Activity platform (discord client platform) selection
 val DiscordActivityPlatformKey = stringPreferencesKey("discordActivityPlatform")
 
 val TranslatorContextsKey = stringPreferencesKey("translatorContexts")
@@ -960,11 +726,9 @@ enum class PreferredLyricsProvider {
     YOULY_PLUS,
     LRCLIB,
     KUGOU,
-    // SIMPMUSIC and BINI_LYRICS entries removed per user request (2026-08-30).
+
     UNISON,
-    // Ported from upstream (2026-08-31 window): Apple Music account lyrics.
-    // Paxsenix* / TIDAL / DEEZER entries from the same upstream hunk are NOT
-    // ported — the Paxsenix layer was removed on 2026-08-30 (batch-10).
+
     APPLE_MUSIC,
     MUSIXMATCH_EXPERIMENTAL,
 }
@@ -1008,22 +772,6 @@ fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvi
     return normalized + missing
 }
 
-/**
- * Artwork providers that can be prioritised by the user. The order in this enum is NOT the
- * priority — the user-configured order (stored in [ArtworkProviderOrderKey]) determines which
- * provider is tried first when resolving artwork for a song. If the top-priority provider has
- * no artwork for the current song, the resolver falls back to the next provider in the list.
- *
- * - [LOCAL_EMBEDDED]: artwork extracted from a local file. Always wins for local media
- *   regardless of priority order (a local file's embedded cover is the authoritative source).
- * - [ORIGINAL_METADATA]: artwork URL that arrived with the original media metadata
- *   (YouTube/innertube/DB `thumbnailUrl`). This is the default artwork for streaming songs.
- * - [TIDAL]: artwork fetched from Tidal as a fallback when no original artwork exists.
- * - [SPOTIFY_CANVAS]: Spotify Canvas video artwork (looping video, fetched via the
- *   `mlc.kouzu.in` canvas API).
- * - [ARCHIVETUNE_CANVAS]: Apple Music motion artwork (animated cover art fetched
- *   from Apple's MusicKit/AMP API).
- */
 enum class PreferredArtworkProvider {
     LOCAL_EMBEDDED,
     ORIGINAL_METADATA,
@@ -1060,19 +808,6 @@ enum class PlayerButtonsStyle {
     SECONDARY,
 }
 
-/**
- * Which service the Home tab is showing. The two homes are separate pages you switch between,
- * not one feed with the other stacked into it — signing into Spotify must not cost you the
- * YouTube home, and vice versa.
- *
- * SPOTIFY resolves back to YOUTUBE while [SpotifySpDcKey] is blank (see NavigationBuilder), so a
- * signed-out user can never be stranded on an empty page.
- *
- * This briefly lived as a third case of a layout-style enum, which conflated "which service"
- * with "which layout" and meant the two could not be chosen independently. `toEnum` falls back
- * to the default on an unknown name, so anyone who had picked that case lands on the YouTube
- * home and finds Spotify on the switcher.
- */
 enum class HomeSource {
     YOUTUBE,
     SPOTIFY,
@@ -1081,24 +816,7 @@ enum class HomeSource {
 val HomeSourceKey = stringPreferencesKey("homeSource")
 
 enum class PlayerDesignStyle {
-    /**
-     * Cinematic (V4) — the default legacy style. Classic (V1), Modern (V2),
-     * Minimal (V3), Expressive (V6) and Immersive Extended (V8) were removed
-     * (2026-09-01); stored preference values that no longer resolve fall back
-     * to the default via [moe.rukamori.archivetune.extensions.toEnum].
-     *
-     * BITCHORD is a fully self-contained style — its layout, icons, slider,
-     * lyrics panel, queue panel and mesh backdrop live exclusively in
-     * [moe.rukamori.archivetune.ui.player.bitchord] and share no components
-     * with the other styles.
-     *
-     * TIKTOK is likewise self-contained in
-     * [moe.rukamori.archivetune.ui.player.tiktok]: a full-screen vertical feed
-     * where each queue entry is one page — swipe up for the next song, down for
-     * the previous, and the feed settles or springs back without interrupting
-     * playback. It reuses the app's playback engine, queue and lyrics screen
-     * but owns its layout outright.
-     */
+
     V4,
     V5,
     V7,
@@ -1159,8 +877,6 @@ enum class MiniPlayerBackgroundStyle {
     LIQUID_GLASS,
 }
 
-// Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
-// a pill with larger margins that never pairs with the mini player.
 enum class NavigationBarStyle {
     DEFAULT,
     FLOATING,
@@ -1168,43 +884,31 @@ enum class NavigationBarStyle {
 
 val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 
-// Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
-// Android 12+; a translucent surface fallback below that.
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 
-// Tinted variant of frosted blur: the same backdrop blur as [NavigationBarFrostedBlurKey], but the
-// bar surface is tinted with the accent (primary) color instead of the neutral surface container.
-// Mutually exclusive with [NavigationBarFrostedBlurKey] — turning one on turns the other off.
 val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
-// ── Navigation bar dimension customization ──────────────────────────────────
-// Advanced tuning knobs for the FLOATING nav bar style (and corner radius for
-// DEFAULT). Defaults preserve the pre-existing look.
 val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
-const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f // fraction of screen width when FLOATING
+const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f
 
 val NavigationBarHeightKey = floatPreferencesKey("navigationBarHeight")
-const val NAVIGATION_BAR_HEIGHT_DEFAULT = 1.0f // multiplier on NavigationBarHeight
+const val NAVIGATION_BAR_HEIGHT_DEFAULT = 1.0f
 
 val NavigationBarOpacityKey = floatPreferencesKey("navigationBarOpacity")
-const val NAVIGATION_BAR_OPACITY_DEFAULT = 1.0f // 1 = opaque, <1 = translucent
+const val NAVIGATION_BAR_OPACITY_DEFAULT = 1.0f
 
 val NavigationBarTransparencyKey = floatPreferencesKey("navigationBarTransparency")
-const val NAVIGATION_BAR_TRANSPARENCY_DEFAULT = 0.0f // 0 = solid, >0 = see-through (only when frosted blur is off)
+const val NAVIGATION_BAR_TRANSPARENCY_DEFAULT = 0.0f
 
 val NavigationBarLabelSpacingKey = floatPreferencesKey("navigationBarLabelSpacing")
-const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f // dp between icon and label
+const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f
 
 val NavigationBarCornerRadiusKey = floatPreferencesKey("navigationBarCornerRadius")
-const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f // dp
+const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f
 
-// App-wide scrollbar toggle. When false, all LazyColumn / LazyGrid /
-// ScrollState scrollbars in the app are suppressed. (Slider thumb tracks and
-// player position bars are not affected — those are not "scrollbars".)
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
-// Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
 val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")
 val PlayerCustomContrastKey = floatPreferencesKey("playerCustomContrast")
@@ -1225,12 +929,6 @@ val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
 
-// Restored (2026-09-04): the Sept 3→4 upstream port removed these together with the
-// five-second auto-hide of the Apple Music player's bottom controls ("controls never
-// hide"). The user asked for the auto-hide back, so both keys return with the same
-// names/defaults they always had — previously-saved values keep applying.
-// ShowLyricsPlayerControlsKey: whether the controls appear at all over the AM lyrics/queue.
-// AutoHideLyricsPlayerControlsKey: whether they fade out again after five seconds.
 val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
 val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlayerControls")
 
@@ -1265,7 +963,6 @@ enum class LyricsMode {
     SPOTIFY,
 }
 
-// Queue lyrics pre-load settings
 val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")
 val QueueLyricsPreloadCountKey = intPreferencesKey("queue_lyrics_preload_count")
 
@@ -1275,9 +972,7 @@ val RepeatModeKey = intPreferencesKey("repeatMode")
 val SearchSourceKey = stringPreferencesKey("searchSource")
 val SwipeThumbnailKey = booleanPreferencesKey("swipeThumbnail")
 val SwipeSensitivityKey = floatPreferencesKey("swipeSensitivity")
-// Catalog providers are independent from the local-vs-online search scope above. Spotify is a
-// metadata/search provider here; it is intentionally not an AudioSourceType because playback is
-// resolved by the existing audio-source chain.
+
 val DefaultMetadataSourceKey = stringPreferencesKey("defaultMetadataSource")
 val DefaultSearchSourceKey = stringPreferencesKey("defaultSearchSource")
 
@@ -1308,15 +1003,9 @@ val VisitorDataKey = stringPreferencesKey("visitorData")
 val DataSyncIdKey = stringPreferencesKey("dataSyncId")
 val InnerTubeCookieKey = stringPreferencesKey("innerTubeCookie")
 
-/**
- * OAuth2 credentials for the YouTube VR device-code flow, the signed-in path that does not use a
- * cookie. The access token is short-lived (~1h) and is what reaches InnerTube as a Bearer; the
- * refresh token is long-lived and never leaves the app.
- */
 val InnerTubeOAuthTokenKey = stringPreferencesKey("innerTubeOAuthToken")
 val InnerTubeOAuthRefreshTokenKey = stringPreferencesKey("innerTubeOAuthRefreshToken")
 
-/** Epoch millis at which [InnerTubeOAuthTokenKey] expires, so a refresh happens before a 401. */
 val InnerTubeOAuthExpiresAtKey = longPreferencesKey("innerTubeOAuthExpiresAt")
 
 val PoTokenKey = stringPreferencesKey("poToken")
@@ -1324,9 +1013,6 @@ val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
 
-// Avatar that goes with AccountNameKey. Persisted for the same reason the name is: the visible
-// account identity has to survive a cold start (including the one the region picker triggers)
-// without waiting on, or depending on, a live accountMenu call.
 val AccountImageUrlKey = stringPreferencesKey("accountImageUrl")
 val SavedAccountsKey = stringPreferencesKey("savedAccounts")
 val UseLoginForBrowse = booleanPreferencesKey("useLoginForBrowse")
@@ -1339,27 +1025,10 @@ val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_ur
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
-/**
- * Set of Spotify playlist IDs the user has hidden via the per-row "more"
- * menu on the Spotify Library page. Persisted across sessions so hidden
- * Spotify playlists surface in the account-page "Hidden playlists" section
- * alongside hidden local/YouTube playlists. Mirrors the persistence pattern
- * of [HiddenHomeItemsKey] for the home-page "Keep Listening" section.
- *
- * Per user report (2026-08-29): "If I hide a Spotify playlist it should be
- * available in the hidden playlists section of the account page."
- */
 val SpotifyHiddenPlaylistIdsKey = stringSetPreferencesKey("spotify_hidden_playlist_ids")
 
-/**
- * Set of item IDs (song/album/artist) that the user has hidden from the
- * "Keep Listening" section on the home page. When the user long-presses an
- * item in Keep Listening and selects "Hide from home," the item's ID is
- * added here and filtered out of the keepListening flow.
- */
 val HiddenHomeItemsKey = stringSetPreferencesKey("hidden_home_items")
 
-// Tidal music source integration (ported from MetroFuse)
 val TidalCookieKey = stringPreferencesKey("tidalCookie")
 val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")
 val TidalAudioQualityKey = stringPreferencesKey("tidalAudioQuality")
@@ -1367,40 +1036,24 @@ val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallback
 val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
-/** Per-user read key for the community Source Pool (created on the site's /dashboard).
- *  When set, overrides the CI-baked BuildConfig.SOURCE_PROVIDER_KEY as the Bearer token. */
 val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
 
-
-// Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 
-// JSON cache of the last instance health scan: [{"url","status","latencyMs","checkedAt"}, ...].
-// Persisted so working instances are remembered across launches instead of re-probed every time.
 val TidalVerifiedInstancesKey = stringPreferencesKey("tidalVerifiedInstances")
 
-// The last Tidal track id that resolved successfully. Used as a "probe" track for health checks so
-// we can tell a fully-working instance apart from a reachable-but-preview-only (unsubscribed) one.
 val TidalLastProbeTrackKey = stringPreferencesKey("tidalLastProbeTrack")
 
-// Tidal account login (device/OAuth) + subscription state.
 val TidalAccessTokenKey = stringPreferencesKey("tidalAccessToken")
 val TidalRefreshTokenKey = stringPreferencesKey("tidalRefreshToken")
 val TidalTokenExpiryKey = longPreferencesKey("tidalTokenExpiry")
 val TidalSubscriptionKey = stringPreferencesKey("tidalSubscription")
 
-// Which auth flow produced the stored session: "oauth" (device code), "pkce" (web login with a
-// durable refresh token), or "webcapture" (live Bearer token grabbed from the web player, no
-// refresh token). The refresh path uses this to pick the right OAuth client_id/secret.
 val TidalAuthFlowKey = stringPreferencesKey("tidalAuthFlow")
 
-// Real account country + user id captured at login, used by the account playback path instead of a
-// hardcoded country. userId is also needed for the subscription-tier lookup.
 val TidalCountryCodeKey = stringPreferencesKey("tidalCountryCode")
 val TidalUserIdKey = longPreferencesKey("tidalUserId")
 
-// Set when a silent token refresh fails so the UI can surface a "reconnect" prompt. Cleared on any
-// successful login/refresh.
 val TidalNeedsReloginKey = booleanPreferencesKey("tidalNeedsRelogin")
 
 enum class TidalSubscriptionStatus {
@@ -1415,7 +1068,6 @@ enum class TidalAudioQuality {
     HI_RES_LOSSLESS,
 }
 
-/** Apple Music streaming quality for the account path (web ALAC pipeline). */
 enum class AppleMusicQuality {
     AAC,
     LOSSLESS,
@@ -1424,11 +1076,6 @@ enum class AppleMusicQuality {
 
 val AppleMusicQualityKey = stringPreferencesKey("appleMusicQuality")
 
-/**
- * Master enable for Apple Music as a streaming source (Settings → Sources → Apple Music).
- * Default off: playback needs a Media-User-Token with an active Apple Music subscription,
- * and the resolution chain hits Apple's unofficial web-playback endpoint.
- */
 val AppleMusicSourceEnabledKey = booleanPreferencesKey("appleMusicSourceEnabled")
 
 val TidalAudioQualityOptions =
@@ -1438,49 +1085,22 @@ val TidalAudioQualityOptions =
         TidalAudioQuality.HI_RES_LOSSLESS,
     )
 
-// ---------------------------------------------------------------------------
-// Qobuz source (user-provided Qobuz-DL proxy instances, e.g. squid.wtf-style)
-// ---------------------------------------------------------------------------
-// Streaming/playback only (like Tidal): the app never bundles endpoints — the user pastes their own
-// proxy instance URLs. Each instance exposes get-music (search) + download-music (stream URL).
 val QobuzEnabledKey = booleanPreferencesKey("qobuzEnabled")
 
-// ---------------------------------------------------------------------------
-// Qobuz backup server (mlc.kouzu.in). Separate from Qobuz proper — the
-// backup takes a YouTube video id and returns a lossless stream, while
-// regular Qobuz uses source pool tokens + community proxy instances. The
-// user can toggle / reorder / per-song-pin each independently. Default OFF
-// because it's an external community service that should be opt-in.
 val QobuzBackupEnabledKey = booleanPreferencesKey("qobuzBackupEnabled")
 
-// CSV of user-provided Qobuz proxy instance base URLs, highest priority first.
 val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
-// JSON cache of the last Qobuz instance health scan, mirroring TidalVerifiedInstancesKey.
 val QobuzVerifiedInstancesKey = stringPreferencesKey("qobuzVerifiedInstances")
 
-// ---------------------------------------------------------------------------
-// Experimental: manual source sign-in
-// ---------------------------------------------------------------------------
-// When OFF (default) the app relies solely on the community Source Pool: users never see the
-// manual Tidal/Qobuz instance & account sign-in fields. Flipping this ON in Experimental Settings
-// re-exposes the manual sign-in UI for power users who want to add their own private sources.
 val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login")
 
-// The last Qobuz track id that resolved successfully, used as a health "probe" track so we can tell
-// a fully-working instance from a reachable-but-preview-only one.
 val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")
 
-// JSON list of direct Qobuz API token entries (user_auth_token + user_id + app_id + app_secret +
-// metadata). These call www.qobuz.com/api.json/0.2 directly with an MD5 request signature, so they
-// need no proxy instance. Tried before proxy URLs during resolution (direct = highest fidelity).
 val QobuzTokensKey = stringPreferencesKey("qobuzTokens")
 
-// JSON health cache for the token list, mirroring QobuzVerifiedInstancesKey.
 val QobuzVerifiedTokensKey = stringPreferencesKey("qobuzVerifiedTokens")
 
-// Qobuz quality maps to the proxy/Qobuz format_id: FLAC=6 (CD 16-bit), HI_RES=7 (≤96kHz),
-// MAX=27 (>96kHz). MP3 (5) is intentionally omitted — this is a lossless source.
 enum class QobuzAudioQuality {
     FLAC,
     HI_RES,
@@ -1503,41 +1123,14 @@ fun QobuzAudioQuality.toFormatId(): Int =
         QobuzAudioQuality.MAX -> 27
     }
 
-// ---------------------------------------------------------------------------
-// Telegram channel streaming integration
-// ---------------------------------------------------------------------------
-// Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
-// with their own Telegram account (phone + code + optional 2FA password); the app's api_id/api_hash
-// are baked in at build time (BuildConfig.TELEGRAM_API_ID/HASH), so no developer credentials are
-// entered in-app. The session lives in TDLib's encrypted database under filesDir; these keys only
-// hold display metadata for the settings screen.
 val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
 val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 
-// When ON (default) the channel browser only materialises lossless files (FLAC/WAV/AIFF/APE/ALAC/…)
-// into the channel's playlist; when OFF every audio message and audio-typed document is included.
 val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
-// ---------------------------------------------------------------------------
-// Telegram bots
-// ---------------------------------------------------------------------------
-// Persisted list of bots the user has added (so they can be re-opened without
-// re-pasting their @username each time). Stored as a JSON array; the encoder
-// lives in moe.rukamori.archivetune.telegram.TelegramBots.
 val TelegramBotsKey = stringPreferencesKey("telegramBots")
 
-// When ON, songs added to a Telegram-backed playlist (LPtg…/channel-id) from a
-// bot result are auto-forwarded to that channel so the user's own channel stays
-// in sync with what they've collected via bots. Default ON per the feature brief.
 val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardToChannel")
-
-
-// ---------------------------------------------------------------------------
-// Multi-source audio framework
-// ---------------------------------------------------------------------------
-// A configurable set of lossless/stream sources. The user can reorder them (priority for playback
-// resolution), toggle each on/off, and pick a primary "search" source. YouTube is always available
-// as the final fallback and cannot be removed.
 
 enum class AudioSourceType {
     TIDAL,
@@ -1549,79 +1142,28 @@ enum class AudioSourceType {
     YOUTUBE,
 }
 
-// CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 
-// Per-song "play from" overrides, encoded as "songId=SOURCE" entries joined by ';'. The chosen
-// source is forced for that specific song (subject to the metadata match gate), overriding the
-// global source order. Persisted here so it is included in Settings backups.
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
-/**
- * Per-song Qobuz trackId override (CSV of `songId=qobuzTrackId;…`).
- *
- * When the user picks a specific Qobuz track from the "Play from"
- * source-search popup, we persist the Qobuz trackId here so the playback
- * resolver can download the exact track instead of re-searching by
- * title+artist (which could match a different Qobuz track — different
- * master, deluxe edition, etc.).
- *
- * Keyed by the song's existing mediaId (the YouTube video id), so changing
- * the source does NOT change the song's mediaId — the song is not
- * registered as a new entry in the playback history / "recently listened".
- */
+
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
 
-/**
- * Per-song Qobuz-**backup** video-id override (CSV of `songId=youtubeVideoId;…`).
- *
- * The backup mirror is keyed by YouTube video id, and until now the resolver
- * simply reused the playing song's own media id. That works for the automatic
- * path but not for an explicit pick in the "Play from" popup: the row the user
- * chose is a *different* catalogue entry, whose id is the only way to address the
- * FLAC they asked for. Storing it here lets `resolveQobuzBackupStream` fetch that
- * exact mirror entry while the song keeps its own media id — so the queue, the
- * artwork, the title and the listening history are all untouched, and only the
- * audio changes.
- */
 val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
-// The primary audio source the user prefers to search/resolve first (AudioSourceType name).
-// Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.
 val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
-// When logged in, try the user's own Tidal account (official API) before the public instances.
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
 
-// ---------------------------------------------------------------------------
-// Deezer source
-// ---------------------------------------------------------------------------
-// Unlike Tidal/Qobuz there is no self-hosted proxy tier: Deezer streams come from accounts
-// authenticated with an `arl` cookie, supplied by the pool or by a manual sign-in. Defaults OFF
-// because the source is inert without accounts.
 val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
 
-// A manually captured `arl` cookie. Kept separate from the pool cache: the pool is wiped and
-// rewritten on every refresh and is gated behind PoolAccountManager.isEnabled, so storing a
-// user's own credential there would lose it on the next sync.
 val DeezerArlKey = stringPreferencesKey("deezerArl")
 
-// Display label for the manually signed-in account, so the settings row can say who is signed in
-// without keeping the ARL itself anywhere near the UI.
 val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 
-// Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
-// the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
-// ---------------------------------------------------------------------------
-// JioSaavn source
-// ---------------------------------------------------------------------------
-// Ported from vivi-music (https://github.com/vivizzz007/vivi-music) under GPL-3.0.
-// JioSaavn streams are unauthenticated MP4/AAC; CDN URLs are decrypted locally via DES-ECB.
-// Defaults OFF because the source requires JioSaavn's public API to be reachable.
 val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
 
-// Bitrate selection: 96 / 160 / 320 kbps AAC.
 val SaavnAudioQualityKey = stringPreferencesKey("saavnAudioQuality")
 
 enum class SaavnAudioQuality {
@@ -1740,39 +1282,21 @@ val CountryCodeToName =
         "AE" to "United Arab Emirates",
     )
 
-// App rating / star prompt preferences
 val LaunchCountKey = intPreferencesKey("launch_count")
 val OnboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
 
-// Last onboarding page the user was on. The onboarding ViewModel's page index is plain
-// in-memory state; without persisting it, process death or activity recreation resets the
-// flow to page 1 even though the user was mid-way through.
 val OnboardingCurrentPageKey = intPreferencesKey("onboarding_current_page")
 val HasPressedStarKey = booleanPreferencesKey("has_pressed_star")
 val RemindAfterKey = intPreferencesKey("remind_after")
 
-// Update settings
 val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotification")
 val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val YtDlpManualUpdateHistoryKey = stringSetPreferencesKey("ytDlpManualUpdateHistory")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 
-// New-release notifications (2026-09-03): release IDs (CSV, newest first,
-// bounded) already surfaced to the user for their subscribed artists, so a
-// release is only ever notified once. Empty/absent = first run, where the
-// current catalogue is baselined silently without notifying (otherwise the
-// first check would fire dozens of notifications at once).
 val SeenNewReleaseIdsKey = stringPreferencesKey("seenNewReleaseIds")
 
-// New Releases screen read-marker (2026-09-05): release IDs (CSV, newest
-// first, bounded) the user has marked as read on the New Releases page —
-// via the header's mark-all-read button or a long-press on a release's
-// thumbnail. Read releases are removed from the page's feed. Deliberately
-// SEPARATE from [SeenNewReleaseIdsKey] (the notification worker's
-// bookkeeping): marking a release read on the page never un-notifies
-// history, and the worker's silent first-run baseline never hides
-// anything from the page.
 val ReadNewReleaseIdsKey = stringPreferencesKey("readNewReleaseIds")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
@@ -1813,34 +1337,10 @@ enum class UpdateChannel {
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Inline / fullscreen music-video player preferences
-// ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * When true, the inline + fullscreen video player renders a slowly drifting
- * blurred copy of the song thumbnail behind the video surface — mimicking
- * YouTube's "ambient mode" so the letterboxed black area glows with the
- * artwork's dominant colors instead of being pure black.
- */
 val VideoAmbientModeKey = booleanPreferencesKey("videoAmbientMode")
 
-/**
- * Playback speed applied to BOTH the audio ExoPlayer (in MusicService) and
- * the video ExoPlayer (in VideoArtworkState). Stored as a Float in
- * [0.25f, 2.0f]. 1.0 = normal speed. Surfaced via the fullscreen video
- * overlay's 3-dot overflow menu.
- */
 val VideoPlaybackSpeedKey = floatPreferencesKey("videoPlaybackSpeed")
 
-/**
- * Aspect-ratio mode for the inline + fullscreen video surface. Maps to
- * ExoPlayer's AspectRatioFrameLayout resize modes:
- *  - FIT     → RESIZE_MODE_FIT     (letterbox; whole video visible)
- *  - CROP    → RESIZE_MODE_ZOOM    (fill screen, crop edges)
- *  - STRETCH → RESIZE_MODE_FILL    (fill screen, distort if needed)
- *  - FILL    → RESIZE_MODE_FILL    (alias kept for UX parity with YT)
- */
 enum class VideoAspectRatio {
     FIT,
     CROP,

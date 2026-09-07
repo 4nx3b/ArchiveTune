@@ -145,7 +145,7 @@ fun EqualizerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         EqualizerScreen(
             state = state,
             snackbarHostState = snackbarHostState,
@@ -856,7 +856,7 @@ private fun SaveProfileDialog(
             )
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(onClick = onSave, enabled = name.isNotBlank()) { Text(text = stringResource(R.string.save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
@@ -882,7 +882,7 @@ private fun ManageProfilesDialog(
             }
         },
         confirmButton = {
- KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+ KeepStatusBarHiddenInDialog()
  TextButton(onClick = onDismiss) { Text(text = stringResource(R.string.eq_close)) } },
     )
 }

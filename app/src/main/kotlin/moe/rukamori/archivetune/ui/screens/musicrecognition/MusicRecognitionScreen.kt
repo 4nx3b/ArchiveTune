@@ -257,9 +257,6 @@ private fun MusicRecognitionContent(
         )
     val maximumContentWidth = if (useWideLayout) 1_040.dp else 680.dp
 
-    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
-    // back pill + actions pill pinned over the scrolling content, plus the
-    // header haze — replaces the normal top bar while Liquid Glass is on.
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -304,24 +301,14 @@ private fun MusicRecognitionContent(
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets.safeDrawing,
     ) { contentPadding ->
-        // Glass-header mode: drop the Scaffold's top padding so the list
-        // scrolls under the pinned pills; the pill zone becomes the list's
-        // content top padding instead (History-page behaviour).
+
         val contentTopPadding =
             if (glassHeader.liquidGlassActive) {
                 0.dp
             } else {
                 contentPadding.calculateTopPadding()
             }
-        // CRASH FIX (2026-09-04, user report: "Opening music recognition or
-        // Listen Together crashes the app"): the overlay used to be composed
-        // INSIDE the Box that carried glassHeaderSource — a descendant of the
-        // haze/backdrop source, and nested sampling (a sampler drawn inside
-        // the layer that records it) crashes the RuntimeShader when the
-        // screen opens with Liquid Glass on. Restructured to the kit's
-        // required shape: the LazyColumn alone carries the source and the
-        // pills/haze overlay is its SIBLING — the same structure as
-        // NewReleaseScreen / NewsScreen / LastFmDashboard.
+
         Box(
             modifier =
                 Modifier
@@ -338,9 +325,7 @@ private fun MusicRecognitionContent(
                 contentPadding =
                     PaddingValues(
                         start = if (useWideLayout) 24.dp else 16.dp,
-                        // History pill pattern: content sits 12dp under the
-                        // pills so the glass actually samples it (2026-09-04
-                        // "pills have opaque background" fix).
+
                         top = if (glassHeader.liquidGlassActive) systemBarsTopPadding + 72.dp else 24.dp,
                         end = if (useWideLayout) 24.dp else 16.dp,
                         bottom = 40.dp,
@@ -414,9 +399,6 @@ private fun MusicRecognitionContent(
                 }
             }
 
-            // Persistent glass pills + header haze (History-page behaviour).
-            // The trailing pill carries the same history + settings actions
-            // the normal top bar exposes, so nothing is lost.
             if (glassHeader.liquidGlassActive) {
                 GlassScreenHeaderOverlay(
                     header = glassHeader,
@@ -1023,7 +1005,7 @@ private fun MusicRecognitionSettingsBottomSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier
@@ -1093,7 +1075,7 @@ private fun RecognitionHistoryBottomSheet(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Box(
             modifier =
                 Modifier

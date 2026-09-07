@@ -140,12 +140,6 @@ fun DebugSettings(navController: NavController) {
 
     val playerConnection = LocalPlayerConnection.current
 
-    // Header haze (2026-09-04, user request: "There's no haze effect and
-    // header behaviour like home page in developer options, updates and
-    // about page") — the same progressive top-fade blur the Home route and
-    // the other settings screens use: the scrolling content is the haze
-    // source, the transparent pill header zone blurs whatever scrolls
-    // under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -196,11 +190,7 @@ fun DebugSettings(navController: NavController) {
                                 WindowInsetsSides.Horizontal,
                             ),
                         ).verticalScroll(scrollState)
-                        // Haze source for the pinned header's top-fade blur —
-                        // chained AFTER verticalScroll (like every ported
-                        // screen) so the top padding scrolls away and content
-                        // flows under the header pill, which is what makes the
-                        // blur visible.
+
                         .hazeSource(headerHaze)
                         .padding(top = topPadding)
                         .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
@@ -297,11 +287,6 @@ fun DebugSettings(navController: NavController) {
             }
             }
 
-            // Header haze overlay — later sibling of the scrolling content so
-            // it draws on top of it, under the pinned pill header (the same
-            // placement every ported settings screen uses; the bottom spacing
-            // the old trailing Spacer provided now rides on the Column's own
-            // bottom padding).
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,

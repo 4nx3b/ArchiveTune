@@ -76,23 +76,17 @@ fun IntegrationScreen(
 ) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
-    // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the
-    // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
-    // source pool, so most users never need to see raw instance/token fields.
+
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
     val (appleMusicToken, _) = rememberPreference(AppleMusicMediaUserTokenKey, "")
-    // …but a source the user has *already* signed into must stay reachable regardless, otherwise
-    // turning the toggle back off strands the account with no way to view or sign out of it — and
-    // "Check source" would keep pointing at a screen that is no longer in the list.
+
     val (deezerArl, _) = rememberPreference(DeezerArlKey, "")
     val (tidalAccessToken, _) = rememberPreference(TidalAccessTokenKey, "")
     val (qobuzTokens, _) = rememberPreference(QobuzTokensKey, "")
     val showDeezerRow = manualSourceLogin || deezerArl.isNotBlank()
     val showTidalRow = manualSourceLogin || tidalAccessToken.isNotBlank()
     val showQobuzRow = manualSourceLogin || qobuzTokens.isNotBlank()
-    // Apple Music joins them: its media-user-token flow is a developer affordance like theirs,
-    // not something a normal install should be asked to complete. Still shown once a token
-    // exists, so an account already signed in never becomes unreachable.
+
     val showAppleMusicGroup = manualSourceLogin || appleMusicToken.isNotBlank()
 
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
@@ -108,9 +102,6 @@ fun IntegrationScreen(
         }
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -162,16 +153,14 @@ fun IntegrationScreen(
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-            // AI integration lives at the top of the Integration page (Task 8). It used to
-            // be a top-level pill on the main settings page; moving it here co-locates it
-            // with the other integrations (Discord, Last.fm, Tidal, Qobuz, Telegram, …).
+
             PreferenceGroup(
                 modifier = positions.modifierFor("ai_integration"),
                 title = stringResource(R.string.ai_integration),
@@ -202,15 +191,6 @@ fun IntegrationScreen(
                 }
             }
 
-            // "Music Sources" groups every external streaming source together:
-            // Apple Music, Tidal, Qobuz, Deezer, and Telegram. Apple Music used
-            // to sit in its own group above (2026-09-01 moved it under Music
-            // Sources per user request — it feeds the player exactly like the
-            // rest of them). Tidal/Qobuz/Deezer are gated behind the
-            // "Manual source sign-in" experimental toggle because their
-            // instance/token flows aren't useful for most users (the app
-            // auto-uses the community source pool by default). Apple Music and
-            // Telegram are NOT gated — their flows are self-contained.
             PreferenceGroup(
                 modifier =
                     positions
@@ -218,8 +198,7 @@ fun IntegrationScreen(
                         .then(positions.modifierFor("music_sources")),
                 title = stringResource(R.string.music_sources),
             ) {
-                // PreferenceGroup renders nothing (title included) once it has no items, so
-                // hiding the only row hides the whole group — the same shape the rows below use.
+
                 item(visible = showAppleMusicGroup) {
                     PreferenceEntry(
                         modifier = positions.modifierFor("applemusic"),
@@ -279,13 +258,8 @@ fun IntegrationScreen(
                 }
             }
 
-            // "External Sources" hosts Spotify — a read-only playlist import source, not a
-            // playback source like Tidal/Qobuz/Deezer/Telegram above. Separating it from
-            // "Music Sources" makes the distinction clear: Music Sources feed the player,
-            // External Sources feed the Library (playlist sync, scrobbling, etc.).
             PreferenceGroup(
-                // Also carries "spotify": Spotify is the only account in this group, so a search
-                // hit on it scrolls here. Chaining is safe — modifierFor only records a position.
+
                 modifier =
                     positions
                         .modifierFor("external_sources")
@@ -303,10 +277,7 @@ fun IntegrationScreen(
             }
 
             PreferenceGroup(
-                // Also carries the "lastfm_scrobbling" anchor, which used to sit on the removed
-                // Accounts group. Settings search offers a "Last.fm scrobbling" result that scrolls
-                // here, so without this the result would open this screen and then sit at the top.
-                // Chaining is safe: modifierFor only registers a y position per key.
+
                 modifier =
                     positions
                         .modifierFor("listenbrainz")
@@ -354,12 +325,6 @@ fun IntegrationScreen(
                 }
             }
 
-            // ─── Playlist import ──────────────────────────────────────────
-            // Cross-service playlist import: paste a URL from YouTube Music,
-            // Apple Music, Amazon Music, Tidal or Deezer and we'll resolve
-            // the tracks against YouTube Music and build a local playlist.
-            // Lives here (in Integration) per product decision so all
-            // cross-service features are co-located.
             PreferenceGroup(
                 modifier = positions.modifierFor("cross_service_import"),
                 title = stringResource(R.string.cross_service_import_playlist_title),
@@ -374,9 +339,7 @@ fun IntegrationScreen(
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -396,8 +359,7 @@ fun IntegrationScreen(
             onDismiss = { showListenBrainzTokenEditor.value = false },
             singleLine = true,
             maxLines = 1,
-            // The dialog opens pre-filled with the stored token, so editing it put a working
-            // ListenBrainz credential on screen in cleartext every time.
+
             masked = true,
             isInputValid = {
                 it.isNotEmpty()

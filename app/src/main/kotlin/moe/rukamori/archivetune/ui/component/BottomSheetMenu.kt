@@ -89,45 +89,6 @@ class MenuState(
     }
 }
 
-/**
- * ── Floating liquid-glass overflow popup (2026-09-04 redesign) ─────────────
- *
- * The shared song/artist/album overflow menu container — everything opened
- * through `menuState.show { ... }` — is no longer a Material [ModalBottomSheet]
- * (user request 2026-09-04: "The song overflow popup shouldn't be a bottomsheet
- * popup anymore... a floating popup on the bottom of the page"). It is now a
- * detached, rounded floating card anchored to the bottom of the screen with
- * 16dp side margins and a gap above the navigation-bar inset, matching the
- * reference screenshot.
- *
- * Glass: the popup surface itself carries the liquid-glass blur (same
- * treatment as the Apple-Music-style lyrics overflow popup — kyant
- * `drawBackdrop` with vibrancy + a 32dp blur over the content behind, plus a
- * dark translucent tint), sampled from the app-wide NavHost backdrop provided
- * via [LocalLiquidGlassBackdrop]. The area OUTSIDE the popup is NOT blurred —
- * it only gets a plain dim scrim (user: "remove the blur outside of the
- * popup"). When Liquid Glass is off (or pre-Android-12), the popup falls back
- * to a near-opaque charcoal card — the same look the sheet had before frost.
- *
- * The previous PixelCopy snapshot frost (window capture + off-thread box
- * blur) was removed along with this redesign: the kyant path is live,
- * cheaper and works while content scrolls behind the popup; the fallback no
- * longer needs a capture at all.
- *
- * Content theming: the menu content renders inside a [MaterialTheme] overlay
- * that remaps the container colors the menus actually use —
- * `surfaceContainerLow` (the section cards and "Now playing" header surfaces)
- * becomes transparent so the glass shows through, `surfaceContainerHigh`
- * (the action-grid chips) becomes a translucent hairline chip, dividers turn
- * faint white, and the destructive rows use iOS System Red — the exact
- * material the lyrics popup uses. No menu file needed to change.
- *
- * Animation: the popup slides up from the bottom with a no-bounce spring and
- * fades in; dismissal (scrim tap, back button, or any menu item calling
- * [MenuState.dismiss]) reverses the animation before the popup leaves
- * composition. `state.content` is untouched — every menu item, dialog and
- * callback keeps working exactly as before.
- */
 @Composable
 fun BottomSheetMenu(
     modifier: Modifier = Modifier,
@@ -138,11 +99,6 @@ fun BottomSheetMenu(
 
     state.dialogContent?.invoke()
 
-    // Render state: true from the moment the popup enters composition until
-    // its exit animation completes — `state.isVisible` flipping false only
-    // REQUESTS dismissal; the popup stays composed while the exit animation
-    // plays. This gives every dismissal path (scrim tap, back press, menu
-    // item) the same animated exit the old ModalBottomSheet had.
     var renderState by remember { mutableStateOf(false) }
     val enterProgress = remember { Animatable(0f) }
 
@@ -171,8 +127,6 @@ fun BottomSheetMenu(
         }
     }
 
-    // Back button dismisses the popup (the old sheet handled back via its
-    // dialog window; the overlay has to opt in explicitly).
     BackHandler(enabled = renderState) {
         state.isVisible = false
     }
@@ -181,20 +135,6 @@ fun BottomSheetMenu(
 
     val alpha = enterProgress.value
 
-    // ── Liquid glass surface (same recipe as the lyrics overflow popup) ──
-    // 2026-09-04 (REAL-TIME, user report: "The liquid glass blur behind the
-    // song popup is static. it should render in real time just like new
-    // lyrics popup"): prefer the dedicated menu backdrop — MainActivity
-    // attaches its recorder to the container wrapping the ENTIRE app surface
-    // (top bar, pages, mini player, navigation bar) while this menu is open,
-    // so the frost samples everything actually behind the popup and follows
-    // the mini player's animated content live, exactly like the lyrics
-    // popup follows the player's drifting artwork. The old app-wide
-    // NavHost-only backdrop (still captured for the nav bar / mini player
-    // glass) records nothing that changes while the menu is open — that is
-    // why the frost used to read as a frozen image. Fall back to it only when
-    // the dedicated recorder is unavailable (e.g. a menu composed outside
-    // MainActivity's provider).
     val menuGlassBackdrop = LocalMenuGlassBackdrop.current
     val liquidGlassBackdrop = menuGlassBackdrop ?: LocalLiquidGlassBackdrop.current
     val glassModifier =
@@ -204,8 +144,7 @@ fun BottomSheetMenu(
                     backdrop = liquidGlassBackdrop,
                     effects = {
                         vibrancy()
-                        // 32dp matches the lyrics overflow popup's "strong
-                        // backdrop blur" reference.
+
                         blur(32f.dp.toPx())
                     },
                     onDrawBackdrop = { drawBackdrop ->
@@ -219,16 +158,14 @@ fun BottomSheetMenu(
         }
 
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    // Translucent tint drawn OVER the blur — the "dark charcoal glass" of the
-    // reference (dark theme) / a bright frosted card (light theme).
+
     val glassTint =
         if (dark) {
             Color(0x8C1C1C1E)
         } else {
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f)
         }
-    // Near-opaque fallback when there is no backdrop to sample (Liquid Glass
-    // off, pre-Android-12, or a caller pinned an explicit background color).
+
     val fallbackColor =
         when {
             !background.isUnspecified -> background
@@ -236,8 +173,6 @@ fun BottomSheetMenu(
             else -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
         }
 
-    // Content colors on the glass: white ink on the dark charcoal glass, dark
-    // ink on the light frosted card — mirrors [liquidGlassContentColor].
     val contentInk =
         if (dark) {
             Color.White
@@ -245,13 +180,6 @@ fun BottomSheetMenu(
             Color(0xFF1C1B1F)
         }
 
-    // Theme overlay so the menus' own MaterialTheme color reads render the
-    // lyrics-popup material on the glass without touching any menu file:
-    //  * surfaceContainerLow  -> transparent (MenuSurfaceSection cards + the
-    //    "Now playing" header surfaces sit directly on the glass)
-    //  * surfaceContainerHigh -> translucent chip (NewActionGrid buttons)
-    //  * outlineVariant       -> hairline divider
-    //  * error                -> iOS System Red destructive rows
     val glassColorScheme =
         MaterialTheme.colorScheme.copy(
             onSurface = contentInk,
@@ -277,19 +205,12 @@ fun BottomSheetMenu(
 
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
-    // The popup never covers the whole screen — it floats at the bottom and
-    // its content scrolls internally (the menus are LazyColumns).
-    // Compact sizing (user request 2026-09-04: "make the popup compact so
-    // that it only around 40% of the screen length"): the card is capped at
-    // 40% of the screen height. Taller menus scroll inside the card exactly
-    // as before — no menu item, dialog or callback is lost; the menus'
-    // LazyColumns keep their keys and scroll positions.
+
     val maxPopupHeight = configuration.screenHeightDp.dp * 0.40f
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Plain dim scrim — NO blur outside the popup (user request
-        // 2026-09-04). Fades in/out with the popup's enter/exit animation.
+
         Box(
             modifier =
                 Modifier
@@ -304,7 +225,6 @@ fun BottomSheetMenu(
                     },
         )
 
-        // The floating popup card.
         Box(
             modifier =
                 Modifier
@@ -315,8 +235,7 @@ fun BottomSheetMenu(
                     .fillMaxWidth()
                     .graphicsLayer {
                         this.alpha = alpha
-                        // Slide up from below while entering, sink back while
-                        // exiting — draw-phase offset, no layout invalidation.
+
                         translationY = with(density) { (1f - alpha) * 48.dp.toPx() }
                     }
                     .shadow(
@@ -336,32 +255,17 @@ fun BottomSheetMenu(
                         interactionSource = popupInteractionSource,
                         indication = null,
                     ) {
-                        // Consume taps inside the popup so they never reach
-                        // the scrim and dismiss the menu accidentally.
+
                     },
         ) {
-            // The color scheme OUTSIDE this popup's glass overlay — dialogs
-            // spawned from the menu content (DefaultDialog & co.) are
-            // separate OS windows that still inherit this composition's
-            // locals, so without an explicit restore they would pick up the
-            // glass overlay's translucent container colors and render as
-            // see-through "blurred" dialogs (user report 2026-09-04:
-            // "Restore the old source picker popup. i never told you to add
-            // blur there"). Dialogs read this via [LocalUnglassColorScheme]
-            // and re-wrap themselves in the app's real, opaque scheme.
+
             val unglassedColorScheme = MaterialTheme.colorScheme
 
             CompositionLocalProvider(
                 LocalContentColor provides contentInk,
-                // The lyrics-popup transparent-surface fix, generalised (2026-09-04):
-                // signal menu content that it sits on live glass so section cards
-                // (MenuSurfaceSection) render transparent instead of the opaque
-                // Muzo grey that was hiding the frost (user report: "the background
-                // behind the text is still opaque"). Only provided when the kyant
-                // backdrop is actually sampling — the fallback charcoal card keeps
-                // the opaque section material for contrast.
+
                 LocalGlassMenuContent provides (glassModifier != null),
-                // The pre-glass scheme for dialogs (see comment above).
+
                 LocalUnglassColorScheme provides unglassedColorScheme,
             ) {
                 MaterialTheme(colorScheme = glassColorScheme) {
@@ -376,5 +280,4 @@ fun BottomSheetMenu(
     }
 }
 
-/** The floating menu card's shape — fully rounded, detached from every edge. */
 private val FloatingMenuShape = RoundedCornerShape(28.dp)

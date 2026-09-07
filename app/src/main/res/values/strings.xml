@@ -256,8 +256,7 @@
     <string name="save_canvas_save_failed">Couldn\'t save canvas: %1$s</string>
     <string name="save_canvas_not_downloadable">This source uses HLS streaming and can\'t be saved as a single video.</string>
     <string name="save_canvas_already_downloading">A canvas is already being saved. Please wait.</string>
-    <!-- Legacy canvas strings — still referenced by SongMenu.kt's "Save Canvas" quick action
-         (which predates SaveCanvasDialog.kt). Kept for source compatibility. -->
+
     <string name="canvas_source_title">Choose Canvas source</string>
     <string name="canvas_saving">Saving Canvas…</string>
     <string name="canvas_saved">Canvas saved to internal storage</string>
@@ -583,10 +582,7 @@
     <string name="frosted_blur">Frosted blur</string>
     <string name="frosted_mini_player_unsupported">Frosted mini player is not supported on Android versions below 12</string>
     <string name="moving_blur_static_disclaimer">Blur will be static for Android versions below 12</string>
-    <!-- Lyrics mode + animation style strings removed — the V2 Legacy / Enhanced picker and the
-         lyrics animation style page are gone; Enhanced is the sole renderer now.
-         (Upstream's lyrics_mode_spotify "Spotify (word sync)" entry is likewise not ported:
-         it requires LyricsV2.kt which this fork removed.) -->
+
     <string name="lyrics_line_spacing">Lyrics line spacing</string>
     <string name="content">Content</string>
     <string name="action_logout">Log out</string>
@@ -643,10 +639,10 @@
     <string name="enable_unison_lyrics">Enable Unison lyrics</string>
     <string name="prioritize_word_synced_lyrics">Prioritize Word Synced Lyrics</string>
     <string name="prioritize_word_synced_lyrics_desc">Only accept word-synced lyrics, from BetterLyrics, BetterLyrics Portato, YouLyPlus and Unison.</string>
-    <!-- enable_simpmusic_lyrics removed (2026-08-30): provider + module deleted. -->
+
     <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
-    <!-- enable_bini_lyrics removed (2026-08-30): provider + module deleted. -->
+
     <string name="lyrics_test">Lyrics test</string>
     <string name="lyrics_test_description">Probe every enabled lyrics provider with a known test track and report which ones are reachable and returning lyrics.</string>
     <string name="lyrics_test_running">Testing providers…</string>
@@ -842,7 +838,7 @@
     <string name="backup_create_failed">Couldn\'t create backup</string>
     <string name="restore_success">Backup restored successfully</string>
     <string name="restore_failed">Failed to restore backup</string>
-    <!-- Multi-source audio framework -->
+
     <string name="audio_sources">Audio Sources</string>
     <string name="audio_sources_description">Choose which services to stream from, and in what order.</string>
     <string name="catalog_sources">Catalog sources</string>
@@ -886,7 +882,6 @@
     <string name="tidal_account_first">Use my account first</string>
     <string name="tidal_account_first_description">Prefer your own Tidal account over the public instances.</string>
 
-    <!-- Tidal music source integration -->
     <string name="music_sources">Music Sources</string>
     <string name="streaming_sources">Streaming sources</string>
     <string name="streaming_sources_description">Configure Tidal and Qobuz lossless sources and priority</string>
@@ -909,7 +904,7 @@
     <string name="tidal_set_cookie">Set Tidal cookie</string>
     <string name="tidal_account_connected">Connected: %1$s</string>
     <string name="tidal_disconnect">Disconnect Tidal account</string>
-    <!-- Tidal HiFi instances -->
+
     <string name="tidal_instances">HiFi instances</string>
     <string name="tidal_instances_description">Public mirrors used when no pool account can stream a track. Yours are tried first.</string>
     <string name="tidal_add_instance">Add instance</string>
@@ -926,7 +921,6 @@
     <string name="tidal_instance_preview_only">Deprecated — %1$d ms</string>
     <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
 
-    <!-- Qobuz music source integration -->
     <string name="source_qobuz">Qobuz</string>
     <string name="qobuz_integration">Qobuz</string>
     <string name="qobuz_integration_description">Manage Qobuz proxy instances and lossless quality</string>
@@ -949,7 +943,6 @@
     <string name="qobuz_check_instances">Test instances</string>
     <string name="qobuz_checking_instances">Testing…</string>
 
-    <!-- Qobuz account tokens (direct API) -->
     <string name="qobuz_tokens">Qobuz account tokens</string>
     <string name="qobuz_tokens_description">Sign in or paste tokens. Direct tokens stream at full fidelity, before proxies.</string>
     <string name="qobuz_login_web">Sign in with Qobuz (web)</string>
@@ -973,7 +966,6 @@
     <string name="qobuz_status_deprecated_info_title">Why deprecated?</string>
     <string name="qobuz_status_deprecated_info">This account is reachable but can only stream 30-second previews or lower-quality audio — it most likely has no active premium subscription, so lossless playback is unavailable.</string>
 
-    <!-- Shared source settings -->
     <string name="source_manage_instances">Manage instances</string>
     <string name="tidal_manage_instances">Manage Tidal instances</string>
     <string name="source_health_summary">%1$d configured · %2$d online · %3$d deprecated · %4$d failed</string>
@@ -988,12 +980,10 @@
     <string name="source_removed">Removed %1$d</string>
     <string name="source_nothing_to_do">Run a test first — nothing matched</string>
 
-    <!-- Listening history sync -->
     <string name="listening_history">Listening history</string>
     <string name="sync_youtube_history">Report plays to YouTube history</string>
     <string name="sync_youtube_history_description">Add plays to your YouTube history even when audio comes from another source.</string>
 
-    <!-- Tidal account login / premium -->
     <string name="tidal_login">Sign in to Tidal</string>
     <string name="tidal_login_start">Start sign-in</string>
     <string name="tidal_login_instructions">Open %1$s and enter code %2$s, then return here.</string>
@@ -1586,7 +1576,6 @@
     <string name="language_pack_other_romanization">Korean, Chinese, Hindi, and other romanization</string>
     <string name="language_pack_other_romanization_description">Built in · no additional data or download required</string>
 
-    <!-- Telegram channel streaming integration -->
     <string name="telegram_integration">Telegram</string>
     <string name="telegram_integration_description">Stream lossless audio files from Telegram channels</string>
     <string name="telegram_account">Account</string>
@@ -1636,7 +1625,7 @@
     <string name="telegram_unavailable">Telegram support is unavailable in this build</string>
     <string name="telegram_error">Telegram error: %1$s</string>
     <string name="telegram_error_generic">Couldn\'t open this Telegram channel</string>
-    <!-- Download quality / export format pickers (AudioQualityDialogs.kt) -->
+
     <string name="download_quality_title">Download quality</string>
     <string name="download_quality_max">Max</string>
     <string name="download_quality_max_description">Best the source offers, up to 24-bit/192 kHz</string>

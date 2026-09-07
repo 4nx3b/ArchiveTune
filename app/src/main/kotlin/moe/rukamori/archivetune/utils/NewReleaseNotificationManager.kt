@@ -28,37 +28,13 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SeenNewReleaseIdsKey
 import java.util.concurrent.TimeUnit
 
-/**
- * New-release notifications for subscribed artists (user request 2026-09-03:
- * "If i subscrib to an artist and a new album or song or ep or anything new
- * from that specific artist drops i should get a notification").
- *
- * The whole feature rides on the app's existing substrate, deliberately:
- *  - the subscription state is the SAME Room `artist.bookmarkedAt` row the
- *    artist page and the TikTok rail's follow badge toggle;
- *  - the release catalogue is the SAME `YouTube.newReleaseAlbums()` feed the
- *    New Releases screen lists (now fully paginated, so the catalogue is not
- *    truncated at the first ~200 entries);
- *  - the notify-once bookkeeping lives in DataStore as a bounded CSV of seen
- *    release IDs;
- *  - the schedule is a unique periodic WorkManager job with network + battery
- *    constraints, exactly like the app-update checker.
- *
- * First run is a silent BASELINE: every release currently in the catalogue is
- * marked seen without notifying, so installing the feature does not dump
- * dozens of notifications for releases that already existed. From the second
- * run on, only releases whose artist is subscribed AND whose ID has never
- * been seen produce a notification.
- */
 object NewReleaseNotificationManager {
     private const val CHANNEL_ID = "new_release_notification_channel"
     private const val WORK_NAME = "new_release_check_work"
     private const val NOTIFICATION_ID_BASE = 9100
 
-    /** Bounded size of the seen-ID CSV (newest first). */
     private const val SEEN_IDS_LIMIT = 500
 
-    /** Never post more than this many notifications in one check. */
     private const val MAX_NOTIFICATIONS_PER_CHECK = 8
 
     fun createNotificationChannel(context: Context) {
@@ -94,10 +70,7 @@ object NewReleaseNotificationManager {
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            // Same policy as the app-update checker: a changed interval (from
-            // an app update) replaces the stored schedule; identical requests
-            // are no-ops, and the periodic clock itself is never reset by
-            // repeated enqueues.
+
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
@@ -107,11 +80,6 @@ object NewReleaseNotificationManager {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
     }
 
-    /**
-     * One release to surface. The artist match is pre-resolved by the worker
-     * (the artist whose subscription matched, not necessarily the first
-     * credited artist).
-     */
     data class NewRelease(
         val releaseId: String,
         val title: String,
@@ -124,11 +92,6 @@ object NewReleaseNotificationManager {
         return raw.splitToSequence(',').filter { it.isNotBlank() }.toSet()
     }
 
-    /**
-     * Persists the seen set as a bounded, newest-first CSV. Newest first so
-     * trimming drops the OLDEST ids — the ones least likely to still be in
-     * the rotating catalogue.
-     */
     suspend fun writeSeenReleaseIds(
         context: Context,
         seenIds: List<String>,
@@ -139,11 +102,6 @@ object NewReleaseNotificationManager {
         }
     }
 
-    /**
-     * Posts one notification per release (deduped upstream by the worker).
-     * Notification IDs derive from the release id hash so re-notifying the
-     * same release replaces rather than stacks.
-     */
     suspend fun notifyNewReleases(
         context: Context,
         releases: List<NewRelease>,
@@ -185,13 +143,10 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(notificationId, notification)
             } catch (security: SecurityException) {
-                // Missing POST_NOTIFICATIONS permission — the feature degrades
-                // to silent, the same way the update notification does.
+
             }
         }
 
-        // More releases than the per-check budget: a summary notification so
-        // nothing is silently dropped.
         if (releases.size > MAX_NOTIFICATIONS_PER_CHECK) {
             val summary =
                 NotificationCompat
@@ -213,17 +168,11 @@ object NewReleaseNotificationManager {
             try {
                 NotificationManagerCompat.from(context).notify(NOTIFICATION_ID_BASE + 0xFFF, summary)
             } catch (security: SecurityException) {
-                // Missing POST_NOTIFICATIONS permission.
+
             }
         }
     }
 
-    /**
-     * Cancels the posted notifications for the given release ids (the same
-     * id derivation [notifyNewReleases] uses). Called when the user marks
-     * releases read on the New Releases page (2026-09-05) so the system
-     * notifications for those releases clear together with the page.
-     */
     fun cancelNotifications(
         context: Context,
         releaseIds: Collection<String>,

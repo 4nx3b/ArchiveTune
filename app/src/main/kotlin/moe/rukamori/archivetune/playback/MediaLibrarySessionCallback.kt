@@ -1310,19 +1310,6 @@ class MediaLibrarySessionCallback
             return root in AUTO_QUEUE_SONG_ROOTS && contains("/")
         }
 
-        /**
-         * The "Liked Songs" folder for the Auto browse tree.
-         *
-         * Spotify's liked songs were reachable nowhere in the car: the tree carried the playlist
-         * folder and nothing else, so the one collection most people actually drive to was the one
-         * they could not open. It sits above the playlists for the same reason it does in Spotify's
-         * own apps.
-         *
-         * Resolved lazily — the folder is offered whenever Spotify browsing is enabled, without
-         * paging the whole liked library first. Auto asks for a node's children only when the user
-         * opens it, and doing that work up front would put a full library walk on the callback that
-         * draws the root.
-         */
         private suspend fun spotifyLikedFolder(): List<MediaItem> {
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
             return listOf(
@@ -1336,14 +1323,6 @@ class MediaLibrarySessionCallback
             )
         }
 
-        /**
-         * The liked songs as playable items, resolved to real streams and cached for the session.
-         *
-         * Same resolve-in-batches shape as [spotifyPlaylistMediaItems]: a Spotify track is not
-         * playable on its own, it has to be matched to a stream first, and doing that one track at
-         * a time over a library of hundreds is the difference between a list that appears and a
-         * browse callback that times out.
-         */
         private suspend fun spotifyLikedMediaItems(): List<MediaItem> {
             spotifyPlaylistItemCache[SPOTIFY_LIKED_CACHE_KEY]?.let { return it }
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
@@ -1351,10 +1330,7 @@ class MediaLibrarySessionCallback
                 runCatching {
                     spotifyLibraryRepository
                         .likedSongs()
-                        // Capped like every other Auto list. A Spotify track is not playable until
-                        // it has been matched to a stream, and a liked library runs to hundreds or
-                        // thousands — resolving all of them is a browse callback that never
-                        // returns. AUTO_BROWSE_LIMIT is what the rest of the tree already shows.
+
                         .take(AUTO_BROWSE_LIMIT)
                         .chunked(SPOTIFY_RESOLVE_BATCH_SIZE)
                         .flatMap { batch ->
@@ -1369,15 +1345,6 @@ class MediaLibrarySessionCallback
             return resolved
         }
 
-        /**
-         * The Spotify playlists folder, drawn from cache only.
-         *
-         * This runs while the PARENT list is being built, so it must not go to the network: it used
-         * to call [spotifyPlaylistsForAuto], which refreshes from Spotify when the cache is cold,
-         * and the whole "Playlists" screen in the car sat empty until that request came back. The
-         * folder is now offered whenever Spotify browsing is on, with a count only when one is
-         * already known — opening it is what fetches, and Auto asks for children only then.
-         */
         private suspend fun spotifyPlaylistFolder(): List<MediaItem> {
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
             spotifyLibraryRepository.restoreCachedPlaylists()
@@ -1395,7 +1362,6 @@ class MediaLibrarySessionCallback
             )
         }
 
-        /** The playlists themselves — fetched when the folder is opened, not when it is listed. */
         private suspend fun spotifyPlaylistsForAuto() =
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) {
                 emptyList()
@@ -2297,10 +2263,7 @@ class MediaLibrarySessionCallback
             private const val AUTO_HOME_PLAYLIST_LIMIT = 20
             private const val SPOTIFY_RESOLVE_BATCH_SIZE = 20
             private const val HOME_RECENT_WINDOW_MS = 86400000L * 14L
-            /**
-             * Liked songs share [spotifyPlaylistItemCache] under a key no Spotify playlist id can
-             * collide with — ids are base62, so a colon cannot appear in one.
-             */
+
             private const val SPOTIFY_LIKED_CACHE_KEY = "liked:songs"
             private const val PLAYLIST_ACTION_SHUFFLE = "_shuffle"
             private const val PLAYLIST_ACTION_SORT = "_sort"

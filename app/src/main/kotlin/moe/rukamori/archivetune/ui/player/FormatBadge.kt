@@ -5,15 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * The stream-quality badge — "Lossless", "Hi-Res Lossless", "Hi-Quality", or "Upgrading Quality"
- * while a better stream is still being resolved.
- *
- * Written for the BitChord player, and now shared: the lyrics screen shows the same badge between
- * its two timestamps for every player style, so it lives in ui.player rather than inside one
- * style's package.
- */
-
 package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.core.LinearEasing
@@ -50,14 +41,6 @@ import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import java.util.Locale
 
-// ── The codec / quality badge (adapted to ArchiveTune's FormatEntity) ─────────
-
-/**
- * The gap between the two timestamps under the seek bar: just the "Lossless"
- * badge when one applies, and nothing otherwise. The measured stats line lives
- * inside the sleeve instead — the badge is a claim, the sleeve is where the
- * evidence is.
- */
 @Composable
 fun LosslessOrStats(
     isLoading: Boolean,
@@ -68,23 +51,20 @@ fun LosslessOrStats(
     val hiRes = lossless && (format?.sampleRate ?: 0) >= 88_200
     val hiQuality = !lossless && (format?.bitrate ?: 0) >= 250_000
     when {
-        // Still resolving — nothing measured yet to confirm with, so this is a
-        // statement of intent, not a result.
+
         format == null || (isLoading && !lossless) -> LosslessLabel(
             text = "Upgrading Quality",
             animated = false,
             modifier = modifier,
         )
         lossless -> LosslessLabel(
-            // Same line Tidal, Qobuz and Apple Music draw it at.
+
             text = if (hiRes) "Hi-Res Lossless" else "Lossless",
-            // Shimmer is reserved for the thing that was asked for and
-            // confirmed. It is what makes the badge read as an achievement
-            // rather than a label, which only one of these two is.
+
             animated = true,
             modifier = modifier,
         )
-        // Lossy, but the good end of lossy.
+
         hiQuality -> LosslessLabel(
             text = "Hi-Quality",
             animated = false,
@@ -94,15 +74,9 @@ fun LosslessOrStats(
     }
 }
 
-/** Whether the stream is a lossless codec. */
 private fun FormatEntity.isLossless(): Boolean =
     mimeType.endsWith("flac") || mimeType.endsWith("alac")
 
-/**
- * "FLAC · 320 kbps · 48.0 kHz" — whichever of those the format actually
- * reports. A figure it hasn't is dropped rather than filled in, so a short
- * line means little was known, never that something was invented.
- */
 internal fun FormatEntity.describe(): String {
     val parts = buildList {
         codecLabel(mimeType)?.let(::add)
@@ -112,7 +86,6 @@ internal fun FormatEntity.describe(): String {
     return parts.joinToString(" · ").takeIf { it.isNotEmpty() } ?: ""
 }
 
-/** The codec under its usual name rather than its MIME type. */
 internal fun codecLabel(mimeType: String?): String? = when {
     mimeType == null -> null
     mimeType.endsWith("opus") -> "Opus"
@@ -124,7 +97,6 @@ internal fun codecLabel(mimeType: String?): String? = when {
     else -> mimeType.substringAfter('/').uppercase(Locale.ROOT)
 }
 
-/** A headphone glyph ahead of the quality tag — "Upgrading Quality", "Hi-Quality", "Lossless". */
 @Composable
 private fun LosslessLabel(text: String, animated: Boolean, modifier: Modifier = Modifier) {
     Row(
@@ -155,14 +127,6 @@ private fun LosslessLabel(text: String, animated: Boolean, modifier: Modifier = 
     }
 }
 
-/**
- * "Lossless", with a highlight band sweeping left to right across it every
- * three seconds — confirmed, not just claimed, so it's worth the shine.
- *
- * The band's width is measured off the text itself via [onSizeChanged]
- * rather than assumed, so the sweep always clears the word fully at both
- * ends instead of being sized for whatever length happened to be typical.
- */
 @Composable
 private fun ShimmerText(text: String) {
     var widthPx by remember { mutableIntStateOf(0) }

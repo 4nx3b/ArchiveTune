@@ -34,8 +34,7 @@ class YtdlnisStreamRepository
     ) : AudioStreamRepository {
 
         override suspend fun resolve(request: AudioStreamRequest): ResolvedAudioStream {
-            // 1) Try NewPipe extractor (MetrolistExtractor) if available — this is what YTDLnis
-            // calls "NewPipe" data fetching. It handles signatureCipher without Python.
+
             try {
                 val newPipeResult = tryNewPipe(request)
                 if (newPipeResult != null) return newPipeResult
@@ -43,7 +42,6 @@ class YtdlnisStreamRepository
                 Timber.tag(TAG).d(e, "NewPipe fallback failed for %s", request.mediaId)
             }
 
-            // 2) Try external yt-dlp via CompactYtDlp (YTDLnis plugin model)
             if (CompactYtDlp.isAvailable(context)) {
                 try {
                     val ytdlpResult = tryExternalYtDlp(request)
@@ -57,14 +55,11 @@ class YtdlnisStreamRepository
         }
 
         private suspend fun tryNewPipe(request: AudioStreamRequest): ResolvedAudioStream? {
-            // Use core's NewPipeUtils if present; keep reflection to avoid hard dependency at compile
-            // when the core is the MetrolistExtractor fork (same org.schabi.newpipe.extractor package).
+
             return try {
                 val clazz = Class.forName("moe.rukamori.archivetune.innertube.NewPipeUtils")
                 val method = clazz.getMethod("getStreamUrl", String::class.java, String::class.java)
-                // NewPipeUtils.getStreamUrl(format, videoId) is not directly usable here without a format;
-                // instead try NewPipeExtractor.getStreamUrl style — fall back to null to let external yt-dlp try.
-                // This stub keeps the NewPipe path as a placeholder for a full MetrolistExtractor integration.
+
                 null
             } catch (_: ClassNotFoundException) {
                 null
@@ -73,18 +68,18 @@ class YtdlnisStreamRepository
 
         private suspend fun tryExternalYtDlp(request: AudioStreamRequest): ResolvedAudioStream? {
             val json = CompactYtDlp.dumpJson(context, request.mediaId, extraArgs = listOf("--format", "bestaudio/best", "--no-playlist")) ?: return null
-            // yt-dlp --dump-json returns a JSON object per line; take first line
+
             val firstLine = json.lineSequence().firstOrNull { it.trim().startsWith("{") } ?: return null
             val obj = JSONObject(firstLine)
             val url = obj.optString("url").takeIf { it.isNotBlank() }
                 ?: obj.optJSONArray("formats")?.let { arr ->
-                    // Pick best audio format
+
                     var best: JSONObject? = null
                     var bestAbr = 0
                     for (i in 0 until arr.length()) {
                         val f = arr.getJSONObject(i)
                         val vcodec = f.optString("vcodec")
-                        if (vcodec != "none" && vcodec.isNotBlank()) continue // skip video
+                        if (vcodec != "none" && vcodec.isNotBlank()) continue
                         val abr = f.optInt("abr", 0)
                         if (abr > bestAbr) {
                             bestAbr = abr

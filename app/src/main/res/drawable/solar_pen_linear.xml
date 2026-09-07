@@ -3,9 +3,7 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Solar "pen" (linear) — diagonal pencil with eraser cap.
-         Stroke style matches the other solar_*_linear drawables
-         (24dp viewport, 1.5dp stroke, round caps/joins). -->
+
     <path
         android:pathData="M13.5 5.5l5 5"
         android:fillColor="#00000000"

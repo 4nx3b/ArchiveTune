@@ -127,12 +127,11 @@ private data class ThumbnailPage(
 fun Thumbnail(
     sliderPositionProvider: () -> Long?,
     modifier: Modifier = Modifier,
-    isPlayerExpanded: Boolean = true, // Add parameter to control swipe based on player state
+    isPlayerExpanded: Boolean = true,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val context = LocalContext.current
 
-    // States
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val queueTitle by playerConnection.queueTitle.collectAsStateWithLifecycle()
@@ -166,7 +165,6 @@ fun Thumbnail(
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
-    // Player background style for consistent theming
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
         defaultValue = PlayerBackgroundStyle.DEFAULT,
@@ -188,10 +186,8 @@ fun Thumbnail(
         CanvasArtworkPlaybackCache.setMaxSize(maxCanvasCacheSize)
     }
 
-    // Grid state
     val thumbnailLazyGridState = rememberLazyGridState()
 
-    // Create a playlist using correct shuffle-aware logic
     val timeline = playerConnection.player.currentTimeline
     val currentIndex = playerConnection.player.currentMediaItemIndex
     val shuffleModeEnabled = playerConnection.player.shuffleModeEnabled
@@ -239,11 +235,10 @@ fun Thumbnail(
 
     val currentMediaItem =
         remember(mediaMetadata) {
-            // Fallback to player's current item if mediaMetadata is null,
-            // but prefer mediaMetadata for immediate updates during crossfade.
+
             val metadata = mediaMetadata
             if (metadata != null) {
-                // Use extension to convert metadata to a proper MediaItem with all fields (uri, artwork, tag)
+
                 metadata.toMediaItem()
             } else {
                 try {
@@ -268,7 +263,6 @@ fun Thumbnail(
         }
     val currentMediaIndex = thumbnailPages.indexOfFirst { it.slotKey == "current" }
 
-    // OuterTune Snap behavior
     val horizontalLazyGridItemWidthFactor = 1f
     val thumbnailSnapLayoutInfoProvider =
         remember(thumbnailLazyGridState) {
@@ -281,23 +275,11 @@ fun Thumbnail(
             )
         }
 
-    // Current item tracking
     val currentItem by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemIndex } }
     val itemScrollOffset by remember { derivedStateOf { thumbnailLazyGridState.firstVisibleItemScrollOffset } }
 
-    // Guards the swipe handler against double-firing. After a swipe-triggered
-    // seek, `player.currentMediaItemIndex` updates immediately while
-    // `mediaMetadata` (and the "current" thumbnail page built from it) lags
-    // a few frames behind. During that window the page list is rebuilt from
-    // a stale "current" slot, which could re-trigger the swipe handler and
-    // bounce playback back to the previous song — most visibly when the
-    // current song was on repeat (user report: swiping to the previous song
-    // "swipes" but the repeated song starts playing again). Deduplicating
-    // by the exact swipe target fixes that without changing any visual
-    // behavior.
     var lastHandledSwipeTarget by remember { mutableStateOf<String?>(null) }
 
-    // Handle swipe to change song
     LaunchedEffect(itemScrollOffset) {
         if (!thumbnailLazyGridState.isScrollInProgress || !swipeThumbnail || itemScrollOffset != 0 ||
             currentMediaIndex < 0
@@ -315,20 +297,12 @@ fun Thumbnail(
         if (lastHandledSwipeTarget == swipeTargetKey) return@LaunchedEffect
         lastHandledSwipeTarget = swipeTargetKey
 
-        // Seek directly to the window the user swiped to. Player.seekTo(
-        // mediaItemIndex, positionMs) is repeat-mode-independent, unlike
-        // seekToNext()/seekToPreviousMediaItem(), whose navigation resolves
-        // through repeat-mode-aware index computation (with REPEAT_MODE_ONE
-        // the resolved "previous" target can fall back onto the current,
-        // repeated song — the exact reported bug). An explicit index seek
-        // always lands on the page the user actually swiped to.
         val directionNext = currentItem > currentMediaIndex
         if ((directionNext && canSkipNext) || (!directionNext && canSkipPrevious)) {
             playerConnection.player.seekTo(targetWindowIndex, 0L)
         }
     }
 
-    // Update position when song changes
     LaunchedEffect(mediaMetadata, currentMediaItem?.mediaId, canSkipPrevious, canSkipNext) {
         val index = maxOf(0, currentMediaIndex)
         if (index >= 0 && index < thumbnailPages.size) {
@@ -347,7 +321,6 @@ fun Thumbnail(
         }
     }
 
-    // Seek on double tap
     var showSeekEffect by remember { mutableStateOf(false) }
     var seekDirection by remember { mutableStateOf("") }
     val layoutDirection = LocalLayoutDirection.current
@@ -360,7 +333,7 @@ fun Thumbnail(
                     .statusBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Now Playing header
+
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
@@ -370,7 +343,7 @@ fun Thumbnail(
                     style = MaterialTheme.typography.titleMedium,
                     color = textBackgroundColor,
                 )
-                // Show album title or queue title
+
                 val playingFrom = queueTitle ?: mediaMetadata?.album?.title
                 if (!playingFrom.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
@@ -384,7 +357,6 @@ fun Thumbnail(
                 }
             }
 
-            // Thumbnail content
             BoxWithConstraints(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.fillMaxSize(),
@@ -396,7 +368,7 @@ fun Thumbnail(
                     state = thumbnailLazyGridState,
                     rows = GridCells.Fixed(1),
                     flingBehavior = rememberSnapFlingBehavior(thumbnailSnapLayoutInfoProvider),
-                    userScrollEnabled = swipeThumbnail && isPlayerExpanded, // Only allow swipe when player is expanded
+                    userScrollEnabled = swipeThumbnail && isPlayerExpanded,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(
@@ -432,8 +404,6 @@ fun Thumbnail(
                             }
                         }
 
-                        // Apply manual "Refetch canvas" results — without this the refetch menu
-                        // action silently no-ops on the pager styles (V1–V6).
                         LaunchedEffect(shouldUseCanvas, item.mediaId) {
                             if (!shouldUseCanvas) return@LaunchedEffect
                             playerConnection.canvasArtworkUpdates.collect { update ->
@@ -525,7 +495,7 @@ fun Thumbnail(
                                                     )
                                                     seekDirection = context.getString(R.string.seek_forward_dynamic, skipAmount / 1000)
                                                 }
-                                                // If a user double-tap skip lands on a new media item, force a centralized Discord sync
+
                                                 playerConnection.service.forceDiscordSync("thumbnail_double_tap_skip")
 
                                                 showSeekEffect = true
@@ -541,7 +511,7 @@ fun Thumbnail(
                                         .clip(RoundedCornerShape(thumbnailCornerRadius.dp)),
                             ) {
                                 if (hidePlayerThumbnail) {
-                                    // Show app logo when thumbnail is hidden
+
                                     Box(
                                         modifier =
                                             Modifier
@@ -657,7 +627,6 @@ fun Thumbnail(
             }
         }
 
-        // Seek effect
         LaunchedEffect(showSeekEffect) {
             if (showSeekEffect) {
                 delay(1000)
@@ -758,7 +727,6 @@ private fun ThumbnailBgBlurApi30(
  * Custom SnapLayoutInfoProvider idea belongs to OuterTune
  */
 
-// SnapLayoutInfoProvider
 @ExperimentalFoundationApi
 fun SnapLayoutInfoProvider(
     lazyGridState: LazyGridState,
@@ -779,7 +747,6 @@ fun SnapLayoutInfoProvider(
         override fun calculateSnapOffset(velocity: Float): Float {
             val bounds = calculateSnappingOffsetBounds()
 
-            // Only snap when velocity exceeds threshold
             if (abs(velocity) < velocityThreshold) {
                 if (abs(bounds.start) < abs(bounds.endInclusive)) {
                     return bounds.start
@@ -802,12 +769,10 @@ fun SnapLayoutInfoProvider(
             layoutInfo.visibleItemsInfo.fastForEach { item ->
                 val offset = calculateDistanceToDesiredSnapPosition(layoutInfo, item, positionInLayout)
 
-                // Find item that is closest to the center
                 if (offset <= 0 && offset > lowerBoundOffset) {
                     lowerBoundOffset = offset
                 }
 
-                // Find item that is closest to center, but after it
                 if (offset >= 0 && offset < upperBoundOffset) {
                     upperBoundOffset = offset
                 }

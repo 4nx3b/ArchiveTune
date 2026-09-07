@@ -79,31 +79,23 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/** Everything but the line being sung. SimpMusic's `Color.LightGray.copy(alpha = 0.35f)`. */
 private val DimLine = Color.LightGray.copy(alpha = 0.35f)
 
-/** Words of the sung line that have not been reached yet — brighter than a whole dim line. */
 private val PendingWord = Color.LightGray.copy(alpha = 0.6f)
 
-/** Matches the lead the other two renderers apply, so all three sit on the same beat. */
 private const val LRC_LEAD_MS = 300L
 private const val TTML_LEAD_MS = 0L
 private const val VISUAL_TUNING_OFFSET_MS = 150L
 
-/** How long a drag suspends follow-the-song for, so scrolling back to read is not fought. */
 private const val MANUAL_SCROLL_HOLD_MS = 4_000L
 
-/**
- * SimpMusic's lyrics. Signature matches [moe.rukamori.archivetune.ui.component.LyricsEnhanced] and
- * [moe.rukamori.archivetune.ui.component.LyricsV2] so a caller can swap between the three.
- */
 @Composable
 fun SimpMusicLyrics(
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     modifier: Modifier = Modifier,
     textColorOverride: Color? = null,
-    // Non-null when this is rendered in the player's lyrics CARD rather than full screen.
+
     textSizeSp: Float? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -120,9 +112,6 @@ fun SimpMusicLyrics(
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics) || isTtml(lyrics)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics) }
 
-    // Parsed off the composition thread for the same reason the other two renderers do it: a
-    // word-synced TTML file is an XML parse plus an object per syllable, and paying that in
-    // composition lands the whole cost on the frame that opens the view.
     var parsed by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
     LaunchedEffect(lyrics) {
         val text = lyrics
@@ -133,12 +122,7 @@ fun SimpMusicLyrics(
         val durationMs = player.duration.takeIf { it > 0L } ?: 0L
         parsed =
             withContext(Dispatchers.Default) {
-                // Parse-fallback guards (2026-09-05, user report: "selecting
-                // a different lyrics makes the whole lyrics disappear"):
-                // every parser call is wrapped and an empty sync parse falls
-                // back to rendering the raw text as plain lines, so a
-                // user-selected lyrics that our parsers half-understand shows
-                // SOMETHING rather than a blank screen.
+
                 fun plainLines(): List<LyricsEntry> =
                     text
                         .lines()
@@ -154,9 +138,7 @@ fun SimpMusicLyrics(
                                 .ifEmpty { plainLines() }
                         else -> plainLines()
                     }
-                // findCurrentLineIndex clamps to 0, so without an empty entry in front of the
-                // first real one the opening line reads as "being sung" from 0:00 until the song
-                // actually reaches it. Both other renderers prepend the same head entry.
+
                 if (lines.isNotEmpty() && lines.first().time >= 0L) {
                     listOf(HEAD_LYRICS_ENTRY) + lines
                 } else {
@@ -166,14 +148,6 @@ fun SimpMusicLyrics(
     }
     val entries = parsed.orEmpty()
 
-    // ── AI romanisation (2026-09-05) ──────────────────────────────────────
-    // The lyrics menu's "AI Romanise Now" and the "Auto AI Romanisation"
-    // setting publish results through AiLyricsRomanization; only LyricsEnhanced
-    // consumed them, so the action looked dead in the SimpMusic style (user
-    // report: "Romanisation / auto romanisation doesn't work in simpmusic").
-    // This mirrors LyricsEnhanced's consumption: a session key scoped to the
-    // raw lyrics text, lines resolved by line TEXT (not index), and the auto
-    // request fired when the setting is on.
     val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
     val aiRomanizationSessionKey =
         remember(lyrics) {
@@ -198,8 +172,6 @@ fun SimpMusicLyrics(
         )
     }
 
-    // The playhead lives in explicit state read through a stable provider, so a position tick
-    // invalidates only the line that reads it — not this composable and not the list.
     val positionState = remember(lyrics) { mutableLongStateOf(0L) }
     val positionProvider: () -> Long = remember { { positionState.longValue } }
     var currentLineIndex by remember(lyrics) { mutableIntStateOf(-1) }
@@ -208,8 +180,7 @@ fun SimpMusicLyrics(
     LaunchedEffect(entries, isSynced, isTtmlFormat, lyricsSyncOffset) {
         if (!isSynced || entries.isEmpty()) return@LaunchedEffect
         val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
-        // A word-timed line needs a fine tick to light one word at a time; a line-synced one
-        // changes state a few times a minute and a 50 ms poll is already far finer than it needs.
+
         val pollMs = if (isTtmlFormat) 16L else 50L
         while (isActive) {
             val raw = latestSliderPositionProvider.value() ?: player.currentPosition
@@ -227,18 +198,13 @@ fun SimpMusicLyrics(
         if (dragged) {
             manualUntilMs = Long.MAX_VALUE
         } else if (manualUntilMs == Long.MAX_VALUE) {
-            // Only a RELEASE arms the timer. Arming it on every `dragged == false` would fire on
-            // the first composition too, and hold the view off its own opening line for the first
-            // four seconds after it is opened.
+
             manualUntilMs = System.currentTimeMillis() + MANUAL_SCROLL_HOLD_MS
         }
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // The active line is scrolled to the TOP of the list, and the list starts a third of the
-        // way down the box — so "top of the list" reads as "a third of the way down the screen",
-        // which is where SimpMusic anchors it. Doing it with padding rather than a scroll offset
-        // keeps the first and last lines reachable.
+
         val topPad = maxHeight * 0.32f
         val bottomPad = maxHeight * 0.5f
 
@@ -249,9 +215,7 @@ fun SimpMusicLyrics(
             if (placed) {
                 listState.animateScrollToItem(currentLineIndex)
             } else {
-                // Opening mid-song, the active line can be fifty items down; animating there
-                // scrolls the whole song past the reader before settling. The first placement is
-                // instant, every one after it follows the song.
+
                 listState.scrollToItem(currentLineIndex)
                 placed = true
             }
@@ -282,15 +246,6 @@ fun SimpMusicLyrics(
     }
 }
 
-/**
- * One line. Dim and a size smaller until it is the one being sung; a word-timed line then lights
- * word by word instead of all at once. When AI romanisation resolved a line, its romanisation
- * renders under it, smaller and dimmer (the same presentation LyricsEnhanced's translation
- * romanisation uses).
- *
- * [positionProvider] rather than a position parameter: only a line that is actually word-timed and
- * actually current ever reads the playhead, so a tick never touches the rest of the list.
- */
 @Composable
 private fun SimpMusicLyricsLine(
     entry: LyricsEntry,
@@ -340,11 +295,8 @@ private fun SimpMusicLyricsLine(
         return
     }
 
-    // The words that carry timings, in order. Blank spans are dropped: they hold no glyphs and
-    // would otherwise take a slot in the index the playhead resolves to.
     val words = remember(entry) { entry.words.orEmpty().filter { it.text.isNotBlank() } }
-    // derivedStateOf so a position tick that does not cross a word boundary — most of them —
-    // invalidates nothing at all.
+
     val sungThrough by remember(words) {
         derivedStateOf {
             val now = positionProvider()
@@ -363,13 +315,6 @@ private fun SimpMusicLyricsLine(
     }
 }
 
-/**
- * The words of the sung line, wrapping like a paragraph.
- *
- * [androidx.compose.foundation.layout.FlowRow] rather than one styled string: the sung/pending
- * split is per word and changes several times a second, and rebuilding an AnnotatedString for the
- * whole line on each of those was the expensive way to say the same thing.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FlowRowWords(
