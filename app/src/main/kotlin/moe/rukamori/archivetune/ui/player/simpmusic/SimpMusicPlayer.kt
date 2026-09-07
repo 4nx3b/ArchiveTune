@@ -290,6 +290,7 @@ fun SimpMusicPlayerContent(
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
     var lyricsFullscreenOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(mediaMetadata.id) { lyricsFullscreenOpen = false }
     BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
 
     var topBarHeight by remember { mutableStateOf(0.dp) }

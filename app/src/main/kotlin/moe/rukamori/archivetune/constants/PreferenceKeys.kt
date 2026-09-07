@@ -47,6 +47,7 @@ val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
 
 val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
+val AppleMusicAnimatedArtworkKey = booleanPreferencesKey("appleMusicAnimatedArtwork")
 
 val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
@@ -954,6 +955,10 @@ val LyricsRomanizeOtherLanguagesKey = booleanPreferencesKey("lyricsRomanizeOther
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
 val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 val LyricsModeKey = stringPreferencesKey("lyricsMode")
+val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")
+val LyricsV2GlowFactorKey = floatPreferencesKey("lyricsV2GlowFactor")
+val LyricsV2FillTransitionWidthKey = floatPreferencesKey("lyricsV2FillTransitionWidth")
+val LyricsV2LrcBounceEnabledKey = booleanPreferencesKey("lyricsV2LrcBounceEnabled")
 
 enum class LyricsMode {
     V2,

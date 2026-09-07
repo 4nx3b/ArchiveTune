@@ -175,20 +175,6 @@ class App :
     }
 
     private fun initializeCriticalSync() {
-        PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
-        // Route PaxsenixLyrics diagnostic logs through GlobalLog so they show up
-        // in the in-app logcat viewer with the proper tag, instead of going to
-        // System.err (which Android redirects to logcat one line at a time as
-        // `W/System.err`, with synchronized I/O that causes contention during
-        // parallel lyrics prefetch).
-        PaxsenixLyrics.logger = { message ->
-            moe.rukamori.archivetune.utils.GlobalLog.append(
-                android.util.Log.INFO,
-                "PaxsenixLyrics",
-                message,
-            )
-        }
-
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
         }
@@ -260,7 +246,6 @@ class App :
             startupReadiness.runOptional {
                 runCatching {
                     if (appleMusicDevTokenCache.isBlank()) AppleMusicProvider.refreshToken()
-                    PaxsenixLyrics.refreshAmpToken()
                     YouTube.currentPlaybackAuthState().sessionId?.takeIf { it.isNotBlank() }?.let {
                         BotGuardTokenGenerator.preWarm(it)
                     }
@@ -351,8 +336,6 @@ class App :
                     appleMusicDevTokenCache = prefs[AppleMusicDevTokenKey]?.trim().orEmpty()
                     appleMusicMediaUserTokenCache = prefs[AppleMusicMediaUserTokenKey]?.trim().orEmpty()
                     DeezerAudioProvider.setManualArl(prefs[DeezerArlKey].orEmpty(), prefs[DeezerAccountPremiumKey] ?: false)
-                    PaxsenixLyrics.setApiKey(prefs[PaxsenixApiKeyKey].orEmpty())
-                    PaxsenixLyrics.setEndpoint(normalizePaxsenixEndpoint(prefs[PaxsenixEndpointKey].orEmpty()))
                     if (PoolAccountManager.isEnabled) PoolAccountManager.loadCached(this@App)
 
                     if (prefs[UseLoginForBrowse] != false) {
@@ -463,23 +446,6 @@ class App :
                 .distinctUntilChanged()
                 .collect { (arl, premium) ->
                     DeezerAudioProvider.setManualArl(arl, premium)
-                }
-        }
-
-        // Observe the user-configured Paxsenix API key + endpoint and apply
-        // them to PaxsenixLyrics. When the user changes the key in Settings
-        // → Lyrics → Providers → Paxsenix API key, this collector fires and
-        // PaxsenixLyrics.setApiKey()/setEndpoint() take effect immediately
-        // (the Ktor client reads these vars at request time via
-        // defaultRequest {}).
-        applicationScope.launch(Dispatchers.IO) {
-            startupReadiness.awaitReady()
-            dataStore.data
-                .map { (it[PaxsenixApiKeyKey] ?: "") to (it[PaxsenixEndpointKey] ?: "") }
-                .distinctUntilChanged()
-                .collect { (key, endpoint) ->
-                    PaxsenixLyrics.setApiKey(key)
-                    PaxsenixLyrics.setEndpoint(normalizePaxsenixEndpoint(endpoint))
                 }
         }
 
