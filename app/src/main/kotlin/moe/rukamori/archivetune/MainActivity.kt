@@ -694,6 +694,38 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // ── High-refresh smoothness ──
+        // Many OEMs run non-game apps at 60 Hz even on 90/120 Hz panels
+        // unless the window explicitly asks for a higher mode. Pin the
+        // window to the display's fastest mode at the CURRENT resolution —
+        // every Compose animation (player morphs, lyrics sweeps, popup
+        // springs, scroll flings) then renders at the panel's full rate
+        // instead of 60 fps. Best-effort: on failure the window keeps the
+        // default mode.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val display =
+                    display ?: @Suppress("DEPRECATION") windowManager.defaultDisplay
+                val current = display.mode
+                val best =
+                    display.supportedModes
+                        .filter { mode ->
+                            mode.physicalWidth == current.physicalWidth &&
+                                mode.physicalHeight == current.physicalHeight
+                        }.maxByOrNull { mode -> mode.refreshRate }
+                if (best != null && best.modeId != current.modeId) {
+                    window.attributes =
+                        window.attributes.apply {
+                            preferredDisplayModeId = best.modeId
+                        }
+                }
+            }
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { downloadUtil.prewarmDownloadConnections() }
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
                 PreferenceStore
@@ -781,6 +813,13 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
+                // Subscribed-artist new-release notifications: a unique
+                // periodic WorkManager job — network + battery constrained,
+                // 12h cadence. Scheduling is unconditional; the worker itself
+                // no-ops in one Room read when the user has no subscribed
+                // artists, so there is no setting to gate on.
+                moe.rukamori.archivetune.utils.NewReleaseNotificationManager
+                    .schedulePeriodicCheck(this@MainActivity)
             }
 
             // Use remembered instances so the same state object is used everywhere
