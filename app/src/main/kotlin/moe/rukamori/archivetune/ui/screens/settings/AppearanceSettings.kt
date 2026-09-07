@@ -108,7 +108,8 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -168,12 +169,13 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
         )
-    val (simpMusicLyrics, onSimpMusicLyricsChange) =
-        rememberPreference(
-            SimpMusicLyricsKey,
-            // Default flipped (2026-09-05): the SimpMusic player style's lyrics card now
-            // previews SimpMusic's own Classic renderer out of the box, like upstream.
-            defaultValue = true,
+    // The SimpMusic-lyrics switch, where main put it. The mechanism behind it changed on dev:
+    // the renderer choice is the LyricsModeKey enum now, so the switch drives that — SIMPMUSIC's
+    // own Classic renderer when on, the app's Enhanced renderer when off.
+    val (lyricsMode, onLyricsModeChange) =
+        rememberEnumPreference(
+            LyricsModeKey,
+            defaultValue = LyricsMode.ENHANCED,
         )
     val (appleMusicExperience, onAppleMusicExperienceChange) =
         rememberPreference(
@@ -884,8 +886,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             title = { Text(stringResource(R.string.simpmusic_lyrics)) },
                             description = stringResource(R.string.simpmusic_lyrics_desc),
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = simpMusicLyrics,
-                            onCheckedChange = onSimpMusicLyricsChange,
+                            checked = lyricsMode == LyricsMode.SIMPMUSIC,
+                            onCheckedChange = { useSimpMusic ->
+                                onLyricsModeChange(
+                                    if (useSimpMusic) LyricsMode.SIMPMUSIC else LyricsMode.ENHANCED,
+                                )
+                            },
                         )
                     }
                 }
