@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -65,7 +66,7 @@ class BoundedSyncWorkersTest {
     }
 
     @Test
-    fun workerFailuresPropagateToTheCaller() = runTest {
+    fun workerFailuresPropagateToTheCaller() = runBlocking {
         val failure = IllegalStateException("sync failed")
         val result = runCatching {
             forEachBoundedIndexed(listOf(1, 2, 3)) { _, _ -> throw failure }
