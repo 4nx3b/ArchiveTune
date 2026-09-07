@@ -125,8 +125,6 @@ data class LastFmServiceConfig(
                         )
                 }
 
-            // Before migration, the old shared pair belongs to the currently selected provider.
-            // This keeps startup compatible until the repository moves it to the scoped keys.
             val migrationComplete = preferences[LastFMCredentialsMigratedKey] ?: false
             val selectedProvider = preferences[LastFMProviderKey].toEnum(LastFmProvider.LASTFM)
             return if (!migrationComplete && provider == selectedProvider && provider != LastFmProvider.LASTFM) {
@@ -157,10 +155,7 @@ data class LastFmServiceConfig(
             val endpointValid = provider != LastFmProvider.CUSTOM || normalizedCustomEndpoint != null
             val apiKey =
                 when (provider) {
-                    // Official builds inject a Last.fm key via BuildConfig. Forks/CI builds ship
-                    // without that secret, so fall back to the user's own registered API key. No
-                    // compat placeholder here: real Last.fm validates keys, so a blank built-in
-                    // means the user must supply their own for login to work.
+
                     LastFmProvider.LASTFM -> defaultApiKey.ifBlank { apiKeyOverride }
 
                     LastFmProvider.LIBREFM,

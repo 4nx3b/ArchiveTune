@@ -90,16 +90,6 @@ class AlbumViewModel
             }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
         var otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
 
-        // Looping animated canvas (Apple Music-style animated cover art) for
-        // the album thumbnail. Fetched once per albumId via
-        // `AppleMusicProvider.getByAlbumId` (Apple Music's animated-art API)
-        // with a fallback to `getByAlbumArtist` when the
-        // album id isn't an Apple Music id (e.g. a YouTube `MPRE…` id).
-        // Gated on the same `ArchiveTuneCanvasKey` preference the song
-        // player uses, plus LowDataMode (skip the network fetch on metered
-        // connections). Null until the fetch completes (or fails silently —
-        // failures leave the value at null so the album hero renders the
-        // static thumbnail with no canvas overlay).
         private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
         val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
 
@@ -156,37 +146,13 @@ class AlbumViewModel
             }
         }
 
-        /**
-         * Fetches the album's looping animated canvas (Apple Music animated
-         * cover art) and exposes it via [canvasArtwork]. Best-effort: any
-         * failure (network, no canvas for this album, user has the feature
-         * disabled, low-data mode) leaves the value at null, which causes
-         * the album hero to render only the static thumbnail — no canvas
-         * overlay.
-         *
-         * We try `AppleMusicProvider.getByAlbumId` first (direct id lookup,
-         * fast for Apple Music ids), then fall back to
-         * `getByAlbumArtist` (title + artist name lookup) for YouTube
-         * `MPRE…` ids that aren't Apple Music ids. The fetch runs on
-         * Dispatchers.IO via `viewModelScope.launch` so it doesn't block
-         * the UI thread.
-         */
         private fun fetchAlbumCanvas(context: Context) {
             viewModelScope.launch {
-                // Gated on its own preference (Appearance → "Enable canvas in albums page")
-                // rather than the player-level `ArchiveTuneCanvasKey`: the album loop starts
-                // as soon as the page opens, whether or not anything is playing, so it is a
-                // separate cost and a separate choice. Default on, matching Apple Music.
+
                 if (!context.dataStore.get(AlbumCanvasEnabledKey, true)) return@launch
 
-                // Still respect LowDataMode (skip the network fetch on metered
-                // connections) since the canvas is a short video loop with non-trivial
-                // bandwidth.
                 if (context.isLowDataModeActive()) return@launch
 
-                // Wait for the album to load in the DB (it might not be
-                // there yet on first open — `albumWithSongs` starts at null
-                // and is populated by `retry()` running in parallel).
                 val loaded = albumWithSongs.first { it != null } ?: return@launch
                 val album = loaded.album
                 val firstArtist = loaded.artists.firstOrNull()?.name
@@ -196,24 +162,6 @@ class AlbumViewModel
             }
         }
 
-        /**
-         * Walks the Apple Music motion-artwork lookups from most to least specific and
-         * returns the first hit, or null when the album simply has no motion artwork.
-         *
-         * The ladder exists because the id we hold is almost never an Apple Music id — a
-         * YouTube album is an `MPREb…` browse id, so [AppleMusicProvider.getByAlbumId]
-         * only succeeds for the rare album that came from an Apple-shaped id, and
-         * everything else has to be matched by name. Each extra rung recovers a class of
-         * album the previous one misses:
-         *
-         *  - **exact title + artist** — the normal path.
-         *  - **title stripped of edition suffixes** — Apple's catalogue carries "1989"
-         *    where YouTube has "1989 (Taylor's Version) [Deluxe]", and an exact-name
-         *    search for the decorated form finds nothing.
-         *  - **a track from the album** — singles and EPs are frequently catalogued under
-         *    the track's own name, and a song lookup also picks up motion artwork attached
-         *    to the song rather than the album.
-         */
         private suspend fun resolveAlbumCanvas(
             albumId: String,
             albumTitle: String,
@@ -247,11 +195,6 @@ class AlbumViewModel
             return null
         }
 
-        /**
-         * Drops the release-edition decoration YouTube album titles carry and Apple's
-         * catalogue titles usually do not: parenthesised/bracketed qualifiers
-         * ("(Deluxe Edition)", "[Remastered 2011]") and a trailing " - EP" / " - Single".
-         */
         private fun stripAlbumEditionSuffixes(title: String): String =
             title
                 .replace(Regex("\\s*[\\(\\[][^)\\]]*[\\)\\]]\\s*$"), "")

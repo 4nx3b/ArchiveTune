@@ -211,18 +211,11 @@ class LogcatViewModel
             )
 
         init {
-            // Seed the paused flag from DataStore so it survives screen navigation AND process
-            // restarts. Previously this lived only in a HiltViewModel's MutableStateFlow, which
-            // was destroyed on screen exit and re-created with `false` — so the user's pause
-            // was silently dropped every time they navigated away from the Debug Logs screen.
+
             viewModelScope.launch {
                 val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
                 if (paused.value != persisted) paused.value = persisted
-                // Only start the logcat observation if we're NOT paused.
-                // When paused, set loadState to Ready so the UI doesn't show
-                // an infinite loading spinner — observe() sets it to Loading
-                // at the start, and since we skip observe(), loadState stays
-                // at Loading forever.
+
                 if (!persisted) {
                     observe()
                 } else {
@@ -252,25 +245,11 @@ class LogcatViewModel
         fun togglePaused() {
             val newValue = !paused.value
             paused.value = newValue
-            // Write-through so the pause survives navigation away from the screen and process restart.
+
             viewModelScope.launch {
                 appContext.dataStore.edit { it[LogcatPausedKey] = newValue }
             }
-            // KEY FIX: actually stop the logcat subprocess when paused.
-            // Previously only the UI assignment was gated — the upstream
-            // Flow kept polling every 2s, spawning a fresh `logcat`
-            // ProcessBuilder each iteration. Now we cancel the observation
-            // job (which tears down the in-flight ProcessBuilder via the
-            // repository's `finally { process.destroy() }` cleanup) and
-            // restart it when the user resumes.
-            //
-            // CRITICAL: when pausing, set loadState to Ready (not Loading)
-            // so the UI shows the current records instead of an infinite
-            // loading spinner. The observe() function sets loadState to
-            // Loading at the start — if we cancel the job while it's still
-            // in Loading state, the spinner stays forever. When resuming,
-            // observe() will set it back to Loading then Ready once the
-            // first batch arrives.
+
             if (newValue) {
                 observationJob?.cancel()
                 observationJob = null

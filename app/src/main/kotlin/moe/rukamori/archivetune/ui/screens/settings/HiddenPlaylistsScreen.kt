@@ -67,13 +67,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 @Composable
 fun HiddenPlaylistsScreen(navController: NavController) {
     val database = LocalDatabase.current
-    // Per user report (2026-08-29): "If I hide a Spotify playlist it should be
-    // available in the hidden playlists section of the account page." The
-    // SpotifyLibraryViewModel is @HiltViewModel-scoped to this NavBackStackEntry
-    // — it shares the @Singleton repository's hiddenPlaylistIds StateFlow with
-    // the LibrarySpotifyPlaylistsScreen, so when the user hides a Spotify
-    // playlist there, the same id appears here, and tapping "Unhide" here
-    // re-enables it on the Library page on the next screen entry.
+
     val spotifyLibraryViewModel: SpotifyLibraryViewModel = hiltViewModel()
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     val hiddenSpotifyPlaylistIds by spotifyLibraryViewModel.hiddenPlaylistIds.collectAsStateWithLifecycle()
@@ -176,9 +170,7 @@ fun HiddenPlaylistsScreen(navController: NavController) {
                         },
                     )
                 }
-                // Hidden Spotify playlists section — mirrors the local
-                // HiddenPlaylistCard visual but pulls data from the
-                // @Singleton SpotifyLibraryRepository instead of Room.
+
                 if (hiddenSpotifyPlaylists.isNotEmpty()) {
                     item(key = "spotify_section_header") {
                         Spacer(modifier = Modifier.height(12.dp))

@@ -25,12 +25,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import com.valentinilk.shimmer.defaultShimmerTheme
 import com.valentinilk.shimmer.shimmer
 
-// Hoisted to file level — this brush + color list never changes, so we
-// avoid allocating a new Brush.verticalGradient and a new List<Color> on
-// every frame of the infinite shimmer animation. Shimmer hosts are visible
-// on every screen that shows loading placeholders (search, library, album,
-// playlist, etc.), so this allocation was running continuously during any
-// loading state.
 private val ShimmerFadeBrush =
     Brush.verticalGradient(listOf(Color.Black, Color.Transparent))
 

@@ -109,7 +109,6 @@ fun LibraryScreen(navController: NavController) {
             listOf(
                 LibraryFilter.LIBRARY,
                 LibraryFilter.SONGS,
-                LibraryFilter.ARTISTS,
                 LibraryFilter.ALBUMS,
             )
         }
@@ -313,17 +312,6 @@ fun LibraryScreen(navController: NavController) {
 
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
-                            navController = navController,
-                            onDeselect = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                        )
-                    }
-
-                    LibraryFilter.ARTISTS -> {
-                        LibraryArtistsScreen(
                             navController = navController,
                             onDeselect = {
                                 coroutineScope.launch {

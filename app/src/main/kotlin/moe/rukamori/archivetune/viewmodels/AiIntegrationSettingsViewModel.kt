@@ -45,6 +45,7 @@ data class AiIntegrationActionState(
     val isTesting: Boolean = false,
     val isFetchingModels: Boolean = false,
     val errorMessage: String? = null,
+    val apiTestError: String? = null,
 )
 
 private const val MaxInlineErrorLength = 140
@@ -146,14 +147,20 @@ class AiIntegrationSettingsViewModel
                     context.dataStore.edit { prefs ->
                         prefs[AiApiValidationStatusKey] = AiApiValidationStatus.FAILED.name
                     }
+                    val details = e.apiTestErrorDetails()
                     _actionState.value =
                         _actionState.value.copy(
                             errorMessage = e.shortMessage(context.getString(R.string.ai_api_test_failed)),
+                            apiTestError = details,
                         )
                 } finally {
                     _actionState.value = _actionState.value.copy(isTesting = false)
                 }
             }
+        }
+
+        fun dismissApiTestError() {
+            _actionState.value = _actionState.value.copy(apiTestError = null)
         }
 
         private suspend fun readConfig(): AiServiceConfig {
@@ -191,4 +198,15 @@ class AiIntegrationSettingsViewModel
                 message.take(MaxInlineErrorLength).trimEnd() + "..."
             }
         }
+
+        private fun Throwable.apiTestErrorDetails(): String =
+            generateSequence(this) { it.cause }
+                .take(10)
+                .distinct()
+                .joinToString(separator = "\n\n") { throwable ->
+                    val name = throwable.javaClass.simpleName.ifBlank { throwable.javaClass.name }
+                    val message = throwable.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.ai_api_test_failed)
+                    "$name: $message"
+                }
     }

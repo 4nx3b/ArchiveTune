@@ -132,6 +132,9 @@ class PlayerConnection(
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
 
+    private val _songEndedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val songEndedEvents = _songEndedEvents.asSharedFlow()
+
     // Ported from vossgraves/ArchiveTune: surfaces the moriextractor backend's
     // bearer-token rejections (401 during playback) so the UI can prompt for a
     // refreshed token; updateExtractorBearerToken pushes a new one into the service.
@@ -488,6 +491,9 @@ class PlayerConnection(
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && mediaItem != null) {
+            _songEndedEvents.tryEmit(Unit)
+        }
     }
 
     override fun onTimelineChanged(

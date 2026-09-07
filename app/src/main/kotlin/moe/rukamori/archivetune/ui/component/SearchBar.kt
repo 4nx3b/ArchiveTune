@@ -107,14 +107,7 @@ fun TopSearch(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     tonalElevation: Dp = SearchBarDefaults.TonalElevation,
-    // IMPORTANT: default to safeDrawing, NOT systemBars. When the immersive
-    // status bar is hidden (PlayerDesignStyle.V7 / APPLE_MUSIC player expanded,
-    // overflow menu open, bottom-sheet page open — see MainActivity.setStatusBarsHidden),
-    // WindowInsets.systemBars reports 0 for the top inset, which would let the
-    // search bar float up into the camera cutout. safeDrawing always reports
-    // the cutout-safe area even when the status bar is hidden, so the search
-    // bar stays below the notch at all times. The same fix is mirrored in
-    // OnlineSearchResult.kt for the filter-chips Surface under the search bar.
+
     windowInsets: WindowInsets = WindowInsets.safeDrawing,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     focusRequester: FocusRequester = remember { FocusRequester() },
@@ -382,7 +375,6 @@ private fun TextRange.coerceInText(textLength: Int): TextRange =
         end = maxOf(start, end).coerceIn(0, textLength),
     )
 
-// Measurement specs
 val InputFieldHeight = 48.dp
 private val SearchBarCornerRadius: Dp = InputFieldHeight / 2
 internal val SearchBarVerticalPadding: Dp = 8.dp

@@ -7,46 +7,9 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-/**
- * Matching engine behind the settings search bar.
- *
- * ## Why this exists
- *
- * The previous matcher required **every** query word to hit some field of a
- * candidate. Any word the index didn't know about killed the whole query, so
- * single words worked while two or more words returned nothing at all:
- * `dark` found "Dark theme", but `dark mode` found nothing, because no field
- * anywhere contained "mode". Same for `lyrics font`, `night mode`, and so on.
- * That is the bug this file fixes.
- *
- * ## How matching works
- *
- * Every candidate (a [SettingsChild], or a [SettingsItem] with no matching
- * children) is flattened into a [Haystack] of normalised text at three
- * confidence levels — title, "strong" (title + keywords + scroll key), and
- * everything including the parent category's text.
- *
- * Each query term is scored against the haystack independently
- * ([termStrength]). Then:
- *
- *  - **strict** — every term matched something. These are the real answers.
- *  - **relaxed** — at least half the terms matched. Used *only* when nothing
- *    matched strictly, so `dark mode` still surfaces "Dark theme" instead of an
- *    empty list.
- *
- * A term also matches through a small [SYNONYMS] table (`mode`→`theme`,
- * `vibration`→`haptic`, …), through a separator-insensitive "squashed" form so
- * `lastfm` finds "Last.fm" and `potoken` finds "PO Token", and through a
- * one-edit fuzzy comparison so ordinary typos and plurals still land.
- */
 internal object SettingsSearch {
     private val SEPARATOR_REGEX = Regex("[^a-z0-9]+")
 
-    /**
-     * Query-side synonym expansion. Deliberately small: every entry here trades
-     * a little precision for recall, so it only covers words users actually type
-     * that the app's own vocabulary doesn't use.
-     */
     private val SYNONYMS: Map<String, List<String>> =
         mapOf(
             "mode" to listOf("theme", "style"),
@@ -88,7 +51,6 @@ internal object SettingsSearch {
             "sync" to listOf("synchronize", "synchronise"),
         )
 
-    /** Result tier — see the class docs. */
     private enum class Tier { STRICT, RELAXED }
 
     private class Match(
@@ -97,20 +59,6 @@ internal object SettingsSearch {
         val item: SearchResultItem,
     )
 
-    /**
-     * Normalised text for one candidate.
-     *
-     * Only the candidate's **own** text ([titleTokens] / [strongTokens]) can
-     * qualify it as a match. The parent category's text lives in [contextText]
-     * and contributes ranking bonuses only — otherwise a query like `equalizer`,
-     * which appears solely in the Playback category's keyword list, would match
-     * all ~20 Playback children equally and return them in arbitrary order
-     * instead of just pointing at the Playback category.
-     *
-     * [squashed] is every own-token concatenated with no separators, which is
-     * what lets `lastfm` match "Last.fm", `potoken` match "PO Token" and `hires`
-     * match "hi-res" without needing an alias for each.
-     */
     private class Haystack(
         val titleTokens: List<String>,
         val titleText: String,
@@ -120,14 +68,6 @@ internal object SettingsSearch {
         val contextText: String,
     )
 
-    /**
-     * Runs [rawQuery] against [groups].
-     *
-     * @param routeFor maps a parent key + scroll key to the route that should be
-     *   opened when a result is tapped.
-     * @return matching results, best first. Empty only when nothing matched even
-     *   loosely.
-     */
     fun search(
         groups: List<SettingsGroup>,
         rawQuery: String,
@@ -149,8 +89,6 @@ internal object SettingsSearch {
                         addAll(item.keywords)
                     }
 
-                // Children are the specific settings, so they are always the
-                // preferred answer for an item.
                 val childMatches =
                     item.children.mapNotNull { child ->
                         val haystack =
@@ -190,9 +128,6 @@ internal object SettingsSearch {
                     continue
                 }
 
-                // No child matched — fall back to offering the category itself, so
-                // top-level entries with no children (Statistics, PO Token, …) stay
-                // reachable.
                 val parentHaystack =
                     buildHaystack(
                         titleFields = listOf(item.title),
@@ -227,7 +162,6 @@ internal object SettingsSearch {
             }
         }
 
-        // Only fall back to partial matches when there is no exact answer at all.
         val strict = matches.filter { it.tier == Tier.STRICT }
         val chosen = strict.ifEmpty { matches }
         return chosen
@@ -235,10 +169,6 @@ internal object SettingsSearch {
             .map { it.item }
     }
 
-    /**
-     * Scores one candidate. Returns null when too few terms matched to be worth
-     * showing.
-     */
     private fun evaluate(
         haystack: Haystack,
         terms: List<String>,
@@ -262,11 +192,6 @@ internal object SettingsSearch {
         }
         if (matchedTerms == 0) return null
 
-        // Terms that named the parent category ("appearance dark", "playback
-        // crossfade") count — but only once the candidate has already earned the
-        // match on its own text. Without that guard, a word living solely in a
-        // category's keyword list (e.g. "equalizer" under Playback) would qualify
-        // every child of that category equally.
         if (unmatched.isNotEmpty() && bestOwnStrength >= 3 && haystack.contextText.isNotEmpty()) {
             for (term in unmatched) {
                 if (haystack.contextText.contains(term)) {
@@ -279,7 +204,7 @@ internal object SettingsSearch {
         val tier =
             when {
                 matchedTerms == terms.size -> Tier.STRICT
-                // At least half the words landed — good enough to suggest.
+
                 matchedTerms * 2 >= terms.size -> Tier.RELAXED
                 else -> return null
             }
@@ -287,7 +212,6 @@ internal object SettingsSearch {
         var score = if (tier == Tier.STRICT) 1_000 else 300
         score += strengthSum * 10
 
-        // Whole-query phrase bonuses, strongest first.
         when {
             haystack.titleText == queryText -> score += 400
             haystack.titleText.startsWith(queryText) -> score += 250
@@ -296,23 +220,16 @@ internal object SettingsSearch {
             haystack.squashed.contains(querySquashed) -> score += 30
         }
 
-        // Naming the parent category ("appearance dark", "playback crossfade")
-        // is a ranking signal, but never enough on its own to qualify a match.
         if (haystack.contextText.isNotEmpty()) {
             val contextHits = terms.count { haystack.contextText.contains(it) }
             score += contextHits * 15
         }
 
-        // Prefer the specific setting over the category row.
         if (isChild) score += 25
 
         return tier to score
     }
 
-    /**
-     * How strongly a single [term] matches [haystack]: 0 for no match, up to 6
-     * for an exact title-token hit.
-     */
     private fun termStrength(
         term: String,
         haystack: Haystack,
@@ -330,12 +247,12 @@ internal object SettingsSearch {
                     haystack.strongTokens.any { it == variant } -> 4
                     haystack.strongText.contains(variant) -> 3
                     haystack.strongTokens.any { it.startsWith(variant) } -> 3
-                    // Separator-insensitive: "lastfm" vs "last.fm".
+
                     variant.length >= 3 && haystack.squashed.contains(variant) -> 2
-                    // Compound query word, e.g. "scrollbar" vs a "scroll" token.
+
                     variant.length >= 4 &&
                         haystack.strongTokens.any { it.length >= 3 && variant.startsWith(it) } -> 1
-                    // Typos and plurals.
+
                     haystack.strongTokens.any { fuzzyEquals(variant, it) } -> 1
                     else -> 0
                 }
@@ -345,7 +262,6 @@ internal object SettingsSearch {
         return best
     }
 
-    /** True when [a] and [b] differ by at most one edit. Both must be reasonably long. */
     private fun fuzzyEquals(
         a: String,
         b: String,
@@ -354,7 +270,6 @@ internal object SettingsSearch {
         if (kotlin.math.abs(a.length - b.length) > 1) return false
         if (a == b) return true
 
-        // Same length: allow a single substitution.
         if (a.length == b.length) {
             var diffs = 0
             for (i in a.indices) {
@@ -366,7 +281,6 @@ internal object SettingsSearch {
             return true
         }
 
-        // Lengths differ by one: allow a single insertion/deletion.
         val shorter = if (a.length < b.length) a else b
         val longer = if (a.length < b.length) b else a
         var shortIndex = 0
@@ -402,7 +316,6 @@ internal object SettingsSearch {
         )
     }
 
-    /** Splits a scroll key ("scrobble_threshold") into searchable fields. */
     private fun scrollKeyFields(scrollKey: String): List<String> =
         listOf(scrollKey, scrollKey.replace('_', ' ').replace('-', ' '))
 

@@ -31,10 +31,6 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
-/**
- * Manages pre-loading of lyrics for upcoming songs in the queue.
- * This improves user experience by having lyrics ready when songs change.
- */
 class LyricsPreloadManager
     @Inject
     constructor(
@@ -47,13 +43,6 @@ class LyricsPreloadManager
         private var preloadJob: Job? = null
         private val preloadSemaphore = Semaphore(MAX_CONCURRENT_PRELOADS)
 
-        /**
-         * Called when the current song changes in the player.
-         * Triggers pre-loading of lyrics for the next N songs in the queue.
-         *
-         * @param currentIndex The index of the currently playing song in the queue
-         * @param queue Metadata entries preserving their positions in the player queue
-         */
         fun onSongChanged(
             currentIndex: Int,
             queue: List<MediaMetadata?>,
@@ -65,12 +54,6 @@ class LyricsPreloadManager
                     try {
                         val preferences = context.dataStore.data.first()
 
-                        // The count value is the SOLE control for pre-loading.
-                        // count = 0 means off; count > 0 means pre-load that many
-                        // songs. The old PreloadQueueLyricsEnabledKey master switch
-                        // was removed because it was confusing — users would set
-                        // the count but the switch was off, so nothing happened.
-                        // The count picker in Settings now shows "Off" when 0.
                         val preloadCount = preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
 
                         if (preloadCount <= 0) {
@@ -90,15 +73,6 @@ class LyricsPreloadManager
                             return@launch
                         }
 
-                        // Low Data Mode check removed: lyrics are plain text (~5KB
-                        // per song). Pre-loading 5 songs costs ~25KB — negligible
-                        // compared to streaming audio (1-3 MB/minute). The user
-                        // has explicitly set a preload count, so honoring that
-                        // intent is more important than saving a few KB on
-                        // metered networks. This was the root cause of "preload
-                        // doesn't work" — Low Data Mode defaults to ON, and on
-                        // cellular it silently skipped every preload.
-
                         val nextSongs = getNextSongs(queue, currentIndex, preloadCount)
 
                         if (nextSongs.isEmpty()) {
@@ -116,9 +90,6 @@ class LyricsPreloadManager
                 }
         }
 
-        /**
-         * Get the next N songs from the queue after the current index.
-         */
         private fun getNextSongs(
             queue: List<MediaMetadata?>,
             currentIndex: Int,
@@ -136,10 +107,6 @@ class LyricsPreloadManager
                 .toList()
         }
 
-        /**
-         * Pre-load lyrics for the given songs.
-         * Uses parallel fetching with limited concurrency.
-         */
         private suspend fun preloadLyrics(songs: List<MediaMetadata>) =
             supervisorScope {
                 songs
@@ -165,14 +132,7 @@ class LyricsPreloadManager
             }
 
             try {
-                // Use getLyricsWithProvider so the providerName is preserved
-                // when storing the lyrics. Previously this called getLyrics()
-                // which discarded the providerName, so pre-loaded lyrics
-                // never showed the "Lyrics from [provider]" attribution
-                // until the user manually re-fetched via the lyrics search
-                // popup. Pass the providerName to
-                // replaceLyricsIfAbsentOrNotFound so the stored entity
-                // carries it from the moment of preload.
+
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(song)
                 if (lyricsResult.lyrics == LyricsEntity.LYRICS_NOT_FOUND) return
 
@@ -190,17 +150,11 @@ class LyricsPreloadManager
             }
         }
 
-        /**
-         * Cancel any ongoing preload operations.
-         */
         fun cancel() {
             preloadJob?.cancel()
             preloadJob = null
         }
 
-        /**
-         * Clean up resources when no longer needed.
-         */
         fun destroy() {
             cancel()
             scope.cancel()

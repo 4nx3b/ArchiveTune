@@ -299,10 +299,7 @@ class MediaLibrarySessionCallback
                 }
 
                 val requested = (safePage + 1) * safePageSize
-                // No hard cap on returned items — the previous `min(requested, 200)` truncated
-                // Android Auto / browse results above 200 entries (Task 13). Allocate the
-                // ArrayList at the requested size; the underlying queries already paginate
-                // and interleave cleanly without an upper bound.
+
                 val items = ArrayList<MediaItem>(requested)
 
                 val offlineSongs = searchOfflineSongs(q, previewSize = requested)
@@ -1032,7 +1029,7 @@ class MediaLibrarySessionCallback
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
             scope.future(Dispatchers.IO) {
-                // Play from Android Auto
+
                 val defaultResult =
                     MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
                 val firstItem = mediaItems.firstOrNull() ?: return@future defaultResult

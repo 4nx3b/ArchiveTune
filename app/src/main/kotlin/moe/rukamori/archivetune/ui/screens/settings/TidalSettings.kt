@@ -100,11 +100,6 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.Box
 
-/**
- * Process-lived cache of the last instance health-check results so the checked status (and ping)
- * survives leaving and returning to the screen, until another check overwrites it. Not persisted to
- * disk.
- */
 private object TidalHealthUiCache {
     val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
     val instanceLatency = mutableStateMapOf<String, Long>()
@@ -130,8 +125,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         }
     val accountConfigured = accessToken.isNotBlank()
 
-    // ----- HiFi instance management (moved here from Streaming sources) -----
-    // Instances stored as a newline-separated string; blank means "use built-in defaults".
     val (storedInstances, onStoredInstancesChange) = rememberPreference(TidalInstancesKey, "")
 
     val defaults = remember { TidalAudioProvider.defaultInstanceUrls }
@@ -149,8 +142,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         onStoredInstancesChange(if (distinct == defaults) "" else distinct.joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested) + last latency, backed by a process-lived cache so
-    // a completed check persists when navigating away and back. Nothing is probed until Test is tapped.
     val healthStatus = TidalHealthUiCache.instanceHealth
     val healthLatency = TidalHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
@@ -165,7 +156,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
-    // Removes every instance whose last scan matched [statuses], returning the count removed.
     fun removeInstancesWithStatus(statuses: Set<TidalAudioProvider.InstanceHealth>) {
         val doomed = effectiveInstances.filter { healthStatus[it] in statuses }
         if (doomed.isEmpty()) {
@@ -189,10 +179,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         copyToClipboard(context, "Tidal instances", online)
     }
 
-    // Turns a scan status into its ping label:
-    //  - HEALTHY (full stream, premium account) -> "online — <ping> ms"
-    //  - PREVIEW_ONLY (free / non-premium account) -> "deprecated — <ping> ms"
-    //  - UNREACHABLE -> "connection failed"
     fun labelFor(status: TidalAudioProvider.InstanceHealth, latencyMs: Long?): String =
         when (status) {
             TidalAudioProvider.InstanceHealth.HEALTHY ->
@@ -210,8 +196,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Manual, on-demand probe of every configured instance (reachability AND full-vs-preview).
-    // Triggered only by the user tapping "Test instances" — never automatically.
     fun runInstanceTest() {
         if (testingInstances) return
         testingInstances = true
@@ -225,7 +209,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Account detail dialog — shows the logged-in account's token info.
     if (showAccountDetail) {
         DefaultDialog(
             onDismiss = { showAccountDetail = false },
@@ -298,7 +281,6 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Instance detail popup — same style as the lyrics search result dialog.
     detailInstance?.let { instance ->
         Dialog(
             onDismissRequest = { detailInstance = null },
@@ -519,7 +501,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -675,8 +657,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                 effectiveInstances.forEach { instance ->
                     item(visible = showInstanceManagement) {
                         val status = healthStatus[instance]
-                        // Status colors: online = light blue, deprecated/preview-only = purple,
-                        // failed = grey. Untested falls back to the muted default.
+
                         val statusColor =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)

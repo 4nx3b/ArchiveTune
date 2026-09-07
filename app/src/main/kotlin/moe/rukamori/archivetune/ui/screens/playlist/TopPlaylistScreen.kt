@@ -157,10 +157,7 @@ fun TopPlaylistScreen(
             selection = false
         }
     } else {
-        // BackHandler so the predictive back gesture always escapes the
-        // top playlist page. Per user report (2026-08-29): gesture not
-        // working in playlists. New approach: popBackStack() directly
-        // first, fall back to navigate("library") if no previous entry.
+
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -174,7 +171,7 @@ fun TopPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-                    // Last-resort: let the system handle the back press.
+
                 }
             }
         }
@@ -456,7 +453,6 @@ fun TopPlaylistScreen(
                         }
                     }
 
-                    // Sort Header (Period Filter)
                     item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -484,7 +480,6 @@ fun TopPlaylistScreen(
                         }
                     }
 
-                    // Song items
                     itemsIndexed(
                         items = filteredSongs,
                         key = { _, song -> song.item.id },

@@ -210,27 +210,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = true,
         )
 
-    // Artwork sources. The Tidal toggle used to default to true as an inert stub; the code
-    // default is now false so updating users do not get unexpected Tidal network traffic.
-    // DataStore only stores values the user explicitly changed, so explicit choices are kept.
     val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
         rememberPreference(
             ArchiveTuneCanvasKey,
             defaultValue = false,
         )
-    // Spotify Canvas: fetch the official Spotify Canvas looping video for the current song
-    // using its YouTube Music video ID via https://mlc.kouzu.in/api/canvas?id=<videoId>.
-    // Defaults to false so existing users don't see surprise network traffic / video playback
-    // until they explicitly opt in.
+
     val (spotifyCanvasEnabled, onSpotifyCanvasEnabledChange) =
         rememberPreference(
             SpotifyCanvasKey,
             defaultValue = false,
         )
-    // Extra Spotify Canvas resolver endpoints, one per line. Every community canvas API on
-    // GitHub is a self-hosted wrapper around Spotify's own canvaz-cache endpoint and needs the
-    // operator's own sp_dc cookie, so there is no stable public instance worth hardcoding —
-    // the user supplies whichever instances they have access to and they are tried in order.
+
     val (canvasResolverEndpointsRaw, onCanvasResolverEndpointsChange) =
         rememberPreference(
             CanvasResolverEndpointsKey,
@@ -247,9 +238,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = false,
         )
 
-    // Artwork provider priority order. The user can rearrange the order in which artwork
-    // providers are tried — whichever is on top gets the most priority. If the top provider
-    // has no artwork for the current song, the resolver falls back to the next one, and so on.
     val (artworkProviderOrderStr, onArtworkProviderOrderStrChange) =
         rememberPreference(
             ArtworkProviderOrderKey,
@@ -276,8 +264,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             SwipeToSongKey,
             defaultValue = false,
         )
-    // Swipe-to-change-song (Task 7): moved from Appearance → Playback / queue group.
-    // Lets the user swipe the player thumbnail left/right to skip tracks.
+
     val (swipeThumbnail, onSwipeThumbnailChange) =
         rememberPreference(
             SwipeThumbnailKey,
@@ -362,16 +349,14 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
                 .padding(top = topPadding)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
-            // "Sources" group: music source + lyrics settings now live on the Playback page
-            // (moved from the main settings list per Tasks 4 & 5). Each row navigates to its
-            // own dedicated sub-page so the existing screens stay reachable.
+
             PreferenceGroup(
                 title = stringResource(R.string.settings_section_player_content),
             ) {
@@ -640,7 +625,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onTextFieldValueChange = onCanvasResolverEndpointsChange,
                             singleLine = false,
                             maxLines = 8,
-                            // Blank is valid: it means "built-in resolver only".
+
                             isInputValid = { true },
                             onDone = { raw ->
                                 onCanvasResolverEndpointsChange(
@@ -759,9 +744,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // Swipe-to-change-song: moved here from Appearance (Task 7). Belongs with
-                // the other queue/skip behaviours. Includes the sensitivity dialog that
-                // was previously shown inline on the Appearance page.
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("enable_swipe_thumbnail"),

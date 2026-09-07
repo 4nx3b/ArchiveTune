@@ -45,24 +45,10 @@ import kotlin.time.Duration.Companion.seconds
 object TelegramBotClient {
     private const val TAG = "TelegramBotClient"
 
-    /** How long to wait for a bot's first reply before giving up. */
     val BOT_REPLY_TIMEOUT = 60.seconds
 
-    /**
-     * Once we've received the first reply (track or inline prompt), how long to keep listening for
-     * additional replies before returning. Each new reply extends the window by this amount, so a
-     * bot that streams a 10-track album in 2-second bursts will capture all of them as long as no
-     * two replies are more than this far apart.
-     */
     private const val POST_REPLY_GRACE_MS = 5_000L
 
-    /**
-     * Per-chat-id flow of incoming messages. Listeners register by calling [messagesForChat];
-     * TelegramClient.onUpdate pushes new messages here via [onNewMessage].
-     *
-     * We use a SharedFlow with replay=0 and extraBufferCapacity=64 so a fast burst of bot replies
-     * (e.g. an album returning 10 tracks) is not lost while the collector is processing the first.
-     */
     private val chatMessageFlows = ConcurrentHashMap<Long, MutableSharedFlow<TdApi.Message>>()
 
     fun messagesForChat(chatId: Long): SharedFlow<TdApi.Message> =
@@ -70,37 +56,26 @@ object TelegramBotClient {
             MutableSharedFlow(replay = 0, extraBufferCapacity = 64)
         }.asSharedFlow()
 
-    /** Called from TelegramClient.onUpdate for every UpdateNewMessage — routes to the per-chat flow. */
     internal fun onNewMessage(message: TdApi.Message) {
         chatMessageFlows[message.chatId]?.tryEmit(message)
     }
 
-    /** Drops the in-memory flow for a chat. Safe to call when leaving a bot chat screen. */
     fun forgetChat(chatId: Long) {
         chatMessageFlows.remove(chatId)
     }
 
-    // ------------------------------------------------------------------
-    // Bot resolution + message sending
-    // ------------------------------------------------------------------
-
-    /**
-     * Resolves a bot by its public @username to a TDLib chat. The first call hits Telegram's
-     * SearchPublicChat; subsequent calls return the cached chat. Returns null if the username
-     * doesn't resolve or isn't a bot.
-     */
     suspend fun resolveBot(username: String): TdApi.Chat? {
         val cleaned = username.removePrefix("@").trim().lowercase()
         if (cleaned.isEmpty()) return null
         val chat = runCatching {
             TelegramClient.send(TdApi.SearchPublicChat(cleaned))
         }.getOrNull() ?: return null
-        // Verify it's a bot chat — refuse to silently DM a real user.
+
         if (chat.type !is TdApi.ChatTypePrivate) {
             Timber.tag(TAG).w("resolveBot: %s is not a private/bot chat (type=%s)", cleaned, chat.type)
             return null
         }
-        // TDLib's ChatTypePrivate doesn't expose is-bot directly; fetch the user to confirm.
+
         val userId = (chat.type as TdApi.ChatTypePrivate).userId
         val user = runCatching { TelegramClient.send(TdApi.GetUser(userId)) }.getOrNull()
         if (user != null && user.type !is TdApi.UserTypeBot) {
@@ -110,41 +85,19 @@ object TelegramBotClient {
         return chat
     }
 
-    /**
-     * Sends the given text to [chatId] and returns the sent message. The bot's reply arrives
-     * asynchronously via [messagesForChat].
-     */
     suspend fun sendTextMessage(chatId: Long, text: String): TdApi.Message {
         val input = TdApi.InputMessageText(
             TdApi.FormattedText(text, emptyArray()),
-            // null = use the user's default link_preview setting; the bot reads the URL from the
-            // message text directly, so preview-on/off is purely a cosmetic concern here.
+
             null,
             false,
         )
-        // TDLib 1.8.30+ SendMessage signature: (chatId, MessageTopic topicId, InputMessageReplyTo,
-        // MessageSendOptions, ReplyMarkup, InputMessageContent). Pass null topicId for the default
-        // (non-threaded) topic of a 1:1 bot chat.
+
         return TelegramClient.send(
             TdApi.SendMessage(chatId, null, null, null, null, input),
         )
     }
 
-    /**
-     * Fetches the bot's advertised command list (the commands the bot registered via @BotFather,
-     * scoped to this specific chat). Returns an empty list if the bot hasn't registered any
-     * commands or if the request fails.
-     *
-     * Some music bots require slash commands (e.g. `/search <query>`, `/download <link>`) to
-     * search and download songs — pasting a bare URL doesn't work. The chat UI uses this list to
-     * populate a "/"-button command picker so the user can discover and insert those commands
-     * without having to memorize them.
-     *
-     * TDLib API: `GetCommands(BotCommandScope scope, String languageCode)` → `BotCommands`
-     * (which wraps `Array<BotCommand>` where each `BotCommand` has `command: String` and
-     * `description: String`). `BotCommandScopeChat(chatId)` scopes the query to the current bot
-     * chat; an empty languageCode returns commands for all languages.
-     */
     suspend fun fetchBotCommands(chatId: Long): List<TelegramBotCommand> = runCatching {
         val result = TelegramClient.send(
             TdApi.GetCommands(TdApi.BotCommandScopeChat(chatId), ""),
@@ -156,30 +109,6 @@ object TelegramBotClient {
         Timber.tag(TAG).w(e, "fetchBotCommands: failed for chatId=%s", chatId)
     }.getOrDefault(emptyList())
 
-    // ------------------------------------------------------------------
-    // Reply collection
-    // ------------------------------------------------------------------
-
-    /**
-     * Collects audio-carrying messages that arrive on [chatId] within [BOT_REPLY_TIMEOUT]. Stops
-     * early once [expectedCount] audio messages have been collected, OR — when expectedCount is 0
-     * — once no new audio has arrived for [POST_REPLY_GRACE_MS] after the most-recent track (so
-     * single-track bots don't make the user wait the full 60s, while multi-track bots that burst-
-     * send a handful of files within a few seconds still capture all of them).
-     *
-     * - [afterMessageId] excludes messages with id <= this value (so we don't re-process messages
-     *   that existed before the user pressed Send).
-     * - Non-audio messages (text/typing/photo) are ignored — bots often send a "Searching…" text
-     *   first, then the audio.
-     *
-     * Implementation: subscribes to the SharedFlow once and pipes emissions into an unlimited
-     * Channel. A first-channel-read is gated by [BOT_REPLY_TIMEOUT]; subsequent reads are gated
-     * by [POST_REPLY_GRACE_MS], which extends on each new arrival so a fast burst is fully
-     * captured. The collector job is always cancelled in a finally block before returning.
-     *
-     * NOTE: this method IGNORES inline-keyboard prompts. Use [collectBotReplies] for the full
-     * flow that also surfaces quality-picker prompts.
-     */
     suspend fun collectAudioReplies(
         chatId: Long,
         afterMessageId: Long,
@@ -199,12 +128,11 @@ object TelegramBotClient {
         }
 
         try {
-            // Step 1: wait for the first track (up to BOT_REPLY_TIMEOUT).
+
             val first = withTimeoutOrNull(BOT_REPLY_TIMEOUT) { channel.receive() }
                 ?: return emptyList()
             if (expectedCount == 1) return listOf(first)
 
-            // Step 2: collect additional tracks, each one extending the grace window.
             val results = mutableListOf(first)
             var graceDeadlineMs = System.currentTimeMillis() + POST_REPLY_GRACE_MS
             while (true) {
@@ -220,23 +148,6 @@ object TelegramBotClient {
         }
     }
 
-    /**
-     * Full bot-reply collector — surfaces BOTH audio tracks AND inline-keyboard prompts (so the
-     * UI can react when the bot asks the user to pick a quality / format).
-     *
-     * Stops when:
-     *  - No reply of any kind arrives within [BOT_REPLY_TIMEOUT] → returns emptyList()
-     *  - At least one reply arrived, then no new reply for [POST_REPLY_GRACE_MS] → returns all
-     *    collected replies in arrival order
-     *
-     * Each [BotReply.Track] wraps a [TelegramTrack]; each [BotReply.Prompt] wraps a
-     * [TelegramBotPrompt] (with the inline keyboard buttons). The caller typically:
-     *   1. Calls [collectBotReplies] after sending the song link.
-     *   2. Renders each prompt's buttons.
-     *   3. When the user taps a button, calls [clickInlineButton] and then calls
-     *      [collectBotReplies] again with `afterMessageId = prompt.messageId` to collect the
-     *      audio that the bot sends in response to the button click.
-     */
     suspend fun collectBotReplies(
         chatId: Long,
         afterMessageId: Long,
@@ -255,11 +166,10 @@ object TelegramBotClient {
         }
 
         try {
-            // Step 1: wait for the first reply (up to BOT_REPLY_TIMEOUT).
+
             val first = withTimeoutOrNull(BOT_REPLY_TIMEOUT) { channel.receive() }
                 ?: return emptyList()
 
-            // Step 2: collect additional replies, each one extending the grace window.
             val results = mutableListOf(first)
             var graceDeadlineMs = System.currentTimeMillis() + POST_REPLY_GRACE_MS
             while (true) {
@@ -274,24 +184,11 @@ object TelegramBotClient {
         }
     }
 
-    /**
-     * Converts a TDLib [TdApi.Message] into either a [BotReply.Track] (audio/document) or a
-     * [BotReply.Prompt] (any message with an inline keyboard, e.g. "Choose quality: ALAC / AAC").
-     * Returns null for messages that are neither (e.g. "Searching…" text replies, typing
-     * indicators, photos).
-     *
-     * Inline-keyboard prompts are detected via [TdApi.Message.replyMarkup] being a
-     * [TdApi.ReplyMarkupInlineKeyboard] with at least one row. Each button is mapped to a
-     * [TelegramBotPromptButton] carrying either a callback payload (the common case — tapping it
-     * triggers a [TdApi.GetCallbackQueryAnswer]) or a URL (e.g. "HQ Artwork" buttons that open
-     * an external link).
-     */
     private fun messageToBotReply(message: TdApi.Message): BotReply? {
-        // Audio/document message → track.
+
         val track = TelegramClient.messageToTrack(message)
         if (track != null) return BotReply.Track(track)
 
-        // Anything with an inline keyboard → prompt.
         val markup = message.replyMarkup as? TdApi.ReplyMarkupInlineKeyboard ?: return null
         if (markup.rows.isEmpty()) return null
         val rows = markup.rows.mapNotNull { row ->
@@ -322,20 +219,6 @@ object TelegramBotClient {
         }
     }
 
-    /**
-     * Simulates tapping an inline-keyboard button. Sends [TdApi.GetCallbackQueryAnswer] to the
-     * bot, which causes it to process the chosen option and (typically) replies with the audio file
-     * the user actually wanted. The caller should then call [collectBotReplies] with
-     * `afterMessageId = promptMessageId` to collect the resulting audio.
-     *
-     * TDLib's GetCallbackQueryAnswer takes a [TdApi.CallbackQueryPayload] (an abstract class) —
-     * for the standard inline-keyboard callback (the kind music bots use), the concrete subclass
-     * is [TdApi.CallbackQueryPayloadData] which wraps the raw [ByteArray] payload that came from
-     * [TdApi.InlineKeyboardButtonTypeCallback.data].
-     *
-     * Returns the [TdApi.CallbackQueryAnswer] the bot returned (may carry a toast text, an alert,
-     * or a URL — typically empty for music bots). Returns null if the request failed.
-     */
     suspend fun clickInlineButton(
         chatId: Long,
         messageId: Long,
@@ -352,20 +235,6 @@ object TelegramBotClient {
         Timber.tag(TAG).w(e, "clickInlineButton: callback query failed")
     }.getOrNull()
 
-    // ------------------------------------------------------------------
-    // Forwarding
-    // ------------------------------------------------------------------
-
-    /**
-     * Forwards [messageIds] (originally received in [fromChatId]) to [toChatId]. Returns the list
-     * of newly created forwarded messages. Used to push a bot's audio reply into the user's own
-     * Telegram channel so the user's library stays in sync.
-     *
-     * Implementation note: TdApi.ForwardMessages in TDLib 1.8.30+ has the signature
-     *   ForwardMessages(chatId, MessageTopic topicId, fromChatId, messageIds, options, sendCopy, removeCaption)
-     * topicId=null targets the default topic (regular non-threaded chat).
-     * sendCopy=false keeps the original sender attribution (matches Telegram's "Forward" UI).
-     */
     suspend fun forwardMessages(
         toChatId: Long,
         fromChatId: Long,
@@ -383,13 +252,10 @@ object TelegramBotClient {
                 false,
             ),
         )
-        // TDLib returns ForwardMessages{messages: Array<Message>}
+
         return result.messages?.toList() ?: emptyList()
     }
 
-    /**
-     * Convenience: forwards a single message. Returns the new message id, or 0 on failure.
-     */
     suspend fun forwardMessage(
         toChatId: Long,
         fromChatId: Long,
@@ -400,16 +266,11 @@ object TelegramBotClient {
     }
 }
 
-// ------------------------------------------------------------------
-// Models for inline-keyboard prompts (quality pickers, format pickers, etc.)
-// ------------------------------------------------------------------
-
-/** A single button on a bot's inline keyboard. */
 data class TelegramBotPromptButton(
     val text: String,
-    /** Bytes from [TdApi.InlineKeyboardButtonTypeCallback.data] — pass to [TelegramBotClient.clickInlineButton]. */
+
     val callbackData: ByteArray? = null,
-    /** URL for [TdApi.InlineKeyboardButtonTypeUrl] buttons (e.g. "HQ Artwork"). */
+
     val url: String? = null,
 ) {
     val isCallback: Boolean get() = callbackData != null
@@ -430,40 +291,32 @@ data class TelegramBotPromptButton(
     }
 }
 
-/** A bot message that has an inline keyboard (e.g. "Choose quality: ALAC / AAC / Cancel"). */
 data class TelegramBotPrompt(
     val chatId: Long,
     val messageId: Long,
-    /** The message's text body, if any (often empty for photo + button layouts). */
+
     val text: String,
-    /** Rows of buttons, matching the original layout the bot sent. */
+
     val rows: List<List<TelegramBotPromptButton>>,
 ) {
-    /** Flat list of all buttons across all rows — convenient for single-row pickers. */
+
     val allButtons: List<TelegramBotPromptButton> get() = rows.flatten()
 
-    /** Heuristic: a button whose label looks like a "cancel" action (so the UI can render it last). */
     fun isCancelButton(button: TelegramBotPromptButton): Boolean {
         val t = button.text.lowercase()
         return t == "cancel" || t == "✕" || t == "x" || t.contains("cancel")
     }
 }
 
-/** Either a playable audio track or an inline-keyboard prompt from the bot. */
 sealed interface BotReply {
     data class Track(val track: TelegramTrack) : BotReply
     data class Prompt(val prompt: TelegramBotPrompt) : BotReply
 }
 
-/**
- * A slash-command advertised by a bot (registered via @BotFather). The chat UI shows these in a
- * "/"-button command picker so the user can discover and insert them without memorizing.
- * `command` does NOT include the leading `/` — the UI adds it when inserting.
- */
 data class TelegramBotCommand(
     val command: String,
     val description: String,
 ) {
-    /** The full command string with leading slash, e.g. `/search`. */
+
     val withSlash: String get() = "/$command"
 }

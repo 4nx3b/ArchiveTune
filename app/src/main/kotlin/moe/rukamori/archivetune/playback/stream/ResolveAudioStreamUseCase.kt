@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.guava.future
 import timber.log.Timber
+import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
@@ -84,6 +85,12 @@ class ResolveAudioStreamUseCase
                 throw SocketTimeoutException(
                     "Audio stream resolution timed out after $timeoutSeconds seconds",
                 ).apply { initCause(throwable) }
+            } catch (throwable: InterruptedException) {
+                future.cancel(true)
+                Thread.currentThread().interrupt()
+                throw InterruptedIOException("Audio stream resolution interrupted").apply {
+                    initCause(throwable)
+                }
             } catch (throwable: ExecutionException) {
                 future.cancel(true)
                 throw throwable.cause ?: throwable

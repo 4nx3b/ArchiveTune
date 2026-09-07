@@ -99,9 +99,7 @@ data class LastFmServiceEditorUiModel(
     val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials> = emptyMap(),
     val isSaving: Boolean = false,
     val errorMessageResId: Int? = null,
-    // False on fork/CI builds that ship without the built-in Last.fm secret. When false, the user
-    // must supply their own Last.fm API key/secret, so the credential fields are shown for the
-    // official Last.fm provider too (not just LibreFM/Custom).
+
     val builtInLastFmConfigured: Boolean =
         BuildConfig.LASTFM_API_KEY.isNotBlank() && BuildConfig.LASTFM_SECRET.isNotBlank(),
 ) {
@@ -321,17 +319,6 @@ class LastFmSettingsViewModel
             }
         }
 
-        /**
-         * (Task 4) Persists a custom-endpoint config (provider pinned to
-         * CUSTOM, plus the entered endpoint URL / API key / shared secret)
-         * directly via [saveServiceConfig]. The dialog in LastFMSettings
-         * pre-validates the endpoint URL through [LastFM.normalizeEndpoint]
-         * before calling this, so by the time we get here the endpoint is
-         * well-formed — but we re-normalize defensively in case the user
-         * pasted something with a trailing slash that the dialog didn't
-         * trim. Clears the active session (if any) because the new provider
-         * almost certainly needs a fresh login.
-         */
         fun saveCustomEndpoint(endpoint: String, apiKey: String, secret: String) {
             viewModelScope.launch(Dispatchers.IO) {
                 saveServiceConfig(

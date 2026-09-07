@@ -128,7 +128,7 @@ fun BottomSheetPage(
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                    .padding(top = 100.dp) // Give enough space from top
+                    .padding(top = 100.dp)
                     .clip(ShapeDefaults.Large.top())
                     .background(background)
                     .pointerInput(Unit) {
@@ -144,7 +144,7 @@ fun BottomSheetPage(
                         }
                     },
         ) {
-            // Drag handle at the top center
+
             Box(
                 modifier =
                     Modifier
@@ -157,7 +157,6 @@ fun BottomSheetPage(
                         ),
             )
 
-            // Content with proper spacing
             Column(
                 modifier =
                     Modifier

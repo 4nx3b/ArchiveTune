@@ -37,13 +37,9 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     // 2026-09-04).
     spotifyTrackId: String? = null,
 ): CanvasArtwork? {
-    // Telegram/local files have tag-derived (often noisy) metadata — use fuzzy identity matching
-    // so a real canvas isn't discarded over a "(2019)" suffix or a channel-name artist.
+
     val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
-    // Fast path: try the cache with preferCachedOnly=true via getCachedOnlyFast,
-    // which skips the expensive MediaExtractor probe (~50-200ms per file).
-    // The probe was the dominant contributor to canvas startup latency on
-    // cache hits — see CanvasArtworkPlaybackCache.getCachedOnlyFast for details.
+
     val cachedArtwork =
         withContext(Dispatchers.IO) {
             CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaId)
@@ -68,11 +64,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     }
 
     return withContext(Dispatchers.IO) {
-        // Spotify Canvas: when enabled and the current media is a YouTube Music video
-        // (i.e. mediaId is the video ID), look up the official Spotify Canvas via the
-        // mlc.kouzu.in resolver. This is a direct video-ID → canvas-URL lookup and
-        // doesn't depend on tag metadata, so it's both faster and more reliable than
-        // the song-title-based ArchiveTune Canvas lookup. Try it first when enabled.
+
         if (trySpotifyCanvas && strictIdentity) {
             val spotifyCanvas =
                 runCatching {
@@ -183,8 +175,7 @@ private fun CanvasArtwork.matchesIdentity(
     if (strict) {
         matchesSongIdentity(songTitleRaw, artistNameRaw)
     } else {
-        // Album-level motion artwork carries the album name in `name`, so an exact/fuzzy song
-        // match may legitimately fail; accept it when the song lookup already vouched for it.
+
         looselyMatchesSongIdentity(songTitleRaw, artistNameRaw) || !albumName.isNullOrBlank()
     }
 
@@ -197,32 +188,11 @@ private fun CanvasArtwork.hasRequiredCanvasVariant(requireVertical: Boolean): Bo
 
 private const val CanvasArtworkLogTag = "CanvasArtwork"
 
-/**
- * A single canvas source result for the "Save Canvas" feature.
- * Each result has a human-readable source name and the resolved CanvasArtwork.
- */
 data class CanvasSourceResult(
     val sourceName: String,
     val artwork: CanvasArtwork,
 )
 
-/**
- * Fetch ALL canvas sources for a song (used by the "Save Canvas" overflow-
- * menu action). Unlike [resolveCanvasArtworkForPlayback] which returns the
- * first matching source, this queries every source independently and
- * returns all that have a canvas — so the user can pick which one to save
- * to internal storage.
- *
- * Sources queried (in parallel):
- * - Spotify Canvas (via mlc.kouzu.in resolver, by YouTube video ID)
- * - Apple Music (via AMP catalog, by song title + artist name)
- *
- * Returns a list of [CanvasSourceResult]. The list may be empty if no
- * source has a canvas for this song.
- *
- * NOTE: The codebase currently has no Tidal canvas implementation.
- * When/if Tidal canvas is added, it should be queried here too.
- */
 internal suspend fun fetchAllCanvasSourcesForSong(
     mediaId: String,
     songTitleRaw: String,
@@ -234,7 +204,6 @@ internal suspend fun fetchAllCanvasSourcesForSong(
     val songTitle = normalizeCanvasSongTitle(songTitleRaw)
     val artistName = normalizeCanvasArtistName(artistNameRaw)
 
-    // Spotify Canvas lookup (by video ID) — only for YouTube media (not local/Telegram).
     val spotifyDeferred = async {
         if (strictIdentity && mediaId.isNotBlank()) {
             runCatching {
@@ -250,7 +219,6 @@ internal suspend fun fetchAllCanvasSourcesForSong(
         }
     }
 
-    // Apple Music lookup (by song title + artist) — try normalized + raw candidates.
     val appleMusicDeferred = async {
         val candidates =
             linkedSetOf(
@@ -281,7 +249,7 @@ internal suspend fun fetchAllCanvasSourcesForSong(
 private fun normalizeCanvasSongTitle(raw: String): String {
     val stripped =
         raw
-            // Leading track numbers ("01. ", "12 - ") common in files shared on Telegram.
+
             .replace(Regex("^\\s*\\d{1,3}\\s*[.\\-]\\s*"), "")
             .replace(Regex("\\s*\\[[^]]*]"), "")
             .replace(

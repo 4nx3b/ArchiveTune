@@ -302,20 +302,9 @@ interface DatabaseDao {
     @Query("SELECT COUNT(1) FROM song WHERE liked")
     fun likedSongsCount(): Flow<Int>
 
-    /**
-     * Count of songs that have been downloaded to the device. Used by the redesigned
-     * Library overview's "Downloads" row so we don't have to materialise the entire
-     * downloaded list just to show a badge count.
-     */
     @Query("SELECT COUNT(1) FROM song WHERE dateDownload IS NOT NULL")
     fun downloadedSongsCount(): Flow<Int>
 
-    /**
-     * Count of total listen-history events (rows in the `event` table). Used by the
-     * redesigned Library overview's "History" row as a badge count. Mirrors the data
-     * the HistoryScreen itself loads through [events] / [recentSongs], so the count
-     * tracks the same source the user sees when they tap into History.
-     */
     @Query("SELECT COUNT(1) FROM event")
     fun historyEventsCount(): Flow<Int>
 
@@ -430,7 +419,7 @@ interface DatabaseDao {
             sum(event.playTime) DESC
         LIMIT :limit
         OFFSET :offset
-        
+
         """,
     )
     fun getRecommendationAlbum(
@@ -569,13 +558,13 @@ interface DatabaseDao {
             FROM song_album_map
                      JOIN event e ON song_album_map.songId = e.songId
             WHERE albumId = album.id
-              AND e.timestamp > :fromTimeStamp 
+              AND e.timestamp > :fromTimeStamp
               AND e.timestamp <= :toTimeStamp) AS songCountListened,
            (SELECT SUM(e.playTime)
             FROM song_album_map
                      JOIN event e ON song_album_map.songId = e.songId
             WHERE albumId = album.id
-              AND e.timestamp > :fromTimeStamp 
+              AND e.timestamp > :fromTimeStamp
               AND e.timestamp <= :toTimeStamp) AS timeListened
     FROM album
     JOIN song_album_map ON album.id = song_album_map.albumId
@@ -612,7 +601,7 @@ interface DatabaseDao {
     @Query(
         """
         SELECT album.*, count(song.dateDownload) downloadCount
-        FROM album_artist_map 
+        FROM album_artist_map
             JOIN album ON album_artist_map.albumId = album.id
             JOIN song ON album_artist_map.albumId = song.albumId
         WHERE artistId = :artistId
@@ -758,11 +747,11 @@ interface DatabaseDao {
                       ORDER BY totalPlayTime DESC) AS artistTotalPlayTime
                      ON artist.id = artistId
                      OR artist.bookmarkedAt IS NOT NULL
-                     ORDER BY 
-                      CASE 
-                        WHEN artistTotalPlayTime.artistId IS NULL THEN 1 
-                        ELSE 0 
-                      END, 
+                     ORDER BY
+                      CASE
+                        WHEN artistTotalPlayTime.artistId IS NULL THEN 1
+                        ELSE 0
+                      END,
                       artistTotalPlayTime.totalPlayTime DESC
     """,
     )
@@ -1499,31 +1488,19 @@ interface DatabaseDao {
     @Query("DELETE FROM event")
     fun clearListenHistory()
 
+    @Query("UPDATE song SET totalPlayTime = 0 WHERE totalPlayTime != 0")
+    suspend fun resetTotalPlayTime()
+
+    @Query("DELETE FROM playCount")
+    suspend fun clearPlayCounts()
+
     @Transaction
     @Query("DELETE FROM event WHERE id IN (:eventIds)")
     fun deleteEventsByIds(eventIds: List<Long>)
 
-    /**
-     * Deletes the most recent Event row for [songId]. Used when the user
-     * switches the source of a song via the "Play from" search popup —
-     * the old mediaId's most recent history entry is removed so the user
-     * doesn't see a duplicate in "recently listened" (the new source's
-     * track entry takes its place at the top).
-     */
     @Query("DELETE FROM event WHERE songId = :songId AND id = (SELECT MAX(id) FROM event WHERE songId = :songId)")
     suspend fun deleteMostRecentEventForSong(songId: String)
 
-    /**
-     * Deletes ALL Event rows for [songId] and the song row itself.
-     * Used when the user switches the source of a song via the "Play
-     * from" search popup — the old mediaId is fully removed from the
-     * history so the user doesn't see the old YouTube version alongside
-     * the new Qobuz/Tidal/JioSaavn/Deezer version in "recently
-     * listened". The `song` table row is also deleted (events have a
-     * FK with CASCADE delete, so deleting the song cascades to events
-     * — but we delete events first to avoid the CASCADE throwing on
-     * the FK if the song row is referenced elsewhere).
-     */
     @Query("DELETE FROM event WHERE songId = :songId")
     suspend fun deleteAllEventsForSong(songId: String)
 
@@ -1551,14 +1528,10 @@ interface DatabaseDao {
         month: Int,
     )
 
-    /**
-     * Increment by one the play count with today's year and month.
-     */
     suspend fun incrementPlayCount(songId: String) {
         val time = LocalDateTime.now().atOffset(ZoneOffset.UTC)
         val oldCount = getPlayCountByMonth(songId, time.year, time.monthValue).first()
 
-        // add new
         if (oldCount <= 0) {
             insert(PlayCountEntity(songId, time.year, time.monthValue, 0))
         }
@@ -1600,12 +1573,12 @@ interface DatabaseDao {
     @Transaction
     @Query(
         """
-        UPDATE playlist_song_map SET position = 
-            CASE 
+        UPDATE playlist_song_map SET position =
+            CASE
                 WHEN position < :fromPosition THEN position + 1
                 WHEN position > :fromPosition THEN position - 1
                 ELSE :toPosition
-            END 
+            END
         WHERE playlistId = :playlistId AND position BETWEEN MIN(:fromPosition, :toPosition) AND MAX(:fromPosition, :toPosition)
     """,
     )
@@ -1632,8 +1605,6 @@ interface DatabaseDao {
     @Query("SELECT id FROM artist WHERE blockedAt IS NOT NULL")
     suspend fun getBlockedArtistIds(): List<String>
 
-    // Songs the user has chosen to never see in recommendations / discovery again (the
-    // "Don't recommend this song again" overflow menu item). Mirrors the artist blocklist.
     @Query("SELECT id FROM song WHERE blockedAt IS NOT NULL")
     fun blockedSongIds(): Flow<List<String>>
 
@@ -1891,7 +1862,7 @@ interface DatabaseDao {
             }.forEach(::upsert)
 
         albumPage.album.artists?.let { artists ->
-            // Recreate album artists
+
             albumArtistMaps(album.id).forEach(::delete)
             artists
                 .map { artist ->

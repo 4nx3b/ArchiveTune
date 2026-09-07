@@ -31,21 +31,12 @@ data class SpotifyPlaylistOwner(
     val uri: String? = null,
 )
 
-/**
- * Lightweight track count reference returned in playlist listings
- */
 @Serializable
 data class SpotifyPlaylistTracksRef(
     val total: Int? = null,
     val href: String? = null,
 )
 
-/**
- * Full playlist track item returned by /playlists/{id}/tracks.
- * [uid] is the playlist-scoped item identifier required by GQL mutations
- * (removeFromPlaylist, moveItemsInPlaylist). It is only populated when
- * tracks are fetched via the GQL fetchPlaylist endpoint.
- */
 @Serializable
 data class SpotifyPlaylistTrack(
     @SerialName("added_at") val addedAt: String? = null,

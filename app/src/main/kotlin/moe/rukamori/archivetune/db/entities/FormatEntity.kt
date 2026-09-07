@@ -27,16 +27,6 @@ data class FormatEntity(
 
 fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substringBefore(";").uppercase()
 
-/**
- * Returns the appropriate file extension for this format's audio codec.
- * Used when exporting cached songs so lossless FLAC files get a .flac
- * extension instead of the generic .mp3 that was previously hardcoded.
- *
- * Note: ALAC (Apple Lossless) is carried in an MP4/M4A container, NOT a FLAC container.
- * Mapping ALAC → "flac" here would produce .flac files that contain MP4 bytes — some
- * players would refuse them outright. ALAC must map to "m4a" (the MP4 audio container
- * extension) so the exported file matches its actual byte layout.
- */
 fun FormatEntity.fileExtension(): String {
     val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.lowercase()
     val rawMime = mimeType.substringAfter("/").substringBefore(";").lowercase()
@@ -52,10 +42,6 @@ fun FormatEntity.fileExtension(): String {
     }
 }
 
-/**
- * Returns the MIME type corresponding to this format's audio codec,
- * suitable for use with SAF DocumentsContract.createDocument().
- */
 fun FormatEntity.exportMimeType(): String {
     val ext = fileExtension()
     return when (ext) {
@@ -128,14 +114,6 @@ fun FormatEntity.formattedFileSize(): String =
         }
     } ?: ""
 
-/**
- * Detects the actual audio container format by reading magic bytes from the first
- * cached span file. This is used when exporting downloaded songs to ensure the
- * file extension matches the real data (e.g. a FormatEntity may claim FLAC while the
- * cached bytes are actually Opus from YouTube Music).
- *
- * @return a file extension string: "flac", "opus", "m4a", "wav", "ogg", "webm", or "mp3"
- */
 fun detectAudioExtensionFromSpans(
     spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
 ): String {
@@ -145,26 +123,22 @@ fun detectAudioExtensionFromSpans(
     val header = ByteArray(12)
     file.inputStream().use { if (it.read(header) < 4) return "mp3" }
     return when {
-        // FLAC: "fLaC" marker
+
         header[0] == 0x66.toByte() && header[1] == 0x4C.toByte() &&
             header[2] == 0x61.toByte() && header[3] == 0x43.toByte() -> "flac"
-        // OGG/Opus: "OggS" marker
+
         header[0] == 0x4F.toByte() && header[1] == 0x67.toByte() &&
             header[2] == 0x67.toByte() && header[3] == 0x53.toByte() -> "opus"
-        // M4A/AAC: "ftyp" at offset 4
+
         header.size >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() &&
             header[6] == 0x79.toByte() && header[7] == 0x70.toByte() -> "m4a"
-        // WAV: "RIFF" marker
+
         header[0] == 0x52.toByte() && header[1] == 0x49.toByte() &&
             header[2] == 0x46.toByte() && header[3] == 0x46.toByte() -> "wav"
-        // WebM/Matroska: EBML header magic 0x1A 0x45 0xDF 0xA3
-        // YouTube Music serves Opus audio in a WebM container for many
-        // streams — detecting this correctly prevents the file from being
-        // misnamed .mp3 (which would cause jaudiotagger to fail at read
-        // time and silently skip metadata tagging).
+
         header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
             header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte() -> "webm"
-        // MP3: ID3 tag header or MPEG sync word
+
         header[0] == 0x49.toByte() && header[1] == 0x44.toByte() &&
             header[2] == 0x33.toByte() -> "mp3"
         (header[0].toInt() and 0xFF) == 0xFF &&
@@ -173,9 +147,6 @@ fun detectAudioExtensionFromSpans(
     }
 }
 
-/**
- * Returns the MIME type corresponding to the given audio file extension.
- */
 fun extensionToMimeType(ext: String): String = when (ext) {
     "flac" -> "audio/flac"
     "opus" -> "audio/opus"

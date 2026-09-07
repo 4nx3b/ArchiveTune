@@ -1103,6 +1103,13 @@ fun BottomSheetPlayer(
     // with the sharedBounds morph and produce the reported "sometimes lags" stutter.
     var isAppleMusicInlineLyricsOpen by rememberSaveable { mutableStateOf(false) }
 
+    LaunchedEffect(playerConnection) {
+        playerConnection.songEndedEvents.collect {
+            if (isLyricsScreenVisible) isLyricsScreenVisible = false
+            if (isAppleMusicInlineLyricsOpen) isAppleMusicInlineLyricsOpen = false
+        }
+    }
+
     // Report full-screen lyrics visibility upward so the status bar can be hidden for every player
     // style while the lyrics overlay is showing (previously only the Immersive style went edge-to-edge).
     val lyricsFullScreenActive =

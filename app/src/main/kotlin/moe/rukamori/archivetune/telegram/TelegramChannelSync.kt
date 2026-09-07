@@ -33,50 +33,28 @@ object TelegramChannelSync {
     private const val PLAYLIST_ID_PREFIX = "LPtg"
     private const val PAGE_FETCH_LIMIT = 100
 
-    // How long to wait for the TDLib client to reach the Ready auth state
-    // before giving up on a sync. The client might still be connecting when
-    // the user opens a channel from the browse screen — without this wait,
-    // the first fetch fails silently and the playlist shows "0 songs" until
-    // the user manually hits "Refresh from Telegram".
     private const val READY_TIMEOUT_MS = 15_000L
     private const val READY_POLL_INTERVAL_MS = 500L
 
-    // Retry config for individual page fetches. TDLib can transiently fail
-    // on the first SearchChatMessages call for a private channel (chat history
-    // not yet loaded), but succeed on a subsequent call a few hundred ms later.
-    // This applies BOTH to exception failures AND to "empty first page" results
-    // — TDLib frequently returns an empty page (no exception) for a private
-    // channel whose history hasn't been loaded yet, which is why the playlist
-    // showed "0 songs" until the user manually hit Refresh.
     private const val FETCH_RETRY_COUNT = 5
     private const val FETCH_RETRY_DELAY_MS = 600L
 
-    // Settling delay after openChat. For private channels, TDLib needs time to
-    // load the chat history into its local index before SearchChatMessages can
-    // return results. Waiting here BEFORE the first fetch dramatically reduces
-    // the chance of getting an empty first page.
     private const val OPEN_CHAT_SETTLE_MS = 800L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Guards against two concurrent syncs of the same channel racing on membership positions.
     private val inFlight = mutableSetOf<Long>()
     private val inFlightLock = Mutex()
 
     fun playlistId(chatId: Long): String = "$PLAYLIST_ID_PREFIX$chatId"
 
-    /**
-     * Creates the playlist row for [chatId] if missing (so it exists before navigation) and returns
-     * its id. Safe to call repeatedly — an existing playlist keeps its songs and is just retitled.
-     */
     suspend fun ensurePlaylist(
         database: MusicDatabase,
         chatId: Long,
         title: String,
     ): String {
         val id = playlistId(chatId)
-        // insert() ignores on conflict, so an existing playlist (and any user tweaks to it) is left
-        // untouched; only a brand-new channel creates a row.
+
         database.withTransaction {
             insert(
                 PlaylistEntity(
@@ -91,7 +69,6 @@ object TelegramChannelSync {
         return id
     }
 
-    /** Kicks off a background sync of [chatId]'s audio files into its playlist. */
     fun syncAsync(
         database: MusicDatabase,
         chatId: Long,
@@ -120,11 +97,7 @@ object TelegramChannelSync {
         title: String,
         losslessOnly: Boolean,
     ) {
-        // Wait for the TDLib client to reach the Ready auth state before
-        // attempting any fetch. The user might open a channel immediately
-        // after the browse screen loads, before TDLib has finished its
-        // initial connection. Without this wait, the first SearchChatMessages
-        // call fails with "auth not ready" and the playlist stays empty.
+
         val ready =
             withTimeoutOrNull(READY_TIMEOUT_MS) {
                 while (!TelegramClient.isReady) {
@@ -137,27 +110,12 @@ object TelegramChannelSync {
             return
         }
 
-        // For private channels, TDLib may need to "open" the chat (load its
-        // metadata + recent history) before SearchChatMessages returns results.
-        // The first call can return an empty page or a transient error. Opening
-        // the chat here ensures the message index is warm before we page.
         runCatching { TelegramClient.openChat(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "openChat(%d) failed (non-fatal)", chatId) }
-        // OpenChat on its own only marks the chat as viewed; it does not
-        // guarantee that TDLib has pulled any history from the server. Because
-        // SearchChatMessages is answered out of TDLib's *local* message
-        // database, a freshly added private channel has nothing to search and
-        // returns an empty page with no error — which is why the playlist
-        // materialised empty until "Refresh from Telegram" was tapped.
-        //
-        // primeChatHistory forces the fetch with GetChatHistory and waits until
-        // messages actually land, so the search below has an index to hit. A
-        // false result is not fatal (the channel may genuinely be empty), so we
-        // still fall through to the paging loop.
+
         runCatching { TelegramClient.primeChatHistory(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "primeChatHistory(%d) failed (non-fatal)", chatId) }
-        // Small settle delay so the messages primeChatHistory pulled are fully
-        // committed to the local index before the first search.
+
         delay(OPEN_CHAT_SETTLE_MS)
 
         val playlistId = playlistId(chatId)
@@ -165,9 +123,6 @@ object TelegramChannelSync {
         var inserted = 0
         val seen = mutableSetOf<Long>()
 
-        // No MAX_TRACKS cap — page through the entire channel. The `page.nextFromMessageId == 0L`
-        // check terminates the loop once TDLib reports there are no more audio messages to
-        // return, so this is bounded by the actual size of the channel.
         for (filter in filters) {
             var fromMessageId = 0L
             var isFirstPage = true
@@ -176,8 +131,7 @@ object TelegramChannelSync {
                     fetchPageWithRetry(chatId, fromMessageId, filter, isFirstPage)
 
                 if (page == null) {
-                    // All retries exhausted — stop this filter and move on to
-                    // the next one (a different filter might still work).
+
                     Timber.tag(TAG).w("fetchPageWithRetry exhausted for chat %d filter %s", chatId, filter::class.simpleName)
                     break
                 }
@@ -196,24 +150,6 @@ object TelegramChannelSync {
         Timber.tag(TAG).d("Materialised %d tracks for chat %d", inserted, chatId)
     }
 
-    /**
-     * Fetches one page with retry. TDLib can transiently fail on the first
-     * SearchChatMessages call for a private channel (chat history not yet
-     * loaded), but succeed on a subsequent call a few hundred ms later.
-     * Returns null only if ALL retries fail.
-     *
-     * CRITICAL: when [isFirstPage] is true, an EMPTY result (zero tracks AND
-     * zero nextFromMessageId) is ALSO treated as a transient failure and
-     * retried. TDLib frequently returns an empty first page for private
-     * channels whose history hasn't been fully indexed yet — this is NOT an
-     * error condition (no exception thrown), so the previous logic accepted
-     * the empty page as "channel has no audio" and stopped paging. That was
-     * the root cause of "private channel shows empty until I tap Refresh":
-     * the manual Refresh worked because by then TDLib had finished indexing.
-     *
-     * For non-first pages, an empty result with zero nextFromMessageId is the
-     * legitimate "no more messages" signal and is returned as-is.
-     */
     private suspend fun fetchPageWithRetry(
         chatId: Long,
         fromMessageId: Long,
@@ -226,10 +162,7 @@ object TelegramChannelSync {
                     TelegramClient.fetchAudioPage(chatId, fromMessageId, PAGE_FETCH_LIMIT, filter)
                 }
             result.onSuccess { page ->
-                // On the first page, treat "empty + no next cursor" as a
-                // transient failure and retry — TDLib hasn't indexed the
-                // channel history yet. On subsequent pages, this is the
-                // legitimate end-of-channel signal.
+
                 val isEmptyFirstPage =
                     isFirstPage &&
                         page.tracks.isEmpty() &&
@@ -260,7 +193,6 @@ object TelegramChannelSync {
         return null
     }
 
-    /** Inserts one track as a song + playlist membership + format row. Skips duplicates. */
     private suspend fun insertTrack(
         database: MusicDatabase,
         playlistId: String,

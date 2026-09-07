@@ -149,7 +149,6 @@ fun ArtistSeparatorsDialog(
                         )
                     }
 
-                    // Add button chip
                     Surface(
                         modifier =
                             Modifier

@@ -18,7 +18,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import moe.rukamori.archivetune.utils.md5
 
-/** Message envelope for the public Listen Together protocol. */
 @Serializable
 internal data class TogetherPublicMessage(
     val type: String,
@@ -26,7 +25,7 @@ internal data class TogetherPublicMessage(
 )
 
 internal object TogetherPublicMessageTypes {
-    // Client -> Server
+
     const val CREATE_ROOM = "create_room"
     const val JOIN_ROOM = "join_room"
     const val LEAVE_ROOM = "leave_room"
@@ -40,7 +39,6 @@ internal object TogetherPublicMessageTypes {
     const val REQUEST_SYNC = "request_sync"
     const val RECONNECT = "reconnect"
 
-    // Server -> Client
     const val ROOM_CREATED = "room_created"
     const val JOIN_REQUEST = "join_request"
     const val JOIN_APPROVED = "join_approved"
@@ -71,7 +69,6 @@ internal object TogetherPublicPlaybackActions {
     const val SYNC_QUEUE = "sync_queue"
 }
 
-/** JSON codec for the public protocol. Plain envelope, never the fork class discriminator. */
 internal val TogetherPublicJson =
     Json {
         ignoreUnknownKeys = true
@@ -79,17 +76,13 @@ internal val TogetherPublicJson =
         encodeDefaults = true
     }
 
-// ---------------------------------------------------------------------------
-// Wire models (port of vivi Protocol.kt)
-// ---------------------------------------------------------------------------
-
 @Serializable
 internal data class TogetherPublicTrackInfo(
     val id: String,
     val title: String,
     val artist: String,
     val album: String? = null,
-    val duration: Long, // milliseconds
+    val duration: Long,
     val thumbnail: String? = null,
     @SerialName("suggested_by") val suggestedBy: String? = null,
 )
@@ -109,8 +102,8 @@ internal data class TogetherPublicRoomState(
     val users: List<TogetherPublicUserInfo>,
     @SerialName("current_track") val currentTrack: TogetherPublicTrackInfo? = null,
     @SerialName("is_playing") val isPlaying: Boolean,
-    val position: Long, // milliseconds
-    @SerialName("last_update") val lastUpdate: Long, // unix timestamp ms
+    val position: Long,
+    @SerialName("last_update") val lastUpdate: Long,
     val volume: Float = 1f,
     val queue: List<TogetherPublicTrackInfo> = emptyList(),
 )
@@ -141,7 +134,7 @@ internal data class TogetherPublicRejectJoinPayload(
 internal data class TogetherPublicPlaybackActionPayload(
     val action: String,
     @SerialName("track_id") val trackId: String? = null,
-    val position: Long? = null, // milliseconds
+    val position: Long? = null,
     @SerialName("track_info") val trackInfo: TogetherPublicTrackInfo? = null,
     @SerialName("insert_next") val insertNext: Boolean? = null,
     val queue: List<TogetherPublicTrackInfo>? = null,
@@ -255,10 +248,6 @@ internal data class TogetherPublicUserDisconnectedPayload(
     val username: String,
 )
 
-// ---------------------------------------------------------------------------
-// Translation between the public wire model and the fork's TogetherRoomState
-// ---------------------------------------------------------------------------
-
 internal fun TogetherPublicTrackInfo.toTogetherTrack(): TogetherTrack =
     TogetherTrack(
         id = id,
@@ -300,7 +289,7 @@ internal fun TogetherPublicRoomState.toTogetherRoomState(sessionId: String): Tog
             },
         settings =
             TogetherRoomSettings(
-                // Public servers have no server-side settings; guests may act freely.
+
                 allowGuestsToAddTracks = true,
                 allowGuestsToControlPlayback = true,
                 requireHostApprovalToJoin = false,
@@ -312,7 +301,7 @@ internal fun TogetherPublicRoomState.toTogetherRoomState(sessionId: String): Tog
         positionMs = position.coerceAtLeast(0L),
         repeatMode = 0,
         shuffleEnabled = false,
-        // No elapsed-realtime clock on the wire; receipt time keeps staleness checks sane.
+
         sentAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
     )
 }

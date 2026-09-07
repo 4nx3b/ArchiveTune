@@ -292,11 +292,6 @@ fun ArtistMenu(
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
 
-                    // Hide from "Keep Listening" on home — adds the artist's ID
-                    // to the HiddenHomeItemsKey preference set. The
-                    // HomeViewModel filters out hidden items from the
-                    // keepListening flow so the artist no longer appears on
-                    // the home page.
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.hide_from_home)) },
                         leadingContent = {

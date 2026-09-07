@@ -50,6 +50,7 @@ import moe.rukamori.archivetune.ui.menu.*
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSuggestionViewModel
 import moe.rukamori.archivetune.ui.screens.search.SpotifySearchItemRow
 import moe.rukamori.archivetune.ui.screens.search.queryText
+import moe.rukamori.archivetune.applemusic.queryText as appleMusicQueryText
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -225,6 +226,36 @@ fun OnlineSearchScreen(
                 }
             }
 
+            if (viewState.appleMusicItems.isNotEmpty()) {
+                item(
+                    key = "apple_music_results_header",
+                    contentType = "section_header",
+                ) {
+                    SearchSectionHeader(
+                        title = stringResource(R.string.search_apple_music),
+                        pureBlack = pureBlack,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+
+                itemsIndexed(
+                    items = viewState.appleMusicItems,
+                    key = { _, item -> "apple_music_${item.key}" },
+                    contentType = { _, _ -> "apple_music_result" },
+                ) { _, item ->
+                    AppleMusicItemRow(
+                        item = item,
+                        modifier =
+                            Modifier.combinedClickable(
+                                onClick = {
+                                    onSearch(item.appleMusicQueryText())
+                                    onDismiss()
+                                },
+                                onLongClick = {},
+                            ).animateItem(),
+                    )
+                }
+            }
 
             if (viewState.items.isNotEmpty()) {
                 item(

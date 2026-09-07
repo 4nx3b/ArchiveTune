@@ -42,22 +42,10 @@ data class SettingsItem(
     val children: List<SettingsChild> = emptyList(),
     val onClick: () -> Unit,
     val switchControl: (@Composable () -> Unit)? = null,
-    /**
-     * When true, the item is excluded from the visible groups on the main settings page
-     * (so no row is rendered for it) but its [children] still participate in settings
-     * search. Use this when a pill has been moved into a sub-page (e.g. "Source" moved
-     * into Playback) but the original search index entries should keep working — tapping
-     * a child search result still navigates to the sub-page via [onClick].
-     */
+
     val hidden: Boolean = false,
 )
 
-/**
- * Represents a single searchable setting inside a settings category.
- * When the user searches settings, each [SettingsChild] that matches is
- * shown as a separate result row and may provide an inline control such as
- * a switch for boolean preferences.
- */
 @Immutable
 data class SettingsChild(
     val title: String,
@@ -66,10 +54,6 @@ data class SettingsChild(
     val switchControl: (@Composable () -> Unit)? = null,
 )
 
-/**
- * A flattened search result derived from a [SettingsChild].
- * Shown as an individual row in the search results list.
- */
 @Immutable
 data class SearchResultItem(
     val title: String,

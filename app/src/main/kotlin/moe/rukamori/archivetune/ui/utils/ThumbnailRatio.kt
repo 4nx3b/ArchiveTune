@@ -14,10 +14,6 @@ import moe.rukamori.archivetune.innertube.models.YTItem
 private const val SQUARE_RATIO = 1f
 private const val LANDSCAPE_RATIO = 16f / 9f
 
-/**
- * Geometric midpoint between the square 1:1 and landscape 16:9 display anchors.
- * Ratios below 4:3 snap to square; ratios at or above 4:3 snap to landscape.
- */
 private const val SNAP_THRESHOLD = 4f / 3f
 
 val YTItem.thumbnailSourceRatio: Float?

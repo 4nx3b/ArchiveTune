@@ -53,12 +53,6 @@ object DiscordImageResolver {
         val songId = song.song.id
         val isTelegram = songId.isTelegramMediaId()
 
-        // For Telegram-sourced songs, `thumbnailUrl` is a `tgart://` URI that is only
-        // resolvable in-app via Coil's TelegramThumbnailFetcher. Discord needs a public
-        // HTTPS URL — so resolve one up front via the iTunes-backed TelegramCoverProvider.
-        // The artist side has no equivalent source (Telegram tracks ship with no artist
-        // profile picture), so we reuse the cover URL as the artist image when nothing
-        // better is available.
         val telegramResolvedCover: String? =
             if (isTelegram) {
                 runCatching {
@@ -79,7 +73,7 @@ object DiscordImageResolver {
                 .firstOrNull()
                 ?.thumbnailUrl
                 ?.asHttpUrl()
-                ?: telegramResolvedCover // Telegram artists have no profile picture — reuse cover.
+                ?: telegramResolvedCover
 
         getCachedImages(songId)
             ?.takeIf { cached ->
@@ -90,7 +84,6 @@ object DiscordImageResolver {
                 return cached
             }
 
-        // Telegram songs are not YouTube music videos; skip the YTM thumbnail lookup entirely.
         val ytThumbnailUrl =
             if (isTelegram) null else getMusicVideoYTThumbnail(songId, thumbnailUrl, isMusicVideo)
         if (!isTelegram && isMusicVideo && ytThumbnailUrl != thumbnailUrl) {

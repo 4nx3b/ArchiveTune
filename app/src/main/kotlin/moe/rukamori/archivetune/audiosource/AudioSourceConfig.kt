@@ -12,58 +12,32 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-/**
- * A resolved direct-playable stream from any audio source. All providers normalize their result
- * into this shape so the playback layer can treat them uniformly.
- */
 data class DirectStream(
     val uri: String,
     val mimeType: String,
     val codecs: String,
     val contentLength: Long?,
-    /** Human-readable label for logging/UI, e.g. "Tidal (account) HI_RES". */
+
     val label: String,
     val source: AudioSourceType,
-    /**
-     * The title of the track the provider actually matched, used by the playback layer's [TitleMatch]
-     * safety gate. A null value is rejected unless [trustedDirectId] is explicitly true.
-     */
+
     val matchedTitle: String? = null,
     val matchedArtist: String? = null,
     val matchedAlbum: String? = null,
     val matchedDurationMs: Long? = null,
-    /** True only when the provider resolved a catalog id that is already authoritative. */
+
     val trustedDirectId: Boolean = false,
-    /**
-     * These exist so the media-info "Details" tab can show what a track actually is. Without them the
-     * playback layer had to infer values from the quality tier in [label], which mislabels any stream
-     * whose tier does not match the guess: Qobuz alone serves 44.1, 48, 88.2, 96, 176.4 and 192 kHz
-     * all under one "HI_RES" banner. Null means the provider did not report it, in which case the
-     * consumer should fall back to a tier heuristic rather than inventing precision.
-     */
+
     val sampleRate: Int? = null,
     val bitDepth: Int? = null,
 )
 
-/**
- * Uncompressed PCM bitrate in bits/sec, or null when either input is unknown.
- *
- * For FLAC this is the pre-compression ceiling, not the true average rate (real FLAC typically lands
- * 40-60% lower), but it is the figure streaming services quote for a tier, so it matches what users
- * see elsewhere. Assumes stereo, which holds for effectively the whole catalog.
- */
 fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
     val rate = sampleRate?.takeIf { it > 0 } ?: return null
     val depth = bitDepth?.takeIf { it > 0 } ?: return null
     return rate * depth * channels
 }
 
-/**
- * Metadata-aware track matching used to gate lossless source playback. Inspired by Stash's matcher,
- * this combines title, artist, duration and album signals while applying hard gates for a different
- * version or implausible duration. This prevents a same-title recording by another artist from
- * passing merely because its normalized title is identical.
- */
 object TitleMatch {
     const val ACCEPT_THRESHOLD = 0.78
     private const val TITLE_ONLY_THRESHOLD = 0.95
@@ -80,11 +54,6 @@ object TitleMatch {
         val reason: String,
     )
 
-    /**
-     * Normalizes a title for comparison: lowercased, diacritics stripped, feat/version qualifiers
-     * removed, and reduced to letter/digit tokens. Unicode letters are retained so CJK and other
-     * non-Latin titles do not collapse to an empty string.
-     */
     fun normalize(value: String?): String =
         (value ?: "")
             .lowercase()
@@ -96,18 +65,6 @@ object TitleMatch {
             .replace(Regex("\\s+"), " ")
             .trim()
 
-    /**
-     * Returns the title-match ratio in 0.0..1.0 between [wanted] and [candidate] after
-     * normalization, using Jaro-Winkler similarity. Two blank titles are treated as a non-match
-     * (0.0) so missing metadata never passes the gate.
-     *
-     * When [wanted] contains a separator-delimited alternative title (e.g. a romanization or
-     * translation paired with the original — "忘れてください - Forget it", "Song / Remix"),
-     * each segment is tried independently and the best-scoring segment wins. This prevents a
-     * candidate that legitimately matches only one of the two halves (e.g. just "Forget it"
-     * on Qobuz) from being rejected because the full wanted string is much longer than the
-     * candidate.
-     */
     fun ratio(
         wanted: String?,
         candidate: String?,
@@ -117,16 +74,7 @@ object TitleMatch {
         if (a.isEmpty() || b.isEmpty()) return 0.0
         if (a == b) return 1.0
         val direct = jaroWinkler(a, b)
-        // Split the RAW wanted / candidate titles on separator characters BEFORE
-        // normalization (normalize() collapses - / | : into spaces, so splitting after
-        // normalization would lose the boundary between "忘れてください" and "forget it").
-        // The best score across:
-        //   - direct (full wanted vs full candidate)
-        //   - each wanted segment vs full candidate
-        //   - full wanted vs each candidate segment
-        //   - each wanted segment vs each candidate segment
-        // wins. This makes the match symmetric: "Forget it" matches
-        // "忘れてください - Forget it" just as well as the reverse.
+
         val wantedSegments = splitRawTitleSegments(wanted)
         val candidateSegments = splitRawTitleSegments(candidate)
         val wantedNormalized = wantedSegments.map(::normalize).filter { it.length >= 3 }
@@ -141,12 +89,6 @@ object TitleMatch {
         return maxOf(direct, bestWantedSegment, bestCandidateSegment, bestCrossSegment)
     }
 
-    /**
-     * Splits a raw (pre-normalization) title into its alternative-name segments. Handles the
-     * common separators used when a track's title contains both an original and a romanized /
-     * translated form: hyphen-with-spaces, slash, pipe, colon, and the CJK full-width
-     * variants of those characters. Returns an empty list when no separator is present.
-     */
     private fun splitRawTitleSegments(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         val split =
@@ -179,12 +121,6 @@ object TitleMatch {
         val artistScore =
             if (wantedArtist != null && candidateArtist != null) artistRatio(wantedArtist, candidateArtist) else null
 
-        // Artist is gated before duration. Both gates reject, so this does not change
-        // WHETHER a stream is accepted — only the reason reported for it. That matters
-        // because "duration differs" was actively misleading for the exact case this
-        // matcher exists to catch: a same-title recording by a different artist almost
-        // always has a different length too, so the wrong-artist rejection was being
-        // blamed on the length instead of the artist.
         if (artistScore != null && artistScore < MIN_ARTIST) {
             return Result(false, 0.0, titleScore, artistScore, durationScore, "artist mismatch")
         }
@@ -192,9 +128,6 @@ object TitleMatch {
             return Result(false, 0.0, titleScore, artistScore, durationScore, "duration differs by more than 15s")
         }
 
-        // Deliberately AFTER the duration gate: with no artist to compare against, the
-        // duration is the only independent signal left, so a title-only acceptance must
-        // never be allowed to override an implausible length.
         if (artistScore == null) {
             val accepted = titleScore >= TITLE_ONLY_THRESHOLD
             val score = titleScore * 0.8 + (durationScore ?: 0.5) * 0.2
@@ -256,11 +189,7 @@ object TitleMatch {
         if (target.length < 3) return false
         if (candidate == target) return true
         if (candidate.contains(target)) return true
-        // Symmetric multilingual check: if the needle contains a separator-delimited
-        // segment (e.g. "忘れてください - Forget it" → ["忘れてください", "forget it"]),
-        // a candidate equal to or containing any of those segments counts as a token
-        // run match. This lets a Qobuz candidate titled just "Forget it" pass the
-        // title gate when the wanted title is "忘れてください - Forget it".
+
         return splitRawTitleSegments(needle).any { segment ->
             val n = normalize(segment)
             n.length >= 3 && (candidate == n || candidate.contains(n))
@@ -317,12 +246,9 @@ object TitleMatch {
     }
 
 }
-/**
- * Pure helpers for the multi-source framework. These operate on already-read preference values so
- * they stay free of any DataStore/Android dependencies and are trivially testable.
- */
+
 object AudioSourceConfig {
-    /** Sources that can actually stream lossless/hi-res, in their built-in default priority. */
+
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
             AudioSourceType.TIDAL,
@@ -334,28 +260,11 @@ object AudioSourceConfig {
             AudioSourceType.YOUTUBE,
         )
 
-    /** YouTube is the guaranteed fallback and is always enabled, but its position is user-controlled. */
     private val ALWAYS_ENABLED = setOf(AudioSourceType.YOUTUBE)
 
     private fun parseType(name: String): AudioSourceType? =
         runCatching { AudioSourceType.valueOf(name.trim().uppercase()) }.getOrNull()
 
-    /**
-     * Resolves the effective ordered list of ALL sources from the stored CSV, preserving the user's
-     * chosen order (including where they placed YouTube) and slotting in any sources missing from
-     * the stored order (e.g. after an app update introduces a new one) *above* YouTube. YouTube is
-     * guaranteed to be present, but its position is user-controlled: placing it earlier means the
-     * app prefers YouTube's own stream over the lossless override sources listed after it.
-     *
-     * The "above YouTube" part matters more than it looks. This used to append the missing sources,
-     * which put every newly added source *after* YouTube for anyone who had ever touched the order
-     * picker on an older build. [moe.rukamori.archivetune.playback.MusicService] cuts the chain at
-     * YouTube (`takeWhile { it != YOUTUBE }`), so an appended source was silently dropped from
-     * playback entirely — Deezer, Qobuz backup and JioSaavn were all unreachable for those users,
-     * and in the order dialog they showed up below YouTube where the list looks like it ends. Since
-     * every override source sits above YouTube in [DEFAULT_ORDER], inserting there is both correct
-     * and the one placement that cannot perturb the choices the user did make.
-     */
     fun parseOrder(rawOrder: String?): List<AudioSourceType> {
         val stored =
             rawOrder
@@ -377,16 +286,11 @@ object AudioSourceConfig {
             }
             merged.add(source)
         }
-        // No YouTube in the stored order: it is one of the missing sources, and it is last in
-        // DEFAULT_ORDER, so appending the whole missing block still leaves it as the final fallback.
+
         if (!inserted) merged.addAll(missing)
         return merged
     }
 
-    /**
-     * Whether a source is enabled. If the stored set is null (never configured), fall back to the
-     * provided per-source defaults. YouTube is always enabled.
-     */
     fun isEnabled(
         source: AudioSourceType,
         enabledSet: Set<String>?,
@@ -397,12 +301,6 @@ object AudioSourceConfig {
         return set.any { parseType(it) == source }
     }
 
-    /**
-     * The ordered list of sources to actually attempt for playback resolution: enabled sources in
-     * the user's chosen priority order. The single stored order is authoritative — the source at
-     * the top of the list is the preferred source — so there is no separate "primary" control to
-     * reconcile.
-     */
     fun resolutionChain(
         rawOrder: String?,
         enabledSet: Set<String>?,
@@ -413,12 +311,6 @@ object AudioSourceConfig {
         }
 }
 
-/**
- * Codec for the per-song "play from" overrides. Stored as `songId=SOURCE` entries joined by `;` in a
- * single preference string so it is picked up by Settings backups. The playback layer forces the
- * chosen source for that song (still subject to the metadata match gate); YOUTUBE as an override
- * means "always use YouTube for this song".
- */
 object SongSourceOverride {
     fun parse(raw: String?): Map<String, AudioSourceType> {
         if (raw.isNullOrBlank()) return emptyMap()
@@ -443,7 +335,6 @@ object SongSourceOverride {
         songId: String,
     ): AudioSourceType? = parse(raw)[songId]
 
-    /** Returns the updated raw string with [songId] set to [source], or cleared when [source] is null. */
     fun withOverride(
         raw: String?,
         songId: String,
@@ -455,15 +346,6 @@ object SongSourceOverride {
     }
 }
 
-/**
- * Codec for per-song Qobuz trackId overrides. Same CSV shape as
- * [SongSourceOverride] but maps `songId → qobuzTrackId` instead of source.
- *
- * Set when the user picks a specific Qobuz track from the "Play from"
- * source-search popup. Read by `MusicService.buildSourceQuery` and passed
- * as `directQobuzTrackId` so `QobuzAudioProvider.resolve` skips the
- * title/artist search and downloads the exact track.
- */
 object SongSourceQobuzTrackId {
     fun parse(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()
@@ -486,7 +368,6 @@ object SongSourceQobuzTrackId {
         songId: String,
     ): String? = parse(raw)[songId]
 
-    /** Returns the updated raw string with [songId] set to [trackId], or cleared when [trackId] is null. */
     fun withOverride(
         raw: String?,
         songId: String,
@@ -498,19 +379,6 @@ object SongSourceQobuzTrackId {
     }
 }
 
-/**
- * Codec for per-song Qobuz-backup video-id overrides.
- *
- * The backup mirror addresses tracks by YouTube video id, so this maps
- * `songId → mirrorVideoId`. Set when the user picks a specific row in the
- * "Play from" search popup; read by `MusicService.buildSourceQuery` and passed to
- * `resolveQobuzBackupStream` so it fetches that exact mirror entry rather than the
- * playing song's own id.
- *
- * The wire format is identical to [SongSourceQobuzTrackId] (`id=value` pairs
- * joined by `;`), so the parsing/serialisation is shared rather than duplicated —
- * only the DataStore key differs.
- */
 object SongSourceQobuzBackupVideoId {
     fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
 
@@ -521,7 +389,6 @@ object SongSourceQobuzBackupVideoId {
         songId: String,
     ): String? = SongSourceQobuzTrackId.get(raw, songId)
 
-    /** Returns the updated raw string with [songId] set to [videoId], or cleared when [videoId] is null. */
     fun withOverride(
         raw: String?,
         songId: String,

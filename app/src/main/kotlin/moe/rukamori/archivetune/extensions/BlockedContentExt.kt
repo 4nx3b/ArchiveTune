@@ -27,14 +27,6 @@ fun <T : YTItem> List<T>.filterBlockedArtists(blockedArtistIds: Set<String>): Li
     }
 }
 
-/**
- * Filters out songs whose IDs appear in [blockedSongIds]. The "Don't recommend this song again"
- * overflow menu item populates that set. Songs are filtered by their own ID — the artist is
- * NOT blocked, only this specific track, so the user can keep discovering other songs from
- * the same artist.
- *
- * Non-[SongItem] items (artists, albums, playlists) pass through unchanged.
- */
 fun <T : YTItem> List<T>.filterBlockedSongs(blockedSongIds: Set<String>): List<T> {
     if (blockedSongIds.isEmpty()) return this
     return filter { item ->

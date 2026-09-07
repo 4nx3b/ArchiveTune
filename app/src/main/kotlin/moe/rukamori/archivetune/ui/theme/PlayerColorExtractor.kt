@@ -16,42 +16,23 @@ import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.max
 
-/**
- * Player color extraction system for generating gradients from album artwork.
- *
- * Design rules (see PlayerColorExtractorTest for the enforced contracts):
- *  - Greyscale detection uses population-weighted statistics. A dark blue cover is still
- *    blue; low brightness is never, on its own, evidence of greyscale.
- *  - Swatch ranking combines population, saturation, usable brightness and a penalty for
- *    near-black / near-white extremes, so a large neutral background cannot suppress a
- *    smaller colourful focal region.
- *  - No invented hues: additional gradient stops are derived from real artwork colours by
- *    brightness/alpha adjustment or by blending two extracted colours. The source hue is
- *    always preserved.
- *  - Genuinely neutral colours stay neutral; brightness may be constrained for readability,
- *    but neutrality is never "fixed" with a minimum saturation.
- */
 object PlayerColorExtractor {
-    // Greyscale classification thresholds (tunable constants, see tests).
+
     const val GREYSCALE_WEIGHTED_SATURATION_THRESHOLD = 0.10f
     const val GREYSCALE_COLORFUL_RATIO_THRESHOLD = 0.08f
     const val GREYSCALE_NEUTRAL_RATIO_THRESHOLD = 0.90f
 
-    // Swatch classification for population statistics.
     private const val COLORFUL_MIN_SATURATION = 0.18f
     private const val NEUTRAL_MAX_SATURATION = 0.12f
 
-    // Swatch ranking weights.
     private const val EXTREME_DARK_LIGHTNESS = 0.05f
     private const val EXTREME_LIGHT_LIGHTNESS = 0.97f
     private const val EXTREME_SWATCH_PENALTY = 0.35f
 
-    // Saturation below which a colour is treated as genuinely neutral and preserved as-is.
     private const val NEUTRAL_PRESERVE_SATURATION = 0.12f
 
     private const val GRADIENT_STOP_COUNT = 6
 
-    /** Population-weighted colour statistics behind the greyscale decision. */
     data class GreyscaleStats(
         val weightedSaturation: Float,
         val colorfulPopulationRatio: Float,
@@ -60,17 +41,11 @@ object PlayerColorExtractor {
         val dominantBrightness: Float,
     )
 
-    /**
-     * Framework-free swatch representation so the whole extraction pipeline is JVM-testable
-     * (androidx.palette's Swatch constructor calls android.graphics.Color).
-     */
     data class ColorSwatch(
         val rgb: Int,
         val population: Int,
     )
 
-
-    /** Framework-free RGB -> HSL (h 0..360, s 0..1, l 0..1), exposed for JVM tests. */
     fun rgbToHsl(rgb: Int): FloatArray {
         val r = ((rgb shr 16) and 0xFF) / 255f
         val g = ((rgb shr 8) and 0xFF) / 255f
@@ -96,7 +71,6 @@ object PlayerColorExtractor {
         return floatArrayOf(if (normalizedHue >= 360f) 0f else normalizedHue, saturation, lightness)
     }
 
-    /** Framework-free HSL -> ARGB int (alpha always 0xFF), exposed for JVM tests. */
     fun hslToColor(hsl: FloatArray): Int {
         val h = hsl[0]
         val s = hsl[1]
@@ -121,7 +95,6 @@ object PlayerColorExtractor {
         return (0xFF shl 24) or (ir shl 16) or (ig shl 8) or ib
     }
 
-    /** Framework-free ARGB blend (ratio = share of the second colour), exposed for tests. */
     fun blendArgb(
         first: Int,
         second: Int,
@@ -135,12 +108,6 @@ object PlayerColorExtractor {
         return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
-    /**
-     * Extracts colors from a palette and creates a gradient.
-     *
-     * @param palette The color palette extracted from album artwork
-     * @param fallbackColor Fallback color to use if extraction fails
-     */
     suspend fun extractGradientColors(
         palette: Palette,
         fallbackColor: Int,
@@ -174,9 +141,6 @@ object PlayerColorExtractor {
             result
         }
 
-    /**
-     * Pure, JVM-testable core operating directly on swatches.
-     */
     fun extractGradientColors(
         swatches: List<ColorSwatch>,
         fallbackColor: Int,
@@ -205,8 +169,6 @@ object PlayerColorExtractor {
             if (availableColors.size >= GRADIENT_STOP_COUNT) break
         }
 
-        // Derive the remaining stops from the real extracted colours: brightness variants and
-        // pairwise blends only. The hue always comes from the artwork — no hue rotation.
         if (availableColors.isNotEmpty() && availableColors.size < GRADIENT_STOP_COUNT) {
             val baseColors = availableColors.toList()
             val valueTargets = floatArrayOf(0.80f, 0.62f, 0.44f, 0.70f, 0.52f, 0.34f)
@@ -237,7 +199,6 @@ object PlayerColorExtractor {
         return availableColors
     }
 
-    /** Population-weighted greyscale statistics for a set of swatches. */
     fun computeGreyscaleStats(swatches: List<ColorSwatch>): GreyscaleStats {
         val totalPopulation = swatches.sumOf { it.population }.coerceAtLeast(1).toFloat()
         var saturationSum = 0f
@@ -271,10 +232,6 @@ object PlayerColorExtractor {
         )
     }
 
-    /**
-     * True greyscale = almost no saturation anywhere AND almost no colourful population AND
-     * almost entirely neutral population. Brightness is deliberately NOT a factor.
-     */
     fun isGreyscale(stats: GreyscaleStats): Boolean =
         stats.weightedSaturation < GREYSCALE_WEIGHTED_SATURATION_THRESHOLD &&
             stats.colorfulPopulationRatio < GREYSCALE_COLORFUL_RATIO_THRESHOLD &&
@@ -301,11 +258,6 @@ object PlayerColorExtractor {
         }
     }
 
-    /**
-     * Ranking score: population matters but cannot dominate on its own. Saturated colours in a
-     * usable brightness range are boosted; near-black / near-white extremes are penalised so a
-     * plain background cannot suppress a colourful focal region.
-     */
     private fun calculateColorWeight(swatch: ColorSwatch): Float {
         val hsl = FloatArray(3)
         rgbToHsl(swatch.rgb).copyInto(hsl)
@@ -322,11 +274,6 @@ object PlayerColorExtractor {
         return swatch.population * saturationFactor * brightnessUsability * extremePenalty
     }
 
-    /**
-     * Mild vividness enhancement. Colourful colours get a small saturation lift; genuinely
-     * neutral colours keep their neutrality (no minimum saturation is ever forced).
-     * Brightness is only nudged into a readable range.
-     */
     private fun enhanceColorVividness(color: Color): Color {
         val hsl = FloatArray(3)
         rgbToHsl(color.toArgb()).copyInto(hsl)
@@ -337,7 +284,6 @@ object PlayerColorExtractor {
         return Color(hslToColor(hsl))
     }
 
-    /** Brightness variant of a real colour; hue and neutrality are preserved. */
     private fun adjustBrightness(
         color: Color,
         targetLightness: Float,
@@ -348,14 +294,12 @@ object PlayerColorExtractor {
         return Color(hslToColor(hsl))
     }
 
-    /** Blend of two real extracted colours (keeps hues from the artwork). */
     private fun blendColors(
         first: Color,
         second: Color,
         ratio: Float,
     ): Color = Color(blendArgb(first.toArgb(), second.toArgb(), ratio))
 
-    /** Checks if two colors are similar (to avoid using nearly identical colors). */
     private fun isSimilarColor(
         color1: Color?,
         color2: Color?,
@@ -370,7 +314,7 @@ object PlayerColorExtractor {
         val hueDiff = kotlin.math.min(hueDiffRaw, 360f - hueDiffRaw)
         val satDiff = abs(hsl1[1] - hsl2[1])
         val lightnessDiff = abs(hsl1[2] - hsl2[2])
-        // Neutral colours have no meaningful hue; compare them on lightness only.
+
         if (max(hsl1[1], hsl2[1]) < NEUTRAL_MAX_SATURATION) {
             return lightnessDiff < 0.10f
         }
@@ -394,7 +338,6 @@ object PlayerColorExtractor {
         colors: List<Color>,
     ): Boolean = colors.any { isSimilarColor(color, it) }
 
-    /** Configuration constants for color extraction. */
     object Config {
         const val MAX_COLOR_COUNT = 32
         const val BITMAP_AREA = 8000

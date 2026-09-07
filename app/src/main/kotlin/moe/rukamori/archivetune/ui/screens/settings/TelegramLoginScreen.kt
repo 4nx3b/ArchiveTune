@@ -114,7 +114,7 @@ fun TelegramLoginScreen(navController: NavController) {
                 Toast.makeText(context, R.string.telegram_login_success, Toast.LENGTH_SHORT).show()
                 navController.navigateUp()
             }
-            // A fresh code was sent (initial or after resend/edit) — leave the edit-phone override.
+
             is TelegramAuthState.WaitCode -> editingPhone = false
             else -> Unit
         }
@@ -443,7 +443,7 @@ private fun CodeStep(
     onEditPhone: () -> Unit,
     onResend: () -> Unit,
 ) {
-    // Countdown until a resend is accepted; reset whenever TDLib reports a new WaitCode.
+
     var secondsLeft by remember(state) { mutableIntStateOf(if (state.canResend) state.resendTimeoutSeconds else 0) }
     LaunchedEffect(state) {
         while (secondsLeft > 0) {

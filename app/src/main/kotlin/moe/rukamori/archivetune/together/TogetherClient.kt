@@ -164,8 +164,8 @@ class TogetherClient(
     private fun alternateWebSocketSchemeOrNull(url: String): String? {
         val trimmed = url.trim()
         return when {
-            trimmed.startsWith("ws://") -> "wss://${trimmed.removePrefix("ws://")}"
-            trimmed.startsWith("wss://") -> "ws://${trimmed.removePrefix("wss://")}"
+            trimmed.startsWith("ws://") -> "wss://${trimmed.removePrefix("ws:
+            trimmed.startsWith("wss://") -> "ws://${trimmed.removePrefix("wss:
             else -> null
         }
     }

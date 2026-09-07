@@ -19,10 +19,6 @@ internal data class TogetherPublicServer(
     val url: String,
 )
 
-/**
- * Public Listen Together servers operated by the vivimusic community.
- * No auth required; a custom URL can be configured per user.
- */
 internal object TogetherPublicServers {
     val Defaults =
         listOf(

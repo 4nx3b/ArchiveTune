@@ -19,19 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * GMS-flavor voice search implementation.
- *
- * Uses the platform `android.speech.SpeechRecognizer` API directly. On Android
- * 12+ this API uses the on-device Google Speech Recognition service (shipped via
- * Google Play Services as part of the system), so the user does NOT need to
- * install the standalone Google app. On older Android versions the recognizer
- * falls back to whatever speech service the system provides.
- *
- * This implementation is in the `gms` source set because the `gms` flavor
- * already depends on Google Play Services (for Cast). The `foss` flavor uses
- * a no-op impl so FOSS builds don't pull in any GMS dependency.
- */
 class DefaultVoiceSearchController : VoiceSearchController {
     private val _state = MutableStateFlow<VoiceSearchState>(VoiceSearchState.Idle)
     override val state: StateFlow<VoiceSearchState> = _state.asStateFlow()
@@ -50,7 +37,6 @@ class DefaultVoiceSearchController : VoiceSearchController {
             return
         }
 
-        // Tear down any prior recognizer before starting a new session.
         recognizer?.destroy()
         recognizer = SpeechRecognizer.createSpeechRecognizer(context)
 
@@ -61,11 +47,10 @@ class DefaultVoiceSearchController : VoiceSearchController {
                     RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                 )
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                // Prefer the device's current locale.
+
                 val locale = java.util.Locale.getDefault()
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
-                // Prefer on-device recognition when available (Android 12+ ships an
-                // on-device recognizer that does NOT require the Google app).
+
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             }
 
@@ -107,8 +92,7 @@ class DefaultVoiceSearchController : VoiceSearchController {
                 }
 
                 override fun onPartialResults(partialResults: Bundle?) {
-                    // Partial results are intentionally not surfaced as state —
-                    // we only commit a final result to avoid spamming the UI.
+
                 }
 
                 override fun onEvent(eventType: Int, params: Bundle?) {}

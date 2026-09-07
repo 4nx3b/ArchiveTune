@@ -207,11 +207,7 @@ fun NewsScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    // Plain LargeFlexibleTopAppBar — no frosted pill backgrounds
-                    // around the title / back arrow / actions. The user
-                    // explicitly asked for the frosted enclosed pill headers
-                    // to be removed from the News page; this matches the
-                    // modern minimal styling already used on New Releases.
+
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(

@@ -141,7 +141,6 @@ fun LibraryAlbumsScreen(
             albums
         }
 
-    // Issue 2: player-aware bottom padding
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -175,7 +174,7 @@ fun LibraryAlbumsScreen(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),
         ) {
-            // Sub-header controls (Sort dropdown, genres/filters, list/grid toggle)
+
             Row(
                 modifier =
                     Modifier
@@ -286,7 +285,7 @@ fun LibraryAlbumsScreen(
                                     onClick = {
                                         filter = AlbumFilter.LIKED
                                         onSortTypeChange(type)
-                                        // Issue 4: A-Z sort defaults to ascending
+
                                         if (type == AlbumSortType.NAME) onSortDescendingChange(false)
                                         showSortMenu = false
                                     },
@@ -308,7 +307,6 @@ fun LibraryAlbumsScreen(
                         }
                     }
 
-                    // Sort direction toggle button
                     Spacer(modifier = Modifier.width(4.dp))
                     Box(
                         modifier =
@@ -337,7 +335,6 @@ fun LibraryAlbumsScreen(
                     }
                 }
 
-                // Grid / List Toggle layout controls
                 Row(
                     modifier =
                         Modifier
@@ -383,16 +380,15 @@ fun LibraryAlbumsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Main albums list or grid layout
             if (isGridView) {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(4), // 4-column albums grid
+                    columns = GridCells.Fixed(4),
                     contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // Featured Album spotlight card span all 4 columns
+
                     item(span = { GridItemSpan(4) }, key = "featured_album_card") {
                         featuredAlbum?.let { album ->
                             Box(
@@ -509,7 +505,6 @@ fun LibraryAlbumsScreen(
                         }
                     }
 
-                    // 4-column albums list
                     items(filteredAlbums, key = { it.id }) { album ->
                         Column(
                             modifier =
@@ -544,7 +539,7 @@ fun LibraryAlbumsScreen(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                // Play Overlay button on cover
+
                                 Box(
                                     modifier =
                                         Modifier
@@ -589,7 +584,7 @@ fun LibraryAlbumsScreen(
                     }
                 }
             } else {
-                // List View
+
                 LazyColumn(
                     contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),

@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
@@ -17,7 +18,10 @@ import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -34,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -45,12 +50,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
@@ -58,37 +69,6 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
 
-/**
- * Bottom Sheet
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
- *
- * @param keepContentAlive When true, the [content] composable is kept in the
- *   composition tree even when the sheet is collapsed (it's hidden via
- *   alpha=0 instead of being unmounted). This is used by the player sheet
- *   to keep the [InlineVideoPlayer]'s ExoPlayer alive across collapse/expand
- *   cycles — without this, collapsing the player to the mini player would
- *   release the ExoPlayer, and expanding it again would require re-resolving
- *   the stream URL and re-buffering (causing the "video pauses, audio keeps
- *   playing" bug). Default is false to preserve the original behavior for
- *   other sheets (queue, etc.) that don't need this.
- * @param morphMode When true, the sheet fades + scales in place (0.94 → 1.0) over
- *   450ms with FastOutSlowInEasing instead of a plain slide on open. The sheet
- *   still slides vertically with the finger while dragging. This is used by the
- *   queue to add an in-place morph open transition on top of the normal
- *   bottom-sheet behavior. Default is false to preserve the original slide
- *   behavior for other sheets.
- * @param opaqueBackground When true, the sheet's outer background is rendered
- *   fully opaque (alpha = [backgroundColor].alpha) as soon as the sheet is
- *   visible, instead of fading in proportionally to [BottomSheetState.progress].
- *   This is needed by the queue sheet: non-Apple-Music player styles render a
- *   zoomed/gradient/blur artwork backdrop behind the player, and the default
- *   progress-based alpha fade let that artwork bleed through the queue sheet
- *   while dragging. With this flag set, the outer background is opaque from
- *   the very first pixel of drag, fully covering the player artwork, while
- *   the inner content (queue rows) still fades in via its own graphicsLayer
- *   alpha. Default is false to preserve the original behavior for the player
- *   sheet and any other callers.
- */
 @Composable
 fun BottomSheet(
     state: BottomSheetState,
@@ -107,13 +87,7 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                // Per audit (2026-08-30): `Modifier.offset { IntOffset(0, y) }` ran in
-                // the LAYOUT phase on every drag/animation frame of the player
-                // bottom sheet — re-measuring the sheet's content (which can be a
-                // large lyrics surface, queue, expanded player, etc.) every frame.
-                // Folding the Y translation into `graphicsLayer` moves the work to
-                // the DRAW phase; the layout pass stays cached while the user
-                // swipes the sheet up/down. No visual change.
+
                 .graphicsLayer {
                     val y =
                         (state.expandedBound - state.value)
@@ -127,31 +101,13 @@ fun BottomSheet(
                         topEnd = if (!state.isExpanded) 16.dp else 0.dp,
                     ),
                 ).then(
-                    // ─────────────────────────────────────────────────────────────────────────
-                    // Performance: replace `Modifier.background(color.copy(alpha = ...))` with a
-                    // draw-phase-only `drawBehind { drawRect(color, alpha = ...) }`.
-                    //
-                    // Previously, the second branch allocated a fresh `Color.copy(...)` instance per
-                    // drag frame (state.progress changes on every drag frame), which caused
-                    // `BackgroundElement.equals()` to return false → modifier chain re-installed →
-                    // update + invalidateDraw cascade on every drag frame. This is the dominant
-                    // per-frame cost of the player-sheet drag gesture (which is the largest subtree
-                    // in the app — hosts the entire player + lyrics + queue).
-                    //
-                    // The opaque-background branch already returned a stable `backgroundColor`
-                    // value (no per-frame Color.copy), so it was already a no-op for that case.
-                    // The new drawBehind implementation keeps both branches the same shape, just
-                    // moving the alpha-baking from a Color allocation into a primitive Float
-                    // parameter on `drawRoundRect`. No visual change.
-                    // ─────────────────────────────────────────────────────────────────────────
+
                     if (opaqueBackground) {
                         Modifier.drawBehind {
                             if (state.progress > 0f) {
                                 drawRect(color = backgroundColor)
                             }
-                            // else: transparent — when collapsed, no background is drawn so the
-                            // system navigation bar shows through. (See the previous comment block
-                            // above for the rationale — preserved verbatim.)
+
                         }
                     } else {
                         Modifier.drawBehind {
@@ -182,20 +138,14 @@ fun BottomSheet(
         }
 
         if (keepContentAlive) {
-            // Always compose the content, but hide it when collapsed.
-            // This keeps stateful composables (e.g. InlineVideoPlayer's
-            // ExoPlayer) alive across collapse/expand cycles.
+
             BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             if (morphMode) {
-                                // Morph: fade + scale (0.94 → 1.0) based on
-                                // expand progress, with a 25% dead-band so the
-                                // content stays opaque for the first part of a
-                                // drag. No offset — the offset is applied on
-                                // the sheet root so the whole sheet slides.
+
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
                                 scaleX = 0.94f + 0.06f * p
@@ -495,28 +445,81 @@ fun rememberBottomSheetState(
     }
 }
 
+private class BottomSheetGestureRegion(private val view: View) {
+    var coordinates: LayoutCoordinates? = null
+    private val windowLocation = IntArray(2)
+
+    fun canStartDrag(position: Offset): Boolean {
+        val layoutCoordinates = coordinates?.takeIf { it.isAttached } ?: return false
+        val insets =
+            ViewCompat.getRootWindowInsets(view)?.getInsets(
+                WindowInsetsCompat.Type.systemGestures() or WindowInsetsCompat.Type.navigationBars(),
+            ) ?: return true
+        val rootView = view.rootView
+        rootView.getLocationInWindow(windowLocation)
+        val windowPosition = layoutCoordinates.localToWindow(position)
+        val x = windowPosition.x - windowLocation[0]
+        val y = windowPosition.y - windowLocation[1]
+        return x >= insets.left && x < rootView.width - insets.right &&
+            y >= insets.top && y < rootView.height - insets.bottom
+    }
+}
+
 @Composable
 fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
     onDismiss: (() -> Unit)? = null,
-): Modifier =
-    this.pointerInput(state) {
-        val velocityTracker = VelocityTracker()
-
-        detectVerticalDragGestures(
-            onVerticalDrag = { change, dragAmount ->
-                velocityTracker.addPointerInputChange(change)
-                state.dispatchRawDelta(dragAmount)
-            },
-            onDragCancel = {
-                val velocity = -velocityTracker.calculateVelocity().y
-                velocityTracker.resetTracking()
-                state.performFling(velocity, onDismiss)
-            },
-            onDragEnd = {
-                val velocity = -velocityTracker.calculateVelocity().y
-                velocityTracker.resetTracking()
-                state.performFling(velocity, onDismiss)
-            },
-        )
+): Modifier {
+    val view = LocalView.current
+    val gestureRegion = remember(view) { BottomSheetGestureRegion(view) }
+    val updateCoordinates: (LayoutCoordinates) -> Unit = remember(gestureRegion) {
+        { gestureRegion.coordinates = it }
     }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+
+    return this
+        .onGloballyPositioned(updateCoordinates)
+        .pointerInput(state, gestureRegion) {
+            val velocityTracker = VelocityTracker()
+
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                if (!gestureRegion.canStartDrag(down.position)) return@awaitEachGesture
+
+                val initialAnchor = state.targetAnchor
+                velocityTracker.resetTracking()
+                velocityTracker.addPointerInputChange(down)
+                var dragStarted = false
+                var dragCompleted = false
+
+                try {
+                    val drag =
+                        awaitVerticalTouchSlopOrCancellation(down.id) { change, overSlop ->
+                            change.consume()
+                            dragStarted = true
+                            velocityTracker.addPointerInputChange(change)
+                            state.dispatchRawDelta(overSlop)
+                        } ?: return@awaitEachGesture
+
+                    dragCompleted =
+                        verticalDrag(drag.id) { change ->
+                            velocityTracker.addPointerInputChange(change)
+                            state.dispatchRawDelta(change.positionChange().y)
+                            change.consume()
+                        }
+                    if (dragCompleted) {
+                        state.performFling(-velocityTracker.calculateVelocity().y, currentOnDismiss)
+                    }
+                } finally {
+                    velocityTracker.resetTracking()
+                    if (dragStarted && !dragCompleted) {
+                        when (initialAnchor) {
+                            EXPANDED_ANCHOR -> state.expandSoft()
+                            COLLAPSED_ANCHOR -> state.collapseSoft()
+                            DISMISSED_ANCHOR -> state.dismiss()
+                        }
+                    }
+                }
+            }
+        }
+}

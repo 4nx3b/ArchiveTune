@@ -339,7 +339,7 @@ fun AodCustomizedScreen(
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+
                     .then(positions.containerModifier()),
             contentPadding =
                 PaddingValues(
@@ -900,8 +900,7 @@ private fun PreviewProgress(
     showTimeLabels: Boolean,
     sliderStyle: SliderStyle = SliderStyle.Standard,
 ) {
-    // Static 46% preview value — gives the user a feel for what each slider
-    // style looks like at a glance, without animating in the customize screen.
+
     var previewValue by remember { mutableFloatStateOf(0.46f) }
 
     Column(

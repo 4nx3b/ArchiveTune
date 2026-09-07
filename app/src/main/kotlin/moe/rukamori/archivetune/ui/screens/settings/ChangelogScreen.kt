@@ -196,7 +196,7 @@ fun ChangelogScreen(
                     ),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Version selection chips (vivi-music style: segmented ToggleButtons in a horizontal scroll).
+
                 if (releases.isNotEmpty()) {
                     Row(
                         modifier =
@@ -300,7 +300,7 @@ fun ChangelogScreen(
                         ) {
                             currentRelease?.let { release ->
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    // Header row: version tag + formatted date (vivi-music layout).
+
                                     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
                                     val displayDateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()) }
                                     val formattedDate =
@@ -331,8 +331,6 @@ fun ChangelogScreen(
                                         )
                                     }
 
-                                    // Render the release body as bullet-point lines with clickable URLs
-                                    // (mirrors vivi-music's ClickableText + buildAnnotatedString pattern).
                                     if (!release.body.isNullOrBlank()) {
                                         Spacer(modifier = Modifier.height(16.dp))
                                         val bodyLines =
@@ -397,7 +395,6 @@ fun ChangelogScreen(
                 }
             }
 
-            // Pull-to-refresh loading indicator at the top center.
             Box(
                 Modifier
                     .align(Alignment.TopCenter)
@@ -412,7 +409,6 @@ fun ChangelogScreen(
     }
 }
 
-/** URL extractor matching vivi-music's regex (http/https/www./pic. prefixes). */
 private val URL_REGEX =
     Regex("(?:^|[\\s])((https?://|www\\.|pic\\.)[\\w-]+(\\.[\\w-]+)+([/?].*)?)")
 

@@ -35,23 +35,6 @@ import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsProviderTestResult
 import javax.inject.Inject
 
-// PaxsenixStatsState and PaxsenixEndpointCheckState removed (2026-08-30):
-// the PaxsenixLyrics backend was deleted along with the BiniLyrics provider
-// that was its only consumer. The fetchPaxsenixStats / checkPaxsenixEndpoints
-// functions and their state holders have been removed from this ViewModel, and
-// the PaxsenixStatsDialog / PaxsenixStatusBar / PaxsenixProviderRow / PaxsenixServerStatus
-// UI has been removed from LyricsSettings.kt.
-
-/**
- * State for the "Lyrics test" sweep in the Lyrics Providers settings page.
- *
- * - [Loading]: the sweep is running, the dialog shows a spinner per provider.
- * - [Done]: the sweep finished (every provider has either returned or
- *   timed out); the dialog shows the per-provider outcome list.
- *
- * Re-tapping the entry while the sweep is running restarts it rather than
- * queueing a second sweep.
- */
 sealed interface LyricsTestState {
     data object Idle : LyricsTestState
 
@@ -143,12 +126,6 @@ class ContentSettingsViewModel
             startAiContentFilterRefresh(force = false, showSuccess = false)
         }
 
-        /**
-         * Runs the "Lyrics test" sweep — calls every enabled provider with a fixed
-         * well-known test case and reports per-provider outcomes. Re-tapping while a
-         * sweep is running restarts it rather than queueing a second sweep. Used by the
-         * "Lyrics test" entry in the Lyrics Providers settings page.
-         */
         fun runLyricsTest() {
             lyricsTestJob?.cancel()
             _lyricsTestState.value = LyricsTestState.Loading

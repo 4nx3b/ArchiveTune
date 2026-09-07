@@ -281,7 +281,6 @@ fun rememberMoodAndGenresArtworkUrl(endpoint: BrowseEndpoint?): String? {
                 return@produceState
             }
 
-            // Clear a previously remembered value before resolving an expired entry.
             value = null
 
             val persistedEntry =

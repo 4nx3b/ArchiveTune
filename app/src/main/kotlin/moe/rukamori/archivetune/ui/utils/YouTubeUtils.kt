@@ -74,21 +74,12 @@ private fun chooseAnyAspectQuality(
         else -> YTThumbQuality.MAXRES
     }
 
-/**
- * Returns an image URL sized for the requested display bounds.
- *
- * Google CDN URLs keep their existing source/crop family and only have their size parameters
- * updated. YouTube's fixed `i.ytimg.com` variants can use different aspect families, so callers
- * must choose an explicit [YtimgResizePolicy] whenever changing that family would be unsafe.
- * [YtimgResizePolicy.MatchSourceAspect] preserves the original URL when [sourceAspectRatio] is
- * missing or invalid.
- */
 fun String.resize(
     width: Int? = null,
     height: Int? = null,
     maxresAllowed: Boolean = false,
     sizeBuckets: List<Int>? = null,
-    // Legacy-compatible default; aspect-sensitive callers must opt in to a safer policy.
+
     ytimgResizePolicy: YtimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
     sourceAspectRatio: Float? = null,
 ): String {
@@ -180,7 +171,6 @@ private fun String.ytThumbQuality(): YTThumbQuality? {
     return YTThumbQuality.entries.firstOrNull { it.value.equals(variant, ignoreCase = true) }
 }
 
-/** Returns the next lower-quality YouTube thumbnail without crossing aspect families. */
 fun getNextFallbackUrl(url: String?): String? {
     if (url == null) return null
     val targetQuality =

@@ -78,10 +78,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
-            // (without). The option has been removed along with the gatekeeper machinery
-            // that conditioned it; rewrite stale values to WEB_REMIX so existing users
-            // don't land on an unknown enum value.
+
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[PlayerStreamClientKey] in

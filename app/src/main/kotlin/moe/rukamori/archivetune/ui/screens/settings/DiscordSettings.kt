@@ -484,7 +484,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                     .then(positions.containerModifier())
                     .verticalScroll(scrollState)
                     .hazeSource(headerHaze)
