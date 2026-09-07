@@ -574,8 +574,6 @@
     <string name="slider_style_circular">Circular</string>
     <string name="slider_style_simple">Simple</string>
     <string name="misc">Misc</string>
-    <string name="album_page">Album page</string>
-    <string name="extras">Extras</string>
     <string name="haptics">Vibration</string>
     <string name="haptics_desc">Enable haptic feedback on interactive elements</string>
     <string name="default_open_tab">Default open tab</string>

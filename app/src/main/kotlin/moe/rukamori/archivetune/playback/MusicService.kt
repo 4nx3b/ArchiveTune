@@ -8568,7 +8568,7 @@ class MusicService :
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
-                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
+                AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, true),
                 AudioSourceType.YOUTUBE to true,
             )
 
@@ -8587,7 +8587,7 @@ class MusicService :
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
             AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
-            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, false)
+            AudioSourceType.APPLE -> dataStore.get(AppleMusicSourceEnabledKey, true)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
@@ -9775,7 +9775,7 @@ class MusicService :
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
             dataStore.get(DeezerEnabledKey, false) ||
-            dataStore.get(AppleMusicSourceEnabledKey, false)
+            dataStore.get(AppleMusicSourceEnabledKey, true)
     }
 
     private fun resolvePlaybackDataSpec(
