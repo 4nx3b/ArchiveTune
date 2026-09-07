@@ -304,6 +304,14 @@ import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
+import moe.rukamori.archivetune.ui.component.ThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberThrottledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.throttledLayerBackdrop
+import moe.rukamori.archivetune.ui.component.GlassPipelinePrewarm
+import moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop
+import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
+import moe.rukamori.archivetune.ui.component.NewMenuItem
+import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -1505,6 +1513,72 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
+                    // ── Real-time menu glass ─────────────────────────────
+                    // A ThrottledLayerBackdrop the overflow menu samples
+                    // instead of the outer app-wide layer: this one re-records
+                    // at most every ~33ms rather than only when Compose
+                    // re-executes the parent's draw block, so sub-layer
+                    // animations behind the popup (the mini player's progress
+                    // line, artwork crossfades, a playing canvas) keep
+                    // flowing through the frost — the frost stays LIVE, not a
+                    // frozen snapshot. Throttling to ~30fps keeps the record
+                    // cost off the popup's own scroll frame budget.
+                    val menuGlassBackdrop: ThrottledLayerBackdrop? =
+                        if (liquidGlassActive) {
+                            rememberThrottledLayerBackdrop()
+                        } else {
+                            null
+                        }
+
+                    // Keep the recorder attached slightly past the menu's own
+                    // close (the popup plays a ~200ms exit fade while
+                    // menuState.isVisible is already false); detaching the
+                    // recorder clears the layer coordinates instantly, which
+                    // would blank the frost mid-fade.
+                    var menuGlassRecordingActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(menuState.isVisible) {
+                        if (menuState.isVisible) {
+                            menuGlassRecordingActive = true
+                        } else {
+                            delay(260)
+                            menuGlassRecordingActive = false
+                        }
+                    }
+
+                    // ── Glass-pipeline pre-warm ──────────────────────────
+                    // The first popup open in a process pays three cold costs
+                    // — the AGSL vibrancy shader + blur RenderEffect compile,
+                    // the recorder's first full-screen GraphicsLayer record,
+                    // and the menu rows' JIT. Warm all three ONCE ~2s after
+                    // launch: attach the throttled recorder for ~450ms and
+                    // let the pre-warm strip sample it with the real
+                    // vibrancy + 32dp blur recipe. The first REAL popup open
+                    // then composes into warm pipelines instead of compiling
+                    // inside its first scroll frames.
+                    var glassPrewarmActive by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        delay(2000)
+                        glassPrewarmActive = true
+                        delay(450)
+                        glassPrewarmActive = false
+                    }
+
+                    // ── Root-overlay back-priority guard ─────────────────
+                    // True while ANY root-level overlay is showing over the
+                    // app surface: the overflow glass menu or the details
+                    // BottomSheetPage — plus the 260ms exit-fade tail
+                    // (menuGlassRecordingActive already tracks exactly that
+                    // window for the frost recorder). Provided to the tree as
+                    // LocalRootOverlayActive; the player-collapse
+                    // BackHandlers gate on it so the back gesture can never
+                    // minimize the player out from under an open popup — it
+                    // closes the popup instead.
+                    val rootOverlayActive by remember {
+                        derivedStateOf {
+                            menuGlassRecordingActive || bottomSheetPageState.isVisible
+                        }
+                    }
+
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
                         animationSpec = if (disableAnimations) snap() else NavigationBarAnimationSpec,
@@ -2161,10 +2235,38 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
+                        moe.rukamori.archivetune.ui.component.LocalMenuGlassBackdrop provides menuGlassBackdrop,
+                        moe.rukamori.archivetune.ui.player.LocalRootOverlayActive provides rootOverlayActive,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                     ) {
-                        Row {
+                        // ── Real-time menu glass: while the overflow menu
+                        // (or the pre-warm strip) is active, the menu-glass
+                        // backdrop records this whole subtree (the recording
+                        // itself is draw-phase only, so attaching/detaching
+                        // the modifier never re-lays-out the app). The
+                        // floating menu popup is composed as a SIBLING below
+                        // (never inside this Row), so it can safely sample
+                        // the layer with kyant drawBackdrop — the
+                        // non-reentrant case. The conditional attach keeps
+                        // the cost at zero whenever no glass popup is
+                        // showing; while attached the layer stays live
+                        // (throttled to ~30fps), so the popup's frost
+                        // follows the mini player's animated progress line /
+                        // artwork crossfades and anything else moving behind
+                        // it.
+                        Row(
+                            modifier =
+                                Modifier.let { base ->
+                                    if (menuGlassBackdrop != null &&
+                                        (menuGlassRecordingActive || glassPrewarmActive)
+                                    ) {
+                                        base.throttledLayerBackdrop(menuGlassBackdrop)
+                                    } else {
+                                        base
+                                    }
+                                },
+                        ) {
                             AnimatedVisibility(
                                 visible =
                                     useRail &&
@@ -3316,7 +3418,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen && !aodModeEnabled) {
+                        // Player-collapse BACK FALLBACK — gated on the
+                        // root-overlay guard so the back gesture never
+                        // minimizes the full player out from under an open
+                        // root popup (overflow menu / details sheet): back
+                        // closes the popup instead, the player stays.
+                        BackHandler(
+                            enabled =
+                                playerBottomSheetState.isExpanded &&
+                                    !isPlayerLyricsFullScreen &&
+                                    !aodModeEnabled &&
+                                    !rootOverlayActive,
+                        ) {
                             playerBottomSheetState.collapseSoft()
                         }
 
@@ -3324,6 +3437,31 @@ class MainActivity : ComponentActivity() {
                             state = LocalMenuState.current,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
+
+                        // Glass-pipeline pre-warm strip: while active, a
+                        // 1dp / 2%-alpha strip samples the throttled recorder
+                        // with the real vibrancy + 32dp blur recipe and
+                        // composes two real menu rows — compiling the
+                        // shaders, running the first full-screen record and
+                        // JIT-ing the row machinery BEFORE the user ever
+                        // opens a popup. Composed AFTER BottomSheetMenu so
+                        // it draws above it (it is invisible either way).
+                        GlassPipelinePrewarm(
+                            backdrop = menuGlassBackdrop,
+                            active = glassPrewarmActive,
+                            modifier = Modifier.align(Alignment.TopCenter),
+                        ) {
+                            MenuSurfaceSection {
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                                NewMenuItem(
+                                    headlineContent = { Text("") },
+                                    onClick = {},
+                                )
+                            }
+                        }
 
                         BottomSheetPage(
                             state = LocalBottomSheetPageState.current,

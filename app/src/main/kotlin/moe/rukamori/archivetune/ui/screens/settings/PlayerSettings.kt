@@ -56,6 +56,7 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
@@ -219,6 +220,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             SpotifyCanvasKey,
             defaultValue = false,
+        )
+
+    // Moved from Appearance → Album page (user request): the album page's
+    // looping canvas is a playback artwork concern, so it lives with the
+    // other canvas/artwork switches under Playback → Artwork.
+    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
+        rememberPreference(
+            AlbumCanvasEnabledKey,
+            defaultValue = true,
         )
 
     val (canvasResolverEndpointsRaw, onCanvasResolverEndpointsChange) =
@@ -586,6 +596,17 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             onCheckedChange = onSpotifyCanvasEnabledChange,
                         )
                     }
+                }
+
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("album_canvas_enabled"),
+                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
+                        description = stringResource(R.string.album_canvas_enabled_desc),
+                        icon = { Icon(painterResource(R.drawable.album), null) },
+                        checked = albumCanvasEnabled,
+                        onCheckedChange = onAlbumCanvasEnabledChange,
+                    )
                 }
 
                 item(visible = spotifyCanvasEnabled) {

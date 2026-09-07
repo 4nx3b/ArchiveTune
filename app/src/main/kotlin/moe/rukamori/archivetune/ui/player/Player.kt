@@ -1339,18 +1339,24 @@ fun BottomSheetPlayer(
                 val country = Locale.getDefault().country
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
+        // A track marked as a music video always plays its YouTube video —
+        // the canvas (even a cached one for the same media id) must never
+        // stand in for the video.
+        val trackIsMusicVideo = mediaMetadata?.isMusicVideo == true
         val shouldUseV7Canvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||
                     playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
-                !aodModeEnabled
+                !aodModeEnabled &&
+                !trackIsMusicVideo
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9
                 ) &&
-                !aodModeEnabled
+                !aodModeEnabled &&
+                !trackIsMusicVideo
         val shouldFetchV7Canvas = shouldUseV7Canvas && !lowDataModeActive
         val shouldFetchArtworkCanvas = shouldUseArtworkCanvas && !lowDataModeActive
         var v7CanvasArtwork by remember(mediaMetadata?.id) {

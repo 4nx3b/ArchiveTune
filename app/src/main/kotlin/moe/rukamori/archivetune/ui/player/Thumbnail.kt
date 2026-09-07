@@ -392,7 +392,12 @@ fun Thumbnail(
                             archiveTuneCanvasEnabled &&
                                 playerDesignStyle != PlayerDesignStyle.V7 &&
                                 item.mediaId.isNotBlank() &&
-                                item.mediaId == currentMediaItem?.mediaId
+                                item.mediaId == currentMediaItem?.mediaId &&
+                                // A track marked as a music video always plays its
+                                // YouTube video — the canvas (even a freshly cached
+                                // one for the same media id) must never stand in
+                                // for the video.
+                                item.metadata?.isMusicVideo != true
                         val shouldFetchCanvas = shouldUseCanvas && !lowDataModeActive
                         var canvasArtwork by remember(item.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
                         var canvasFetchInFlight by remember(item.mediaId) { mutableStateOf(false) }
