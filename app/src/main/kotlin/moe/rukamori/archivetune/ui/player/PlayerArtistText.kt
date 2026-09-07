@@ -55,11 +55,6 @@ fun ClickableArtists(
             }
         }
 
-    // Shared layout state: also drives tap detection. Fade lives on the BOX
-    // viewport, not the Text, so the gradient stays fixed at the box edges while
-    // the marquee scrolls underneath. Fade shows ONLY while actually scrolling:
-    // basicMarquee measures its child with unbounded width so hasVisualOverflow
-    // never fires — compare laid-out text width vs the box (viewport) width.
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
     val viewportWidth = remember { mutableStateOf(0) }

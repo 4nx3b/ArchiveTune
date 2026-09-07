@@ -556,27 +556,19 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.BITCHORD -> {
-                    // The Bitchord style renders its queue inline inside its own
-                    // player (drag the sleeve up / tap the queue glyph), exactly
-                    // like BitChord upstream. Its collapsed peek height is 0dp,
-                    // so this sheet never visibly collapses for that style either.
+
                 }
 
                 PlayerDesignStyle.TIKTOK -> {
-                    // The TikTok style owns its queue surface too: the feed IS
-                    // the queue (every page a queue entry), and its collapsed
-                    // peek height is 0dp, so this sheet never visibly collapses.
+
                 }
 
                 PlayerDesignStyle.SIMPMUSIC -> {
-                    // Same for the SimpMusic style: its artwork pager is a page per queue entry,
-                    // and its collapsed peek height is 0dp.
+
                 }
 
                 PlayerDesignStyle.SPATIALFLOW -> {
-                    // The SpatialFlow style owns its queue surface: the embedded
-                    // sliding queue drawer (SpatialFlowQueueDrawer) IS the queue,
-                    // so this sheet never renders a collapsed-content variant.
+
                 }
             }
 

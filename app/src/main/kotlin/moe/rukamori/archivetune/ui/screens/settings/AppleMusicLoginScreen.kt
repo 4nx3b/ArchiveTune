@@ -24,16 +24,10 @@ const val APPLE_MUSIC_LOGIN_ROUTE = "settings/applemusic/login"
 private const val LOGIN_URL = "https://music.apple.com/login"
 private const val COOKIE_ORIGIN = "https://music.apple.com"
 
-/**
- * Browser sign-in for Apple Music. The web session cookie proves the account is
- * live; the Music User Token itself is pasted on the Apple Music settings page
- * because MusicKit JS keeps it out of the cookie jar. See [AppleMusicSettings].
- */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun AppleMusicLoginScreen(navController: NavController) {
-    // The cookie appears while the page is still navigating, so onPageFinished can fire
-    // several more times with it present. Guard so verification kicks off once.
+
     val handled = remember { AtomicBoolean(false) }
 
     fun readSessionCookie(): Boolean =

@@ -54,29 +54,21 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 
-/**
- * PlayerHapticManager: Premium music haptics engine
- * Uses Android's native haptic constants for Apple Music-style feedback
- */
 class SpatialFlowHapticEngine(context: Context) {
 
-    // 1. Context Memory Leak Fixed
     private val context: Context = context.applicationContext
 
-    // 2. View Memory Leak Fixed
     private var attachedViewRef: WeakReference<View>? = null
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // 3. Thread Safety: Using @Volatile for shared preferences variables read in hot loops
     @Volatile
     var isHapticsEnabled: Boolean = false
         private set
 
     @Volatile
-    private var vibrationStrengthMultiplier: Float = 0.8f // Boosted default from 0.5f
+    private var vibrationStrengthMultiplier: Float = 0.8f
 
-    // Required external multipliers
     @Volatile
     var bassBoostMultiplier: Float = 1.0f
 
@@ -103,7 +95,6 @@ class SpatialFlowHapticEngine(context: Context) {
     @SuppressLint("ObsoleteSdkInt")
     private var hasViewHaptics = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    // Device capability modes
     private var deviceMode: HapticMode = HapticMode.VIBRATION_ONLY
 
     private enum class HapticMode {
@@ -112,34 +103,27 @@ class SpatialFlowHapticEngine(context: Context) {
         DUAL_MODE,
     }
 
-    // Frequency band separation
     private val subBassHistory = FloatArray(4)
     private val bassHistory = FloatArray(5)
     private val midHistory = FloatArray(6)
     private var historyIndex = 0
 
-    // Energy tracking
     private var lastMidEnergy = 0f
     private var peakBassLevel = 0.5f
     private var peakMidLevel = 0.3f
 
-    // Timing & beat detection
     private var lastKickTime: Long = 0
     private var lastSnareTime: Long = 0
 
-    // BPM tracking
     private val beatIntervals = FloatArray(6) { 500f }
     private var beatIntervalIndex = 0
     private var estimatedBPM = 120f
 
-    // Continuous haptic state
     private var currentBassIntensity = 0f
     private var targetBassIntensity = 0f
 
-    // Auto-Intensity (Dynamic Gain)
-    private var globalEnergyAvg = 0.15f // Moving average of total energy
+    private var globalEnergyAvg = 0.15f
 
-    // Motor State Machine
     private var currentMotorState = MotorState.IDLE
 
     private enum class MotorState {
@@ -149,10 +133,8 @@ class SpatialFlowHapticEngine(context: Context) {
         DECAY,
     }
 
-    // Waveform Delta threshold to prevent chatter
     private var lastContinuousAmplitude = 0
 
-    // Cross-OEM Universal Engine Classes
     private var deviceProfile = DeviceHapticProfile()
     private val binderController = BinderLoadController()
     private val normalizer = AdaptiveAmplitudeNormalizer()
@@ -167,7 +149,6 @@ class SpatialFlowHapticEngine(context: Context) {
         SNARE,
     }
 
-    // 4. Hot Loop Allocation: Pre-calculate vibration effects based on current strength
     private var cachedKickEffect: VibrationEffect? = null
     private var cachedSnareEffect: VibrationEffect? = null
     private var cachedHiHatEffect: VibrationEffect? = null
@@ -224,7 +205,7 @@ class SpatialFlowHapticEngine(context: Context) {
         if (multiplier <= 0f) return
 
         try {
-            // Kick
+
             val kickBaseAmp = 255
             val kickPeak = normalizer.normalize(kickBaseAmp, deviceProfile, multiplier)
             var kickTimings = longArrayOf(0, 40, 100, 50)
@@ -237,13 +218,11 @@ class SpatialFlowHapticEngine(context: Context) {
                     VibrationEffect.createOneShot(kickTimings[1] + kickTimings[2], kickPeak)
                 }
 
-            // Snare
             val snareBaseAmp = 255
             val snareAmp = normalizer.normalize(snareBaseAmp, deviceProfile, multiplier)
             val snareDur = if (deviceProfile.isLikelyERM) 60L else 45L
             cachedSnareEffect = VibrationEffect.createOneShot(snareDur, snareAmp)
 
-            // HiHat
             val hihatBaseAmp = 255
             val hihatAmp = normalizer.normalize(hihatBaseAmp, deviceProfile, multiplier)
             val hihatDur = if (deviceProfile.isLikelyERM) 40L else 30L
@@ -330,10 +309,6 @@ class SpatialFlowHapticEngine(context: Context) {
         scope.cancel()
     }
 
-    // ============================================================
-    // MUSIC ANALYSIS & HAPTIC PROCESSING
-    // ============================================================
-
     @RequiresApi(Build.VERSION_CODES.O_MR1)
     fun processPcmHaptics(
         subBass: Float,
@@ -405,7 +380,6 @@ class SpatialFlowHapticEngine(context: Context) {
                 updateContinuousBassHaptic(currentBassIntensity)
             }
 
-            // Transients
             val subBassRise = curSubBass - avgSubBass
             val isKick =
                 curSubBass > avgSubBass * 1.15f &&
@@ -642,10 +616,6 @@ class SpatialFlowHapticEngine(context: Context) {
         targetBassIntensity = 0f
     }
 
-    // ============================================================
-    // CROSS-OEM UNIVERSAL HAPTIC ABSTRACTIONS
-    // ============================================================
-
     class DeviceHapticProfile {
         var supportsWaveform = true
         var amplitudeLinear = true
@@ -711,7 +681,7 @@ class SpatialFlowHapticEngine(context: Context) {
 
     private class DeviceCalibrationRunner {
         fun runCalibration() {
-            // Placeholder for background calibration
+
         }
     }
 
@@ -813,12 +783,6 @@ class SpatialFlowHapticEngine(context: Context) {
     }
 }
 
-/**
- * Owns the [Visualizer] tap and feeds [SpatialFlowHapticEngine] with the same
- * four band energies SpatialFlow's PCM-tap produces. Attached to the active
- * audio session id while the SpatialFlow player is on screen and haptics are
- * enabled; released otherwise. All REAL audio data — no simulated input.
- */
 class SpatialFlowMusicHaptics(
     context: Context,
     val engine: SpatialFlowHapticEngine,
@@ -836,7 +800,6 @@ class SpatialFlowMusicHaptics(
         }
     }
 
-    /** Attach (or re-attach) the FFT tap to [audioSessionId]. */
     fun attachToAudioSession(audioSessionId: Int) {
         if (audioSessionId == 0) return
         if (visualizer != null && currentSessionId == audioSessionId) return
@@ -880,9 +843,7 @@ class SpatialFlowMusicHaptics(
                 }
             visualizer = viz
         } catch (e: Exception) {
-            // Visualizer can fail to attach (permission not yet granted,
-            // session died mid-handoff, unsupported device). Haptics simply
-            // stay silent until the next attach attempt.
+
             Log.w("SpatialFlowHaptics", "Visualizer attach failed: ${e.message}")
         }
     }
@@ -907,12 +868,9 @@ class SpatialFlowMusicHaptics(
     }
 
     companion object {
-        // SpatialFlow's feed computes band energies from PCM crossover
-        // filters; the FFT equivalent maps the spectrum onto the same four
-        // bands (sub-bass 20-60Hz, bass 60-250Hz, mid 250-2kHz, high 2k-8kHz)
-        // and normalizes each to 0..1.
+
         private fun computeBandEnergies(fft: ByteArray, samplingRate: Int): FloatArray {
-            val n = fft.size / 2 // complex bins
+            val n = fft.size / 2
             val nyquist = samplingRate / 2.0
             val binHz = nyquist / n
             var subBass = 0f
@@ -924,9 +882,6 @@ class SpatialFlowMusicHaptics(
             var midCount = 0
             var highCount = 0
 
-            // dB magnitude of a byte pair, normalized around 0: magnitude in
-            // 0..~1.4 (9-bit sqrt), scaled down to the 0..1 range the engine
-            // expects (SpatialFlow's visualizer-equivalent inputs).
             for (i in 1 until n) {
                 val re = fft[2 * i].toInt()
                 val im = fft[2 * i + 1].toInt()
@@ -957,7 +912,7 @@ class SpatialFlowMusicHaptics(
 
             fun norm(sum: Float, count: Int): Float {
                 if (count == 0) return 0f
-                // Per-bin average, dB-shaped so quiet masters still register.
+
                 val avg = sum / count
                 val db = 20f * log10(avg.coerceAtLeast(1e-4f) * 10f)
                 return (db / 40f).coerceIn(0f, 1f)

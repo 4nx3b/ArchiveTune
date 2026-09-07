@@ -350,20 +350,6 @@ object Spotify {
     private fun parseGqlImages(sources: JsonArray?): List<SpotifyImage> =
         sources?.mapNotNull { parseGqlImage(it.jsonObject) } ?: emptyList()
 
-    /**
-     * The URL of the largest image in a GraphQL `sources` array.
-     *
-     * The home feed used to take `sources.firstOrNull()`, which is why its playlist, album and
-     * artist tiles were soft while the same artwork looked sharp everywhere else in the app: every
-     * other call site keeps the whole array via [parseGqlImages] and its consumers pick the widest,
-     * but these three threw the array away and kept whichever entry Spotify happened to put first —
-     * in these payloads the small one.
-     *
-     * Chosen by declared width rather than by position, so it does not depend on an ordering
-     * Spotify never promised. If nothing in the array declares a width there is nothing to compare,
-     * and it falls back to the first entry — the previous behaviour, for the case where the old
-     * behaviour was the only information available.
-     */
     private fun largestGqlSourceUrl(sources: JsonArray?): String? {
         val entries = sources?.mapNotNull { it.jsonObject.takeIf { obj -> obj.str("url") != null } }
         if (entries.isNullOrEmpty()) return null

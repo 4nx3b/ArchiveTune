@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -84,23 +82,14 @@ import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/**
- * The geometry of the Spotify home page. The sections themselves are the same Spotify data in
- * the same order — this only decides how densely they are laid out.
- *
- * Holding it as one value rather than branching inside each row keeps the four section rows to a
- * single implementation apiece. The "Spotify home style" picker that offered the YouTube homes'
- * geometry here was removed (2026-09-04); these are Spotify's own proportions, the values this
- * screen shipped with.
- */
 @androidx.compose.runtime.Immutable
 data class SpotifyHomeMetrics(
-    /** Rows deep the track grid runs. Spotify stacks two. */
+
     val trackRows: Int,
     val trackItemWidth: Dp,
-    /** Height of one row of the track grid; total grid height is this times [trackRows]. */
+
     val trackRowHeight: Dp,
-    /** Width of an album/playlist card. */
+
     val cardWidth: Dp,
     val artistSize: Dp,
     val contentPadding: Dp,
@@ -187,11 +176,7 @@ fun SpotifyHomeScreen(
                 }
             }
             is SpotifyHomeScreenState.Success -> {
-                // Catalogue switch (2026-09-04): hoisted out of the LazyColumn
-                // scope (LazyListScope is not a composable scope). Only rendered
-                // when the user enables "Enable Catalogue switch" in Settings →
-                // Content (default OFF — the switcher was removed from the home
-                // pages by request).
+
                 val (homeCatalogueSwitchEnabled, _) =
                     rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
                 ExpressivePullToRefreshBox(
@@ -214,7 +199,7 @@ fun SpotifyHomeScreen(
                                 recentItems = state.recentItems,
                                 frequentArtists = state.frequentArtists,
                                 onPlaylistClick = { playlist -> navController.navigate("spotify_playlist/${playlist.id}") },
-                                onAlbumClick = { album -> 
+                                onAlbumClick = { album ->
                                     viewModel.onAction(SpotifyHomeAction.AlbumClick(
                                         moe.rukamori.archivetune.spotify.models.SpotifyAlbum(
                                             id = album.id,
@@ -222,7 +207,7 @@ fun SpotifyHomeScreen(
                                             artists = album.artists.map { moe.rukamori.archivetune.spotify.models.SpotifySimpleArtist(id = it.id, name = it.name, uri = it.uri) },
                                             images = listOfNotNull(album.imageUrl?.let { moe.rukamori.archivetune.spotify.models.SpotifyImage(it, null, null) })
                                         )
-                                    )) 
+                                    ))
                                 },
                                 onArtistClick = { artist -> viewModel.onAction(SpotifyHomeAction.ArtistClick(artist)) },
                                 modifier = Modifier.animateItem()
@@ -329,9 +314,7 @@ fun SpotifyTrackSectionRow(
         contentPadding = PaddingValues(horizontal = metrics.contentPadding),
         modifier = modifier
             .fillMaxWidth()
-            // LazyHorizontalGrid splits its height across the fixed rows, so the box has to be
-            // rowHeight × rows. Capped at the number of tracks actually present, or a short
-            // section leaves a block of empty grid behind it.
+
             .height(metrics.trackRowHeight * metrics.trackRows.coerceAtMost(tracks.size).coerceAtLeast(1))
     ) {
         items(
@@ -613,7 +596,7 @@ private fun <T> SpotifyQuickGrid(
 ) {
     val displayItems = items.take(maxItems)
     if (displayItems.isEmpty()) return
-    
+
     val rows = displayItems.chunked(columns)
     Column(
         modifier = Modifier
@@ -666,7 +649,7 @@ private fun SpotifyQuickGridCell(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(56.dp)
-                // Если артист - круг, если альбом - скругляем только левые углы под форму плашки
+
                 .clip(if (isArtist) CircleShape else RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
         )
         Text(

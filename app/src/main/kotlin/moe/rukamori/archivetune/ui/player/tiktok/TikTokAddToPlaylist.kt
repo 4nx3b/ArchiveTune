@@ -5,15 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * TikTok player style — playlist picker for the rail's bookmark action.
- *
- * Thin wrapper over the app's shared AddToPlaylistDialog (app infrastructure,
- * not another player style's component): registers the tapped page's song in
- * the library if it isn't there yet, then lets the user pick playlists — the
- * same flow, toasts included, as the player menu's "Add to playlist".
- */
-
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import android.widget.Toast

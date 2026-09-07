@@ -258,7 +258,6 @@ private const val V7SharpStageLandscapeFraction = 0.58f
 private const val V7BackdropOverlapDp = 72
 private const val V7SharpStageBottomScrimStartFraction = 0.40f
 private const val V7BackdropFloorBlackStartFraction = 0.88f
-private const val V8BackdropArtworkSizePx = 1_024
 
 @Stable
 internal class DeviceMusicVolumeController(
@@ -425,7 +424,6 @@ fun BottomSheetPlayer(
     val playerBackground =
         if (playerUsesFixedBackground) PlayerBackgroundStyle.DEFAULT else storedPlayerBackground
 
-    // Custom background preferences (image + effects)
     val (playerCustomImageUri) = rememberPreference(PlayerCustomImageUriKey, "")
     val (playerCustomBlur) = rememberPreference(PlayerCustomBlurKey, 0f)
     val (playerCustomContrast) = rememberPreference(PlayerCustomContrastKey, 1f)
@@ -492,9 +490,7 @@ fun BottomSheetPlayer(
     val currentSongLiked = currentSong?.song?.liked == true
     val queueTitle by playerConnection.queueTitle.collectAsStateWithLifecycle()
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
-    // Snapshot the lyrics entity for the AOD screen — AOD shows only the current line, so we
-    // pass the raw text down rather than the full Lyrics composable tree (cheaper to render,
-    // and matches the "dim, low-power" goal of always-on display).
+
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
@@ -515,19 +511,7 @@ fun BottomSheetPlayer(
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
-    // ── Spotify-account canvas (2026-09-04) ──
-    // "When users have logged in using their Spotify account the canvas
-    // should be fetched from their actual account using the Spotify tokens
-    // generated from the web auth during login." A connected session (the
-    // sp_dc cookie captured by the web-auth login sheet) enables the
-    // Spotify Canvas path on its own — the user no longer has to find the
-    // "Spotify Canvas" toggle in Player settings first. The tokens are
-    // minted from that same web-auth session by
-    // SpotifyCanvasProvider.tokenProvider (App.kt wires it to
-    // spotifyLibraryRepository.ensureAccessToken()), so the canvaz lookup
-    // runs against the user's ACTUAL account; the title/artist search is
-    // skipped entirely when the playing metadata already carries a
-    // spotifyTrackId from their session.
+
     val spotifyConnected by rememberPreference(SpotifySpDcKey, defaultValue = "")
     val spotifyCanvasEffective = spotifyCanvasEnabled || spotifyConnected.isNotBlank()
     val lowDataModeActive = rememberLowDataModeActive()
@@ -546,24 +530,13 @@ fun BottomSheetPlayer(
     var position by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.currentPosition)
     }
-    // Wrap `position` in a stable provider so AppleMusicPlayerContent does NOT
-    // recompose on every 100ms poll tick. The provider lambda is remembered
-    // (stable identity) and reads the latest position via the updated state.
-    // Only AppleMusicControlsColumn reads it — and only when it's actually
-    // composed (visible). When lyrics is open and controls auto-hide, no
-    // recomposition happens at all, freeing the frame budget for the karaoke
-    // syllable animation in the inline Enhanced lyrics view.
+
     val positionUpdatedState = rememberUpdatedState(position)
     val positionProvider = remember { { positionUpdatedState.value } }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
-    // Mirror position's pattern so MiniPlayer never sees a stale duration and never
-    // recomposes just because duration changed during the same track. Without this
-    // the MiniPlayer would receive `duration: Long` as a parameter and re-launch its
-    // entire `Row` (artwork, info, transport controls) on every duration update —
-    // most often as a single tick from `C.TIME_UNSET` to the real value once ExoPlayer
-    // resolves the stream, but also on per-track reloads.
+
     val durationUpdatedState = rememberUpdatedState(duration)
     val durationProvider = remember { { durationUpdatedState.value } }
     var lyricsSyncOffset by rememberSaveable(mediaMetadata?.id) {
@@ -576,23 +549,16 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    // Track loading state: when buffering or when user is seeking
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
 
-    // Palette state. The previous valid palette stays visible while the next track's artwork
-    // loads; it is only replaced by a successfully extracted palette (or kept on failure).
-    // A theme-grey fallback is used only when no valid palette has ever existed.
     var gradientColors by remember {
         mutableStateOf<List<Color>>(emptyList())
     }
     var hasValidGradientPalette by remember { mutableStateOf(false) }
 
-    // Default gradient colors for the initial fallback
     val defaultGradientColors = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant)
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
 
-    // The palette source is exactly the artwork the player displays: the metadata thumbnail
-    // (kept in sync with the authoritative artwork resolver, including Tidal fallback commits).
     val paletteArtworkUrl = mediaMetadata?.thumbnailUrl
 
     LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme, playerDesignStyle) {
@@ -651,8 +617,6 @@ fun BottomSheetPlayer(
                 null
             }
 
-        // Only successful image results may feed the palette. On failure keep the previous
-        // valid palette; use the theme fallback only if no palette has ever succeeded.
         if (result !is SuccessResult) {
             if (!hasValidGradientPalette) gradientColors = defaultGradientColors
             return@LaunchedEffect
@@ -678,7 +642,6 @@ fun BottomSheetPlayer(
                 fallbackColor = fallbackColor,
             )
 
-        // Stale-result guard: the artwork identity must still be what the player displays.
         val stillCurrent =
             mediaMetadata?.id == currentMetadata.id &&
                 mediaMetadata?.thumbnailUrl == artworkUrl
@@ -691,24 +654,8 @@ fun BottomSheetPlayer(
 
     val changeBound = state.expandedBound / 3
 
-    // ── V9 "Material Extended" dynamic color system ──
-    // Derives background/accent/text/icon-button colors from the artwork's dominant
-    // palette color and animates between songs so the controls blend smoothly with
-    // the artwork (no blur behind the controls — pure color gradient instead).
     val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
 
-    // ── V10 "Editorial" dominant-artwork control theme ──
-    // Both halves of the two-tone contract (field + accent) are derived from the
-    // artwork's DOMINANT palette color — gradientColors.first(), the highest-
-    // weighted swatch of the cover — HCT-toned per theme so they always keep
-    // proper contrast (dark: light accent over dark field; light: dark accent
-    // over light field). Previously these came from the *vibrant* seed, which
-    // only existed on the fresh-extraction path: a PlayerPaletteCache hit left
-    // the seeds null and collapsed both tones onto the same dominant color —
-    // pill text invisible against the pill. Deriving from dominantColor fixes
-    // that and matches the user request (2026-09-01): "button and control theme
-    // based on the dominant color from the album art". dominantColor falls back
-    // to the theme primary only when no palette has ever resolved.
     val targetV10FieldColor =
         remember(dominantColor, useDarkTheme) {
             val hct = dominantColor.toHct()
@@ -892,7 +839,7 @@ fun BottomSheetPlayer(
             },
             title = { Text(stringResource(R.string.sleep_timer)) },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showSleepTimerDialog = false
@@ -1037,31 +984,12 @@ fun BottomSheetPlayer(
             initialAnchor = COLLAPSED_ANCHOR,
         )
 
-    // Haze state for the frosted-glass blur behind the queue sheet. Ported
-    // verbatim from vivi-music's Player.kt: the player's backdrop artwork is
-    // tagged as the haze source, and a Haze-effect overlay (blurRadius = 80.dp,
-    // tint = Black 0.30, noiseFactor = 0.15) fades in over the player content
-    // while the queue is expanded. The queue's own background is transparent
-    // (Color.Unspecified) so the Haze shows through. This replaces the previous
-    // Compose BlurEffect(radius=32f) approach which was less blurred than
-    // vivi-music and only worked on Android 12+.
-    //
-    // NOTE: playerHazeState was removed in favor of queueArtHazeState (declared
-    // inline below), which always contains a real album-art image so the queue's
-    // blur is visible regardless of playerBackground style.
-
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
             queueSheetState.collapseSoft()
         }
     }
 
-    // Collapse the queue sheet whenever the app goes to the background (ON_STOP), so that
-    // re-entering the app doesn't re-open a queue the user had previously expanded. Without
-    // this, `queueSheetState.previousAnchor` stays at EXPANDED across the ON_PAUSE/ON_RESUME
-    // roundtrip, so the user has to manually close the queue sheet every time they return to
-    // the app. Collapsing on ON_STOP writes COLLAPSED_ANCHOR into previousAnchor via the
-    // sheet's onAnchorChanged callback, so the queue stays collapsed on return.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, queueSheetState) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1077,24 +1005,10 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    // The lyrics overlay belongs to the EXPANDED player: it is opened from it, drawn over it, and
-    // every way out of it — the BackHandler below, LyricsScreen's own, and the top-edge dismiss
-    // drag — is gated on `state.isExpandedOrExpanding`. Nothing tied the overlay's own lifetime to
-    // that, so collapsing the player while lyrics were open (a drag on the sheet, ON_STOP, or a
-    // restore from process death, since the flag is rememberSaveable) left the overlay covering
-    // the whole app with all three of those disabled at once: back did nothing at all and there
-    // was no way back to the player. It closes with the player it was opened from now.
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (!state.isExpandedOrExpanding) isLyricsScreenVisible = false
     }
 
-    // ISSUE 1 FIX: track Apple Music's INLINE lyrics open state separately from
-    // the standalone lyrics overlay (isLyricsScreenVisible). Both feed into
-    // lyricsFullScreenActive so back-stack screens suspend GPU work during ANY
-    // lyrics morph — but only isLyricsScreenVisible triggers the standalone
-    // MikoLyricsTransition overlay. Previously, Apple Music's inline lyrics morph
-    // didn't propagate, causing back-stack LiquidGlass/Canvas GPU work to compete
-    // with the sharedBounds morph and produce the reported "sometimes lags" stutter.
     var isAppleMusicInlineLyricsOpen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(playerConnection) {
@@ -1104,8 +1018,6 @@ fun BottomSheetPlayer(
         }
     }
 
-    // Report full-screen lyrics visibility upward so the status bar can be hidden for every player
-    // style while the lyrics overlay is showing (previously only the Immersive style went edge-to-edge).
     val lyricsFullScreenActive =
         (isLyricsScreenVisible || isAppleMusicInlineLyricsOpen) && state.isExpandedOrExpanding
     LaunchedEffect(lyricsFullScreenActive) {
@@ -1127,17 +1039,7 @@ fun BottomSheetPlayer(
         }
 
     if (!aodModeEnabled) {
-        // Root-overlay back-priority guard (2026-09-04, second report): the
-        // back gesture was still collapsing the full player out from under an
-        // open root popup (overflow menu / Cast picker / details sheet) even
-        // after the handlers were re-ordered — callback registration order is
-        // not a guarantee across predictive-back paths. While a root overlay
-        // is showing, this handler disables itself entirely so back can only
-        // reach the overlay's own dismissal handler: the popup closes first,
-        // the full player stays put (user report: "when I use back navigation
-        // gesture it should return to the full player and not close it
-        // instead"). The overlay-back layering then unwinds one press at a
-        // time: popup → queue/lyrics → collapse.
+
         val rootOverlayActive = LocalRootOverlayActive.current
         BackHandler(
             enabled =
@@ -1170,13 +1072,10 @@ fun BottomSheetPlayer(
             ?.id
     var videoPreferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
     var videoAvailableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
-    // The resolution actually resolved for the current stream, so the quality UI can report what
-    // Auto / Data saver / High quality picked instead of only naming the mode.
+
     var videoSelectedHeight by remember { mutableStateOf<Int?>(null) }
     var videoPlaybackFailed by remember { mutableStateOf(false) }
 
-    // Reset the failure flag when the media changes — a new song gets a fresh
-    // attempt at video playback even if the previous song's video failed.
     LaunchedEffect(videoMediaId) {
         videoPlaybackFailed = false
     }
@@ -1193,7 +1092,7 @@ fun BottomSheetPlayer(
                 videoSelectedHeight = info?.selectedHeight
             },
             onPlaybackFailed = { videoPlaybackFailed = true },
-            onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
+            onLoadingStateChange = {  },
             onRequestPauseMain = {
                 if (videoMediaId != null && playerConnection.player.currentMediaItem?.mediaId == videoMediaId) {
                     playerConnection.player.pause()
@@ -1301,8 +1200,7 @@ fun BottomSheetPlayer(
                 },
         backgroundColor =
             if (playerDesignStyle == PlayerDesignStyle.V9) {
-                // V9 "Material Extended": animate the sheet background to the artwork's
-                // dominant color so the controls blend smoothly with the artwork (no blur).
+
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
@@ -1327,12 +1225,11 @@ fun BottomSheetPlayer(
             } else {
                 when (playerBackground) {
                     PlayerBackgroundStyle.BLUR, PlayerBackgroundStyle.GRADIENT -> {
-                        // Apply same enhanced fade logic to blur/gradient backgrounds
+
                         val progress =
                             ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                                 .coerceIn(0f, 1f)
 
-                        // Only start fading when very close to dismissal (last 20%)
                         val fadeProgress =
                             if (progress < 0.2f) {
                                 ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
@@ -1344,13 +1241,11 @@ fun BottomSheetPlayer(
                     }
 
                     else -> {
-                        // Enhanced background - stable until last 20% of drag (both normal and pure black)
-                        // Calculate progress for fade effect
+
                         val progress =
                             ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                                 .coerceIn(0f, 1f)
 
-                        // Only start fading when very close to dismissal (last 20%)
                         val fadeProgress =
                             if (progress < 0.2f) {
                                 ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
@@ -1359,10 +1254,10 @@ fun BottomSheetPlayer(
                             }
 
                         if (useBlackBackground) {
-                            // Apply same logic to pure black background
+
                             Color.Black.copy(alpha = 1f - fadeProgress)
                         } else {
-                            // Apply same logic to normal theme
+
                             MaterialTheme.colorScheme.surface.copy(alpha = 1f - fadeProgress)
                         }
                     }
@@ -1390,8 +1285,7 @@ fun BottomSheetPlayer(
             sliderPosition?.let {
                 val isTransitioning = playerConnection.player.currentMediaItem?.mediaId != mediaMetadata?.id
                 if (isTransitioning) {
-                    // During crossfade, we want to seek in the NEXT song (the one UI is showing)
-                    // The easiest way is to skip to it and then seek
+
                     playerConnection.player.seekToNext()
                     playerConnection.player.seekTo(it)
                 } else {
@@ -1480,8 +1374,7 @@ fun BottomSheetPlayer(
             val nextMediaId = next.id.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
             if (!shouldUseV7Canvas && !shouldUseArtworkCanvas) return@LaunchedEffect
             if (lowDataModeActive) return@LaunchedEffect
-            // Skip if already cached — CanvasArtworkPlaybackCache.hasEntry is
-            // a cheap in-memory map lookup, no I/O.
+
             if (CanvasArtworkPlaybackCache.hasEntry(nextMediaId)) return@LaunchedEffect
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 runCatching {
@@ -1624,47 +1517,11 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Haze-driven frosted-glass blur behind the queue sheet. Ported
-        // verbatim from vivi-music (beta) Player.kt — the player's backdrop
-        // artwork + controls are tagged as the haze source, and a Haze-effect
-        // overlay (blurRadius = 80.dp, tint = HazeTint(Black 0.30), noiseFactor
-        // = 0.15) fades in over them while the queue is expanded. The queue
-        // itself (rendered AFTER this Box closes) has a transparent background,
-        // so the Haze shows through. This replaces the previous Compose
-        // BlurEffect(radius=32f) approach which was less blurred than
-        // vivi-music and only worked on Android 12+ (Haze handles the API
-        // level gate internally and falls back to a software blur on older
-        // devices).
-        //
-        // ISSUE 3 FIX: drive the blur alpha directly from `queueSheetState.progress`
-        // instead of `isExpandedOrExpanding`. The old gate only flipped true on drag
-        // END (when performFling calls expand()), so the blur appeared to "snap in"
-        // only after the user lifted their finger. Reading `progress` (a
-        // derivedStateOf over the sheet's animatable value) updates continuously
-        // during the drag, so the blur now tracks the finger in real time.
-        //
-        // ISSUE 5 FIX: for non-BLUR player backgrounds (GRADIENT, COLORING, GLOW,
-        // DEFAULT), the player-content Box contains only flat/slowly-varying colors.
-        // Blurring a flat color produces a flat color — visually indistinguishable
-        // from no blur — so the queue sheet appeared to have no blur unless the user
-        // manually set playerBackground = BLUR. We now render a DEDICATED album-art
-        // hazeSource (queueArtHazeState) that always contains a real high-frequency
-        // image, so the queue's hazeEffect always has something meaningful to
-        // sample regardless of playerBackground style.
-        // The queue sheet is now opaque (queueSurfaceColor passed as its
-        // backgroundColor with opaqueBackground = true in Queue.kt), so the
-        // dedicated frosted-glass haze overlay that used to sit behind the
-        // transparent queue sheet is no longer needed. Setting this to 0f
-        // disables both the haze-source Box and the haze-effect overlay
-        // (they're gated on queueHazeAlpha > 0f), which also saves the GPU
-        // blur work during queue drag.
         val queueHazeAlpha = 0f
 
         val queueArtHazeState = remember { HazeState() }
         val queueArtContext = LocalContext.current
-        // Use the same swap-state logic as PlayerBackground so the queue's blur
-        // source matches the artwork the user actually sees (e.g., music-video
-        // thumbnail when isMusicVideo is true).
+
         val queueArtSwapState =
             rememberThumbnailSwapState(
                 videoId = mediaMetadata?.id,
@@ -1706,12 +1563,7 @@ fun BottomSheetPlayer(
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
-                    // The Bitchord style: a fully self-contained port of
-                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
-                    // hairline scrubber, inline queue + lyrics). It renders the
-                    // same portrait-first layout in either orientation - its
-                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
-                    // degrades gracefully on wide screens instead of stretching.
+
                     enrichedMetadata?.let { metadata ->
                         BitChordPlayerContent(
                             mediaMetadata = metadata,
@@ -1734,16 +1586,7 @@ fun BottomSheetPlayer(
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
-                    // The TikTok style: a full-screen vertical feed over the
-                    // real queue — swipe up for the next song, down for the
-                    // previous. Same layout in either orientation: the page's
-                    // hero artwork sizes itself to the middle zone, so it is
-                    // width-limited in portrait and height-limited here, and
-                    // the pager + the sheet's nested-scroll connection divide
-                    // vertical drags between paging and collapsing. The feed
-                    // scrubs via the app's standard seek callbacks, so its
-                    // progress row behaves exactly like every other style's
-                    // slider.
+
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -1762,17 +1605,14 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                            // Vertical canvas (same resolver the V7 style uses): the current
-                            // page's hero artwork becomes the looping canvas video.
+
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            // NOTE: no onOpenQueue here — the feed opens the
-                            // Apple Music inline queue sheet itself (see
-                            // TikTokPlayerContent's queueOpen overlay).
+
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )
@@ -1877,8 +1717,7 @@ fun BottomSheetPlayer(
                                 !videoPlaybackFailed
 
                         if (v7VideoShowing) {
-                            // Pure-black backdrop so the video sits in a
-                            // dark frame instead of a blurred thumbnail.
+
                             Box(
                                 modifier =
                                     Modifier
@@ -2054,13 +1893,7 @@ fun BottomSheetPlayer(
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
-                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
-                    // fully self-contained port of its FullPlayer — artwork pager over the real
-                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
-                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
-                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
-                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
-                    // not orientation-branched.
+
                     enrichedMetadata?.let { metadata ->
                         SpatialFlowPlayerContent(
                             mediaMetadata = metadata,
@@ -2082,20 +1915,14 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Notch fix (2026-09-05): horizontal system-bars padding so
-                                    // the style's edge-to-edge content clears a landscape
-                                    // side cutout; the top inset is handled inside the style via
-                                    // LocalStableSystemBarsTopPadding.
+
                                     .windowInsetsPadding(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
-                    // artwork palette, the sleeve on a pager backed by the real queue, then the
-                    // info row, scrubber and transport. Like the two styles above it sizes itself
-                    // to whatever box it is given, so it is not orientation-branched.
+
                     enrichedMetadata?.let { metadata ->
                         SimpMusicPlayerContent(
                             mediaMetadata = metadata,
@@ -2114,17 +1941,12 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
-                            // The lyrics card's "Show" opens the full lyrics page, the same
-                            // surface every other style reaches — the card is a preview, not a
-                            // second lyrics implementation.
+
                             onShowLyrics = { isLyricsScreenVisible = true },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Notch fix (2026-09-05): horizontal system-bars padding so
-                                    // the style's edge-to-edge content clears a landscape
-                                    // side cutout; the top inset is handled inside the style via
-                                    // LocalStableSystemBarsTopPadding.
+
                                     .windowInsetsPadding(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
@@ -2207,12 +2029,7 @@ fun BottomSheetPlayer(
 
             else -> {
                 if (playerDesignStyle == PlayerDesignStyle.BITCHORD) {
-                    // The Bitchord style: a fully self-contained port of
-                    // BitChord's NowPlayingScreen (mesh backdrop, sleeve,
-                    // hairline scrubber, inline queue + lyrics). It renders the
-                    // same portrait-first layout in either orientation - its
-                    // content column is width-capped (PLAYER_MAX_WIDTH), so it
-                    // degrades gracefully on wide screens instead of stretching.
+
                     enrichedMetadata?.let { metadata ->
                         BitChordPlayerContent(
                             mediaMetadata = metadata,
@@ -2235,14 +2052,7 @@ fun BottomSheetPlayer(
                         )
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.TIKTOK) {
-                    // The TikTok style: a full-screen vertical feed over the
-                    // real queue — swipe up for the next song, down for the
-                    // previous. Each queue entry is one page (hero artwork,
-                    // right action rail, bottom info); playback switches only
-                    // when a page settles, and the feed follows song changes
-                    // made from anywhere else in the app. The feed scrubs via
-                    // the app's standard seek callbacks, so its progress row
-                    // behaves exactly like every other style's slider.
+
                     enrichedMetadata?.let { metadata ->
                         TikTokPlayerContent(
                             mediaMetadata = metadata,
@@ -2261,17 +2071,14 @@ fun BottomSheetPlayer(
                             lyricsVisible = isLyricsScreenVisible,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
-                            // Vertical canvas (same resolver the V7 style uses): the current
-                            // page's hero artwork becomes the looping canvas video.
+
                             canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                             canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .nestedScroll(state.preUpPostDownNestedScrollConnection),
-                            // NOTE: no onOpenQueue here — the feed opens the
-                            // Apple Music inline queue sheet itself (see
-                            // TikTokPlayerContent's queueOpen overlay).
+
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                         )
@@ -2551,13 +2358,7 @@ fun BottomSheetPlayer(
                     }
 
 } else if (playerDesignStyle == PlayerDesignStyle.SPATIALFLOW) {
-                    // The SpatialFlow style (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): a
-                    // fully self-contained port of its FullPlayer — artwork pager over the real
-                    // queue, pill-chip control row, wavy seek bar, M3 Expressive transport,
-                    // embedded sliding queue drawer, circular-reveal lyrics overlay and
-                    // Visualizer-fed music haptics. It owns its layout outright (like BitChord /
-                    // TikTok / SimpMusic) and sizes itself to whatever box it is given, so it is
-                    // not orientation-branched.
+
                     enrichedMetadata?.let { metadata ->
                         SpatialFlowPlayerContent(
                             mediaMetadata = metadata,
@@ -2579,20 +2380,14 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Notch fix (2026-09-05): horizontal system-bars padding so
-                                    // the style's edge-to-edge content clears a landscape
-                                    // side cutout; the top inset is handled inside the style via
-                                    // LocalStableSystemBarsTopPadding.
+
                                     .windowInsetsPadding(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
 } else if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-                    // SimpMusic's default now-playing screen: a diagonal wash pulled from the
-                    // artwork palette, the sleeve on a pager backed by the real queue, then the
-                    // info row, scrubber and transport. Like the two styles above it sizes itself
-                    // to whatever box it is given, so it is not orientation-branched.
+
                     enrichedMetadata?.let { metadata ->
                         SimpMusicPlayerContent(
                             mediaMetadata = metadata,
@@ -2611,17 +2406,12 @@ fun BottomSheetPlayer(
                             currentFormat = currentFormat,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
-                            // The lyrics card's "Show" opens the full lyrics page, the same
-                            // surface every other style reaches — the card is a preview, not a
-                            // second lyrics implementation.
+
                             onShowLyrics = { isLyricsScreenVisible = true },
                             modifier =
                                 Modifier
                                     .fillMaxSize()
-                                    // Notch fix (2026-09-05): horizontal system-bars padding so
-                                    // the style's edge-to-edge content clears a landscape
-                                    // side cutout; the top inset is handled inside the style via
-                                    // LocalStableSystemBarsTopPadding.
+
                                     .windowInsetsPadding(
                                         WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
@@ -2657,8 +2447,7 @@ fun BottomSheetPlayer(
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
-                            // Full-bleed: the artwork runs under the status bar by design, so no
-                            // top inset here (mirrors the reference layout).
+
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2670,12 +2459,7 @@ fun BottomSheetPlayer(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier =
                             Modifier
-                                // Notch fix (2026-09-01): with "Hide status bar" on,
-                                // WindowInsets.statusBars reports 0, so the artwork block
-                                // started at y=0 and collided with the display cutout.
-                                // Floor the top inset with the cached status-bar top
-                                // (LocalStableSystemBarsTopPadding, which also floors
-                                // with displayCutout) — the same pattern V9/V10 use.
+
                                 .windowInsetsPadding(
                                     WindowInsets(top = LocalStableSystemBarsTopPadding.current),
                                 )
@@ -2705,15 +2489,8 @@ fun BottomSheetPlayer(
                 }
             }
         }
-        } // close player-content haze-source Box
+        }
 
-        // Dedicated album-art hazeSource for the queue sheet (Issue 5 fix).
-        // Rendered as a sibling Box BEHIND the player-content Box (drawn first,
-        // so the user never sees it directly — player-content draws on top).
-        // Haze samples this Box's OWN drawing (the album-art image), not the
-        // composited result, so it always has high-frequency content to blur
-        // regardless of playerBackground style. Only rendered while the queue
-        // is visible (progress > 0) to save GPU on idle frames.
         if (queueHazeAlpha > 0f && queueArtUrl != null) {
             Box(
                 modifier =
@@ -2736,12 +2513,6 @@ fun BottomSheetPlayer(
             }
         }
 
-        // Haze-effect overlay — renders the blurred album-art source (queueArtHazeState)
-        // as a frosted-glass layer that tracks the queue sheet's drag progress.
-        // Exact vivi-music parameters: blurRadius = 80.dp, tint = HazeTint(Black 0.30),
-        // noiseFactor = 0.15. The queue sheet (rendered next, with a transparent
-        // background) sits on top of this overlay so the frosted-glass effect shows
-        // through behind the queue list.
         if (queueHazeAlpha > 0f) {
             Box(
                 modifier =
@@ -2760,14 +2531,6 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Queue text color policy:
-        //  - Apple Music style keeps a dark frosted backdrop in both light & dark
-        //    themes, so its queue text is pinned to white (matches AM visual language).
-        //  - All other styles follow the surface color: white when the user has
-        //    opted into useBlackBackground, otherwise MaterialTheme.colorScheme.onSurface
-        //    so titles/artists/dividers/pill outlines stay visible against the
-        //    (possibly light, dynamic-themed) surface. This mirrors upstream
-        //    rukamori/ArchiveTune Player.kt.
         val queueOnBackgroundColor =
             if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                 playerDesignStyle == PlayerDesignStyle.BITCHORD ||
@@ -2796,51 +2559,11 @@ fun BottomSheetPlayer(
                 }
             }
 
-        // Opaque backdrop that fades in with queueSheetState.progress.
-        //
-        // Why: non-Apple-Music player styles render a zoomed/gradient/blur
-        // artwork backdrop (PlayerBackground) at the back of the player, and
-        // the queue BottomSheet slides up from the bottom — so during the
-        // slide-up drag the queue sheet only covers the bottom portion of the
-        // screen, leaving the player's zoomed artwork exposed in the area
-        // above the queue sheet's top edge. The user expects NO artwork to be
-        // visible at all while sliding the queue up.
-        //
-        // IMPORTANT: we cannot use Modifier.background(color).graphicsLayer {
-        // alpha = ... } here — in Compose, `background` draws OUTSIDE the
-        // graphicsLayer (the layer only wraps the content INSIDE it, not the
-        // background modifier to its left), so the background would stay at
-        // full opacity regardless of the graphicsLayer alpha. That bug made
-        // the entire player invisible because the opaque backdrop covered
-        // everything (Thumbnail, controls, etc.) even when the queue was
-        // collapsed (alpha = 0 had no effect on the background color).
-        //
-        // Instead, we use queueSurfaceColor.copy(alpha = ...) so the alpha is
-        // baked into the color itself. When the queue is collapsed
-        // (progress = 0), the color is fully transparent and the backdrop is
-        // invisible — the player's Thumbnail/controls/PlayerBackground are all
-        // visible normally. As the queue slides up (progress → 1), the
-        // backdrop fades in to fully opaque, covering the zoomed artwork in
-        // the exposed area above the queue sheet's top edge. The queue sheet
-        // itself is also opaque (queueSurfaceColor passed as its
-        // backgroundColor with opaqueBackground = true in Queue.kt).
-        //
-        // Apple-Music style is unaffected: it doesn't render PlayerBackground,
-        // and its queue morphs in-place via SharedTransitionLayout (peek
-        // height = 0dp, so queueSheetState.progress stays 0 and this backdrop
-        // stays invisible).
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // Per audit (2026-08-30): use drawBehind + drawRect's `alpha`
-                    // parameter instead of `Modifier.background(color.copy(alpha=...))`.
-                    // The previous call allocated a new Color value every frame during
-                    // sheet drag (queueSheetState.progress updates ~60 fps). drawRect's
-                    // `alpha` param is a primitive Float — zero per-frame Color allocation.
-                    // Visual is identical: same color, same alpha math, default
-                    // RectangleShape (the Box has no shape modifier, so background()
-                    // was also using RectangleShape).
+
                     .drawBehind {
                         drawRect(
                             color = queueSurfaceColor,
@@ -2849,15 +2572,6 @@ fun BottomSheetPlayer(
                     },
         )
 
-        // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
-        // slides in from below. Hidden while the lyrics screen is on top.
-        //
-        // The Queue's backgroundColor is queueSurfaceColor (opaque) so the
-        // sheet itself is solid — combined with opaqueBackground = true in
-        // Queue.kt, this fully covers the player's zoomed artwork behind the
-        // queue list during the slide-up drag. The opaque backdrop above
-        // covers the artwork in the exposed area above the queue sheet's top
-        // edge.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -2882,10 +2596,7 @@ fun BottomSheetPlayer(
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
                 visible = isLyricsScreenVisible,
-                // Only Apple Music style intentionally suppresses the back handler
-                // (its lyrics sheet is part of the same collapsed/expanded sheet flow).
-                // All other player styles must allow the system back button (and the
-                // close affordance in the lyrics top bar) to dismiss the lyrics sheet.
+
                 backHandlerEnabled =
                     isLyricsScreenVisible &&
                         state.isExpandedOrExpanding,
@@ -2948,20 +2659,9 @@ fun BottomSheetPlayer(
             }
         }
 
-        // Like burst overlay (Lottie): plays a one-shot heart burst centered
-        // over the player when the CURRENT song's liked state flips to true
-        // through a user action (toggleLike from any player style / control).
-        // Purely decorative — the favorite state itself remains the single
-        // source of truth and every existing favorite icon is untouched. Only
-        // rendered while the player sheet is expanded so the mini player never
-        // shows a floating animation, and only for ~600ms per like. Sits at
-        // the outer Box scope (BoxScope) so Alignment.Center positions it over
-        // the whole player surface, drawn on top of the sheet content.
         if (!state.isCollapsed) {
             var likeBurstTrigger by remember { mutableStateOf<Any?>(null) }
-            // Track the liked state PER SONG: a burst fires only on a genuine
-            // false -> true flip for the SAME song (a user action). Switching
-            // to a song that is already liked adopts its state silently.
+
             var lastLiked by remember { mutableStateOf<Boolean?>(null) }
             var lastBurstSongId by remember { mutableStateOf<String?>(null) }
             LaunchedEffect(currentSongLiked, mediaMetadata?.id) {
@@ -2998,8 +2698,8 @@ fun BottomSheetPlayer(
                 }
             }
         }
-    } // close Box(Modifier.fillMaxSize())
-    } // close CompositionLocalProvider
+    }
+    }
 
     val activePlaybackError = playbackError
     val isRecoveryDestination =
@@ -3045,20 +2745,13 @@ private fun MikoLyricsTransition(
                 targetValue = if (visible) 1f else 0f,
                 animationSpec =
                     if (visible) {
-                        // OPEN — slowed down from the old spring(stiffness = 160f, ~500 ms)
-                        // to a ~900 ms tween with FastOutSlowInEasing. The old spring snapped
-                        // the sheet up so quickly that the MovingBlurBackground inside
-                        // LyricsScreen "popped in" at full alpha and immediately started its
-                        // drift animation, which read as "backdrop blur is too fast and looks
-                        // bad". The longer tween gives the eye time to settle and pairs with
-                        // the alpha fade-in on the inner content Box below.
+
                         tween(
                             durationMillis = 900,
                             easing = FastOutSlowInEasing,
                         )
                     } else {
-                        // CLOSE — keep the existing ~700 ms spring (slow close, per prior
-                        // user request).
+
                         spring(
                             dampingRatio = 1f,
                             stiffness = 80f,
@@ -3080,9 +2773,7 @@ private fun MikoLyricsTransition(
                 modifier
                     .fillMaxSize()
                     .drawBehind {
-                        // Use drawRect's built-in alpha parameter instead of
-                        // Color.Black.copy(alpha = ...) — avoids allocating a
-                        // new Color object on every frame of the slide animation.
+
                         drawRect(
                             color = Color.Black,
                             alpha = 0.32f * progressState.value.coerceIn(0f, 1f),
@@ -3095,30 +2786,20 @@ private fun MikoLyricsTransition(
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = progressState.value.coerceIn(0f, 1f)
-                            // Pure slide-up: the whole sheet travels from just below the screen to
-                            // its resting position, with a small rounded top lip while in transit.
+
                             translationY = size.height * (1f - p)
                             val corner = 28.dp.toPx() * (1f - p)
                             shape = RoundedCornerShape(topStart = corner, topEnd = corner)
                             clip = true
                         }.background(surfaceColor),
             ) {
-                // Inner content fade: the LyricsScreen subtree (which owns the
-                // MovingBlurBackground + the drift animation) is faded in over the
-                // slide-up transition tied to the same progress. The outer Box keeps
-                // its opaque surfaceColor so the sliding sheet is always a solid shape;
-                // only the inner content (blur + lyrics + controls) eases in. This is
-                // the fix for "backdrop blur is too fast and looks bad": instead of
-                // the blur arriving at full alpha the instant the sheet starts moving,
-                // it ramps from 0 → 1 across the ~900 ms slide.
+
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                // Pull the fade-in forward slightly so the blur is at full
-                                // strength just before the sheet arrives (avoids feeling like
-                                // the lyrics are "still loading" when the slide finishes).
+
                                 alpha = (progressState.value * 1.35f).coerceIn(0f, 1f)
                             },
                 ) {
@@ -3251,12 +2932,10 @@ private fun V7PlayerBackdrop(
     val canvasStatic = canvasStaticUrl?.takeIf { it.isNotBlank() }
     val coverArtworkUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
     val hasCanvas = !canvasPrimary.isNullOrBlank() || !canvasFallback.isNullOrBlank()
-    // When canvas is available, prefer its static image as the sharp-stage placeholder.
-    // This prevents the jarring YTM thumbnail → canvas video flash on expand.
+
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
     val backdropArtworkUrl = coverArtworkUrl ?: canvasStatic
-    // For palette extraction, use canvas static when canvas is active so the scrim
-    // gradient is derived from the canvas colors rather than the YTM thumbnail.
+
     val paletteSourceUrl = if (hasCanvas && canvasStatic != null) canvasStatic else backdropArtworkUrl
     var backdropPalette by remember(paletteSourceUrl, fallbackColor) {
         mutableStateOf(V7BackdropPalette.fromColors(emptyList(), fallbackColor))
@@ -3289,9 +2968,7 @@ private fun V7PlayerBackdrop(
                 } else {
                     withContext(Dispatchers.Default) {
                         val fullBitmap = image.toBitmap()
-                        // When canvas is active, extract from the bottom 30% of the static frame.
-                        // This gives us the actual colors at the canvas bottom edge, so the scrim
-                        // gradient blends seamlessly into the backdrop below.
+
                         val bitmapForPalette =
                             if (hasCanvas && fullBitmap.height > 4) {
                                 val startY = (fullBitmap.height * 0.70f).toInt().coerceAtLeast(0)
@@ -3542,10 +3219,7 @@ private data class V7BackdropPalette(
             colors: List<Color>,
             fallbackColor: Int,
         ): V7BackdropPalette {
-            // Only use the FIRST extracted color (dominant hue from the image).
-            // PlayerColorExtractor fills colors[1..N] with hue-shifted synthetic variants
-            // (e.g. red → green at +120°) which are wrong for a backdrop that should feel
-            // coherent. We derive mid/bottom by darkening the same hue instead.
+
             val dominantColor = colors.firstOrNull()
             val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
             val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback

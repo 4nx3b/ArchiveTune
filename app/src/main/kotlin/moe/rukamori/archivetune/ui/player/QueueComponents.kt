@@ -118,15 +118,6 @@ fun CurrentSongHeader(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    // Notch-safe top inset (user report 2026-09-03: "The bottomsheet queue
-    // collides with notch"). `WindowInsets.systemBars.only(Top)` collapses to
-    // 0 whenever the status bar is HIDDEN — the hide-status-bar preference,
-    // an immersive/edge-to-edge player (every modern player style) — while the
-    // physical display cutout stays put, so an expanded queue sheet slid its
-    // drag handle and current-song header straight under the notch.
-    // `LocalStableSystemBarsTopPadding` floors against the display cutout
-    // (which is reported regardless of bar visibility) and against a cached
-    // status-bar height, so the header always clears the hardware notch.
     val stableTopInset = LocalStableSystemBarsTopPadding.current
 
     Column(

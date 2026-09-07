@@ -178,13 +178,7 @@ class LibrarySongsViewModel
                         }
                     }
                 }
-                    // Off Main. Room emits on its own executor, but every operator applied DOWNSTREAM of it
-                    // runs in the COLLECTOR's context, and `stateIn(viewModelScope, ...)` collects on
-                    // Dispatchers.Main.immediate. So the sorts, the collator comparisons and the
-                    // filterExplicit/filterVideo passes above re-ran over the whole list on the UI thread
-                    // every time any row this query touches changed — liking one song, for instance. And
-                    // SharingStarted.Lazily never stops, so it kept doing it long after the screen was gone.
-                    // flowOn moves that upstream work to IO; stateIn still publishes on Main.
+
                     .flowOn(Dispatchers.IO)
                     .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 

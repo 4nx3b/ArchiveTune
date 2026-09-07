@@ -114,12 +114,6 @@ private data class HomeLocalContent(
     val heroPicks: List<Song>,
 )
 
-/**
- * Intermediate bundle used to stage the first 5 nullable home-content flows
- * before combining with `heroPicks`. Kotlin's `combine()` only natively
- * supports up to 5 flows, so we split the 6-way combine into two stages
- * to keep type inference working.
- */
 private data class HomeLocalContentStage(
     val quickPicks: List<Song>?,
     val speedDialItems: List<LocalItem>,
@@ -142,26 +136,7 @@ private data class HomeContent(
     val remote: HomeRemoteContent,
     val selectedChip: HomePage.Chip?,
 ) {
-    /**
-     * `true` when there is at least one section [HomeContent] the composable
-     * will actually render on screen.
-     *
-     * IMPORTANT: this must stay in sync with the `if (...) item { ... }`
-     * guards in [HomeScreen.HomeContent]. The home composable renders:
-     *   - heroPicks (always, when non-empty)
-     *   - category chips (full mode only)
-     *   - remote/local quick picks (full mode only)
-     *   - recentlyPlayed (size > 1)
-     *   - speedDialItems (full mode only)
-     *   - keepListening
-     *   - accountPlaylists (full mode only)
-     *   - forgottenFavorites (full mode only)
-     *   - similarRecommendations (full mode only)
-     *   - ALL homePage.sections (full mode) or only "Live performance" (minimal mode)
-     *
-     * If you add a new section to the composable, mirror its visibility guard
-     * here. If you remove one, drop it from here too.
-     */
+
     val hasContent: Boolean
         get() =
             local.heroPicks.isNotEmpty() ||
@@ -255,9 +230,6 @@ class HomeViewModel
         private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
         private val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
 
-        // IDs of items the user has hidden from the "Keep Listening" section.
-        // Combined with keepListening to produce a filtered flow that excludes
-        // hidden items. The user can hide items via the long-press menu.
         private val hiddenHomeItems =
             context.dataStore.data
                 .map { it[HiddenHomeItemsKey] ?: emptySet() }
@@ -275,18 +247,9 @@ class HomeViewModel
                     id !in hidden
                 }
             }
-        // Three random songs from `quickPicks`, re-shuffled on every refresh.
-        // Drives the "Jump back in" hero so the home page surfaces fresh
-        // listening-preference-based picks each time the user opens the app
-        // or pulls to refresh, instead of always showing the last-played 3.
+
         private val heroPicks = MutableStateFlow<List<Song>>(emptyList())
-        // Stable view of `heroPicks` that only emits when the SET of song IDs
-        // actually changes — not when the same 3 picks are re-ordered by a
-        // re-shuffle. `refreshHeroPicks` runs on every quickPicks update, which
-        // in LAST_LISTEN mode fires on every track skip. Without this de-dup,
-        // each skip re-emitted a new List<Song> reference (same songs, new
-        // order), `combine` propagated it, and HomeContent recomposed + re-issued
-        // 3 Coil AsyncImage requests for artwork that hadn't actually changed.
+
         private val stableHeroPicks =
             heroPicks
                 .distinctUntilChanged { old, new ->
@@ -459,13 +422,6 @@ class HomeViewModel
             val primaryPicks = primary.toQuickPickSample()
             if (primaryPicks.isNotEmpty()) return primaryPicks
 
-            // Each fallback is individually guarded: a transient DB error (cold
-            // start, WAL checkpoint, migration) in one fallback must not kill the
-            // collector that drives the "Jump back in" hero (user report
-            // 2026-09-04: "sometimes the jump back in carousel doesn't load and
-            // I've to manually refresh the page to see it" — a throw here used
-            // to escape observeQuickPicks' .catch block itself, leaving the
-            // hero empty until a manual refresh).
             val recentPicks =
                 runCatching { database.recentSongs(limit = 60).first().toQuickPickSample() }
                     .getOrDefault(emptyList())
@@ -500,12 +456,7 @@ class HomeViewModel
 
         private fun observeQuickPicks() {
             viewModelScope.launch(Dispatchers.IO) {
-                // The collector must survive ANY transient failure — it is the
-                // only reactive source of the "Jump back in" hero picks. A
-                // dead collector meant the hero stayed empty until the user
-                // manually pulled to refresh (user report 2026-09-04). A small
-                // capped retry loop relaunches the whole pipeline; each retry
-                // re-reads current DB state so it converges without the user.
+
                 var attempts = 0
                 while (true) {
                     try {
@@ -538,9 +489,7 @@ class HomeViewModel
                     } catch (t: Throwable) {
                         attempts++
                         reportException(t)
-                        // Best-effort recovery so the hero has SOMETHING to show
-                        // while the retry is pending; quickPicksWithFallback is
-                        // internally guarded so this cannot throw.
+
                         runCatching {
                             quickPicks.value = quickPicksWithFallback(emptyList())
                             refreshHeroPicks(quickPicks.value.orEmpty())
@@ -575,16 +524,6 @@ class HomeViewModel
             updateAllLocalItems()
         }
 
-        /**
-         * Re-shuffles the hero picks from the current quickPicks pool. Called on every
-         * quickPicks update and on every manual refresh so the "Jump back in" hero at
-         * the top of the home page surfaces fresh listening-preference-based songs
-         * each visit, instead of always showing the last-played three.
-         *
-         * If quickPicks is empty, falls back to recentlyPlayed so the hero still shows
-         * something on a fresh install where the user has listening history but no
-         * quickPicks computation yet.
-         */
         private fun refreshHeroPicks(pool: List<Song>) {
             val source = if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
             heroPicks.value =
@@ -658,17 +597,7 @@ class HomeViewModel
                     }
 
                     launch {
-                        // Recently played — chronological recents, used by the
-                        // "Recently Played" square-card row. Filter out blocked
-                        // artists and cap at 30 so the row has enough to draw
-                        // from without over-fetching. (The "Jump back in" hero
-                        // at the top of the home page now uses `heroPicks` —
-                        // random songs from listening preference — instead of
-                        // the top 3 of this list.) Also re-seeds the hero when
-                        // it is still empty — the quickPicks observer can lose
-                        // the race against this launch on a cold start, and
-                        // without this re-check the hero could stay empty until
-                        // a manual refresh (user report 2026-09-04).
+
                         val recent =
                             database
                                 .recentSongs(limit = 30)
@@ -683,21 +612,7 @@ class HomeViewModel
                     }
 
                     launch {
-                        // Initial hero picks — re-shuffled from the current
-                        // quickPicks pool (or recentlyPlayed fallback). On
-                        // subsequent manual refreshes, refresh() re-shuffles
-                        // again so the hero rotates fresh picks each visit.
-                        //
-                        // The old 100ms-delay race meant a slow cold start
-                        // (DataStore read + Room queries still in flight) fell
-                        // through to an EMPTY hero with nothing left to recover
-                        // it (user report 2026-09-04: "sometimes the jump back
-                        // in carousel doesn't load and I've to manually refresh
-                        // the page to see it"). Instead we now actively AWAIT the
-                        // first useful pool — quickPicks first (bounded wait so
-                        // a stuck pipeline can't hang the load), then
-                        // recentlyPlayed — and only then fall back to a direct
-                        // DB query as the last resort.
+
                         val awaitedPool =
                             withTimeoutOrNull(2_000L) {
                                 quickPicks.filter { !it.isNullOrEmpty() }.first()
@@ -902,13 +817,7 @@ class HomeViewModel
             }
 
         private suspend fun refreshAccountIdentity() {
-            // Seed from the identity persisted at login before touching the network. accountInfo()
-            // is a live call, and this used to start by blanking the name and avatar and blank them
-            // again on failure — so any failed refresh made the app report that no account was
-            // connected even though the session was intact. That is what picking a YouTube Music
-            // region looked like: the picker restarts the process, the first identity fetch after
-            // the restart races the region/proxy restore in App.initializeDeferredAsync(), and a
-            // single failure left the top bar signed out until the next successful fetch.
+
             context.dataStore.data.first().let { prefs ->
                 prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
                 prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }
@@ -926,7 +835,7 @@ class HomeViewModel
                             info.thumbnailUrl?.let { preferences[AccountImageUrlKey] = it }
                         }
                     }.onFailure { error ->
-                        // A failed refresh is not a logout: keep whatever was seeded above.
+
                         Timber.w(error, "Failed to fetch account info")
                     }
 
@@ -1090,11 +999,7 @@ class HomeViewModel
                     supervisorScope {
                         launch { load() }
                         launch { refreshQuickPicks() }
-                        // Re-shuffle hero picks on every manual pull-to-refresh so the
-                        // "Jump back in" hero at the top of the home page surfaces fresh
-                        // listening-preference-based songs each visit. Uses the current
-                        // quickPicks pool (or recentlyPlayed fallback) so it works even
-                        // before refreshQuickPicks() finishes.
+
                         launch {
                             val pool = quickPicks.value.orEmpty()
                             val source = if (pool.isNotEmpty()) {
@@ -1102,8 +1007,7 @@ class HomeViewModel
                             } else {
                                 recentlyPlayed.value.orEmpty()
                             }
-                            // Tiny delay so quickPicks refresh can race ahead and
-                            // populate the pool first if it's faster than this launch.
+
                             kotlinx.coroutines.delay(50L)
                             val finalPool = quickPicks.value.orEmpty()
                             val finalSource = if (finalPool.isNotEmpty()) finalPool else source
@@ -1188,20 +1092,6 @@ class HomeViewModel
                 load()
             }
 
-            // Re-fetch the home feed whenever the YT Music region (or content country/language)
-            // changes. This is what makes the "YouTube Music region" setting in Internet
-            // Settings actually take effect on the home screen: when the user picks a country,
-            // InternetSettings writes YouTubeMusicRegionKey to the DataStore AND mutates
-            // YouTube.locale.gl in-memory — we observe the preference here and trigger a
-            // fresh YouTube.home() call. Without this, the user would have to manually
-            // pull-to-refresh after changing the region.
-            //
-            // We observe ContentCountryKey and ContentLanguageKey too, since those also
-            // mutate YouTube.locale (via App.kt's initializeDeferredAsync) and therefore
-            // affect what the home feed returns.
-            //
-            // drop(1) so we don't re-fetch on initial subscription (the load() above
-            // already covers the cold-start case).
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
                     .map { Triple(it[YouTubeMusicRegionKey], it[ContentCountryKey], it[ContentLanguageKey]) }
@@ -1222,10 +1112,6 @@ class HomeViewModel
                     }
             }
 
-            // Re-filter the feed as soon as the user hits "Don't recommend this song again"
-            // (or undoes it). The blocked set is applied while each section is built, so
-            // without this the song the user just dismissed stayed on screen until the next
-            // manual pull-to-refresh — which read as the action not working at all.
             viewModelScope.launch(Dispatchers.IO) {
                 database
                     .blockedSongIds()

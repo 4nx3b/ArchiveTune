@@ -31,72 +31,21 @@ import kotlinx.serialization.json.jsonPrimitive
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Fetches Spotify Canvas looping videos for the currently playing song.
- *
- * Two sources are tried, in order:
- *
- * 1. **Spotify's own Canvas endpoint** (`spclient.wg.spotify.com/canvaz-cache`).
- *    This is the authoritative source — it is the same endpoint the Spotify
- *    clients use, and it returns the real canvas mp4. It needs a Spotify access
- *    token and the song's `spotify:track:<id>` URI, both supplied by the host app
- *    through [tokenProvider] / [trackUriResolver] (the canvas module deliberately
- *    has no dependency on the app's Spotify or player code). When the user has no
- *    Spotify session this source is simply unavailable.
- *
- * 2. **User-configured resolver endpoints** (see [extraResolverEndpointsProvider]),
- *    keyed by YouTube Music video ID. Every public Canvas resolver on GitHub is a
- *    self-hosted wrapper that needs the operator's own Spotify cookie, so there is
- *    no built-in instance left to hardcode: the previous built-in
- *    `mlc-ytify.kouzu.in` resolver died (its domain now serves an unrelated HTML
- *    page answering every `/api/canvas` lookup with 404 HTML), and — worse — its
- *    clean-looking 404s were counted as "reachable", which pinned the one-hour
- *    negative cache after a single transient failure of the official endpoint and
- *    made Spotify Canvas appear permanently broken.
- *
- * Resolver responses are validated as JSON before parsing: a body that arrives
- * as HTML (dead/repurposed domain, rate-limit interstitial, auth wall) is treated
- * as UNREACHABLE rather than "no canvas", so it never suppresses retries.
- *
- * Results are cached in-memory for 1 hour per video ID to avoid hammering either
- * source on every recomposition / replay. A negative result is cached too, so a
- * song with no canvas doesn't re-query on every replay.
- */
 object SpotifyCanvasProvider {
-    /** Spotify's Canvas endpoint. Speaks protobuf — see [SpotifyCanvazProtocol]. */
+
     private const val CANVAZ_URL = "https://spclient.wg.spotify.com/canvaz-cache/v0/canvases"
 
-    private const val CACHE_TTL_MS = 60L * 60 * 1000 // 1 hour
+    private const val CACHE_TTL_MS = 60L * 60 * 1000
 
-    /**
-     * Supplies a Spotify access token, or null when the user has no Spotify
-     * session. Set by the host app (see `App.kt`); left null in tests and in
-     * standalone use of this module.
-     */
     @Volatile
     var tokenProvider: (suspend () -> String?)? = null
 
-    /**
-     * Maps the currently playing song to a `spotify:track:<id>` URI, or null when
-     * it can't be identified on Spotify. Set by the host app.
-     */
     @Volatile
     var trackUriResolver: (suspend (videoId: String, title: String?, artist: String?) -> String?)? = null
 
-    /**
-     * Supplies extra community/self-hosted resolver base URLs to try after Spotify's own
-     * endpoint. Set by the host app from the user's preference; left null in tests and in
-     * standalone use.
-     *
-     * Every public Canvas resolver on GitHub is a self-hosted wrapper that needs the
-     * operator's own Spotify cookie, so there is no additional instance worth hardcoding —
-     * what makes the fallback chain extensible is letting the user name the instances they
-     * can actually reach.
-     */
     @Volatile
     var extraResolverEndpointsProvider: (suspend () -> List<String>)? = null
 
-    /** Optional diagnostic sink, mirroring [AppleMusicProvider.logger]. */
     @Volatile
     var logger: ((message: String) -> Unit)? = null
 
@@ -124,9 +73,7 @@ object SpotifyCanvasProvider {
                 deflate()
             }
             install(HttpCache)
-            // The x-request-source: muzo header is kept for the user-configured
-            // community resolvers (most of them kouzu.in-derived and rate-limited
-            // without it).
+
             defaultRequest {
                 header("x-request-source", "muzo")
                 header("User-Agent", "ArchiveTune-Android")
@@ -136,14 +83,6 @@ object SpotifyCanvasProvider {
         }
     }
 
-    /**
-     * Separate client for Spotify's Canvas endpoint.
-     *
-     * Deliberately not [client]: that one's `defaultRequest` block pins
-     * `x-request-source: muzo` and `Accept: application/json` for the community
-     * resolvers. Sending the muzo header to Spotify would be wrong, and the JSON
-     * Accept header would fight the protobuf one this endpoint needs.
-     */
     private val spotifyClient by lazy {
         HttpClient(OkHttp) {
             install(HttpTimeout) {
@@ -162,24 +101,6 @@ object SpotifyCanvasProvider {
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
-    /**
-     * Looks up the Spotify Canvas for the song identified by [videoId] (the
-     * YouTube Music video ID of the currently playing song). [songTitle] and
-     * [artistName] are used only to identify the song on Spotify for the official
-     * endpoint; the fallback resolver keys off [videoId] alone.
-     *
-     * [spotifyTrackUri] — when the host app ALREADY knows the song's Spotify
-     * identity (e.g. the player's enriched MediaMetadata carries
-     * `spotifyTrackId` from the user's own Spotify session), pass it here
-     * (`"spotify:track:<id>"`): the official canvaz lookup then goes straight
-     * to the user's account's track instead of re-deriving it from a
-     * title/artist search (2026-09-04: "the canvas should be fetched from
-     * their actual account using the Spotify tokens generated from the web
-     * auth during login").
-     *
-     * Returns `null` if neither source has a canvas for the song, the song isn't
-     * on Spotify, or both requests fail.
-     */
     suspend fun getByVideoId(
         videoId: String,
         songTitle: String? = null,
@@ -193,14 +114,6 @@ object SpotifyCanvasProvider {
             cache.remove(videoId)
         }
 
-        // NOTE: a failed lookup is deliberately NOT cached negative here — the
-        // official endpoint returned null, which may be a transient auth/network
-        // failure, and the only source allowed to pin the one-hour negative cache
-        // below is a resolver that demonstrably answered with JSON. Without this
-        // a single transient failure would have suppressed retries for an hour
-        // (the "Spotify canvas not working" symptom).
-
-        // Source 1: Spotify's own Canvas endpoint.
         val official =
             try {
                 fetchOfficialCanvas(videoId, songTitle, artistName, spotifyTrackUri)
@@ -214,11 +127,6 @@ object SpotifyCanvasProvider {
             return official
         }
 
-        // Source 2..N: the user's own JSON resolvers, keyed by YouTube video id
-        // (see [extraResolverEndpointsProvider]). There is no built-in resolver
-        // anymore — the old mlc-ytify.kouzu.in instance died (its domain now
-        // serves an unrelated HTML page) and its 404s were poisoning the
-        // negative cache, which is why Spotify Canvas appeared broken.
         val extraEndpoints =
             try {
                 extraResolverEndpointsProvider?.invoke().orEmpty()
@@ -238,10 +146,7 @@ object SpotifyCanvasProvider {
                         client.get(endpoint) {
                             parameter("id", videoId)
                         }
-                    // A body that is not JSON (HTML interstitial, auth wall, a
-                    // repurposed domain) means the endpoint is effectively DEAD,
-                    // not "no canvas" — do NOT count it as reachable, so it never
-                    // pins the negative cache.
+
                     val contentType =
                         response.headers[io.ktor.http.HttpHeaders.ContentType]
                             ?.lowercase()
@@ -251,9 +156,7 @@ object SpotifyCanvasProvider {
                         log("Canvas resolver $endpoint answered non-JSON ($contentType) for $videoId — treating as unreachable")
                         null
                     } else if (response.status != HttpStatusCode.OK) {
-                        // A clean "no canvas for this track" answer — the resolver works, it
-                        // just has nothing. Keep going, but remember that it answered so a
-                        // negative result can be cached at the end.
+
                         anyResolverReachable = true
                         log("Canvas resolver $endpoint returned ${response.status.value} for $videoId")
                         null
@@ -264,8 +167,7 @@ object SpotifyCanvasProvider {
                     }
                 } catch (throwable: Throwable) {
                     if (throwable is CancellationException) throw throwable
-                    // Unreachable / unparseable: try the next resolver, and do not cache a
-                    // negative result on its account.
+
                     log("Canvas resolver $endpoint failed for $videoId: ${throwable.message}")
                     null
                 }
@@ -275,25 +177,12 @@ object SpotifyCanvasProvider {
             }
         }
 
-        // Only cache "no canvas" when at least one source actually answered; otherwise a
-        // transient outage would suppress lookups for the next hour.
         if (anyResolverReachable) {
             cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
         }
         return null
     }
 
-    /**
-     * Asks Spotify directly for the canvas of the current song.
-     *
-     * Returns null (without caching) when the host app hasn't wired up a token /
-     * track resolver, when the user has no Spotify session, when the song can't
-     * be matched on Spotify, or when Spotify has no canvas for the track.
-     *
-     * [spotifyTrackUri] short-circuits the title/artist search with a track URI
-     * the host app already resolved from the user's own session — the canvas
-     * then comes straight from their actual account's track.
-     */
     private suspend fun fetchOfficialCanvas(
         videoId: String,
         songTitle: String?,
@@ -334,7 +223,7 @@ object SpotifyCanvasProvider {
         return CanvasArtwork(
             name = songTitle,
             artist = artistName,
-            // Stable placeholder so CanvasArtworkPlaybackCache dedupes correctly.
+
             albumId = "yt:$videoId",
             albumName = null,
             static = null,
@@ -349,8 +238,7 @@ object SpotifyCanvasProvider {
         body: JsonObject,
         videoId: String,
     ): CanvasArtwork? {
-        // The resolver may either return the canvas fields at the top level or nested
-        // under a `data` / `result` envelope. Handle both.
+
         val payload = body["data"]?.jsonObject ?: body["result"]?.jsonObject ?: body
 
         val videoUrl =
@@ -375,8 +263,7 @@ object SpotifyCanvasProvider {
         return CanvasArtwork(
             name = songName,
             artist = artistName,
-            // Use the YouTube videoId as a stable albumId placeholder so the cache key
-            // machinery in CanvasArtworkPlaybackCache dedupes correctly.
+
             albumId = "yt:$videoId",
             albumName = null,
             static = null,
@@ -387,15 +274,6 @@ object SpotifyCanvasProvider {
         )
     }
 
-    // ── Health diagnostics (Settings → Playback → Artwork → Canvas Check) ─────
-
-    /**
-     * Checks Spotify's own Canvas endpoint using the user's actual Spotify
-     * session (the same [tokenProvider] / [trackUriResolver] hooks the
-     * playback path uses) — a REAL canvaz request for [spotifyTrackUri], or
-     * for the track resolved from [songTitle]/[artistName] when no direct URI
-     * is known.
-     */
     suspend fun diagnoseOfficialEndpoint(
         songTitle: String?,
         artistName: String?,
@@ -458,13 +336,6 @@ object SpotifyCanvasProvider {
         }
     }
 
-    /**
-     * Checks ONE user-configured resolver mirror by issuing the exact GET the
-     * playback fallback issues (`<endpoint>?id=<probeVideoId>`) and applying
-     * the same JSON-content-type validation — a body that arrives as HTML
-     * (dead/repurposed domain, rate-limit wall) is reported as dead, not as
-     * "no canvas".
-     */
     suspend fun diagnoseResolverEndpoint(
         endpoint: String,
         probeVideoId: String,

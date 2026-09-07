@@ -299,12 +299,6 @@ fun TopPlaylistScreen(
 
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Header haze (2026-09-04, revised): the home page's blurred top haze,
-    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
-    // overlay renders ON TOP of it (a later sibling, under the TopAppBar)
-    // — the overlay was previously the FIRST child under the list, so the
-    // list drew straight over it and the haze was never visible (user report
-    // 2026-09-04: "I don't see the haze effect").
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -388,8 +382,7 @@ fun TopPlaylistScreen(
                                                 }
 
                                                 is HeaderDownloadState.Partial -> {
-                                                    // Pause/Resume (2026-09-05): pending-only, the
-                                                    // already-downloaded songs stay untouched.
+
                                                     if (headerState.paused) {
                                                         sendResumePausedDownloads(
                                                             context = context,
@@ -557,10 +550,6 @@ fun TopPlaylistScreen(
             headerItems = headerItems,
         )
 
-        // ── Header haze overlay (2026-09-04, revised) ──
-        // Progressive top-fade blur over the list — declared AFTER the
-        // LazyColumn so it draws on top of it, BEFORE the TopAppBar so the
-        // header chrome stays crisp above the frosted strip.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

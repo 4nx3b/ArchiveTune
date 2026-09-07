@@ -26,7 +26,6 @@ OUT_DIR = os.path.join(
 
 WHITE_FILL = [1.0, 1.0, 1.0, 1.0]
 
-
 def smooth_path(verts, sharp=()):
     """Builds a closed Lottie bezier shape dict from vertex list.
     Handles are 1/3 of the segment delta; indices in `sharp` get zero-length
@@ -40,11 +39,10 @@ def smooth_path(verts, sharp=()):
             i_handles.append([0, 0])
             o_handles.append([0, 0])
         else:
-            # in-handle: 1/3 back toward prev; out-handle: 1/3 toward next
+
             i_handles.append([(prev[0] - verts[j][0]) / 3.0, (prev[1] - verts[j][1]) / 3.0])
             o_handles.append([(nxt[0] - verts[j][0]) / 3.0, (nxt[1] - verts[j][1]) / 3.0])
     return {"c": True, "v": verts, "i": i_handles, "o": o_handles}
-
 
 def fill_group(path_dict, color=WHITE_FILL, name="Color"):
     return {
@@ -62,7 +60,6 @@ def fill_group(path_dict, color=WHITE_FILL, name="Color"):
              "r": {"a": 0, "k": 0}, "o": {"a": 0, "k": 100}, "sk": {"a": 0, "k": 0}, "sa": {"a": 0, "k": 0}},
         ],
     }
-
 
 def stroke_group(path_dict, width, color=WHITE_FILL, name="Color", dash=None):
     items = [
@@ -94,7 +91,6 @@ def stroke_group(path_dict, width, color=WHITE_FILL, name="Color", dash=None):
     })
     return {"ty": "gr", "nm": name, "it": items}
 
-
 def shape_layer(name, shapes, ks_overrides=None, in_frame=0, out_frame=60):
     ks = {
         "o": {"a": 0, "k": 100},
@@ -112,7 +108,6 @@ def shape_layer(name, shapes, ks_overrides=None, in_frame=0, out_frame=60):
         "ip": in_frame, "op": out_frame, "st": 0, "bm": 0,
     }
 
-
 def anim_scale_keyframes(frames):
     """frames: list of (t, [sx, sy]) — ease in-out between each."""
     kfs = []
@@ -128,7 +123,6 @@ def anim_scale_keyframes(frames):
         kfs.append(kf)
     return {"a": 1, "k": kfs}
 
-
 def anim_value_keyframes(frames, dimensional=1):
     kfs = []
     n = len(frames)
@@ -140,7 +134,6 @@ def anim_value_keyframes(frames, dimensional=1):
         kfs.append(kf)
     return {"a": 1, "k": kfs}
 
-
 def anim_position_keyframes(frames):
     kfs = []
     n = len(frames)
@@ -151,7 +144,6 @@ def anim_position_keyframes(frames):
             kf["o"] = {"x": 0.58, "y": 0}
         kfs.append(kf)
     return {"a": 1, "k": kfs}
-
 
 def base_json(name, fps, duration_frames, layers, width=240, height=240):
     return {
@@ -167,23 +159,18 @@ def base_json(name, fps, duration_frames, layers, width=240, height=240):
         "layers": layers,
     }
 
-
-# ---------------------------------------------------------------------------
-# 1) lottie_like.json — heart pop + expanding ring burst (one-shot, 600ms)
-# ---------------------------------------------------------------------------
 def heart_verts():
-    # Classic symmetric heart, ~100 units tall, centered on (0, ~6).
-    return [
-        [0, -26],      # top notch (sharp)
-        [-16, -46],    # left lobe top
-        [-38, -34],    # left lobe far
-        [-40, -8],     # left side
-        [0, 46],       # bottom tip (sharp)
-        [40, -8],      # right side
-        [38, -34],     # right lobe far
-        [16, -46],     # right lobe top
-    ]
 
+    return [
+        [0, -26],
+        [-16, -46],
+        [-38, -34],
+        [-40, -8],
+        [0, 46],
+        [40, -8],
+        [38, -34],
+        [16, -46],
+    ]
 
 def circle_verts(n=36, radius=90):
     verts = []
@@ -191,7 +178,6 @@ def circle_verts(n=36, radius=90):
         ang = 2 * math.pi * j / n
         verts.append([radius * math.cos(ang), radius * math.sin(ang)])
     return verts
-
 
 def build_like():
     heart = smooth_path(heart_verts(), sharp={0, 4})
@@ -212,7 +198,7 @@ def build_like():
         },
         out_frame=36,
     )
-    # Set unique layer indices + in/out frames
+
     heart_layer["ind"] = 1
 
     ring_layer = shape_layer(
@@ -238,10 +224,6 @@ def build_like():
     doc = base_json("like", 60, 36, [heart_layer, ring_layer])
     return json.dumps(doc, separators=(",", ":"))
 
-
-# ---------------------------------------------------------------------------
-# 2) lottie_download_complete.json — ring + drawn check (one-shot, 660ms)
-# ---------------------------------------------------------------------------
 def build_download_complete():
     ring = smooth_path(circle_verts(48, 84))
     check = {
@@ -252,7 +234,7 @@ def build_download_complete():
     }
 
     ring_group = stroke_group(ring, 12)
-    # animate ring trim: sweep draw-on
+
     ring_group["it"][1] = {
         "ty": "tm", "nm": "Trim", "s": {"a": 0, "k": 0.0}, "e": {
             "a": 1, "k": [
@@ -261,7 +243,7 @@ def build_download_complete():
             ],
         }, "o": {"a": 0, "k": -90}, "m": 1, "hd": False,
     }
-    # stroke width scales down as ring completes
+
     ring_group["it"][2]["w"] = {
         "a": 1, "k": [
             {"t": 0, "s": [16], "i": {"x": [0.3], "y": [1]}, "o": {"x": [0.5], "y": [0]}},
@@ -302,12 +284,8 @@ def build_download_complete():
 
     return json.dumps(base_json("download_complete", 60, 40, [ring_layer, check_layer]), separators=(",", ":"))
 
-
-# ---------------------------------------------------------------------------
-# 3) lottie_empty_state.json — floating music note (loop, 1.6s)
-# ---------------------------------------------------------------------------
 def build_empty_state():
-    # Eighth note: ellipse head + stem + flag — drawn as filled shapes.
+
     head = smooth_path(circle_verts(24, 26))
     stem = {
         "c": True,
@@ -347,7 +325,6 @@ def build_empty_state():
     )
     note_layer["ind"] = 1
 
-    # A second, smaller, dimmer note drifting the opposite way for depth.
     small_head = smooth_path(circle_verts(18, 17))
     small_stem = {
         "c": True,
@@ -372,7 +349,6 @@ def build_empty_state():
 
     return json.dumps(base_json("empty_state", 60, 96, [small_layer, note_layer]), separators=(",", ":"))
 
-
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     assets = {
@@ -385,7 +361,6 @@ def main():
         with open(path, "w") as f:
             f.write(data)
         print(f"wrote {path} ({len(data)} bytes)")
-
 
 if __name__ == "__main__":
     main()

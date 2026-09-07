@@ -63,7 +63,7 @@ fun ProfileMenuDialog(
             dismissOnClickOutside = true,
         ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         val scrimInteraction = remember { MutableInteractionSource() }
         Box(
             modifier = Modifier.fillMaxSize(),

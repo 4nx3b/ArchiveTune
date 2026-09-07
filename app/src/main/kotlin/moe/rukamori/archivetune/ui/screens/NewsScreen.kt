@@ -127,9 +127,6 @@ fun NewsScreen(
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
-    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
-    // back pill + search pill pinned over the scrolling news list, plus the
-    // header haze — replaces the normal top bar while Liquid Glass is on.
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -144,9 +141,7 @@ fun NewsScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // In glass-header mode the normal bar is hidden (search moves to
-            // the trailing glass pill); the SearchBar still renders here while
-            // search is active so it stays reachable.
+
             if (isSearchActive || !glassHeader.liquidGlassActive) {
             AnimatedContent(
                 targetState = isSearchActive,
@@ -252,13 +247,11 @@ fun NewsScreen(
             }
         },
     ) { innerPadding ->
-        // Glass-header mode: the topBar slot is empty so innerPadding's top
-        // is 0 — the list instead gets the pill zone as its content top
-        // padding and scrolls under the pills/haze like the History page.
+
         val contentTopPadding =
             if (glassHeader.liquidGlassActive && !isSearchActive) {
-                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
-            // pills so the glass actually samples it (2026-09-04 fix)
+                systemBarsTopPadding + 72.dp
+
             } else {
                 innerPadding.calculateTopPadding()
             }
@@ -369,7 +362,6 @@ fun NewsScreen(
             }
         }
 
-        // Persistent glass pills + header haze (History-page behaviour).
         if (glassHeader.liquidGlassActive && !isSearchActive) {
             GlassScreenHeaderOverlay(
                 header = glassHeader,
@@ -684,7 +676,7 @@ private fun FullImageViewerDialog(
                 dismissOnClickOutside = true,
             ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         val context = LocalContext.current
         val model =
             remember(context, imageUrl) {

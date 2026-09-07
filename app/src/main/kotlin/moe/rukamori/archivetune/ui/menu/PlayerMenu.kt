@@ -38,7 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -183,7 +182,6 @@ fun PlayerMenu(
             mediaMetadata.artists.filter { it.id != null }
         }
 
-    // Artist separators for splitting artist names
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
@@ -191,10 +189,7 @@ fun PlayerMenu(
     val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
     val lowDataModeActive = rememberLowDataModeActive()
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
-    // Only show the "Refetch canvas" overflow action when the current song
-    // actually has an animated artwork entry cached. Songs that never resolved
-    // a canvas (no animated artwork exists for them) wouldn't benefit from a
-    // refetch and would just produce a confusing no-op button.
+
     var hasCanvasArtwork by remember(mediaMetadata.id) { mutableStateOf(false) }
     LaunchedEffect(mediaMetadata.id, isCanvasArtworkRefetching) {
         hasCanvasArtwork = CanvasArtworkPlaybackCache.hasEntry(mediaMetadata.id)
@@ -212,7 +207,6 @@ fun PlayerMenu(
         }
     val castPlayerMenuAction = rememberCastPlayerMenuAction()
 
-    // Split artists by configured separators
     data class SplitArtist(
         val name: String,
         val originalArtist: MediaMetadata.Artist?,
@@ -231,10 +225,7 @@ fun PlayerMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-                        // All split parts share the same originalArtist reference so the
-                        // thumbnail lookup (and click-through navigation) works for every
-                        // part — not just the first one. The underlying YTM channel ID is
-                        // the same for all parts.
+
                         parts.map { name -> SplitArtist(name, artist) }
                     } else {
                         listOf(SplitArtist(artist.name, artist))
@@ -243,27 +234,6 @@ fun PlayerMenu(
             }
         }
 
-    // Fetch artist profile-picture thumbnail URLs for the "View artist"
-    // selection dialog. `MediaMetadata.Artist.thumbnailUrl` is hardcoded to
-    // null in `SongItem.toMediaMetadata()` (innertube's Artist model doesn't
-    // carry a thumbnail), so without this lookup the dialog falls back to a
-    // grey circle with a music-note icon for every artist — even artists the
-    // user has browsed before and whose thumbnail is already cached in the
-    // local DB.
-    //
-    // We look up each artist id in the Room `artists` table first
-    // (`ArtistEntity.thumbnailUrl`, populated by LibraryArtistsViewModel and
-    // the artist-page loader). If the DB doesn't have a thumbnail (or doesn't
-    // have the artist at all), we fall back to a one-shot `YouTube.artist(id)`
-    // fetch which populates `ArtistPage.artist.thumbnail` — we then persist
-    // that thumbnail back to the DB so subsequent opens are instant.
-    //
-    // Mirrors the pattern in SongMenu.kt:203-211 but adds the YouTube
-    // fallback because PlayerMenu is also shown for songs that aren't in the
-    // local library (radio, search, playlist previews).
-    // Stable, sorted key so produceState doesn't re-fire on every recomposition
-    // (a fresh List<> instance with the same contents would otherwise restart the
-    // lookup each frame, racing with the popup's render and never resolving).
     val artistIdsKey =
         remember(splitArtists) {
             splitArtists.mapNotNull { it.originalArtist?.id }.distinct().sorted()
@@ -279,10 +249,7 @@ fun PlayerMenu(
                     .mapNotNull { sa ->
                         sa.originalArtist?.id?.let { id -> id to sa.originalArtist.name }
                     }.toMap()
-            // Update the map INCREMENTALLY per artist so the popup shows each thumbnail
-            // as soon as it resolves — instead of waiting for every artist to fetch
-            // before updating the UI (which left the user staring at music-note icons
-            // for several seconds while slow YTM lookups completed in series).
+
             splitArtists.mapNotNull { it.originalArtist?.id }.distinct().forEach { artistId ->
                 val dbEntity = database.getArtistById(artistId)
                 val cached = dbEntity?.thumbnailUrl
@@ -290,9 +257,7 @@ fun PlayerMenu(
                     result[artistId] = cached
                     value = result.toMap()
                 } else {
-                    // DB miss — fetch from YouTube Music and persist so the next open
-                    // is instant. `ArtistItem.thumbnail` is a `String?` (not a nested
-                    // Thumbnails object), so we read it directly.
+
                     val fetched =
                         runCatching { YouTube.artist(artistId) }
                             .getOrNull()
@@ -349,9 +314,6 @@ fun PlayerMenu(
         },
     )
 
-    // Per-song "Play from" chooser: pick which source THIS song plays from. Only sources known to
-    // have the track (from the last resolution) are offered, plus YouTube (always available). The
-    // choice is remembered per song via SongSourceOverrideKey (included in backups).
     val (songSourceRaw, onSongSourceChange) = rememberPreference(SongSourceOverrideKey, "")
     val currentSongSource =
         remember(songSourceRaw, mediaMetadata.id) {
@@ -359,12 +321,6 @@ fun PlayerMenu(
         }
     var showSourceDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Trigger a fresh source resolution each time the Source dialog opens. This fixes the bug
-    // where Qobuz (or Tidal) was missing from the Sources list because a previous resolution
-    // failed transiently — the in-memory cache pinned the song to YouTube, and the lossless
-    // sources were never retried for the lifetime of the process. The refresh evicts the cache
-    // and re-runs the lossless resolution chain in the background; the resulting sources show
-    // up via resolvedSourcesRevision (a StateFlow that bumps when recording completes).
     val sourceRevision by playerConnection.service.resolvedSourcesRevision.collectAsStateWithLifecycle()
     LaunchedEffect(showSourceDialog, mediaMetadata.id) {
         if (showSourceDialog) {
@@ -387,42 +343,19 @@ fun PlayerMenu(
                 showSourceDialog = false
             },
             onPlaySong = { song ->
-                // Swapping to a different track entirely — play the chosen song via YouTube radio
-                // so it seeds a fresh queue with the picked track as the first item.
+
                 playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
             },
             onPlayFromSource = { result ->
-                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
-                //
-                // AUDIO-ONLY CHANGE: only the AUDIO source changes — the
-                // song's mediaId, title, artist, thumbnail, and queue
-                // position all stay exactly the same. The user perceives
-                // this as "switching to a different audio source for the
-                // same song", NOT as "playing a different song".
-                //
-                // The source override is persisted per-mediaId so the
-                // resolver knows to resolve through the picked source.
-                // For Qobuz, the exact trackId is also persisted so the
-                // resolver downloads the exact Qobuz track (not a title
-                // search that could match a different master).
-                //
-                // No new MediaItem is created, no playQueue is called —
-                // setSongSourceOverride preserves the queue, the position,
-                // and the song's identity. The resolver re-resolves through
-                // the new source on the next prepare().
+
                 val source = result.source
                 val trackId = result.trackId
                 if (source != AudioSourceType.YOUTUBE && trackId.isNotBlank()) {
-                    // Persist the source override for the CURRENT mediaId.
+
                     onSongSourceChange(
                         SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source),
                     )
-                    // Sources with an addressable per-track id get that id persisted so the
-                    // resolver fetches exactly the row the user tapped:
-                    //   - Qobuz     → catalogue trackId
-                    //   - Qobuz Backup → the mirror's YouTube video id (its primary key)
-                    // For the rest (Tidal / JioSaavn / Deezer) the resolver still searches
-                    // by title + artist, which is all their APIs expose here.
+
                     when (source) {
                         AudioSourceType.QOBUZ ->
                             playerConnection.service.setSongSourceOverrideWithQobuzTrackId(
@@ -468,10 +401,7 @@ fun PlayerMenu(
                         )
                     },
                     leadingContent = {
-                        // Look up the artist's profile picture from the
-                        // produceState above (DB → YouTube fallback). Falls
-                        // back to the music-note icon only if the lookup
-                        // hasn't resolved a thumbnail yet.
+
                         val thumbUrl =
                             splitArtist.originalArtist?.id?.let { id ->
                                 artistThumbnailsByKey[id]
@@ -536,9 +466,6 @@ fun PlayerMenu(
         )
     }
 
-    // Apple Music–style sleep timer sheet. Rendered as an extra item at the
-    // bottom of the same scrollable menu (no second modal layer) so the user
-    // can pick a duration without leaving the song's overflow menu.
     var showSleepTimerSheet by rememberSaveable { mutableStateOf(false) }
 
     var showEqualizerDialog by rememberSaveable {
@@ -660,11 +587,6 @@ fun PlayerMenu(
         }
     }
 
-    // The inline volume slider that previously appeared at the top of the song
-    // overflow menu has been removed per design feedback — volume is already
-    // exposed via the system media-output panel and the device hardware keys,
-    // so surfacing it again here was redundant and cluttered the menu.
-
     Spacer(modifier = Modifier.height(16.dp))
 
     LazyColumn(
@@ -677,11 +599,7 @@ fun PlayerMenu(
                 bottom = 12.dp,
             ),
     ) {
-        // When the user taps "Sleep timer", replace the menu body with the
-        // Apple Music–style picker sheet. Keeping the surface header (album art
-        // + title) above gives the user context that this sheet still belongs
-        // to the current song, while the rest of the menu items are hidden so
-        // the sheet is immediately visible without scrolling.
+
         if (showSleepTimerSheet) {
             item {
                 AppleMusicSleepTimerSheet(
@@ -767,13 +685,7 @@ fun PlayerMenu(
                                     ),
                                 )
                             }
-                            // "Add to playlist" and "Pin to speed dial" used to be
-                            // box-pill chips here in the NewActionGrid. Moved to
-                            // list-item form below per user request — they now
-                            // appear as ListItems in their own MenuSurfaceSection
-                            // right after the chips section, matching the visual
-                            // style of "View artist" / "View album" / "Download"
-                            // / "Details" / etc.
+
                             add(
                                 if (isLocalMedia) {
                                     NewAction(
@@ -825,10 +737,7 @@ fun PlayerMenu(
                                 },
                             )
                             if (!isLocalMedia) {
-                                // "ArchiveTune Music Together" entry was removed from the
-                                // song overflow menu per maintainer request — the feature
-                                // is still reachable from Settings, but it shouldn't take a
-                                // slot in every song's popup.
+
                                 add(
                                     NewAction(
                                         icon = {
@@ -871,11 +780,7 @@ fun PlayerMenu(
         item {
             MenuSectionDivider()
         }
-        // "Save Canvas" — list-item form. Shown only when canvas artwork is
-        // available for the current song. Tapping opens the SaveCanvasDialog
-        // which lets the user pick from all available canvas sources (Spotify
-        // Canvas / Apple Music) and saves the chosen video to
-        // Movies/ArchiveTune Canvas/ via MediaStore.
+
         if (
             !isLocalMedia &&
             isQueueTrigger != true &&
@@ -906,10 +811,7 @@ fun PlayerMenu(
                 MenuSectionDivider()
             }
         }
-        // "Add to playlist" and "Pin to speed dial" — converted from
-        // box-pill chips (in the NewActionGrid above) to ListItem form
-        // per user request. They now appear in their own MenuSurfaceSection
-        // with the same visual style as the other list items below.
+
         item {
             MenuSurfaceSection {
                 Column {
@@ -1093,10 +995,7 @@ fun PlayerMenu(
                                         database.transaction {
                                             insert(mediaMetadata)
                                         }
-                                        // Cache-first download: prewarm playerCache
-                                        // via Qobuz/Tidal/YT before DownloadManager
-                                        // opens, so the actual download reads bytes
-                                        // locally instead of fetching over the network.
+
                                         coroutineScope.launch {
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(mediaMetadata.id)
@@ -1224,9 +1123,6 @@ fun PlayerMenu(
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
 
-                        // "Play Next" and "Add to Queue" surface on every queue song's overflow
-                        // menu so the user can re-order the queue without going back to the
-                        // search/list page. Mirrors SongMenu.kt's pattern.
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.play_next)) },
                             leadingContent = {
@@ -1286,14 +1182,6 @@ fun PlayerMenu(
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
 
-                        // Sleep timer row — appears in the secondary list section alongside
-                        // Equalizer and Tempo & Pitch. Tapping it opens the inline Apple
-                        // Music–style sheet at the bottom of the menu.
-                        //
-                        // Hidden in Apple Music player style because the sleep timer is
-                        // already available as a dedicated pill in the in-place queue sheet
-                        // (AppleMusicQueueSheet's top pill row). Showing it here too is
-                        // redundant and clutters the menu.
                         if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
@@ -1356,130 +1244,8 @@ fun PlayerMenu(
                 }
             }
         }
-        } // end else (menu body)
-    }
-}
-
-@Composable
-private fun PlayerVolumeCard(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val safeVolume = volume.coerceIn(0f, 1f)
-
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = stringResource(R.string.volume),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-
-                Text(
-                    text = "${(safeVolume * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.volume_off),
-                        contentDescription = stringResource(R.string.minimum_volume),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-
-                    VolumeSliderL(
-                        value = safeVolume,
-                        onValueChange = onVolumeChange,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Icon(
-                        painter = painterResource(R.drawable.volume_up),
-                        contentDescription = stringResource(R.string.maximum_volume),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
         }
     }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-private fun VolumeSliderL(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val safeValue = value.coerceIn(0f, 1f)
-    var sliderValue by remember { mutableFloatStateOf(safeValue) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    LaunchedEffect(safeValue) {
-        if (!isDragging) sliderValue = safeValue
-    }
-
-    // NOTE: do NOT constrain the Slider's height. The Material3 Slider's internal
-    // touch target is 48dp tall; forcing a smaller height (we previously used
-    // height(36.dp)) clips the touch area and makes the thumb impossible to
-    // drag — the value updates in state but the thumb never visibly moves.
-    Slider(
-        value = sliderValue,
-        onValueChange = { updated ->
-            isDragging = true
-            val coerced = updated.coerceIn(0f, 1f)
-            sliderValue = coerced
-            onValueChange(coerced)
-        },
-        onValueChangeFinished = { isDragging = false },
-        valueRange = 0f..1f,
-        modifier = modifier,
-        thumb = {
-            Box(
-                modifier =
-                    Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-            )
-        },
-        colors =
-            SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent,
-            ),
-    )
 }
 
 @Composable
@@ -1529,7 +1295,7 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(
                 onClick = onDismiss,
                 shapes = ButtonDefaults.shapes(),
@@ -1902,18 +1668,6 @@ private fun AudioSourceType.sourceIconRes(): Int =
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
-/**
- * Unified cross-provider search result row. Each provider's backend (YTM / Tidal / JioSaavn /
- * future Qobuz, Deezer) maps its own native search type into this shape so the UI can render
- * every row the same way.
- *
- * - [songItem] is non-null when the result is a YouTube Music song (the only provider whose
- *   playback path is fully wired into `YouTubeQueue.radio`). Tapping the row calls
- *   `onPlaySong(songItem)`.
- * - When [songItem] is null the row is display-only — used for providers whose playback path
- *   for arbitrary trackIds isn't wired up yet (Tidal/JioSaavn). The row is grayed out and not
- *   clickable.
- */
 private data class SourceSearchResult(
     val source: AudioSourceType,
     val trackId: String,
@@ -1938,7 +1692,6 @@ private fun SongSourceDialog(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
 
-    // Strings fetched at the Composable scope so they can be referenced safely inside produceState.
     val aacLabel = stringResource(R.string.quality_badge_aac)
     val saavnLabel = stringResource(R.string.quality_badge_saavn)
     val mp3Label = stringResource(R.string.quality_badge_mp3)
@@ -1946,41 +1699,17 @@ private fun SongSourceDialog(
     val noResultsText = stringResource(R.string.source_search_no_results)
     val noBackendText = stringResource(R.string.source_search_no_backend)
 
-    // Deezer's catalogue search says nothing about what an account may stream, and the FLAC tier
-    // needs a paid plan — so the badge has to come from the credential rather than the hit. Premium
-    // is the flag the pool and the manual sign-in both carry; without one the best Deezer will serve
-    // is 320kbps MP3, and labelling those rows "Lossless" would promise a quality resolve() cannot
-    // deliver.
     val deezerLabel =
         remember(losslessLabel, mp3Label) {
             val availability = DeezerAudioProvider.accountAvailability()
             if (availability.manualPremium || availability.pooledPremium > 0) losslessLabel else mp3Label
         }
 
-    // Apple Music's quality badge comes from the tier the user configured in Settings
-    // (Sources → Apple Music), matching what the resolver will actually stream. Null when
-    // no Apple account is signed in — the search rows then carry no badge rather than a
-    // promise the resolver cannot deliver.
     val appleQualityLabel =
         remember(losslessLabel) {
             if (AppleMusicAudioProvider.isAvailable()) losslessLabel else null
         }
 
-    // Provider filter → "search backend not yet available" empty state. These are the
-    // providers with a usable list-search API: YTM, Tidal (searchCandidates), Qobuz
-    // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates),
-    // Deezer (DeezerAudioProvider.searchCandidates) and JioSaavn (SaavnService.searchSongs).
-    //
-    // Qobuz Backup used to be excluded here on the assumption that the kouzu.in mirror could
-    // only be addressed by YouTube video id. It does expose `GET /api/search`, which returns
-    // its own indexed catalogue, so its rows are searchable and pickable like any other
-    // source's — which is what the "search and select tracks from the Qobuz backup source"
-    // request was about.
-    //
-    // Deezer was excluded on the claim that it "has no public list search". `api.deezer.com/search`
-    // is public and unauthenticated; the provider only ever exposed a best-match `lookup` over it,
-    // which is why it looked absent. It now has `searchCandidates` too, so selecting the Deezer chip
-    // no longer shows "no backend" for a source the app can search and play.
     val searchableSources =
         setOf(
             AudioSourceType.YOUTUBE,
@@ -1993,7 +1722,6 @@ private fun SongSourceDialog(
         )
     val backendMissing = sourceFilter != null && sourceFilter !in searchableSources
 
-    // Debounced search — only fires when searchMode is on and query length >= 2.
     val results by produceState<List<SourceSearchResult>>(
         initialValue = emptyList(),
         key1 = searchQuery,
@@ -2004,7 +1732,7 @@ private fun SongSourceDialog(
             value = emptyList()
             return@produceState
         }
-        delay(350L) // debounce
+        delay(350L)
         val out = mutableListOf<SourceSearchResult>()
         val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
@@ -2073,19 +1801,12 @@ private fun SongSourceDialog(
             }
         }
         if (searchQobuz) {
-            // Qobuz search needs pool tokens or proxy instances configured. The
-            // searchCandidates method handles that internally — it returns an
-            // empty list when no backends are configured, in which case the user
-            // just sees no Qobuz rows in the results (same as if the query had
-            // no hits). Must run on IO because searchCandidates does network
-            // calls (PoolAccountManager.qobuzAccounts + discoverInstances +
-            // the actual search API call).
+
             withContext(Dispatchers.IO) {
                 runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
                     .getOrDefault(emptyList())
                     .forEach { candidate ->
-                        // If Qobuz didn't return a thumbnail, try to get one
-                        // from YouTube by searching for the track.
+
                         val thumb = candidate.thumbnailUrl ?: run {
                             val term = listOfNotNull(candidate.artist?.takeIf(String::isNotBlank), candidate.title).joinToString(" ")
                             val ytResult = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
@@ -2114,9 +1835,7 @@ private fun SongSourceDialog(
             }
         }
         if (searchQobuzBackup) {
-            // The kouzu.in mirror answers with its own catalogue index; every row it
-            // returns is keyed by a YouTube video id, which is both the mirror's primary
-            // key and the source of the row's cover art (no artwork field in the payload).
+
             withContext(Dispatchers.IO) {
                 runCatching { QobuzBackupProvider.searchCandidates(searchQuery, limit = 8) }
                     .getOrDefault(emptyList())
@@ -2128,8 +1847,7 @@ private fun SongSourceDialog(
                                 title = candidate.title,
                                 artist = candidate.artist.orEmpty(),
                                 thumbnailUrl = candidate.thumbnailUrl,
-                                // The search payload carries no duration; the row simply
-                                // omits it rather than showing a made-up length.
+
                                 durationMs = null,
                                 qualityLabel = if (candidate.isLossless) losslessLabel else aacLabel,
                                 songItem = null,
@@ -2159,11 +1877,7 @@ private fun SongSourceDialog(
             }
         }
         if (searchApple) {
-            // 2026-09-05, user request: "Add apple music in source picker queue". The picker's
-            // search row now covers the Apple Music catalog the same way it covers Tidal/Qobuz/
-            // Deezer/JioSaavn: raw search rows, a quality badge when an account is signed in,
-            // and playback through the per-song source override (title+artist re-search in the
-            // resolver — the same contract the other non-YT rows follow).
+
             withContext(Dispatchers.IO) {
                 runCatching { AppleMusicAudioProvider.searchCandidates(searchQuery, limit = 8) }
                     .getOrDefault(emptyList())
@@ -2313,12 +2027,7 @@ private fun SongSourceDialog(
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
                                 SourceSearchResultRow(result = result) {
-                                    // YTM results seed the queue directly. Non-YT results
-                                    // (JioSaavn / Tidal / Qobuz / Deezer) don't carry a
-                                    // YouTube-side SongItem — they go through onPlayFromSource
-                                    // which searches YTM for a matching track and pins the
-                                    // source override so playback resolves through the
-                                    // picked source on the very first attempt.
+
                                     if (result.songItem != null) {
                                         onPlaySong(result.songItem)
                                     } else {
@@ -2332,7 +2041,7 @@ private fun SongSourceDialog(
                     }
                 }
             } else {
-                // "Automatic" clears the override so the song follows the global preferred-source order.
+
                 SongSourceRow(
                     iconRes = R.drawable.tune,
                     label = stringResource(R.string.play_from_automatic),
@@ -2352,19 +2061,6 @@ private fun SongSourceDialog(
     }
 }
 
-/**
- * One search-result row. Layout mirrors a typical song row: 48dp thumbnail (or a music_note
- * placeholder when the provider returned no cover), title + artist + duration in the middle,
- * a small quality badge (AAC 256 kbps / Lossless / Hi-Res) on the right, and a 16dp provider
- * icon furthest right so the user can tell at a glance which source each row came from.
- *
- * ALWAYS tappable: YTM results seed the queue directly via [onPlaySong]; non-YT results
- * (JioSaavn / Tidal / Qobuz / Deezer) go through [onPlayFromSource] which searches YTM for
- * a matching track by title+artist and pins the per-song source override so playback resolves
- * through the picked source on the very first attempt. Previously non-YT rows were grayed
- * out and not clickable — that made the JioSaavn / Tidal "Play from" search popup look
- * broken ("clicking on play from popup in jiosaavn category still doesn't do anything").
- */
 @Composable
 private fun SourceSearchResultRow(
     result: SourceSearchResult,

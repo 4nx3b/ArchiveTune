@@ -19,37 +19,14 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/**
- * Loads TDLib's native library, fetching it on demand when the build did not bundle it.
- *
- * Why this exists: `libtdjni.so` is 21.7 MB per ABI — 8.7 MB compressed into the APK and the full
- * 21.7 MB extracted on install, since the app packages native libs with `useLegacyPackaging`. That
- * is paid by every user, while Telegram is an optional integration most never sign in to. A build
- * made with `-PslimTdlib=true` omits it and this fetches it the first time someone actually opens
- * Telegram.
- *
- * The default build still bundles it, so nothing changes unless that flag is set — see
- * [BuildConfig.TDLIB_BUNDLED].
- *
- * Not Play Feature Delivery: that needs App Bundles and Play, and this app ships APKs on GitHub
- * releases. The download is therefore hand-rolled, which is also why the digests below are
- * compiled in rather than fetched — a manifest downloaded over the same channel as the payload
- * verifies nothing.
- */
 object TdLibNativeLibrary {
     private const val TAG = "TdLibNative"
 
-    /** Must match the `com.github.tdlibx:td` version in app/build.gradle.kts. */
     const val VERSION = "1.8.56"
 
     private const val LIB_NAME = "tdjni"
     private const val FILE_NAME = "libtdjni.so"
 
-    /**
-     * SHA-256 of each ABI's library as shipped in the td AAR, taken from the artifact this build
-     * resolves. A download that does not match one of these is discarded — the digests are the
-     * only thing standing between the app and whatever the release host serves.
-     */
     private val DIGESTS =
         mapOf(
             "arm64-v8a" to "7c1751197b35a64261e3b3f21764874c9ee8795e4b6118c23a74499426c44b91",
@@ -66,37 +43,24 @@ object TdLibNativeLibrary {
             .Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
-            // No callTimeout: this is a 21 MB body and the deadline that matters is per-read.
+
             .build()
 
-    /**
-     * The device's ABI, as one of the four the AAR ships. `SUPPORTED_ABIS` is ordered best-first,
-     * so a 64-bit device that also lists armeabi-v7a still picks arm64-v8a.
-     */
     private val abi: String?
         get() = Build.SUPPORTED_ABIS.firstOrNull { it in DIGESTS }
 
     private fun target(context: Context): File =
         File(File(context.filesDir, "tdlib-native"), "$VERSION-${abi.orEmpty()}-$FILE_NAME")
 
-    /** True once the library is usable in this process. */
     val isLoaded: Boolean get() = loaded
 
-    /** True when the library still has to be downloaded before Telegram can start. */
     fun needsDownload(context: Context): Boolean =
         !loaded && !BuildConfig.TDLIB_BUNDLED && !target(context).isFile
 
-    /**
-     * Loads the library if it can be, without touching the network. Returns false on a slim build
-     * that has not fetched it yet — the caller should offer [download].
-     */
     @Synchronized
     fun ensureLoaded(context: Context): Boolean {
         if (loaded) return true
 
-        // Bundled build: it is inside the APK, and the linker already knows where to find it.
-        // Tried first (and unconditionally) so a build that reverts the slim flag keeps working
-        // even with a stale download still sitting in filesDir.
         if (runCatching { System.loadLibrary(LIB_NAME) }.isSuccess) {
             loaded = true
             return true
@@ -104,8 +68,7 @@ object TdLibNativeLibrary {
 
         val file = target(context)
         if (!file.isFile) return false
-        // Re-verify on every cold start rather than trusting the file's presence: it is loaded as
-        // executable code, and a truncated write or a tampered file is exactly what must not run.
+
         if (!matchesDigest(file)) {
             Timber.tag(TAG).w("Cached %s failed its digest check; deleting", file.name)
             file.delete()
@@ -121,13 +84,6 @@ object TdLibNativeLibrary {
         }
     }
 
-    /**
-     * Downloads the library for this device's ABI, verifies it, and loads it.
-     *
-     * [onProgress] receives 0f..1f, or -1f while the total size is unknown. Returns false on any
-     * failure; the partial file is always cleaned up, so a retry starts clean rather than
-     * resuming into a file whose first half came from a different response.
-     */
     suspend fun download(
         context: Context,
         onProgress: (Float) -> Unit = {},
@@ -187,8 +143,6 @@ object TdLibNativeLibrary {
                 return@withContext false
             }
 
-            // Rename only after the digest passes, so `destination` never exists in a bad state
-            // and ensureLoaded can treat its presence as "worth verifying" rather than "unknown".
             if (!partial.renameTo(destination)) {
                 Timber.tag(TAG).e("Could not move the verified library into place")
                 partial.delete()

@@ -110,7 +110,6 @@ import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -129,10 +128,7 @@ fun NewReleaseScreen(
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val menuState = LocalMenuState.current
-    // "Marked as read" toast — shown when the user marks releases read via
-    // the selection mode's action bar (2026-09-06 redesign: manual
-    // multi-select + mark-as-read; the previous long-press-to-mark and
-    // mark-all header button were replaced by it).
+
     val showMarkedAsReadToast: () -> Unit = {
         Toast.makeText(context, R.string.marked_as_read, Toast.LENGTH_SHORT).show()
     }
@@ -142,42 +138,22 @@ fun NewReleaseScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     var selectedTab by rememberSaveable { mutableStateOf(NewReleaseTab.All) }
-    // Local search state — filters releases by album/artist name. The search
-    // icon in the top app bar toggles a search field; typing filters the
-    // visible grid in-place. Empty query = show all releases.
+
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
-    // Selection mode ("mark as read", 2026-09-06): the header's edit icon
-    // (liquid-glass pen in glass mode, pen IconButton in the plain top bar)
-    // enters selection mode. Tapping releases toggles them; the bottom
-    // action bar marks any number of selected releases as read (persisted,
-    // removed from the feed, notifications cancelled) with a
-    // "Marked as read" toast. Long-press outside selection mode keeps its
-    // pre-2026-09-05 behavior: opens the album menu.
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     val selectedReleaseIds = remember { mutableStateSetOf<String>() }
 
-    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
-    // back pill + search pill pinned over the scrolling content, plus the
-    // header haze — replaces the normal top bar while Liquid Glass is on.
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            // While the glass pills own the header, the normal bar (and the
-            // in-bar search mode) is hidden — search moves to the trailing
-            // glass pill. In search mode the SearchBar still renders in the
-            // topBar slot so it stays reachable.
+
             if (isSearchActive || !glassHeader.liquidGlassActive) {
-            // Switch between the normal top app bar and a Material3 SearchBar
-            // when the user taps the search icon. Rendering the search bar in
-            // the topBar slot (instead of as a grid item below the top app bar)
-            // ensures it is always visible when search is active — even if the
-            // grid has been scrolled down. Matches the pattern used by
-            // NewsScreen and HistoryScreen.
+
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -237,7 +213,7 @@ fun NewReleaseScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    // Plain top bar — no frosted pills. Modern, minimal.
+
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(
@@ -258,12 +234,7 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
-                            // Selection-mode toggle (2026-09-06): the plain-bar
-                            // twin of the glass header's pen pill. Toggles
-                            // selection mode so any number of releases can be
-                            // selected manually and marked as read from the
-                            // bottom action bar (replaces the previous
-                            // mark-all-read button + long-press marking).
+
                             IconButton(
                                 onClick = {
                                     isSelectionMode = !isSelectionMode
@@ -288,12 +259,7 @@ fun NewReleaseScreen(
                                         },
                                 )
                             }
-                            // Using Material3's standard IconButton here (not the
-                            // custom AppIconButton) because the custom one uses
-                            // combinedClickable which can fail to register taps in
-                            // the LargeFlexibleTopAppBar actions slot on some
-                            // Material3 1.5.0-alpha builds. The standard IconButton
-                            // uses a plain clickable and is more reliable here.
+
                             IconButton(
                                 onClick = { isSearchActive = true },
                             ) {
@@ -315,14 +281,11 @@ fun NewReleaseScreen(
         },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current,
     ) { paddingValues ->
-        // In glass-header mode the topBar is empty, so the Scaffold's top
-        // padding is 0 — the grid instead gets the pill zone (status bar +
-        // pills + breathing room) as its content top padding, and the items
-        // scroll under the pills/haze exactly like the History page.
+
         val contentTopPadding =
             if (glassHeader.liquidGlassActive && !isSearchActive) {
-                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
-            // pills so the glass actually samples it (2026-09-04 fix)
+                systemBarsTopPadding + 72.dp
+
             } else {
                 paddingValues.calculateTopPadding()
             }
@@ -371,9 +334,7 @@ fun NewReleaseScreen(
                         selectedIds = selectedReleaseIds,
                         onReleaseClick = { album ->
                             if (isSelectionMode) {
-                                // Selection mode: tap toggles the release's
-                                // selection instead of navigating (the user
-                                // picks what to mark as read).
+
                                 haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                                 if (album.id in selectedReleaseIds) {
                                     selectedReleaseIds.remove(album.id)
@@ -385,9 +346,7 @@ fun NewReleaseScreen(
                             }
                         },
                         onReleaseLongClick = { album ->
-                            // Restored pre-2026-09-05 behaviour (user request
-                            // 2026-09-06: "remove that hold to mark as read"):
-                            // long-press opens the album menu again.
+
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuState.show {
                                 YouTubeAlbumMenu(
@@ -471,22 +430,13 @@ fun NewReleaseScreen(
             }
         }
 
-        // Persistent glass pills + header haze (History-page behaviour). The
-        // search pill activates the same in-bar SearchBar flow the normal
-        // top bar's search icon used, so the feature is fully preserved.
         if (glassHeader.liquidGlassActive && !isSearchActive) {
             GlassScreenHeaderOverlay(
                 header = glassHeader,
                 title = stringResource(R.string.new_releases),
                 onBack = navController::navigateUp,
                 onBackLongClick = navController::backToMain,
-                // Trailing liquid-glass pill (2026-09-06, user request:
-                // "add an edit icon in liquid glass on the right header that
-                // lets me manually select as much as I like manually and then
-                // I can mark them as read"): the selection-mode pen +
-                // search, the same two affordances the plain top bar's
-                // actions carry. In selection mode the pen becomes a close
-                // button that clears the selection and exits.
+
                 trailing = {
                     Box(
                         modifier = Modifier.size(48.dp),
@@ -532,13 +482,6 @@ fun NewReleaseScreen(
             )
         }
 
-        // Selection action bar (2026-09-06) — appears only in selection mode
-        // with at least one release selected. "Mark as read" removes the
-        // selected releases from the feed (persisted via the ViewModel, the
-        // matching system notifications are cancelled), clears the selection
-        // and shows a "Marked as read" toast. "Select all" selects every
-        // release currently in the feed so the previous mark-all-read
-        // capability remains available through manual selection.
         AnimatedVisibility(
             visible = isSelectionMode && selectedReleaseIds.isNotEmpty(),
             enter =
@@ -579,7 +522,7 @@ fun NewReleaseScreen(
                     Spacer(Modifier.weight(1f))
                     TextButton(
                         onClick = {
-                            // Select every release currently in the feed.
+
                             val state = uiState
                             if (state is NewReleaseUiState.Success) {
                                 selectedReleaseIds.addAll(
@@ -683,8 +626,6 @@ private fun NewReleaseGridContent(
             if (selectedTab == NewReleaseTab.All) emptyList() else content.releasesFor(selectedTab)
         }
 
-    // Apply search filter to releases — matches album title OR artist name,
-    // case-insensitive. Empty query = no filtering.
     val query = searchQuery.trim()
     fun matchesQuery(album: AlbumItem): Boolean {
         if (query.isEmpty()) return true
@@ -700,13 +641,6 @@ private fun NewReleaseGridContent(
         else allSections.map { it.copy(releases = it.releases.filter(::matchesQuery)) }.filter { it.releases.isNotEmpty() }
     }
 
-    // Progressive rendering (2026-09-06, user request: "it should just
-    // display the total number and not load everything at once — only load
-    // when I scroll"). The full dataset is known (the summary header shows
-    // the total count immediately) but only the first `visibleCount` releases
-    // are composed into the tab grids; scrolling near the end reveals the
-    // next batch. The "All" tab's horizontal sections are already lazy (a
-    // LazyHorizontalGrid), so they compose on scroll natively.
     val gridState = rememberLazyGridState()
     var visibleCount by rememberSaveable(selectedTab) { mutableStateOf(NewReleaseVisibleBatchSize) }
 
@@ -724,8 +658,6 @@ private fun NewReleaseGridContent(
         }
     }
 
-    // Hoisted above the LazyVerticalGrid content lambda (which is not a
-    // @Composable context — only the per-item content lambdas are).
     val visibleReleases = remember(filteredReleases, visibleCount) {
         filteredReleases.take(visibleCount)
     }
@@ -812,9 +744,7 @@ private fun NewReleaseGridContent(
                     coroutineScope = coroutineScope,
                     onReleaseClick = onReleaseClick,
                     onReleaseLongClick = onReleaseLongClick,
-                    // animateItem is a LazyGridItemScope extension — it must
-                    // be invoked inside the items {} lambda, so it is applied
-                    // to the passed-in modifier instead of inside the composable.
+
                     itemModifier = Modifier.animateItem(),
                 )
             }
@@ -822,19 +752,10 @@ private fun NewReleaseGridContent(
     }
 }
 
-/** Number of releases composed per progressive-rendering batch. */
 private const val NewReleaseVisibleBatchSize = 24
 
-/** Grid items remaining before the next batch is revealed. */
 private const val NewReleasePrefetchDistance = 8
 
-/**
- * A release grid item with selection affordances. Outside selection mode this
- * is exactly the previous [YouTubeGridItem] with its click/long-click
- * behavior. Inside selection mode a translucent scrim, a selection border and
- * a circular check badge are layered on top, and taps toggle selection (via
- * [onReleaseClick], which routes to the selection handler in selection mode).
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SelectableReleaseItem(
@@ -945,10 +866,7 @@ private fun NewReleaseSectionHeader(
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Leading icon in a circular container — matches the Home page's
-            // HomeSectionLeadingIcon pattern (e.g. clock for Recently Played,
-            // bolt for Speed Dial) so every section header across the app has
-            // a recognisable affordance before its title.
+
             if (leadingIcon != null) {
                 Box(
                     modifier = Modifier
@@ -973,7 +891,7 @@ private fun NewReleaseSectionHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.width(8.dp))
-            // Compact count chip — small rounded background with the count.
+
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -1034,19 +952,6 @@ private fun NewReleaseHorizontalSection(
     }
 }
 
-/**
- * Modern summary header — replaces the old frosted-glass summary card.
- *
- * Layout:
- *  - Top row: "Total releases" label + count number grouped together on the
- *    left (so the number sits beside the label, not floating at the right
- *    edge — user-requested fix), with a search affordance icon on the right
- *  - Bottom: tab strip as a horizontally-scrollable row of clean tonal chips
- *    (scrollable so 4 tabs never truncate "Albums" → "Albu" on narrow screens)
- *
- * No frosted glass, no oversized rounded container — just typography +
- * a clean tab strip.
- */
 @Composable
 private fun NewReleaseSummaryHeader(
     content: NewReleaseContent,
@@ -1059,18 +964,13 @@ private fun NewReleaseSummaryHeader(
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-        // Total releases — label and count grouped together on the LEFT so
-        // the count number reads as part of the label (e.g. "Total releases 200")
-        // rather than floating alone at the right edge of the screen. The
-        // search affordance icon is rendered by the top app bar instead.
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            // Small leading icon — matches the section header pattern so the
-            // summary header has the same visual language as the per-section
-            // headers below it.
+
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -1091,7 +991,7 @@ private fun NewReleaseSummaryHeader(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // Count number — bold and prominent, immediately after the label.
+
             Text(
                 text = content.totalReleases.toString(),
                 style = MaterialTheme.typography.headlineMedium,
@@ -1102,9 +1002,6 @@ private fun NewReleaseSummaryHeader(
 
         Spacer(Modifier.height(16.dp))
 
-        // Modern tab strip — clean chips with no frosted pill background.
-        // Horizontally scrollable so all 4 tab labels ("All", "Albums",
-        // "Singles", "EP") are fully visible regardless of screen width.
         NewReleaseTabs(
             selectedTab = selectedTab,
             onTabSelected = onTabSelected,

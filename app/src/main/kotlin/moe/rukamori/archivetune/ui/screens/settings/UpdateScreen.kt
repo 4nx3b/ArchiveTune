@@ -89,7 +89,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -411,7 +410,7 @@ fun UpdateScreen(
                 }
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showEnableUpdateNotificationConfirmDialog = false
@@ -445,7 +444,7 @@ fun UpdateScreen(
                 )
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showCanaryChannelConfirmDialog = false
@@ -501,25 +500,11 @@ fun UpdateScreen(
             UpdateChannel.STABLE -> stringResource(R.string.updates_subtitle_stable)
         }
 
-    // Header haze (2026-09-04, user request: "There's no haze effect and
-    // header behaviour like home page in developer options, updates and
-    // about page") — the same progressive top-fade blur the Home route and
-    // the other settings screens use: the scrolling content is the haze
-    // source, the header zone blurs whatever scrolls under it, and the bar
-    // itself stays transparent so the frost is actually visible.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
-        // Fixed (2026-09-04, user report: "There's empty space between headers
-        // and actual content in updates and account settings page"): the
-        // MediumFlexibleTopAppBar reserved its full EXPANDED height (~112dp)
-        // even with an empty title, so a dead band sat between the pill header
-        // and the first content card. A pinned single-row TopAppBar (the exact
-        // DebugSettings/ContentSettings pattern) replaces it — same transparent
-        // colors, same FrostedHeaderPill navigation slot, no expanded state to
-        // reserve. The LazyColumn keeps its contentPadding top so the content
-        // still flows under the transparent bar into the header haze.
+
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -572,10 +557,7 @@ fun UpdateScreen(
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // Haze source for the header's top-fade blur — the top
-                    // spacing lives in contentPadding so it scrolls away and
-                    // content flows under the (transparent) header, exactly
-                    // like every ported settings screen.
+
                     .hazeSource(headerHaze),
             contentPadding =
                 PaddingValues(
@@ -668,9 +650,6 @@ fun UpdateScreen(
             }
         }
 
-            // Header haze overlay — later sibling of the scrolling content
-            // so it draws on top of it, under the pinned pill header (the
-            // same placement every ported settings screen uses).
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
@@ -701,7 +680,7 @@ fun UpdateScreen(
                 )
             },
             confirmButton = {
-KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+KeepStatusBarHiddenInDialog()
 },
         )
     }
@@ -779,7 +758,7 @@ KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog windo
                 }
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         updateDownloadJob?.cancel()
@@ -831,7 +810,7 @@ KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog windo
                 )
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = { showUpdateUpToDateDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -864,7 +843,7 @@ KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog windo
                 )
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = { showUpdateErrorDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }

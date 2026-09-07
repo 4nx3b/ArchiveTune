@@ -798,7 +798,7 @@ private fun LocalSongScanSheet(
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         tonalElevation = 2.dp,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier =

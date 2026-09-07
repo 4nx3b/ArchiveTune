@@ -468,7 +468,7 @@ private fun <T> PreferenceSelectionBottomSheet(
             )
         },
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier

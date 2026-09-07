@@ -55,58 +55,42 @@ object CompactYtDlp {
     private const val YTDLNIS_PYTHON_PLUGIN = "com.deniscerri.ytdl.python"
     private const val YOUTUBEDL_ANDROID = "com.yausername.youtubedl-android"
 
-    /**
-     * True if an external yt-dlp runtime is already installed and executable.
-     * Checks (in order): YTDLnis python plugin APK's nativeLibraryDir, YTDLnis main APK,
-     * youtubedl-android, and a previously-downloaded `filesDir/ytdlnis/yt-dlp` binary.
-     * No download is triggered here — that is the user's explicit action in settings.
-     */
     fun isAvailable(context: Context): Boolean = resolvePythonExecutable(context) != null
 
-    /**
-     * Returns the python executable File if a plugin APK is installed, else null.
-     * Mirrors YTDLnis `Python.getInstance().location.executable` discovery:
-     * `nativeLibraryDir/libpython.so` plus extraction dir for `libpython.zip.so`.
-     */
     fun resolvePythonExecutable(context: Context): File? {
         val pm = context.packageManager
         val candidates = listOf(YTDLNIS_PYTHON_PLUGIN, YTDLNIS_PACKAGE, YOUTUBEDL_ANDROID)
         for (pkg in candidates) {
             try {
                 val ai = pm.getApplicationInfo(pkg, 0)
-                // YTDLnis plugins expose libpython.so in nativeLibraryDir
+
                 val libDir = File(ai.nativeLibraryDir)
                 val pythonSo = File(libDir, "libpython.so").takeIf { it.exists() }
                     ?: File(libDir, "libpython3.11.so").takeIf { it.exists() }
                 if (pythonSo != null && pythonSo.canExecute()) return pythonSo
-                // Fallback: some plugin versions keep `python` as executable under files
+
                 val alt = File(ai.dataDir, "files/python/bin/python").takeIf { it.exists() }
                 if (alt != null) return alt
             } catch (_: PackageManager.NameNotFoundException) {
                 continue
             }
         }
-        // Locally cached yt-dlp python (if user previously installed via settings)
+
         val cached = File(context.noBackupFilesDir, "ytdlnis/yt-dlp-python/bin/python")
         if (cached.exists() && cached.canExecute()) return cached
         return null
     }
 
     fun resolveYtDlpBinary(context: Context): File? {
-        // YTDLnis stores yt-dlp under noBackupFilesDir/ytdlnis/yt-dlp
+
         val cached = File(context.noBackupFilesDir, "ytdlnis/yt-dlp/yt-dlp")
         if (cached.exists() && cached.canExecute()) return cached
         val fallback = File(context.filesDir, "ytdlnis/yt-dlp/yt-dlp")
         if (fallback.exists()) return fallback
-        // Raw bundled fallback (if ever re-added): `res/raw/ytdlp` → files
+
         return null
     }
 
-    /**
-     * Minimal ProcessBuilder invocation for `--dump-json` probing.
-     * Returns the raw JSON stdout or null on failure. Caller is responsible for
-     * parsing and for not blocking the main thread.
-     */
     fun dumpJson(context: Context, videoId: String, extraArgs: List<String> = emptyList()): String? {
         val python = resolvePythonExecutable(context) ?: return null
         val ytdlp = resolveYtDlpBinary(context) ?: return null
@@ -114,10 +98,10 @@ object CompactYtDlp {
         val cmd = mutableListOf(python.absolutePath, ytdlp.absolutePath, "--dump-json", "--no-playlist", "--quiet") + extraArgs + url
         return try {
             val pb = ProcessBuilder(cmd).redirectErrorStream(true)
-            // Mirror YTDLnis env: LD_LIBRARY_PATH includes app nativeLibraryDir
+
             pb.environment()["LD_LIBRARY_PATH"] = buildString {
                 append(context.applicationInfo.nativeLibraryDir)
-                // Append plugin ld dir if available
+
                 try {
                     val ai = context.packageManager.getApplicationInfo(YTDLNIS_PYTHON_PLUGIN, 0)
                     append(":").append(File(ai.nativeLibraryDir).absolutePath)

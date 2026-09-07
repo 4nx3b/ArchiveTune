@@ -115,10 +115,7 @@ class OnlineSearchViewModel
                     .searchSummary(query)
                     .onSuccess {
                         val aiContentFilterPolicy = loadAiContentFilterPolicy()
-                        // filterUnsupportedEpisodes (2026-09-05): podcast/audiobook episodes
-                        // parse as plain song rows through the permissive isSong heuristic and
-                        // rendered as results the app has no surface for — drop them so a
-                        // search only shows content the app actually supports.
+
                         val contentFilteredPage =
                             it
                                 .filterExplicit(context.dataStore.get(HideExplicitKey, false))

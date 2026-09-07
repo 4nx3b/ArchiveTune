@@ -268,10 +268,7 @@ private fun NewMiniPlayer(
             useArtworkBackground =
                 effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
                     effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW,
-            // Liquid Glass mode samples app PAGE CONTENT (not artwork), so
-            // the surface renders bright in light mode — white content would
-            // be nearly invisible (user report 2026-09-03). It needs the
-            // theme-aware glass ink instead of the artwork-white set.
+
             useLiquidGlass = effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
@@ -331,9 +328,7 @@ private fun rememberMiniPlayerContentColors(
     useLiquidGlass: Boolean = false,
 ): MiniPlayerContentColors {
     val colorScheme = MaterialTheme.colorScheme
-    // Theme-aware ink for the Liquid Glass mini player: near-black in light
-    // mode (the glass samples bright page content), Color.White in dark
-    // mode (unchanged). See [liquidGlassContentColor].
+
     val glassInk = liquidGlassContentColor()
     return remember(
         useArtworkBackground,
@@ -367,11 +362,7 @@ private fun rememberMiniPlayerContentColors(
                 togetherContent = Color.White,
             )
         } else if (useLiquidGlass) {
-            // Liquid Glass variant: same structure as the artwork set but
-            // driven by the theme-aware glass ink. Dark mode resolves to the
-            // exact same values as the artwork set (glassInk == White there,
-            // and the play-button container/icon pair stays White/Black), so
-            // the dark-mode Liquid Glass look is byte-for-byte unchanged.
+
             MiniPlayerContentColors(
                 title = glassInk,
                 secondary = glassInk.copy(alpha = 0.72f),
@@ -380,10 +371,7 @@ private fun rememberMiniPlayerContentColors(
                 artworkContainer = glassInk.copy(alpha = 0.14f),
                 artworkBorder = glassInk.copy(alpha = 0.22f),
                 primaryButtonContainer = glassInk.copy(alpha = 0.92f),
-                // Icon inside the play-button container: inverted from the
-                // container so it stays visible in both themes (white
-                // container / black icon in dark mode, dark container /
-                // white icon in light mode).
+
                 primaryButtonIcon = if (glassInk == Color.White) Color.Black else Color.White,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = glassInk,

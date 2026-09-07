@@ -371,19 +371,6 @@ fun AiIntegrationSettings(
     val positions = rememberPreferencePositions()
     androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
-    // ── Home-screen header haze (2026-09-05, revised) ──
-    // The 2026-09-05 morning attempt recorded the Column into a kyant
-    // layerBackdrop for a glass pill in the TopAppBar — but the pill and
-    // the recorded layer never overlap (the bar overlays the NavHost Box
-    // while the recording only covered the area below the bar), so the pill
-    // rendered opaque with no visible blur (user report: "liquid glass but
-    // the background is opaque and there's no haze effect"). This now uses
-    // the canonical pattern the 30+ approved settings screens use
-    // (PlayerSettings et al.): the scrolling Column is the haze source (its
-    // top Spacer already reserves the bar zone INSIDE the scroll, so items
-    // scroll up under the transparent bar into the blur), the
-    // ScreenHeaderHaze overlay renders the progressive top-fade blur, and
-    // the pill is the plain single-pill look.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -786,8 +773,6 @@ fun AiIntegrationSettings(
         }
     }
 
-    // Header haze overlay — drawn ON TOP of the scrolling content (later
-    // sibling), UNDER the transparent TopAppBar (emitted after it).
     ScreenHeaderHaze(
         hazeState = headerHaze,
         systemBarsTopPadding = systemBarsTopPadding,
@@ -821,7 +806,7 @@ fun AiIntegrationSettings(
             }
         },
     )
-    } // end full-screen haze Box
+    }
 }
 
 @Composable
@@ -1053,7 +1038,7 @@ private fun ModelPickerPreference(
             shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
             containerColor = MaterialTheme.colorScheme.surface,
         ) {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+            KeepStatusBarHiddenInDialog()
             Text(
                 text = stringResource(R.string.ai_model),
                 style = MaterialTheme.typography.headlineMedium,

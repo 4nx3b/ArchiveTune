@@ -671,7 +671,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 )
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false

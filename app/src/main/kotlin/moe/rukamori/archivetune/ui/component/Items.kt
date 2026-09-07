@@ -1398,14 +1398,7 @@ fun YouTubeListItem(
                 },
             badges = badges,
             thumbnailContent = {
-                // Video (landscape-source) thumbnails keep their REAL breadth
-                // and width (user request 2026-09-04: "The thumbnails should
-                // have their actual breadth and width without any borders")
-                // instead of being cropped into the square row frame — a
-                // landscape source renders a 16:9 row thumbnail exactly like
-                // the YouTube Music app's video rows; square sources stay
-                // square. The frame matches the image, so ContentScale fills
-                // it perfectly — no letterbox bands, no crop.
+
                 val rowRatio =
                     item.thumbnailSourceRatio
                         ?.takeIf { it >= 4f / 3f }
@@ -1698,12 +1691,7 @@ fun ItemThumbnail(
         val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
         val isSquareFrame = kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
         val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && isSquareFrame
-        // YouTube video thumbnails are 16:9 while the frame here is square; with
-        // ContentScale.Fit they letterbox, leaving the empty bands the user
-        // reported as "white empty borders of the music videos" (2026-09-04).
-        // Crop fills the square instead — a no-op for the square artwork songs
-        // and albums use, and local/non-YouTube artwork keeps Fit so the
-        // user's own images are never cut off.
+
         val resolvedContentScale =
             contentScale
                 ?: if (shouldApplySquareCrop || (isYouTubeThumb && isSquareFrame)) ContentScale.Crop else ContentScale.Fit
@@ -2277,14 +2265,7 @@ private object Icon {
     ) {
         when (state) {
             STATE_COMPLETED -> {
-                // One-shot Lottie completion burst (download started →
-                // downloading → completed): when this row's download
-                // transitions into COMPLETED from any other live state, the
-                // static offline icon is briefly replaced by a checkmark burst
-                // animation, then reverts. Purely decorative — the download
-                // state machine remains the source of truth. Rows that were
-                // already completed when composed show the static icon (no
-                // burst), so scrolling doesn't replay animations.
+
                 var burstTrigger by remember { mutableStateOf<Any?>(null) }
                 var lastSeenState by remember { mutableStateOf<Int?>(null) }
                 LaunchedEffect(state) {

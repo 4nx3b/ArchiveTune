@@ -83,14 +83,8 @@ class NewReleaseViewModel
         private val _uiState = MutableStateFlow<NewReleaseUiState>(NewReleaseUiState.Loading)
         val uiState = _uiState.asStateFlow()
 
-        // ── Read-marker state (2026-09-05) ─────────────────────────────────
-        // Releases the user marked as read on the page (header button or
-        // long-press). The screen hides them; the writes go to
-        // ReadNewReleaseIdsKey (kept separate from the notification worker's
-        // SeenNewReleaseIdsKey baseline on purpose — see PreferenceKeys.kt).
         private var readIds: Set<String> = emptySet()
 
-        /** The full filtered catalogue of the last successful load. */
         private var lastCatalogue: List<AlbumItem> = emptyList()
 
         init {
@@ -106,10 +100,7 @@ class NewReleaseViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 _uiState.value = NewReleaseUiState.Loading
                 try {
-                    // Fast path (user report 2026-09-06: "the new releases
-                    // loading is extremely slow"): serve a recent in-memory
-                    // snapshot of the full enriched catalogue instantly and
-                    // only re-fetch once the cache is stale.
+
                     val cacheSnapshot = CachedCatalogue.get()
                     if (cacheSnapshot != null) {
                         lastCatalogue = cacheSnapshot
@@ -119,29 +110,9 @@ class NewReleaseViewModel
 
                     val albums = YouTube.newReleaseAlbums().getOrThrow()
 
-                    // ── Fast first paint (2026-09-06, user report: "it should
-                    // just display the total number and not load everything
-                    // at once") ─────────────────────────────────────────────
-                    // Emit the browse grid immediately after the single
-                    // browse request — the page shows the count + releases in
-                    // one request's time. The enrichment below continues in
-                    // the background and re-emits the full catalogue when it
-                    // lands.
                     lastCatalogue = albums.distinctBy { it.id }
                     reemitContent()
 
-                    // ── Catalogue enrichment (2026-09-05, user report:
-                    // "new releases are still capped at max 200 entries") ──
-                    // A live probe of FEmusic_new_releases_albums shows the
-                    // browse page serves ONE grid (~177-200 items) with no
-                    // continuation tokens, so the continuation sweep in core
-                    // has nothing to follow — the endpoint itself is the cap.
-                    // Two more real sources are merged on top:
-                    //  1) the Explore page's "New albums & singles" carousel,
-                    //  2) every SUBSCRIBED artist's own album/singles/EP
-                    //     sections (their newest releases first) — the exact
-                    //     tail the capped grid was missing, and the releases
-                    //     the notification feature exists for.
                     val enriched = enrichCatalogue(albums)
 
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
@@ -181,9 +152,7 @@ class NewReleaseViewModel
                     throw cancellation
                 } catch (t: Throwable) {
                     reportException(t)
-                    // Keep serving the last snapshot (or the intermediate
-                    // browse-grid emit) when a refresh fails — stale content
-                    // beats an error screen for a notification feed.
+
                     if (lastCatalogue.isEmpty()) {
                         _uiState.value = NewReleaseUiState.Error
                     } else {
@@ -193,11 +162,6 @@ class NewReleaseViewModel
             }
         }
 
-        /**
-         * Merges the extra sources into the browse-grid catalogue, deduped by
-         * release id (the browse grid's items win — they carry the richest
-         * releaseType/artist metadata).
-         */
         private suspend fun enrichCatalogue(baseAlbums: List<AlbumItem>): List<AlbumItem> {
             val exploreItems =
                 runCatching {
@@ -225,17 +189,6 @@ class NewReleaseViewModel
             return (baseAlbums + exploreItems + swept).distinctBy { it.id }
         }
 
-        /**
-         * One artist page per subscribed artist (4 at a time, capped at
-         * [MAX_SWEEP_ARTISTS]): their sections' AlbumItems, newest-first as
-         * the page orders them, kept to the current/previous year so the
-         * "New releases" page stays a feed of NEW releases rather than the
-         * artists' whole discographies. The section title carries the
-         * release type ("Albums"/"Singles"/"EPs") the artist page parse
-         * itself doesn't populate, and the sweeping artist is credited when
-         * the parsed item has no artist list (the ArtistPage parse leaves
-         * artists null).
-         */
         private suspend fun sweepSubscribedArtists(artists: List<Pair<String, String>>): List<AlbumItem> {
             val currentYear = Year.now().value
             val semaphore = Semaphore(SWEEP_CONCURRENCY)
@@ -274,25 +227,11 @@ class NewReleaseViewModel
                 }
             }.flatten()
                 .filter { album ->
-                    // Keep it NEW: the current or previous year (or unknown —
-                    // some parse paths don't populate year; the artist sweep
-                    // itself is the "new from an artist you follow" signal).
+
                     val year = album.year
                     year == null || year >= currentYear - 1
                 }
         }
-
-        // ── Read-marker API (2026-09-05) ───────────────────────────────────
-        //
-        // "in new releases page add a button on the right side of the header
-        // in liquid glass. When I click on it all the new album, single, eds
-        // notifications should get cleared and a toast should appear that
-        // says marked as read. This should also appear when I long press any
-        // album, ed or a single songs thumbnail. That should individually
-        // clear that selected item and mark it as read." — the screen calls
-        // these; the DataStore collector re-emits the page content without
-        // the newly-read ids, and the matching system notifications are
-        // cancelled.
 
         private fun observeReadIds() {
             viewModelScope.launch(Dispatchers.IO) {
@@ -306,7 +245,6 @@ class NewReleaseViewModel
             }
         }
 
-        /** Marks every currently-visible release as read. */
         fun markAllRead() {
             val visible = lastCatalogue.filter { it.id !in readIds }.map { it.id }
             if (visible.isEmpty()) return
@@ -316,7 +254,6 @@ class NewReleaseViewModel
             }
         }
 
-        /** Marks a single release as read (long-press on its thumbnail). */
         fun markRead(releaseId: String) {
             if (releaseId in readIds) return
             NewReleaseNotificationManager.cancelNotifications(context, listOf(releaseId))
@@ -325,14 +262,6 @@ class NewReleaseViewModel
             }
         }
 
-        /**
-         * Marks an arbitrary set of releases as read (2026-09-06, user
-         * request: "Add an edit icon in liquid glass on the right header that
-         * lets me manually select as much as I like manually and then I can
-         * mark them as read"). Used by the selection mode's action bar; the
-         * DataStore collector re-emits the content without these ids and the
-         * matching system notifications are cancelled.
-         */
         fun markAsRead(ids: Set<String>) {
             if (ids.isEmpty()) return
             val newIds = ids.filter { it.isNotBlank() && it !in readIds }
@@ -350,11 +279,6 @@ class NewReleaseViewModel
             }
         }
 
-        /**
-         * Re-emits the UI state from the last catalogue minus the read ids.
-         * No-op while the initial load is still in flight (Loading) or the
-         * catalogue is empty — the load path owns those transitions.
-         */
         private fun reemitContent() {
             if (lastCatalogue.isEmpty()) return
             val visible = lastCatalogue.filter { it.id !in readIds }
@@ -374,26 +298,14 @@ class NewReleaseViewModel
             )
 
         private companion object {
-            /** Bounded size of the read-id CSV (newest first, like the seen set). */
+
             const val READ_IDS_LIMIT = 500
 
-            /** Subscribed artists swept per load — 2 requests' worth each is plenty. */
             const val MAX_SWEEP_ARTISTS = 30
 
-            /** Concurrent artist-page requests during the sweep. */
             const val SWEEP_CONCURRENCY = 4
         }
 
-        /**
-         * Process-wide cache of the last fully enriched New Releases catalogue
-         * (2026-09-06, user report: "the new releases loading is extremely
-         * slow"). The screen's ViewModel is navigation-scoped (a new instance
-         * per visit), which previously forced the full network sweep
-         * (browse + Explore + up to 30 subscribed artist pages) on every
-         * visit. Caching the final enriched catalogue for a few minutes makes
-         * repeat visits instant; the read-marker filtering is applied on top
-         * of whatever the cache serves.
-         */
         private object CachedCatalogue {
             private const val TTL_MS = 5 * 60 * 1000L
 

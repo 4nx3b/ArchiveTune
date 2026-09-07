@@ -122,12 +122,8 @@ fun LibrarySongsScreen(
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
     val lazyListState = rememberLazyListState()
 
-    // Stable status-bar + cutout top inset (see LibraryArtistsScreen for the
-    // notch rationale) — combined with AppBarHeight it forms the bar-zone
-    // clearance this screen now owns since the Library root went full-bleed.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Issue 2: player-aware bottom padding so content is never hidden behind nav bar + miniplayer
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
             .only(WindowInsetsSides.Bottom)
@@ -171,24 +167,18 @@ fun LibrarySongsScreen(
         isRefreshing = isRefreshing,
         onRefresh = { viewModel.refresh(filter) },
         modifier = Modifier.fillMaxSize(),
-        // indicatorOffset intentionally omitted: the box now spans the full
-        // window (the Library root no longer pads the top inset below the
-        // bar), so the default (status bar + app bar) places the indicator
-        // just under the pinned bar.
+
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // 2026-09-04 library redesign: the bar zone (status bar +
-                    // app bar) the Library root's windowInsetsPadding used to
-                    // provide now lives here — the sub-filter row starts just
-                    // below the pinned bar, matching the Home feed's spacing.
+
                     .padding(
                         top = systemBarsTopPadding + AppBarHeight + LibraryHeaderContentPadding,
                     ),
         ) {
-            // Sub-Filters Row (All Songs, Downloaded, Liked)
+
             Row(
                 modifier =
                     Modifier
@@ -198,19 +188,19 @@ fun LibrarySongsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Liked
+
                 SongSubFilterChip(
                     label = stringResource(R.string.filter_liked),
                     selected = filter == SongFilter.LIKED,
                     onClick = { filter = SongFilter.LIKED },
                 )
-                // Downloaded
+
                 SongSubFilterChip(
                     label = stringResource(R.string.filter_downloaded),
                     selected = filter == SongFilter.DOWNLOADED,
                     onClick = { filter = SongFilter.DOWNLOADED },
                 )
-                // All Songs
+
                 SongSubFilterChip(
                     label = stringResource(R.string.all_songs),
                     selected = filter == SongFilter.LIBRARY,
@@ -219,9 +209,8 @@ fun LibrarySongsScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Dropdown sort trigger
                 var showSortMenu by remember { mutableStateOf(false) }
-                // Issue 4 fix: A-Z label shows ascending direction arrow
+
                 val currentSortLabel =
                     when (sortType) {
                         SongSortType.CREATE_DATE -> {
@@ -280,7 +269,6 @@ fun LibrarySongsScreen(
                                 when (type) {
                                     SongSortType.CREATE_DATE -> stringResource(R.string.recently_added)
 
-                                    // Issue 4: select NAME always sets ascending (A→Z) by default
                                     SongSortType.NAME -> stringResource(R.string.sort_a_to_z)
 
                                     SongSortType.ARTIST -> stringResource(R.string.sort_artist)
@@ -291,7 +279,7 @@ fun LibrarySongsScreen(
                                 text = { Text(label) },
                                 onClick = {
                                     onSortTypeChange(type)
-                                    // A-Z sort should default to ascending
+
                                     if (type == SongSortType.NAME) onSortDescendingChange(false)
                                     showSortMenu = false
                                 },
@@ -300,7 +288,6 @@ fun LibrarySongsScreen(
                     }
                 }
 
-                // Sort direction toggle button
                 Spacer(modifier = Modifier.width(4.dp))
                 Box(
                     modifier =
@@ -333,12 +320,12 @@ fun LibrarySongsScreen(
 
             LazyColumn(
                 state = lazyListState,
-                // Issue 2: use player-aware window insets for bottom padding
+
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = playerAwareBottomPadding),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                // Spotlight Collection Card
+
                 item(key = "collection_spotlight") {
                     Box(
                         modifier =
@@ -388,7 +375,6 @@ fun LibrarySongsScreen(
                                     )
                                 }
 
-                                // Play Button inside spotlight
                                 Button(
                                     onClick = {
                                         if (filteredSongs.isNotEmpty()) {
@@ -432,8 +418,6 @@ fun LibrarySongsScreen(
                     val song = songWrapper.item
                     val isActive = song.id == mediaMetadata?.id
 
-                    // Issue 7: active song gets fully rounded shape + artwork-based color
-                    // inactive songs use theme color and are more rounded than before
                     val activeCardColor =
                         rememberArtworkCardColor(
                             thumbnailUrl = song.song.thumbnailUrl,
@@ -441,7 +425,6 @@ fun LibrarySongsScreen(
                         )
                     val inactiveCardColor = MaterialTheme.colorScheme.surfaceContainerLow
 
-                    // Issue 6: divider between cards visible in pure black dark theme
                     val showDivider = isDarkTheme && pureBlack && index > 0
                     if (showDivider) {
                         HorizontalDivider(
@@ -451,7 +434,6 @@ fun LibrarySongsScreen(
                         )
                     }
 
-                    // Issue 7: Active corners 36.dp, inactive 24.dp
                     val cornerRadius = if (isActive) 36.dp else 24.dp
                     val topPadding = if (index == 0 || showDivider) 0.dp else 8.dp
 
@@ -490,7 +472,7 @@ fun LibrarySongsScreen(
                                 ).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Thumbnail — fully circular when active
+
                         val thumbCorner = if (isActive) 26.dp else 10.dp
                         ItemThumbnail(
                             thumbnailUrl = song.song.thumbnailUrl,
@@ -506,7 +488,6 @@ fun LibrarySongsScreen(
 
                         Spacer(modifier = Modifier.width(14.dp))
 
-                        // Song Details (Issue 7: onPrimaryContainer on active dynamic background for legibility)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = song.song.title,
@@ -534,7 +515,6 @@ fun LibrarySongsScreen(
                             )
                         }
 
-                        // Play/Wave indicators & duration pill
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -548,7 +528,6 @@ fun LibrarySongsScreen(
                                 )
                             }
 
-                            // Issue 1: Real duration pill using makeTimeString
                             val durationText = makeTimeString(song.song.duration * 1000L)
                             Box(
                                 modifier =
@@ -573,7 +552,6 @@ fun LibrarySongsScreen(
                                 )
                             }
 
-                            // More options
                             IconButton(
                                 onClick = {
                                     menuState.show {

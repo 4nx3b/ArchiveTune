@@ -98,34 +98,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 private val QueuePillHeight = 48.dp
 private val QueuePillCornerRadius = 16.dp
 
-/**
- * In-place queue sheet for the Apple Music player. Ported from ViviMusic's
- * QueueV2 with the following adaptations:
- *
- * - Uses ArchiveTune's [LocalPlayerConnection] / [LocalMenuState] /
- *   [LocalBottomSheetPageState] instead of ViviMusic's locals.
- * - Renders on a transparent background — the Apple Music player's blurred
- *   artwork + scrim shows through, matching ViviMusic's "queue-on-blur"
- *   look exactly.
- * - Uses [PlayerMenu] (with `isQueueTrigger = true`) instead of ViviMusic's
- *   dedicated QueueMenu — ArchiveTune consolidates both menus.
- * - Uses ArchiveTune's [MediaMetadataListItem]; wraps it in a clipped Box
- *   so the active / idle pill-style background matches ViviMusic.
- * - Defaults the edit-lock to TRUE (ArchiveTune's default), unlike
- *   ViviMusic which defaults to false. Users who want swipe-to-remove can
- *   unlock explicitly via the lock toggle in the header.
- *
- * @param navController The app's NavController, forwarded to PlayerMenu for
- *   "go to album / artist" actions.
- * @param playerBottomSheetState The outer player BottomSheetState, forwarded
- *   to PlayerMenu so it can collapse the player before navigating.
- * @param modifier The modifier applied to the root Column.
- * @param onClose Optional close affordance. When non-null, a close (X) icon
- *   renders left of the edit-lock in the header row — for hosts that present
- *   the sheet as an overlay WITHOUT their own header/back path (the TikTok
- *   feed player). Null (the Apple Music player, the original host) renders
- *   the header exactly as before — title + lock only.
- */
 @Composable
 fun AppleMusicQueueSheet(
     navController: NavController,
@@ -147,8 +119,6 @@ fun AppleMusicQueueSheet(
 
     var locked by rememberPreference(QueueEditLockKey, defaultValue = true)
 
-    // Sleep timer state — mirrors Queue.kt's sleep-timer block so the pill
-    // shows the remaining time and toggles the timer correctly.
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     val sleepTimerEnabled =
         remember(
@@ -173,9 +143,6 @@ fun AppleMusicQueueSheet(
         }
     }
 
-    // Adaptive text colors — the sheet renders on the Apple Music blurred
-    // artwork, so foreground is always white-tinted (mirrors ViviMusic's
-    // adaptivePrimary/Secondary for non-DEFAULT backgrounds).
     val adaptivePrimary = Color.White
     val adaptiveSecondary = Color.White.copy(alpha = 0.7f)
     val adaptiveSurface = Color.White.copy(alpha = 0.2f)
@@ -192,22 +159,9 @@ fun AppleMusicQueueSheet(
             }
         }
 
-    // Drag state — ported from Queue.kt (the bottom-sheet queue). The previous
-    // implementation tracked raw Int indices and called moveMediaItem with those
-    // display-list indices, but moveMediaItem expects TIMELINE indices (offset by
-    // currentWindowIndex). It also had no justCommittedDragUid guard, so the
-    // sync LaunchedEffect would re-populate mutableQueueWindows from the
-    // pre-timeline-update queueWindows immediately after the commit, causing
-    // the dragged item to visually "snap back". The fix mirrors Queue.kt:
-    // track the dragged item's UID + the destination anchor UID, resolve both
-    // against the full queueWindows on drag end, and skip one reset cycle so
-    // the player's onTimelineChanged has time to propagate.
     var dragInfo by remember { mutableStateOf<AMQueueDragInfo?>(null) }
     var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
-    // Auto-scroll to the current song when the queue first appears. We use
-    // a "has scrolled once" guard so the user is free to browse the queue
-    // after opening it without being yanked back.
     var hasScrolledToCurrent by remember { mutableStateOf(false) }
     LaunchedEffect(mutableQueueWindows.size, currentPlayingUid) {
         if (!hasScrolledToCurrent && currentPlayingUid != null) {
@@ -231,10 +185,6 @@ fun AppleMusicQueueSheet(
                 return@onMove
             }
 
-            // Resolve the actual source item by UID — if a drag is already in
-            // progress, keep tracking the same item; otherwise capture the UID
-            // at the drag start. This matches Queue.kt's pattern and is robust
-            // to the list being reordered under us during the drag.
             val draggedItemUid =
                 dragInfo?.draggedItemUid ?: mutableQueueWindows[fromQueueIndex].uid
             val actualFromQueueIndex =
@@ -243,10 +193,6 @@ fun AppleMusicQueueSheet(
 
             mutableQueueWindows.move(actualFromQueueIndex, toQueueIndex)
 
-            // Resolve the destination anchor: the item the dragged item should
-            // end up AFTER in the full timeline. Dropping at display position 0
-            // (the current song's slot) means "make this the next song after
-            // the current one" — same semantics as Queue.kt.
             val destinationUid: Any? =
                 if (toQueueIndex == 0) {
                     currentPlayingUid
@@ -256,19 +202,6 @@ fun AppleMusicQueueSheet(
             dragInfo = AMQueueDragInfo(draggedItemUid, destinationUid)
         }
 
-    // Combined sync + commit effect. Re-fires on every queueWindows /
-    // currentWindowIndex update AND when dragging starts/stops. Mirrors
-    // Queue.kt's three-tier logic:
-    //   1. If a drag just ended (dragInfo != null, not currently dragging):
-    //      resolve UIDs against the full queueWindows and commit via
-    //      moveMediaItem / setShuffleOrder. Mark justCommittedDragUid so the
-    //      next iteration skips the reset (lets the timeline update propagate).
-    //   2. If we just committed a drag (justCommittedDragUid != null): clear
-    //      the flag and return WITHOUT resetting mutableQueueWindows. The
-    //      next queueWindows update (from onTimelineChanged) will do the
-    //      reset using the post-move order.
-    //   3. Otherwise: re-populate mutableQueueWindows from
-    //      queueWindows.drop(currentWindowIndex).
     LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
         if (reorderableState.isAnyItemDragging) return@LaunchedEffect
 
@@ -281,10 +214,7 @@ fun AppleMusicQueueSheet(
             dragInfo = null
 
             if (sourceIndex != -1) {
-                // Resolve the actual destination timeline index. If the
-                // anchor is null (currentPlayingUid was null when the drag
-                // started, or the anchor item was removed mid-drag), fall
-                // back to "move to start of timeline".
+
                 val destinationIndex =
                     if (destinationAnchorIndex == -1) {
                         0
@@ -333,9 +263,7 @@ fun AppleMusicQueueSheet(
                 .fillMaxSize()
                 .background(Color.Transparent),
     ) {
-        // Fixed top control pills: Shuffle / Repeat / Sleep Timer.
-        // Matches ViviMusic QueueV2's pill row exactly — same 24/12 padding,
-        // same 8dp spacing, same active/inactive alpha treatment.
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -344,19 +272,6 @@ fun AppleMusicQueueSheet(
             val activeColor = adaptivePrimary.copy(alpha = 0.25f)
             val inactiveColor = adaptivePrimary.copy(alpha = 0.1f)
 
-            // Shuffle pill (2026-09-05, user request: "i wanna play my playlist
-            // songs on shuffle. But clicking on the infinite queue icon ... it
-            // randomize the queue but also add other songs in queue which are
-            // not from playlist").
-            //
-            // This pill used to carry the ∞ "infinite playback" radio action —
-            // startRadioSeamlessly() — which REMOVED the rest of the playlist
-            // and refilled the queue with automix/radio songs, i.e. exactly the
-            // "adds songs that are not from my playlist" behaviour reported.
-            // It is now a plain shuffle toggle over the queue as it stands:
-            // randomise the (playlist) order, add nothing, remove nothing.
-            // The radio action is still reachable from the player menu's
-            // "Start radio".
             Box(
                 modifier =
                     Modifier
@@ -376,7 +291,7 @@ fun AppleMusicQueueSheet(
                     modifier = Modifier.size(24.dp),
                 )
             }
-            // Repeat pill.
+
             Box(
                 modifier =
                     Modifier
@@ -400,7 +315,7 @@ fun AppleMusicQueueSheet(
                     modifier = Modifier.size(24.dp),
                 )
             }
-            // Sleep timer pill.
+
             Box(
                 modifier =
                     Modifier
@@ -436,8 +351,6 @@ fun AppleMusicQueueSheet(
             }
         }
 
-        // Queue header row: title + edit-lock toggle (plus the optional
-        // close affordance when an overlay host passed [onClose]).
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -469,7 +382,6 @@ fun AppleMusicQueueSheet(
             }
         }
 
-        // Reorderable queue list.
         LazyColumn(
             state = lazyListState,
             contentPadding = PaddingValues(bottom = 16.dp, top = 4.dp),
@@ -506,12 +418,7 @@ fun AppleMusicQueueSheet(
                     }
 
                     val content: @Composable () -> Unit = {
-                        // ViviMusic-style glassy pill background for each row.
-                        // Active row is more opaque than idle, matching the
-                        // adaptiveSurface.copy(alpha = 0.4f / 0.15f) treatment
-                        // from QueueV2.kt — but toned down (0.22 / 0.10) because
-                        // the original 0.4 was reported as too bright/glitchy
-                        // against the frosted-glass blur behind the sheet.
+
                         val rowBg =
                             if (isActive) adaptiveSurface.copy(alpha = 0.22f) else adaptiveSurface.copy(alpha = 0.10f)
                         val rowShape = RoundedCornerShape(12.dp)
@@ -530,21 +437,9 @@ fun AppleMusicQueueSheet(
                                 isActive = isActive,
                                 isPlaying = isPlaying && isActive,
                                 shouldLoadImage = true,
-                                // The sheet already paints a glassy pill behind the row
-                                // (rowBg = adaptiveSurface.copy(alpha = 0.4f / 0.15f)).
-                                // Letting ListItem also paint secondaryContainer on top
-                                // produced a bright, opaque, glitchy highlight that
-                                // fought the glass tint. Suppress the container so only
-                                // the glass pill shows.
+
                                 showActiveContainer = false,
-                                // Force song titles to always render white. Without this
-                                // override, MediaMetadataListItem falls back to
-                                // MaterialTheme.colorScheme.onSurface / onSecondaryContainer,
-                                // which is what the V9 'Material Extended' dynamic-color
-                                // system mutates based on the artwork palette — so when a
-                                // dynamic theme is active the song titles in this queue
-                                // shift to the dominant artwork color instead of staying
-                                // white like the rest of the Apple Music UI.
+
                                 textColorOverride = Color.White,
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -663,14 +558,6 @@ fun AppleMusicQueueSheet(
     }
 }
 
-/**
- * In-flight drag info for the Apple Music queue. Mirrors Queue.kt's
- * QueueDragInfo: tracks the dragged item's UID (resolved against the full
- * timeline on drag end, not the filtered display list) plus the UID of the
- * item the dragged item should end up AFTER. A null [destinationUid] means
- * "move to the very start of the timeline" — only used when the queue has no
- * current playing item.
- */
 @Immutable
 private data class AMQueueDragInfo(
     val draggedItemUid: Any,

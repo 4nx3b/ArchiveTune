@@ -294,9 +294,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -638,14 +635,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    // Canvas Check (2026-09-04, user request: "Add an option
-                    // under artwork header in playback settings named Canvas
-                    // Check which tells me all the mirrors, my own accounts,
-                    // APIs or endpoints for canvas are working or not") — a
-                    // live diagnostic over every canvas source: the official
-                    // Spotify canvaz endpoint through the user's own session,
-                    // the Apple Music canvas API, and each configured
-                    // resolver mirror.
+
                     var showCanvasCheckDialog by remember { mutableStateOf(false) }
                     Column(modifier = positions.modifierFor("canvas_check")) {
                         PreferenceEntry(
@@ -899,9 +889,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

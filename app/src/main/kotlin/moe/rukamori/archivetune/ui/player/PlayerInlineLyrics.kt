@@ -15,15 +15,6 @@ import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.playback.PlayerConnection
 
-/**
- * The current song's lyrics parsed into timed lines, or an empty list when there are none or
- * they are unsynced.
- *
- * Shared by player styles that render lyrics of their own (SimpMusic's lyrics surface), so the
- * "which lyric formats count as synced" decision is made once rather than per style. The
- * BitChord-style pane that used to replace the artwork on the classic player was removed
- * together with its "Show lyrics on player" setting (2026-09-05 user request).
- */
 @Composable
 fun rememberInlineLyricLines(playerConnection: PlayerConnection): List<LyricsEntry> {
     val entity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)

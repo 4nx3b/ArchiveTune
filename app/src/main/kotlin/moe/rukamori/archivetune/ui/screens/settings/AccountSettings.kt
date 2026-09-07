@@ -77,7 +77,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -93,9 +92,6 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.App.Companion.forgetAccount
-import android.content.Context
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import moe.rukamori.archivetune.auth.YouTubeOAuthRepository
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -175,9 +171,7 @@ fun AccountSettings(
         rememberPreference(ForceSyncOnAccountSwitchKey, false)
     val (selectedYtmPlaylists, _) = rememberPreference(SelectedYtmPlaylistsKey, "")
     val (savedAccountsJson, onSavedAccountsJsonChange) = rememberPreference(SavedAccountsKey, "")
-    // YouTubeOAuthRepository.isSignedIn is a one-shot read; observing the refresh token instead
-    // keeps the sign-in/sign-out row correct without leaving the screen, and mirrors how
-    // isLoggedIn below is derived from the cookie. The token is never rendered.
+
     val (oauthRefreshToken, _) = rememberPreference(InnerTubeOAuthRefreshTokenKey, "")
     val hasOAuthSession = oauthRefreshToken.isNotBlank()
 
@@ -280,15 +274,7 @@ fun AccountSettings(
     }
 
     Scaffold(
-        // Fixed (2026-09-04, user report: "There's empty space between headers
-        // and actual content in updates and account settings page"): the
-        // LargeFlexibleTopAppBar reserved its full EXPANDED height (~152dp) even
-        // with an empty title, leaving a dead band between the pill header and
-        // the first account row. A pinned single-row TopAppBar (the exact
-        // DebugSettings pattern) replaces it — same transparent colors, same
-        // FrostedHeaderPill navigation slot, no expanded state. The LazyColumn's
-        // top spacing stays in contentPadding so content still flows under the
-        // transparent bar into the header haze.
+
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -317,12 +303,7 @@ fun AccountSettings(
                 },
                 colors =
                     TopAppBarDefaults.topAppBarColors(
-                        // Header haze (2026-09-04, user request: "Add the same
-                        // haze effect in Account page and stats page in
-                        // settings"): the bar stays transparent so the list
-                        // scrolls under it into the progressive top-fade blur,
-                        // exactly like the Home route and the other ported
-                        // settings screens (About / Updates / Developer).
+
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
@@ -334,10 +315,7 @@ fun AccountSettings(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        // Header haze (2026-09-04): the LazyColumn below is the haze source
-        // (its top spacing is contentPadding, so content scrolls under the
-        // now-transparent header); the overlay is a later sibling so it draws
-        // on top of the list, under the pinned FrostedHeaderPill.
+
         val headerHaze = rememberScreenHeaderHaze()
         val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(
@@ -357,7 +335,7 @@ fun AccountSettings(
                         .widthIn(max = AccountContentMaxWidth)
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        // Haze source for the header's top-fade blur.
+
                         .hazeSource(headerHaze),
                 contentPadding =
                     PaddingValues(
@@ -407,12 +385,7 @@ fun AccountSettings(
                 }
 
                 item {
-                    // Browser sign-in is the only route offered now. The device-code flow used to
-                    // sit beside it, but it yields a VR Bearer that only signs /player — it cannot
-                    // reach the library, playlists or browse the way the WEB_REMIX cookie can — so
-                    // offering it as a peer of the full sign-in mostly produced half-working
-                    // accounts. The SIGN-OUT row stays: anyone who completed that flow before this
-                    // change still holds a session and must be able to end it.
+
                     val browserRowVisible = !isLoggedIn
                     val rowCount = (if (browserRowVisible) 1 else 0) + (if (hasOAuthSession) 1 else 0)
                     if (rowCount > 0) {
@@ -541,8 +514,6 @@ fun AccountSettings(
                 }
             }
 
-            // Header haze overlay — later sibling of the list so it draws on
-            // top of the scrolling content, under the pinned pill header.
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
@@ -609,7 +580,7 @@ fun AccountSettings(
                 Text(text = stringResource(R.string.unsaved_account_dialog_text))
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showUnsavedAccountDialog = false
@@ -839,7 +810,7 @@ private fun AccountSwitcherSheet(
             .orEmpty()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Text(
             text = stringResource(R.string.saved_accounts),
             style = MaterialTheme.typography.headlineSmall,
@@ -1397,5 +1368,3 @@ private fun TokenEditorDialog(
         },
     )
 }
-
-

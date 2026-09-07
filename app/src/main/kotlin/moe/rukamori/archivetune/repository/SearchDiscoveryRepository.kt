@@ -57,12 +57,7 @@ class SearchDiscoveryRepository
     constructor(
         private val database: MusicDatabase,
     ) {
-        // ── In-memory TTL cache ────────────────────────────────────────────────────────
-        //
-        // Re-entering the Search tab previously re-fired 20+ HTTP requests every time,
-        // making the tab feel permanently slow. Cache the last successful discovery
-        // snapshot for a short window so the user sees content immediately on re-entry
-        // and only pays the network cost on pull-to-refresh / cache expiry.
+
         private data class CachedSnapshot(
             val data: SearchDiscoveryData,
             val expiresAtMs: Long,
@@ -70,29 +65,9 @@ class SearchDiscoveryRepository
 
         private val cache = ConcurrentHashMap<String, CachedSnapshot>(1)
 
-        // ── Single-flight + stale-while-revalidate (2026-09-04) ─────────────────
-        //
-        // "Make the search tab load extremely fast": three changes that keep
-        // the perceived load at ~zero —
-        //  1. Single-flight: concurrent callers (the app-start warm-up and a
-        //     user who taps Search early) share ONE network load instead of
-        //     doubling it; the second caller waits on the mutex, then gets
-        //     the cache the first one just filled.
-        //  2. Stale-while-revalidate: an expired-but-within-grace snapshot is
-        //     served IMMEDIATELY (instant Success state on tab entry) while a
-        //     background refresh updates the cache for the next entry — the
-        //     user never waits on the network to see content again.
-        //  3. warmUp(): fired by MainActivity ~1.5 s after first composition,
-        //     so the cache is hot before the user ever taps the Search tab.
         private val loadMutex = Mutex()
         private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-        /**
-         * App-start warm-up (2026-09-04): fills the discovery cache in the
-         * background so the first tap on the Search tab reads it instantly.
-         * Safe to call repeatedly — a load already in flight is shared, a
-         * fresh cache is a no-op.
-         */
         fun warmUp() {
             if (cache[CacheKey]?.expiresAtMs ?: 0L > System.currentTimeMillis()) return
             refreshScope.launch {
@@ -108,13 +83,7 @@ class SearchDiscoveryRepository
                         if (snapshot.expiresAtMs > now) {
                             return@withContext Result.success(snapshot.data)
                         }
-                        // Stale-while-revalidate: expired but still within the
-                        // grace window — serve it NOW so the tab renders
-                        // instantly, and refresh the cache in the background
-                        // for the next entry (the in-flight mutex keeps the
-                        // refresh single-flight; a concurrent forceRefresh
-                        // caller wins the mutex and this refresh then no-ops
-                        // on a fresh cache).
+
                         if (snapshot.expiresAtMs > now - STALE_GRACE_MS) {
                             refreshScope.launch {
                                 runCatching { loadDiscovery(forceRefresh = true) }
@@ -125,8 +94,7 @@ class SearchDiscoveryRepository
                 }
 
                 loadMutex.withLock {
-                    // Double-check after acquiring: another caller (warm-up,
-                    // concurrent entry) may have just filled the cache.
+
                     if (!forceRefresh) {
                         cache[CacheKey]?.let { snapshot ->
                             if (snapshot.expiresAtMs > System.currentTimeMillis()) {
@@ -145,9 +113,7 @@ class SearchDiscoveryRepository
                         Result.success(data)
                     } catch (throwable: Throwable) {
                         if (throwable is CancellationException) throw throwable
-                        // On failure, serve stale cache if we still have one rather than showing
-                        // a hard error — the user is far less annoyed by slightly-old content
-                        // than by an empty state.
+
                         cache[CacheKey]?.let { snapshot ->
                             if (snapshot.expiresAtMs > System.currentTimeMillis() - STALE_GRACE_MS) {
                                 return@withContext Result.success(snapshot.data)
@@ -160,11 +126,7 @@ class SearchDiscoveryRepository
 
         private suspend fun loadDiscoveryFromNetwork(): SearchDiscoveryData =
             coroutineScope {
-                // ── Fan out every sub-load in parallel ─────────────────────────────────
-                // Previously explore/charts used getOrThrow() — a single transient failure
-                // nuked the entire discovery load. Now each sub-load returns its result
-                // (or null on failure) and the UI gets partial content rather than an
-                // error state.
+
                 val explorePageDeferred =
                     async {
                         runCatching { YouTube.explore().getOrThrow() }.getOrNull()
@@ -225,9 +187,7 @@ class SearchDiscoveryRepository
                         .filterNot { song -> song.song.isLocal }
                         .take(MaxSuggestionSeedItems)
                 val seedSongIds = seedSongs.mapTo(HashSet()) { song -> song.id }
-                // Exclude songs the user has permanently blocked from recommendations via the
-                // "Don't recommend this song again" overflow menu item — even though they
-                // may appear in the user's listening history, they should never resurface.
+
                 val blockedSongIds = database.getBlockedSongIds().toHashSet()
 
                 seedSongs
@@ -322,21 +282,15 @@ class SearchDiscoveryRepository
         private companion object {
             const val AllHistoryTimestamp = 0L
             const val MaxHistoryLookupItems = 36
-            // Halved from 6 → 3: each seed song fires 1 next() + 1 related() call (and a
-            // search fallback on failure), and each seed artist fires 1 artist() call (and
-            // a search fallback). 6 seeds produced ~12-18 sequential HTTP round-trips that
-            // blocked the whole Search tab on first load. 3 keeps the suggestions diverse
-            // while cutting latency roughly in half.
+
             const val MaxSuggestionSeedItems = 3
             const val MaxSuggestedItems = 12
             const val TopAlbumsQuery = "top albums"
 
             const val CacheKey = "default"
-            // 5-minute TTL: long enough that re-entering the Search tab a few times in a
-            // session is instant, short enough that the moods/charts/suggestions stay fresh.
+
             const val CACHE_TTL_MS = 5L * 60 * 1000
-            // Serve stale cache for up to 30 minutes after expiry on network failure —
-            // better to show old content than an empty screen.
+
             const val STALE_GRACE_MS = 30L * 60 * 1000
         }
     }

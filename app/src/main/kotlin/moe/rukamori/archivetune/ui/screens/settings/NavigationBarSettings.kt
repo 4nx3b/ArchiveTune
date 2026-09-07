@@ -110,14 +110,12 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
     val (navigationBarTintFrostedBlur, onNavigationBarTintFrostedBlurChange) =
         rememberPreference(NavigationBarTintFrostedBlurKey, defaultValue = false)
-    // Liquid Glass master toggle (Appearance) + nav-bar sub-toggle. The sub-toggle
-    // is only effective when the master is on AND on Android 12+; otherwise the
-    // FloatingNavigationToolbar falls back to its non-glass style.
+
     val (liquidGlassEnabled) =
         rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val (liquidGlassNavBarEnabled, onLiquidGlassNavBarEnabledChange) =
         rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
-    // Mutual-exclusivity wrappers: turning one frosted variant on turns the other off.
+
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
         if (checked && navigationBarTintFrostedBlur) {
@@ -133,8 +131,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
         rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
 
-    // Customization sliders. Defaults are the constants defined alongside
-    // their preference keys so the pre-existing look is preserved.
     val (navigationBarWidth, onNavigationBarWidthChange) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
     val (navigationBarHeight, onNavigationBarHeightChange) =
@@ -157,9 +153,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             defaultValue = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT,
         )
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -215,7 +208,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -285,9 +278,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
 
                 item {
-                    // Why the row is greyed out belongs IN the row, as its description — a loose
-                    // Text hung underneath was a second, differently-styled thing to read, and it
-                    // only ever appeared in the state where the row is already unusable.
+
                     val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     SwitchPreference(
                         modifier = positions.modifierFor("liquid_glass_nav_bar"),
@@ -300,9 +291,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             },
                         icon = { Icon(painterResource(R.drawable.blur_on), null) },
                         checked = liquidGlassNavBarEnabled,
-                        // Disabled when the master Liquid Glass switch is off (Appearance →
-                        // Liquid Glass effects) or on pre-Android 12: the kyant RuntimeShader
-                        // stack requires API 31+.
+
                         isEnabled = liquidGlassEnabled && supported,
                         onCheckedChange = onLiquidGlassNavBarEnabledChange,
                     )
@@ -320,12 +309,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
             }
 
-            // Customization sliders: only meaningfully affect the FLOATING style (and the
-            // corner radius for DEFAULT). They are shown unconditionally so the user can
-            // pre-configure the floating look before switching to it. Each slider opens a
-            // dialog with a live preview that reflects the in-progress value (and the
-            // committed values of the other dimensions) so the user can see exactly how
-            // the bar will look before committing.
             PreferenceGroup(
                 modifier = positions.modifierFor("navigation_bar_dimensions"),
                 title = stringResource(R.string.navigation_bar_dimensions),
@@ -480,12 +463,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                     )
                 }
 
-                // Reset all six dimension values to their defaults in one tap. The button is
-                // disabled (greyed out) when every value is already at its default, so the
-                // user can see at a glance whether they have any unsaved customizations.
-                // Also disabled when Liquid Glass nav bar is active (the Liquid Glass bar
-                // uses SukiSU's exact dimensions and ignores the user's preferences, so
-                // resetting them has no visible effect).
                 item {
                     val allDefaults =
                         navigationBarWidth == NAVIGATION_BAR_WIDTH_DEFAULT &&
@@ -520,9 +497,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -531,18 +506,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 }
 }
 
-/**
- * A preference row that opens a slider dialog when tapped. Mirrors the swipe-sensitivity
- * UX used in PlayerSettings / AppearanceSettings so all float-valued tuning knobs share
- * the same interaction model.
- *
- * When [preview] is non-null, the dialog renders a live preview above the slider that
- * reflects the in-progress [tempValue] (passed to the preview lambda) so the user can
- * see exactly how the change will look before committing.
- *
- * When [default] is non-null, the dialog includes a "Reset" button that snaps the slider
- * back to the default value before the user confirms.
- */
 @Composable
 private fun SliderPreferenceRow(
     title: String,
@@ -554,12 +517,7 @@ private fun SliderPreferenceRow(
     valueLabel: (Float) -> String,
     default: Float? = null,
     preview: (@Composable (Float) -> Unit)? = null,
-    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the customization
-    // sliders are DISABLED (greyed out) because the Liquid Glass bar uses
-    // SukiSU's exact dimensions and ignores the user's preferences. The user
-    // explicitly asked for this: "Customisation of navigation bar in Liquid
-    // Glass should be unavailable because it should use the exact same
-    // dimensions from suki su for everything".
+
     enabled: Boolean = true,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
@@ -573,9 +531,7 @@ private fun SliderPreferenceRow(
                 showDialog = false
             },
             buttons = {
-                // Reset button — snaps the slider to the default value (or the range start
-                // if no explicit default was supplied). Stays in the dialog so the user can
-                // preview the default and then either confirm or keep adjusting.
+
                 if (default != null) {
                     TextButton(
                         onClick = { tempValue = default },
@@ -615,10 +571,6 @@ private fun SliderPreferenceRow(
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
 
-                // Live preview — re-rendered on every tempValue change so the user sees
-                // the effect of dragging the slider in real time. The preview lambda
-                // receives tempValue and applies it to the dimension being adjusted,
-                // while the other dimensions use their committed (saved) values.
                 if (preview != null) {
                     Text(
                         text = stringResource(R.string.preview),
@@ -664,20 +616,6 @@ private fun SliderPreferenceRow(
     )
 }
 
-/**
- * A miniature, self-contained mock of the floating / docked navigation bar used inside
- * the slider-dialog preview. It mirrors the visual language of [FloatingNavigationToolbar]
- * — same surface color logic (opacity × (1 − transparency)), same indicator pill behind
- * the selected icon, same corner-radius / width / height / label-spacing knobs — but is
- * intentionally simplified: no sliding-pill animation, no frosted backdrop, no real
- * navigation. The bar floats over a faux-screen gradient so transparency / opacity
- * changes are immediately visible.
- *
- * The preview always shows all three labels (Home / Search / Library) and always marks
- * Home as selected, even when the user has globally hidden labels — the point of the
- * preview is to show the effect of the dimension being adjusted, and hiding labels would
- * make the "label spacing" slider invisible.
- */
 @Composable
 private fun NavBarPreview(
     widthFraction: Float,
@@ -701,9 +639,7 @@ private fun NavBarPreview(
                 bottomEnd = cornerRadius.dp,
             )
         }
-    // Mirror the production color logic: opacity always applies; transparency only
-    // applies when frosted blur is off (the preview never enables frost, so transparency
-    // always applies here).
+
     val baseColor = MaterialTheme.colorScheme.surfaceContainer
     val effectiveAlpha = opacity * (1f - transparency)
     val barColor = baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
@@ -714,8 +650,6 @@ private fun NavBarPreview(
             MaterialTheme.colorScheme.secondaryContainer
         }
 
-    // Faux screen background: a vertical gradient from primary-tinted to surface-variant
-    // so opacity / transparency changes in the bar are immediately visible against it.
     val fauxScreenBrush =
         Brush.verticalGradient(
             colors = listOf(
@@ -757,7 +691,7 @@ private fun NavBarPreview(
             ) {
                 val items = Screens.MainScreens
                 items.forEachIndexed { index, screen ->
-                    val selected = index == 0 // Home is always selected in the preview
+                    val selected = index == 0
                     val selectedColor = MaterialTheme.colorScheme.primary
                     val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
                     Column(
@@ -765,8 +699,7 @@ private fun NavBarPreview(
                         verticalArrangement = Arrangement.Center,
                         modifier = Modifier.weight(1f),
                     ) {
-                        // Indicator pill wraps just the icon (label sits outside, matching
-                        // the production bar's layout).
+
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier =

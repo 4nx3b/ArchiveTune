@@ -37,13 +37,7 @@ fun EmptyPlaceholder(
     @DrawableRes icon: Int,
     text: String,
     modifier: Modifier = Modifier,
-    /**
-     * Optional Lottie raw resource. When provided, the 96dp circular container
-     * renders a subtle looping animation (recolored to the theme's primary
-     * color) instead of the static icon — SAME footprint, same spacing, so the
-     * layout is byte-for-byte identical. Purely decorative: the screen's own
-     * empty-state logic remains the source of truth. Opt-in per screen.
-     */
+
     lottieRes: Int? = null,
 ) {
     Box(

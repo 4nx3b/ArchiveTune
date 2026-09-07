@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Deezer source (ui/screens/settings/PlaybackSourceSections.kt).
-         Only strings missing from values/strings.xml live here; deezer_login and
-         deezer_login_description already exist upstream. -->
+
     <string name="source_deezer">Deezer</string>
     <string name="deezer_specific">Deezer</string>
     <string name="deezer_enable">Enable Deezer source</string>
@@ -58,30 +56,21 @@
 
     <!-- Update info dialog (ported from vivi-music under GPL-3.0). -->
 
-    <!-- Minimal Home Mode (AppearanceSettings.kt + HomeScreen.kt).
-         When enabled, the Home feed collapses to a focused subset:
-         hero (Jump back in) + Recently Played + Keep Listening + Live Performances.
-         The hero is always shown regardless of this toggle. -->
     <string name="minimal_home_mode">Minimal mode</string>
     <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible.</string>
 
-    <!-- Download source priority (fork-only — JioSaavn added). -->
     <string name="download_source_jiosaavn">JioSaavn</string>
 
-    <!-- Source search popup (ui/menu/PlayerMenu.kt SongSourceDialog).
-         Shown when the user filters search results by a specific provider. -->
     <string name="source_search_filter_all">All</string>
     <string name="source_search_no_results">No results yet — type a song title to search</string>
     <string name="source_search_no_backend">Search is not yet available for this provider</string>
     <string name="source_search_play_no_yt_match">Couldn\'t find a matching YouTube track to seed the queue — try a different result or use the automatic source</string>
 
-    <!-- Qobuz backup source (mlc.kouzu.in) — separate from regular Qobuz. -->
     <string name="source_qobuz_backup">Qobuz Backup</string>
     <string name="qobuz_backup_specific">Qobuz backup (kouzu.in)</string>
     <string name="qobuz_backup_enable">Enable Qobuz backup server</string>
     <string name="qobuz_backup_enable_description">Streams lossless audio from the community-hosted mlc.kouzu.in backup server using a YouTube video id. Separate from the regular Qobuz source — toggle, reorder and per-song pin each independently.</string>
 
-    <!-- Check source — per-source health probe shown below each source pill in Source Settings. -->
     <string name="check_source">Check source</string>
     <string name="check_source_description">Run a health probe to verify this source is reachable and configured correctly</string>
     <string name="check_source_result_title">%1s check</string>
@@ -91,11 +80,6 @@
     <string name="quality_badge_lossless">Lossless</string>
     <string name="quality_badge_hires">Hi-Res</string>
 
-    <!-- Last.fm dashboard redesign (ui/screens/settings/LastFmDashboardScreen.kt).
-         Strings for the LastWave-native-inspired dashboard layout: the filter
-         dropdown on the "List" section header, and the per-track overflow
-         ModalBottomSheet (Start Mix / Genre / Play in ArchiveTune / Play next /
-         Add to queue / Add to playlist / Open in Last.fm / Copy Song). -->
     <string name="lastfm_list">List</string>
     <string name="lastfm_explore">Explore</string>
     <string name="lastfm_filter_recent">Recent</string>
@@ -115,8 +99,6 @@
     <string name="lastfm_searching_yt">Searching YouTube…</string>
     <string name="lastfm_unknown_genre">Unknown</string>
 
-    <!-- (Task 4) Libre.fm + custom endpoint sign-in buttons + scrobble-search
-         overlay (Task 6c) + overflow-sheet error states (Task 5). -->
     <string name="lastfm_connect_librefm_button">Connect with Libre.fm</string>
     <string name="lastfm_connect_librefm_button_description">One-tap Libre.fm web sign-in. Uses the same API key as Last.fm.</string>
     <string name="lastfm_connect_custom_button">Custom endpoint</string>
@@ -127,21 +109,17 @@
     <string name="lastfm_no_search_results">No matching tracks.</string>
     <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
 
-    <!-- Album page appearance -->
     <string name="album_page">Album page</string>
     <string name="album_canvas_enabled">Enable canvas in albums page</string>
     <string name="album_canvas_enabled_desc">Play the album\'s looping motion artwork behind the album header, the way Apple Music does. Turn off to always show the static cover.</string>
 
-    <!-- Qobuz backup source search -->
     <string name="source_qobuz_backup_search_hint">Search the kouzu.in backup catalogue</string>
 
-    <!-- Spotify Canvas resolvers -->
     <string name="canvas_resolvers">Canvas resolvers</string>
     <string name="canvas_resolvers_description">Extra Spotify Canvas resolver endpoints, one per line. Tried in order after Spotify\'s own Canvas endpoint. Each must answer GET &lt;base&gt;?id=&lt;youtube video id&gt; with JSON containing a canvas video URL.</string>
     <string name="canvas_resolvers_count">%1$d configured</string>
     <string name="canvas_resolvers_none">Built-in resolver only</string>
 
-    <!-- Canvas source health check (Settings → Playback → Artwork) -->
     <string name="canvas_check">Canvas Check</string>
     <string name="canvas_check_description">Check whether every canvas source — your Spotify account, the Apple Music canvas API and your configured mirrors — is working right now.</string>
     <string name="canvas_check_running">Checking…</string>
@@ -153,7 +131,6 @@
     <string name="canvas_check_probe_playing">Probing with the current song: %1$s — %2$s</string>
     <string name="canvas_check_probe_fallback">Nothing is playing — probing with Blinding Lights (The Weeknd)</string>
 
-    <!-- Paxsenix endpoint check -->
     <string name="paxsenix_check_endpoints">Check Paxsenix endpoints</string>
     <string name="paxsenix_check_endpoints_description">Ask the configured endpoint which per-provider lyrics paths it actually serves.</string>
     <string name="paxsenix_check_running">Checking…</string>
@@ -161,7 +138,6 @@
     <string name="paxsenix_check_result_retired">%1$s: retired upstream (403)</string>
     <string name="paxsenix_check_result_failed">%1$s: unreachable</string>
 
-    <!-- TikTok-style feed player -->
     <string name="tiktok_feed_fullscreen">Full screen</string>
     <string name="tiktok_feed_exit_fullscreen">Exit full screen</string>
 </resources>

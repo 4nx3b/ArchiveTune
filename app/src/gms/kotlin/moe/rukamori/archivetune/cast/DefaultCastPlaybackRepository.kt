@@ -312,23 +312,6 @@ private class GmsCastMediaItemConverter(
             mediaQueueItem.toFallbackMediaItem()
         }
 
-    /**
-     * Belt-and-braces metadata guarantee for cast round-trips (user report
-     * 2026-09-06: "when the app is casting I don't see the song details in
-     * the notification").
-     *
-     * [androidx.media3.cast.DefaultMediaItemConverter.toMediaItem] rebuilds
-     * the Media3 [MediaItem.mediaMetadata] from the receiver's CastMetadata
-     * but drops the ArchiveTune app [moe.rukamori.archivetune.models.MediaMetadata]
-     * tag entirely, so every consumer of `MediaItem.metadata` (the app
-     * extension reading `localConfiguration.tag`) — the media notification
-     * details path, widget, mini-player and playback state synced from
-     * onMediaItemTransition — sees null during cast playback. This wrapper
-     * re-attaches the app metadata (built from the same CastMetadata the
-     * fallback path uses) whenever the converted item lacks it, and fills
-     * any missing Media3 title/artist fields from the same source so the
-     * notification always renders the song details.
-     */
     private fun MediaItem.enrichWithAppMetadata(mediaQueueItem: MediaQueueItem): MediaItem {
         val mediaInfo = mediaQueueItem.media
         val appMetadata = (localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata)

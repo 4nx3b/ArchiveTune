@@ -29,12 +29,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -196,10 +194,7 @@ fun SongMenu(
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val (spotifyCanvasEnabled) = rememberPreference(SpotifyCanvasKey, false)
-    // Spotify-account canvas (2026-09-04): a connected web-auth session
-    // enables the Spotify source on its own — same rule the player uses —
-    // so a logged-in user can save their account's canvas without finding
-    // the Player-settings toggle first.
+
     val (spotifySpDc) = rememberPreference(SpotifySpDcKey, defaultValue = "")
     val spotifyCanvasAvailable = spotifyCanvasEnabled || spotifySpDc.isNotBlank()
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
@@ -519,11 +514,6 @@ fun SongMenu(
         }
     }
 
-    // ── Muzo song header (2026-09-04) ──
-    // The reference's header block: square rounded artwork, bold title,
-    // muted artist. The like action that used to live in this header's
-    // trailing slot now leads the quick-action tile row below — same Room
-    // row, same sync path, only the affordance moved.
     MuzoSongMenuHeader(
         artworkUrl = song.song.thumbnailUrl,
         title = song.song.title,
@@ -549,13 +539,6 @@ fun SongMenu(
     val downloadedLabel = stringResource(R.string.downloaded_label)
     val addToDotsLabel = stringResource(R.string.add_to_dots)
 
-    // ── Muzo quick-action tiles (2026-09-04) ──
-    // The reference's four tiles: Liked (cyan when active), Download
-    // (state-aware), Add to… and Play Next. Every tile runs the exact code
-    // path the action already used elsewhere in this menu — the like is the
-    // header's toggle, download is the mutation section's per-state branch,
-    // Add to… opens the same playlist picker, Play Next is the same queue
-    // call. Only the presentation changed.
     val quickActions =
         remember(
             song,
@@ -582,11 +565,7 @@ fun SongMenu(
                         )
                     },
                     label = likedLabel,
-                    // 2026-09-05, user request: the liked tile must stay a normal
-                    // white icon, not flip to the cyan accent — the filled heart
-                    // glyph already carries the liked state, the accent tint was
-                    // just noise. `active` stays false so the tile renders in the
-                    // menu's normal content colour.
+
                     onClick = {
                         val s = song.song.toggleLike()
                         database.query {
@@ -637,9 +616,7 @@ fun SongMenu(
                             }
 
                             else -> {
-                                // The exact start-download branch the mutation
-                                // section uses: clear any failed/partial entry
-                                // and stale cache bytes, then enqueue.
+
                                 val dl = download
                                 if (dl != null && dl.state != Download.STATE_COMPLETED) {
                                     DownloadService.sendRemoveDownload(
@@ -717,20 +694,11 @@ fun SongMenu(
                 )
             }
         } else {
-            // ── Muzo quick-action tile row (2026-09-04, metric parity) ──
-            // Rendered through the same MenuSurfaceSection + NewActionGrid
-            // geometry as the full-screen player's inner overflow menu, straight
-            // under the song header — no extra top spacer or per-row padding
-            // (the section card carries its own 12/12 padding now).
+
             item {
                 MuzoQuickActionRow(actions = quickActions)
             }
 
-            // ── The actions the reference doesn't show as tiles ──
-            // Start Radio, Add to Queue, Share and Edit used to live in the
-            // old action grid; they now lead the secondary list so the
-            // action set is unchanged. One unified surface, thin dividers —
-            // the reference's grouped-action list.
             item {
                 MenuSectionDivider()
             }

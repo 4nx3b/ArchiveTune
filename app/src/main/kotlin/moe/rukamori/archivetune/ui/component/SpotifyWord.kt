@@ -34,21 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 
-/**
- * Minimum duration of a word's fill-sweep animation. Guarantees a visible fill even
- * for words shorter than the position-poll interval.
- */
 internal const val MIN_SWEEP_MS = 180L
 
-/**
- * One word of the Spotify-style word-synced lyrics renderer: a resting pill behind the
- * whole word with a fill that sweeps with the word timing, plus a bright sung-text layer
- * clipped to the same sweep edge.
- *
- * Extracted verbatim from upstream vossgraves/dev LyricsV2.kt (2026-08-31 window port)
- * so word-synced lyric renderers can sweep each word without pulling in the rest of
- * the V2 renderer.
- */
 @Composable
 internal fun SpotifyWord(
     word: WordTimestamp,
@@ -67,8 +54,6 @@ internal fun SpotifyWord(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // Same Animatable-driven sweep as AnimatedWordV2: guarantees a visible
-    // fill even for words shorter than the position-poll interval.
     val sweepAnimatable = remember(word) { Animatable(0f) }
     LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {
@@ -121,12 +106,12 @@ internal fun SpotifyWord(
                 .drawBehind {
                     if (!pillVisible) return@drawBehind
                     val r = pillRadius.toPx()
-                    // resting slot behind the whole word
+
                     drawRoundRect(
                         color = textColor.copy(alpha = 0.15f),
                         cornerRadius = CornerRadius(r),
                     )
-                    // sung fill, sweeps LTR (or RTL) with the word timing
+
                     val pillWidth = size.width
                     val fillPx = pillWidth * progress
                     if (fillPx > 0f) {
@@ -141,7 +126,7 @@ internal fun SpotifyWord(
                 }
                 .padding(horizontal = pillPaddingHorizontal, vertical = pillPaddingVertical),
     ) {
-        // Layer 1: dim unsung text (the resting look for the whole line)
+
         Text(
             text = word.text,
             style = textStyle,
@@ -149,8 +134,6 @@ internal fun SpotifyWord(
             ),
         )
 
-        // Layer 2: bright sung text, clipped to the same sweep as the pill.
-        // Only composed while the word is animating or done on the active line.
         if (pillVisible && (isWordComplete || isWordActive) && isLineActive) {
             Text(
                 text = word.text,
@@ -161,8 +144,7 @@ internal fun SpotifyWord(
                         Modifier
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
-                                // Align the text clip edge with the pill fill edge:
-                                // pill spans [textWidth + 2*pillPaddingHorizontal].
+
                                 val padHpx = pillPaddingHorizontal.toPx()
                                 val pillWidth = size.width + padHpx * 2f
                                 val fillPx = pillWidth * progress
@@ -170,9 +152,7 @@ internal fun SpotifyWord(
                                 val rawLeft = pillLeft - padHpx
                                 val solidFraction = (rawLeft / size.width).coerceIn(0f, 1f)
                                 drawContent()
-                                // Hard-edge alpha mask at the sweep position (same edge as the pill),
-                                // via DstIn like AnimatedWordV2 — drawContent() cannot be called
-                                // inside a nested clipRect receiver, so mask instead of clip.
+
                                 drawRect(
                                     brush =
                                         if (isRtl) {

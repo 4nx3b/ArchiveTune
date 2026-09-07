@@ -281,8 +281,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         var editToken by remember(token) { mutableStateOf(token.token) }
         var editAppId by remember(token) { mutableStateOf(token.appId) }
         var editAppSecret by remember(token) { mutableStateOf(token.appSecret) }
-        // Reset per token: opening another token's details must not inherit the last one's
-        // revealed state and expose a secret the user never asked to see.
+
         var revealToken by remember(token) { mutableStateOf(false) }
         var revealAppId by remember(token) { mutableStateOf(false) }
         var revealAppSecret by remember(token) { mutableStateOf(false) }
@@ -366,11 +365,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
-                // The three secrets are masked by default with a per-field reveal, the same
-                // treatment the Apple Music token sheet already gives its tokens. They used to
-                // render in plaintext monospace, so opening a token's details put a working Qobuz
-                // credential on screen — visible to anyone glancing over, and to any screenshot or
-                // screen recording. Revealing is still one tap when you need to check a paste.
+
                 SecretField(
                     value = editToken,
                     onValueChange = { editToken = it },
@@ -414,7 +409,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             onDismissRequest = { detailInstance = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
@@ -544,9 +539,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -963,9 +955,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -974,12 +964,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-/**
- * A credential field: masked by default, monospace when revealed so a pasted token can actually be
- * proof-read. Local to this screen — Tidal and Apple Music each have their own equivalent today,
- * and pulling a shared component out of three callers is worth doing only once they have stopped
- * diverging (Apple's also validates shape, Tidal's carries a different label set).
- */
 @Composable
 private fun SecretField(
     value: String,
@@ -996,8 +980,7 @@ private fun SecretField(
         visualTransformation =
             if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
-            // Material3's IconButton, spelled out: this file imports ui.component.IconButton,
-            // which takes a required onLongClick and would not fit here.
+
             androidx.compose.material3.IconButton(onClick = onToggleReveal) {
                 Icon(
                     imageVector =

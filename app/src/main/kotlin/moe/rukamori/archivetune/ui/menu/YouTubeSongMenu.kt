@@ -13,30 +13,24 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
 import android.widget.Toast
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -63,7 +56,6 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -76,9 +68,7 @@ import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListItemHeight
-import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
-import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
@@ -114,8 +104,7 @@ fun YouTubeSongMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val librarySong by database.song(song.id).collectAsStateWithLifecycle(initialValue = null)
-    // "Don't recommend this song again" state. Kept here (rather than inside the item lambda) so
-    // the label flips as soon as the DB write lands.
+
     val blockedSongIds by database.blockedSongIds().collectAsStateWithLifecycle(initialValue = emptyList())
     val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
     val downloadUtil = LocalDownloadUtil.current
@@ -131,7 +120,6 @@ fun YouTubeSongMenu(
             }
         }
 
-    // Artist separators for splitting artist names
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
@@ -143,7 +131,6 @@ fun YouTubeSongMenu(
             speedDialPins.any { it.type == songPin.type && it.id == songPin.id }
         }
 
-    // Split artists by configured separators
     data class SplitArtist(
         val name: String,
         val originalArtist: MediaMetadata.Artist?,
@@ -238,11 +225,6 @@ fun YouTubeSongMenu(
         }
     }
 
-    // ── Muzo song header (2026-09-04) ──
-    // The reference's header block: square rounded artwork, bold title,
-    // muted artist. The like action that used to live in this header's
-    // trailing slot now leads the quick-action tile row below — same Room
-    // row, same sync path, only the affordance moved.
     MuzoSongMenuHeader(
         artworkUrl = song.thumbnail,
         title = song.title,
@@ -267,18 +249,10 @@ fun YouTubeSongMenu(
     val downloadedLabel = stringResource(R.string.downloaded_label)
     val addToDotsLabel = stringResource(R.string.add_to_dots)
 
-    // ── Muzo quick-action tiles (2026-09-04) ──
-    // The reference's four tiles: Liked (cyan when active), Download
-    // (state-aware, with the remote-song cache-first prewarm), Add to… and
-    // Play Next. Every tile runs the exact code path the action already used
-    // elsewhere in this menu. Only the presentation changed.
     val quickActions =
         remember(
             song,
-            // The full entity (not just the liked flag): the like tile's
-            // onClick captures librarySong, so any library change must
-            // re-capture it — keying only on `liked` would leave a stale
-            // entity behind an Add-to-library tap.
+
             librarySong,
             download?.state,
             likedLabel,
@@ -303,11 +277,7 @@ fun YouTubeSongMenu(
                         )
                     },
                     label = likedLabel,
-                    // 2026-09-05, user request: the liked tile must stay a normal
-                    // white icon, not flip to the cyan accent — the filled heart
-                    // glyph already carries the liked state, the accent tint was
-                    // just noise. `active` stays false so the tile renders in the
-                    // menu's normal content colour.
+
                     onClick = {
                         database.transaction {
                             librarySong.let { librarySong ->
@@ -366,9 +336,7 @@ fun YouTubeSongMenu(
                             }
 
                             else -> {
-                                // The exact cache-first start-download branch
-                                // this menu's download row uses: insert the song,
-                                // prewarm the player cache, then enqueue.
+
                                 database.transaction {
                                     insert(song.toMediaMetadata())
                                 }
@@ -431,20 +399,11 @@ fun YouTubeSongMenu(
                 bottom = 12.dp,
             ),
     ) {
-        // ── Muzo quick-action tile row (2026-09-04, metric parity) ──
-        // Rendered through the same MenuSurfaceSection + NewActionGrid
-        // geometry as the full-screen player's inner overflow menu, straight
-        // under the song header — no extra top spacer or per-row padding
-        // (the section card carries its own 12/12 padding now).
+
         item {
             MuzoQuickActionRow(actions = quickActions)
         }
 
-        // ── The actions the reference doesn't show as tiles ──
-        // Start Radio, Add to Queue and Share used to live in the old action
-        // grid; they now lead the secondary list so the action set is
-        // unchanged. One unified surface, thin dividers — the reference's
-        // grouped-action list.
         item {
             MenuSectionDivider()
         }
@@ -724,19 +683,7 @@ fun YouTubeSongMenu(
                                         database.transaction {
                                             insert(song.toMediaMetadata())
                                         }
-                                        // Pre-warm the player cache before handing off
-                                        // to Media3 DownloadManager. This implements the
-                                        // "cache-first" download workflow:
-                                        //   1. Resolve the highest-quality stream available
-                                        //      (Qobuz FLAC → Tidal FLAC → YT M4A).
-                                        //   2. Stream the bytes into playerCache under the
-                                        //      source-prefixed key (e.g. "qobuz:$songId").
-                                        //   3. Then DownloadManager.open() hits the cache
-                                        //      and serves bytes locally (no second fetch).
-                                        // The prewarm runs on Dispatchers.IO; the actual
-                                        // DownloadRequest is enqueued only after it
-                                        // completes (or fails — downloads still work
-                                        // without prewarm, just slower + lossy fallback).
+
                                         coroutineScope.launch {
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(song.id)
@@ -874,10 +821,6 @@ fun YouTubeSongMenu(
             MenuSectionDivider()
         }
 
-        // "Don't recommend this song again" — the counterpart of the same item in SongMenu.
-        // It matters most here: this is the menu shown for catalogue results (home feed,
-        // search, related), which is exactly where a recommendation the user wants gone
-        // comes from. SongMenu only ever opens for rows that are already in the library.
         item {
             MenuSurfaceSection {
                 Column {
@@ -904,10 +847,7 @@ fun YouTubeSongMenu(
                             Modifier.clickable {
                                 coroutineScope.launch {
                                     database.withTransaction {
-                                        // `setSongBlockedAt` is an UPDATE, so it silently does
-                                        // nothing when the song has no local row — which is the
-                                        // normal case for a catalogue result the user has never
-                                        // played. Materialise the row first so the block sticks.
+
                                         if (getSongById(song.id) == null) {
                                             insert(song.toMediaMetadata())
                                         }

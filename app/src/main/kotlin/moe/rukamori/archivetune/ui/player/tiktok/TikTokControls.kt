@@ -5,17 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * TikTok player style — the bottom chrome.
- *
- * What the reference pins under the feed: the track's own progress with its
- * time labels (driven by the app's EXISTING seek callbacks — no side timer,
- * no drift). The persistent bottom navigation that used to sit under it was
- * removed per user request (2026-09-02: "remove the home, search and library
- * buttons on the bottom") — the top navigation's section tabs cover the
- * destinations, and the feed keeps its full-bleed height.
- */
-
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import androidx.compose.foundation.Canvas
@@ -49,7 +38,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import moe.rukamori.archivetune.utils.makeTimeString
 
-/** Height of the progress row (time labels + bar). */
 internal val TIKTOK_PROGRESS_ROW_HEIGHT = 44.dp
 
 @Composable
@@ -61,9 +49,7 @@ internal fun TikTokBottomChrome(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        // The gradient behind this chrome bleeds to the very bottom edge; the
-        // CONTENT sits above the gesture nav bar, matching the space the pages
-        // reserve for the chrome (TIKTOK_PROGRESS_ROW + nav-bar inset).
+
         modifier = modifier.fillMaxWidth().navigationBarsPadding(),
     ) {
         TikTokProgressRow(
@@ -75,12 +61,6 @@ internal fun TikTokBottomChrome(
     }
 }
 
-/**
- * The feed's scrubber row: current time — bar — duration, TikTok's thin
- * under-caption progress. The drag and tap write through the app's shared
- * seek callbacks, so scrubbing behaves exactly like every other player
- * style's slider (including crossfade-aware seeking).
- */
 @Composable
 internal fun TikTokProgressRow(
     positionMs: Long,
@@ -124,12 +104,6 @@ internal fun TikTokProgressRow(
     }
 }
 
-/**
- * The feed's scrubber: a hairline bar with a thumb that appears under the
- * finger. Horizontal drags and taps both write through the shared seek
- * callbacks; vertical motion never reaches it, so the pager owns the feed
- * gesture exclusively.
- */
 @Composable
 private fun TikTokProgressSlider(
     positionMs: Long,
@@ -206,14 +180,13 @@ private fun TikTokProgressSlider(
             val trackWidth = size.width
             val corner = CornerRadius(barHeight / 2f, barHeight / 2f)
 
-            // Full track
             drawRoundRect(
                 color = Color.White.copy(alpha = 0.28f),
                 topLeft = Offset(0f, centerY - barHeight / 2f),
                 size = Size(trackWidth, barHeight),
                 cornerRadius = corner,
             )
-            // Played portion
+
             val playedWidth = trackWidth * displayFraction
             if (playedWidth > 0f) {
                 drawRoundRect(
@@ -223,7 +196,7 @@ private fun TikTokProgressSlider(
                     cornerRadius = corner,
                 )
             }
-            // Thumb (only while scrubbing, like the feed scrubber)
+
             if (dragging) {
                 drawCircle(
                     color = Color.White,

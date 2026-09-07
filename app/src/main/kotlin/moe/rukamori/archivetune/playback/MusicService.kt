@@ -372,11 +372,6 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
-// Hoisted file-level Regex: the JioSaavn candidate penalty loop below calls
-// "[^a-z0-9]".toRegex() 4 times per candidate (title, wanted title, artist,
-// wanted artist), and a JioSaavn search typically returns 5-20 candidates.
-// Compiling the Pattern once at class-load avoids ~20-80 Regex allocations
-// per stream resolution. Same pattern, same replacement semantics.
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class, UnstableApi::class)
@@ -476,12 +471,6 @@ class MusicService :
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
 
-    // ─── ArchiveTune Extractor (moriextractor backend) ─────────────────────────
-    // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR playback client
-    // resolves signed stream URLs through the moriextractor backend instead of the
-    // InnerTube client chain. The bearer token is baked in at build time
-    // (BuildConfig.EXTRACTOR_BEARER) and can be refreshed at runtime via
-    // [updateExtractorBearerToken].
     private val extractorPlaybackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val extractorTokenRepository by lazy {
         InMemoryBearerTokenRepository(moe.rukamori.archivetune.BuildConfig.EXTRACTOR_BEARER)
@@ -516,14 +505,7 @@ class MusicService :
                         host.endsWith("ytimg.com")
 
                 if (!isYouTubeMediaHost) {
-                    // Qobuz backup server (mlc-ytify.kouzu.in) — used as a separate audio source
-                    // when the user explicitly enables QOBUZ_BACKUP. The endpoint takes a YouTube
-                    // video id as a path segment and returns a lossless stream. The
-                    // x-request-source: muzo header MUST be sent on every request (including the
-                    // redirected CDN fetch in some setups) — without it the server rate-limits
-                    // aggressively. ExoPlayer streams through this same OkHttp client, so
-                    // injecting the header here means the streaming requests (not just the
-                    // initial resolve) also bypass rate-limiting.
+
                     if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
                         return@addInterceptor chain.proceed(request)
                     }
@@ -549,10 +531,6 @@ class MusicService :
             }.build()
     }
 
-    // Ported from vossgraves/ArchiveTune: extractor media flows through its own
-    // OkHttp client — no proxy, no client-profile header rewriting. The backend
-    // serves already-signed URLs on its own origin; StreamClientUtils' UA/origin
-    // patching would corrupt them.
     private val extractorMediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -571,10 +549,7 @@ class MusicService :
     private var infiniteQueueJob: Job? = null
     private var infiniteQueueGeneration = 0L
     private var initialQueueLoadGeneration = 0L
-    // True while playQueue's initial async load is still assembling the queue. While set, the
-    // transition-driven infinite-radio bootstrap is suppressed so it isn't started prematurely and
-    // then invalidated by the settling transitions (which previously left infiniteQueueLoading stuck
-    // "on" with no songs actually queued when playing a single track from search).
+
     @Volatile
     private var initialQueueLoadInProgress = false
     private val persistentStateLock = Any()
@@ -620,32 +595,9 @@ class MusicService :
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
 
-    // Initial-buffer-stall recovery (ported from Metrolist's "fix: playback once again").
-    // A stream can stall in STATE_BUFFERING forever without surfacing an HTTP error the
-    // onPlayerError recovery paths can act on — the player just spins, then the user skips.
-    // Watchdog: if playback is BUFFERING with playWhenReady at the very start of a track for
-    // longer than INITIAL_BUFFER_STALL_DELAY_MS, invalidate the resolved stream caches and
-    // re-prepare so the resolver picks a fresh (possibly different-client) stream URL.
     private var initialBufferRecoveryJob: Job? = null
     private var initialBufferRecoveryAttemptedMediaId: String? = null
 
-    // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
-    //
-    // Background: when an ALAC (.m4a) stream is backgrounded + paused for a few minutes,
-    // Android may reclaim the hardware codec out from under ExoPlayer (low-memory kill).
-    // ExoPlayer then surfaces a MediaCodecDecoderException wrapping either:
-    //   - IllegalStateException("queueInputBuffer() is valid only at Executing states;
-    //     currently at Released state")  — when the renderer tries to queue into a
-    //     codec that's already been released, OR
-    //   - CodecException("Error 0x80000000")  — the generic undefined MediaCodec error,
-    //     which the same reclamation can produce on MediaTek's c2.mtk.alac.decoder.
-    //
-    // Re-prepare() recovers by instantiating a fresh codec, BUT the failure can recur:
-    //   (a) at the very start of a song (codec init races / transient resource pressure), and
-    //   (b) again on the next background+pause cycle.
-    // PlaybackStreamRecoveryTracker allows only ONE retry per media item, which is too
-    // tight for a recurring codec-state fault. We keep a small per-media budget here
-    // (default 4 attempts) so transient codec reclamation doesn't kill the whole queue.
     @Volatile
     private var codecRecoveryMediaId: String? = null
     @Volatile
@@ -683,8 +635,6 @@ class MusicService :
     private val normalizeFactor = MutableStateFlow(1f)
     private val audioNormalizationFactorCache = ConcurrentHashMap<String, Float>()
 
-    // Media ids currently served by a resolved Tidal stream. Audio normalization is skipped for
-    // these because the loudness metadata we have describes the YouTube stream, not the Tidal one.
     private val tidalActiveMediaIds = ConcurrentHashMap.newKeySet<String>()
     private var audioNormalizationEnabled = true
     var playerVolume = MutableStateFlow(1f)
@@ -705,21 +655,12 @@ class MusicService :
     private var crossfadeHandoffProgress = 0f
     private var crossfadePlaybackRequested = false
 
-    // Monotonic operation id for crossfades. A cancelled/superseded crossfade coroutine can
-    // never complete an older handoff: finishCrossfade validates its captured generation
-    // before promoting the incoming player.
     private val crossfadeGeneration = AtomicLong(0)
     private var lyricsPreloadManager: LyricsPreloadManager? = null
 
-    // The currently active session-facing player. Replaced when a crossfade promotes the
-    // incoming player. Observers (PlayerConnection) must follow this flow instead of
-    // capturing `player` once.
     private val _playerFlow = MutableStateFlow<Player?>(null)
     val playerFlow = _playerFlow.asStateFlow()
 
-    // Authoritative artwork-resolution pipeline. All artwork source decisions (original
-    // metadata vs Tidal fallback) go through this resolver; results are committed centrally
-    // so the player UI, notification and palette extractor all see the same image.
     private val artworkSettingsFlow =
         MutableStateFlow(
             ArtworkSettings(
@@ -1223,15 +1164,7 @@ class MusicService :
         }
 
         val state = player.playbackState
-        // When the user merely paused a song (STATE_READY with playWhenReady=false) and
-        // backgrounded the app, they typically come back within a few minutes. The previous
-        // 60s idle-stop deadline was too aggressive for lossless streams — it released the
-        // ExoPlayer (and the underlying MediaCodec) while the renderer still had queued
-        // buffers, producing the
-        //   IllegalStateException: queueInputBuffer() is valid only at Executing states;
-        //   currently at Released state
-        // crash on Telegram ALAC files. Give paused-but-ready playback a 10-minute grace
-        // period before tearing the service down.
+
         val delayMs =
             when (state) {
                 Player.STATE_ENDED, Player.STATE_IDLE -> 30_000L
@@ -1314,8 +1247,6 @@ class MusicService :
         _playerFlow.value = player
         playerInitialized.value = true
 
-        // The single authoritative artwork resolver. Every artwork source decision flows
-        // through here so the player, notification and palette extractor can never diverge.
         artworkResolver =
             ArtworkResolver(
                 tidalFetcher = TidalArtworkProvider.fetcher(),
@@ -1343,7 +1274,7 @@ class MusicService :
                 val changed = artworkSettingsFlow.value != settings
                 artworkSettingsFlow.value = settings
                 if (changed) {
-                    // Provider settings changed: in-flight results must no longer be committed.
+
                     artworkResolver.invalidate()
                     if (settings.tidalArtworkEnabled && settings.tidalAvailable) {
                         beginArtworkResolutionForCurrentTrack()
@@ -1487,22 +1418,12 @@ class MusicService :
             mediaMetadata
         }.collectLatest(ioScope) { mediaMetadata ->
             if (mediaMetadata == null) return@collectLatest
-            // Always attempt to fetch lyrics when a new song starts playing so the
-            // lyrics panel is ready by the time the user opens it (instead of
-            // requiring the user to manually open the panel + search to trigger a
-            // fetch). Previously this was gated on `showLyrics || isTelegram`,
-            // which broke auto-fetch for non-Telegram tracks by default.
-            //
-            // We also retry a stored LYRICS_NOT_FOUND on every play, because early
-            // plays can fail while metadata/network are still settling.
+
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
                 stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
-                // getLyricsWithProvider (not getLyrics) preserves the providerName — with the
-                // plain getter the auto-fetched lyrics were stored with a blank attribution
-                // and the "Lyrics from [provider]" header never rendered until a manual
-                // re-fetch from the lyrics search popup (4nx3b fix).
+
                 val lyricsResult = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
@@ -1604,7 +1525,6 @@ class MusicService :
                 updateWakeLock()
             }
 
-        // Initialize lyrics pre-load manager
         lyricsPreloadManager =
             LyricsPreloadManager(
                 context = this,
@@ -1764,11 +1684,6 @@ class MusicService :
             }
         }
 
-        // Periodic save exists only to keep the resume *position* roughly current for a process
-        // death; every change to the queue itself already calls saveQueueToDisk from the eight
-        // event handlers that cause one. So this writes the small player-state file only — the
-        // full-queue snapshot it used to take mapped every media item on the main thread and wrote
-        // both files, six times a minute, for a queue that had not changed.
         scope.launch {
             while (isActive) {
                 delay(PERSISTENT_POSITION_SAVE_INTERVAL)
@@ -2414,9 +2329,8 @@ class MusicService :
     private fun ensurePresenceManager() {
         if (DiscordPresenceManager.isRunning() && lastPresenceToken != null) return
 
-        // Launch in scope to avoid blocking
         scope.launch {
-            // Don't start if Discord RPC is disabled in settings
+
             if (!dataStore.get(EnableDiscordRPCKey, true)) {
                 if (DiscordPresenceManager.isRunning()) {
                     Timber.tag("MusicService").d("Discord RPC disabled → stopping presence manager")
@@ -2741,7 +2655,6 @@ class MusicService :
         incomingPlayer.volume = CrossfadePolicy.incomingVolume(progress, incomingBaseVolume, maxSafeGainFactor)
     }
 
-    /** Crossfade is a local dual-player technique; it must not run while casting remotely. */
     private fun isCastSessionConnected(): Boolean {
         val state = castPlaybackRepository.screenState.value
         return (state as? CastScreenState.Success)?.uiState?.isConnected == true
@@ -2913,9 +2826,7 @@ class MusicService :
             createSecondaryCrossfadePlayer().also { secondaryPlayer ->
                 secondaryCrossfadePlayer = secondaryPlayer
                 secondaryCrossfadeTarget = target
-                // The incoming player must be promotion-capable: it receives the FULL queue
-                // (not just the target item) plus the repeat/shuffle/speed state, so it can
-                // become the active player at the end of the fade without any re-buffering.
+
                 val items = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
                 secondaryPlayer.setMediaItems(items, target.index, 0L)
                 secondaryPlayer.repeatMode = player.repeatMode
@@ -2993,8 +2904,7 @@ class MusicService :
                     incomingPlayer.playWhenReady = crossfadePlaybackRequested
                     if (crossfadePlaybackRequested) {
                         incomingPlayer.play()
-                        // STATE_READY + buffering do not prove that post-seek audio samples are
-                        // advancing through the audio output. Require the play position to move.
+
                         if (!awaitAudioPositionAdvancement(incomingPlayer, CROSSFADE_AUDIO_ADVANCE_TIMEOUT_MS)) {
                             Timber.tag(TAG).w("crossfade[%d] no audio advancement on incoming player; aborting", generation)
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
@@ -3067,11 +2977,6 @@ class MusicService :
             hasBufferedForSmoothStart(crossfadePlayer, minimumBufferedMs)
     }
 
-    /**
-     * Waits for proof that audio is actually advancing through the output: STATE_READY +
-     * isPlaying + the play position moving between polls. Buffering and readiness alone do
-     * not prove post-seek samples are being rendered.
-     */
     private suspend fun awaitAudioPositionAdvancement(
         targetPlayer: ExoPlayer,
         timeoutMs: Long,
@@ -3099,17 +3004,12 @@ class MusicService :
         return false
     }
 
-    /**
-     * Completes a crossfade by PROMOTING the already-playing incoming player to be the
-     * active player. The old outgoing player is the only one released; the incoming player
-     * keeps its decoder, buffered data, audio sink and playback clock.
-     */
     private suspend fun finishCrossfade(
         target: CrossfadeTarget,
         incomingPlayer: ExoPlayer,
         generation: Long,
     ) {
-        // A cancelled/superseded crossfade must never complete an older handoff.
+
         if (generation != crossfadeGeneration.get()) {
             Timber.tag(TAG).d("crossfade[%d] stale generation at promotion; ignoring", generation)
             return
@@ -3127,8 +3027,7 @@ class MusicService :
                 ),
             )
         if (!incomingUsable) {
-            // Never continue a destructive handoff when the incoming player is not valid:
-            // the outgoing player remains authoritative and keeps playing.
+
             Timber.tag(TAG).w("crossfade[%d] incoming player unusable at promotion; keeping outgoing", generation)
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             return
@@ -3152,19 +3051,13 @@ class MusicService :
         crossfadeProgress = 0f
         crossfadeIncomingBaseVolume = 1f
         crossfadePlaybackRequested = false
-        // Restore the configured final volume on the promoted player.
+
         applyEffectiveVolumeImmediately()
         updateAudiblePlaybackRecovery()
         scheduleCrossfade()
         Timber.tag(TAG).d("crossfade[%d] promotion success; active mediaId=%s", generation, player.currentMediaItem?.mediaId)
     }
 
-    /**
-     * Promotes [incomingPlayer] to active-player ownership: it becomes `localPlayer`, the
-     * session-facing player is rebuilt/re-pointed, listeners, MediaSession, Cast delegation,
-     * queue/metadata state and audio effects all follow the promoted player, and only the old
-     * outgoing player is faded out and released.
-     */
     private fun promoteIncomingCrossfadePlayer(
         target: CrossfadeTarget,
         incomingPlayer: ExoPlayer,
@@ -3172,24 +3065,17 @@ class MusicService :
     ): Boolean {
         val outgoingPlayer = localPlayer
         val oldSessionPlayer = player
-        // Whether playback should still be running once ownership has moved. Captured BEFORE the
-        // session player is rebuilt below: that rebuild constructs a fresh wrapper around the
-        // promoted ExoPlayer, and a fresh wrapper does not inherit playWhenReady. Nothing used to
-        // re-assert it, so the promoted player came up paused and the incoming song stopped a few
-        // seconds in — right at the end of the fade, which is what made it look random.
+
         val shouldKeepPlaying = crossfadePlaybackRequested || incomingPlayer.playWhenReady || oldSessionPlayer.playWhenReady
         crossfadeHandoffInProgress = true
         return try {
             incomingPlayer.removeListener(secondaryCrossfadeListener)
             incomingPlayer.pauseAtEndOfMediaItems = false
 
-            // 1. Ownership: the incoming player becomes the active local player.
             localPlayer = incomingPlayer
             secondaryCrossfadePlayer = null
             secondaryCrossfadeTarget = null
 
-            // The incoming player's queue was snapshotted at prepare time; items appended to
-            // the live queue since then (e.g. auto-load-more) must follow the promoted player.
             val incomingItemIds =
                 (0 until incomingPlayer.mediaItemCount)
                     .mapTo(HashSet()) { incomingPlayer.getMediaItemAt(it).mediaId }
@@ -3201,9 +3087,6 @@ class MusicService :
                 incomingPlayer.addMediaItems(missingItems)
             }
 
-            // 2. Session-facing player + Cast delegation. CastPlayer pins its local player at
-            // build time, so the wrapper must be rebuilt around the promoted player; on foss
-            // builds the session player simply IS the new local player.
             oldSessionPlayer.removeListener(this@MusicService)
             runCatching { oldSessionPlayer.removeListener(sleepTimer) }
             player =
@@ -3219,41 +3102,30 @@ class MusicService :
             player.addListener(sleepTimer)
             castPlaybackRepository.releasePlayer(oldSessionPlayer)
 
-            // 3. Listeners/analytics that were attached to the old local player.
             runCatching { outgoingPlayer.removeListener(audioEffectPlayerListener) }
             incomingPlayer.addListener(audioEffectPlayerListener)
             incomingPlayer.addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
 
-            // 4. MediaSession + observable player state.
             mediaSession.player = player
             _playerFlow.value = player
 
-            // The rebuilt wrapper starts with playWhenReady=false regardless of what the promoted
-            // ExoPlayer was doing, so the intent captured before the rebuild is re-applied here —
-            // before the metadata replay below, so listeners never observe a spurious pause.
             if (shouldKeepPlaying && !player.playWhenReady) {
                 player.playWhenReady = true
             }
 
-            // 5. Audio effects follow the promoted player's audio session.
             rebindAudioEffectSession(localPlayer.audioSessionId)
 
-            // 6. Queue/metadata state. The incoming player's transition into the target item
-            // happened before it was the service player, so the bookkeeping is replayed
-            // manually now that ownership has moved.
             val promotedItem = incomingPlayer.getMediaItemAt(targetIndex)
             currentMediaMetadata.value = promotedItem.metadata
             onMediaItemTransition(promotedItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
 
-            // 7. Fade, stop and release ONLY the old outgoing player.
             releaseOutgoingCrossfadePlayer(outgoingPlayer)
             true
         } catch (error: Throwable) {
             Timber.tag(TAG).w(error, "Crossfade promotion failed; incoming player stays active if it is the only audible one")
-            // Failure safety: never release the only player that can produce valid audio.
+
             if (localPlayer !== incomingPlayer) {
-                // Promotion did not complete ownership transfer: the outgoing player remains
-                // authoritative; detach the incoming one quietly.
+
                 runCatching { incomingPlayer.stop() }
                 runCatching { incomingPlayer.release() }
                 secondaryCrossfadePlayer = null
@@ -3326,15 +3198,6 @@ class MusicService :
             targetPlayer.bufferedPosition >= duration - CROSSFADE_END_GUARD_MS
     }
 
-    /**
-     * Fully tears down any in-flight crossfade before a user-initiated skip (next/previous).
-     *
-     * Without this, skipping during an active crossfade or handoff leaves the service in a broken
-     * state: [isCrossfading] stays true (so [onMediaItemTransition] stops rescheduling crossfades),
-     * the primary player stays muted (volume 0), [PrimaryPlayer.pauseAtEndOfMediaItems] stays true,
-     * and the orphaned secondary [ExoPlayer] keeps playing — causing double audio, silent playback,
-     * and a leaked player that can crash the next crossfade. Must be called on the main thread.
-     */
     fun prepareForManualSkip() {
         if (!::player.isInitialized) return
         if (!isCrossfading && !crossfadeHandoffInProgress && secondaryCrossfadePlayer == null) return
@@ -3345,8 +3208,7 @@ class MusicService :
         resetVolume: Boolean,
         resetPauseAtEnd: Boolean,
     ) {
-        // Invalidate any in-flight operation so a cancelled crossfade coroutine can never
-        // complete an older handoff later.
+
         crossfadeGeneration.incrementAndGet()
         crossfadeTriggerJob?.cancel()
         crossfadeTriggerJob = null
@@ -3394,15 +3256,7 @@ class MusicService :
 
         val loudnessDb = format?.normalizationLoudnessDb()
         if (loudnessDb == null || !loudnessDb.isFinite()) {
-            // Downgraded from WARN to DEBUG: this is the expected code path for
-            // any non-YouTube source (Tidal, Qobuz, Deezer, JioSaavn, Telegram,
-            // local files) because FormatEntity only carries loudness metadata
-            // for YouTube streams — for everything else the field is hardcoded
-            // to null at the FormatEntity creation site (see the comment at
-            // `resolveAudioNormalizationFactor` for the rationale). Logging this
-            // at WARN produced 5+ noisy entries per playback session in
-            // production logs for every Qobuz track, making it harder to spot
-            // real warnings.
+
             Timber.tag("AudioNormalization").d("Normalization enabled but no valid loudness data available - no normalization applied")
             return 1f
         }
@@ -3432,8 +3286,6 @@ class MusicService :
             return 1f
         }
 
-        // A Tidal-served track has no matching loudness metadata (the stored format describes the
-        // YouTube stream), so applying it would set the wrong volume. Skip normalization for it.
         if (currentMediaId in tidalActiveMediaIds) {
             audioNormalizationFactorCache[currentMediaId] = 1f
             return 1f
@@ -3776,12 +3628,7 @@ class MusicService :
     }
 
     private fun skipOnError() {
-        /**
-         * Auto skip to the next media item on error.
-         *
-         * To prevent a "runaway diesel engine" scenario, force the user to take action after
-         * too many errors come up too quickly. Pause to show player "stopped" state
-         */
+
         consecutivePlaybackErr += 2
         val nextWindowIndex = player.nextMediaItemIndex
 
@@ -3902,9 +3749,7 @@ class MusicService :
         val failedUrl = responseException.dataSpec.uri.toString()
         val requestProfile = StreamClientUtils.resolveRequestProfile(failedUrl)
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
-        // Ported from vossgraves/ArchiveTune: the extractor cache lives beside the
-        // InnerTube one and fails by the same rules — its fingerprint is prefixed so
-        // a signed backend URL can never validate against the InnerTube cache.
+
         val extractorAuthFingerprint = ArchiveTuneExtractorCacheFingerprintPrefix + authFingerprint
         val cachedFailedUrl = playbackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
         val cachedExtractorFailedUrl = extractorPlaybackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
@@ -3950,12 +3795,6 @@ class MusicService :
         return true
     }
 
-    /**
-     * Ported from vossgraves/ArchiveTune: HTTP failures on extractor-origin URLs are
-     * backend protocol events, not YouTube client failures — 401 means the bearer
-     * token was rejected (clear it and surface the auth event), 403 a tampered signed
-     * URL, 410 an expired one worth one retry.
-     */
     private fun handleExtractorStreamHttpFailure(
         mediaId: String,
         isFullyDownloadedMedia: Boolean,
@@ -4043,8 +3882,6 @@ class MusicService :
                 }
             }
     }
-
-
 
     private fun updateNotification() {
         try {
@@ -4340,7 +4177,7 @@ class MusicService :
                     }
                 }
             } finally {
-                // A superseded load must not clear the guard belonging to the newer queue.
+
                 if (initialLoadGeneration == initialQueueLoadGeneration) {
                     initialQueueLoadInProgress = false
                 }
@@ -4348,9 +4185,6 @@ class MusicService :
 
             if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
 
-            // Infinite Queue is a global, persisted choice. Song-start queues should seed radio
-            // immediately so the toggle behaves consistently across search/library entry points.
-            // For longer queues we still wait until the queue itself runs out of pages.
             if (autoLoadMoreEnabled &&
                 player.repeatMode == REPEAT_MODE_OFF &&
                 queue.shouldBootstrapInfiniteQueue()
@@ -5426,7 +5260,7 @@ class MusicService :
                     lastSent.trackId == event.action.trackId &&
                     lastSent.position == event.action.position
                 ) {
-                    // Echo of our own broadcast; the server relays actions to all members.
+
                     return
                 }
                 when (event.action.action) {
@@ -5511,7 +5345,7 @@ class MusicService :
                 val selfId = togetherSelfParticipantId
                 togetherAuthorityParticipantId = event.newHostId
                 if (event.newHostId == selfId) {
-                    // This device became the new host.
+
                     togetherAuthorityParticipantId = event.newHostId
                     startTogetherPublicAuthorityBroadcast(client, event.roomCode, event.newHostId)
                 } else {
@@ -5581,7 +5415,7 @@ class MusicService :
             }
 
             moe.rukamori.archivetune.together.TogetherPublicEvent.Disconnected -> {
-                // Reconnect is handled inside the client.
+
             }
 
             is moe.rukamori.archivetune.together.TogetherPublicEvent.JoinApproved,
@@ -6756,9 +6590,8 @@ class MusicService :
 
                 syncUtils.likeSong(song)
 
-                // Check if auto-download on like is enabled and the song is now liked
                 if (!song.isLocal && dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-                    // Trigger download for the liked song
+
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
                             .Builder(song.id, song.id.toUri())
@@ -7340,10 +7173,7 @@ class MusicService :
         }
 
     private suspend fun registerRemotePlaybackHistory(mediaId: String): Boolean {
-        // Reporting to the YouTube account's listen history is keyed off the YouTube video id, so it
-        // works regardless of which source (YouTube/Tidal/Qobuz) actually streamed the audio. This
-        // opt-out toggle disables only the remote report; the local play-history DB is unaffected
-        // (that stays governed by PauseListenHistoryKey).
+
         if (!dataStore.get(SyncPlaybackToYouTubeHistoryKey, true)) {
             Timber.tag("MusicService").d("Skipping remote YouTube history for %s (sync disabled)", mediaId)
             return false
@@ -7422,12 +7252,6 @@ class MusicService :
         return false
     }
 
-    /**
-     * Starts (or refreshes) artwork resolution for the now-current track. Tracks that already
-     * carry artwork short-circuit inside the resolver, so this only does network work when the
-     * current item has no artwork and the Tidal fallback is enabled. Results are committed
-     * centrally here so the player UI, notification and palette extractor share one image.
-     */
     private fun beginArtworkResolutionForCurrentTrack() {
         val metadata = currentMediaMetadata.value ?: return
         artworkTrackGeneration = artworkResolver.beginTrack(metadata.id)
@@ -7442,8 +7266,7 @@ class MusicService :
                         title = metadata.title,
                         artists = metadata.artists.map { it.name },
                         album = metadata.album?.title,
-                        // ISRC is not tracked in MediaMetadata; Tidal matching uses normalized
-                        // artist/album/title + duration scoring instead.
+
                         isrc = null,
                         durationMs = metadata.duration.takeIf { it > 0 }?.times(1000L),
                         originalArtworkUrl = metadata.thumbnailUrl,
@@ -7463,7 +7286,6 @@ class MusicService :
             }
     }
 
-    /** Commits catalog metadata without changing the playable media URI or source cache key. */
     private fun commitResolvedMetadata(
         mediaId: String,
         resolved: MediaMetadata,
@@ -7499,7 +7321,6 @@ class MusicService :
             }
     }
 
-    /** Commits a resolved fallback artwork to the metadata flow and the queued MediaItem. */
     private fun commitResolvedArtwork(
         mediaId: String,
         resolved: ResolvedArtwork,
@@ -7512,11 +7333,11 @@ class MusicService :
             resolved.artworkIdentity,
             resolved.matchConfidence?.let { "%.2f".format(it) } ?: "-",
         )
-        // 1. The exposed metadata flow drives player UI, mini player and palette extraction.
+
         currentMediaMetadata.value
             ?.takeIf { it.id == mediaId }
             ?.let { current -> currentMediaMetadata.value = current.copy(thumbnailUrl = url) }
-        // 2. The queued MediaItem drives notification, widgets, Android Auto and Cast metadata.
+
         val index =
             (0 until player.mediaItemCount).firstOrNull {
                 player.getMediaItemAt(it).mediaId == mediaId
@@ -7552,17 +7373,11 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
         mediaItem?.metadata?.let { queuedMetadataByMediaId[mediaItem.mediaId] = it }
 
-        // New item: reset the initial-buffer-stall watchdog for the next track.
         initialBufferRecoveryJob?.cancel()
         initialBufferRecoveryJob = null
         initialBufferRecoveryAttemptedMediaId = null
         updateInitialBufferRecovery(player.playbackState)
 
-        // Catch-all for user-initiated skips that bypass PlayerConnection (notification, lock
-        // screen, Bluetooth, Android Auto): a SEEK transition while a crossfade fade loop is still
-        // running — but NOT the crossfade's own handoff seek (crossfadeHandoffInProgress) — means
-        // the user skipped mid-crossfade. Tear the crossfade down so we don't leak the secondary
-        // player or leave the primary muted with pauseAtEndOfMediaItems stuck on.
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK &&
             isCrossfading &&
             !crossfadeHandoffInProgress
@@ -7628,10 +7443,9 @@ class MusicService :
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.repeatMode == REPEAT_MODE_OFF
         ) {
-            // No redundant seeding update check.
+
         }
 
-        // Auto-load more from queue if available
         if (!suppressAutoPlayback &&
             !timelineEmpty &&
             dataStore.get(AutoLoadMoreKey, true) &&
@@ -7685,10 +7499,7 @@ class MusicService :
         if (!isCrossfading) {
             scheduleCrossfade()
         }
-        // Prefetch the stream URL for the next-up song so the user-visible
-        // "skip to next" feels instant. The prefetch runs on a background IO
-        // coroutine and is cancelled/replaced whenever a new transition fires.
-        // Skipped in low-data mode to honor the user's data-saver preference.
+
         prefetchNextMediaItemStream()
     }
 
@@ -7700,23 +7511,9 @@ class MusicService :
                 ?.uri
                 ?.shouldBypassPlayerCache() == true
 
-    /**
-     * In-memory cache of resolved [DirectStream]s (Qobuz / Tidal) keyed by media id.
-     * Populated by [prefetchNextMediaItemStream] so the next song's lossless
-     * stream URL is already known when the user skips to it — turning a
-     * ~1-3 second Qobuz/Tidal resolution into a cache hit.
-     *
-     * Entries expire after [DIRECT_STREAM_CACHE_TTL_MS] (5 minutes) so stale
-     * stream URLs (which can be revoked by the source) aren't used.
-     */
     private val directStreamCache = ConcurrentHashMap<String, CachedDirectStream>()
     private var nextMediaItemPrefetchJob: kotlinx.coroutines.Job? = null
 
-    /**
-     * Media id [nextMediaItemPrefetchJob] is resolving, so a still-wanted job is not cancelled.
-     * Only meaningful while that job is active — every read is guarded on `isActive`, so a stale
-     * id left behind by a finished job is inert and needs no clearing.
-     */
     @Volatile
     private var prefetchingMediaId: String? = null
 
@@ -7725,16 +7522,6 @@ class MusicService :
         val expiresAtMs: Long,
     )
 
-    /**
-     * Prefetches the stream URL for the next-up media item in the queue so
-     * that when the user skips to it (or auto-advance fires), the URL is
-     * already in [playbackUrlCache] (YouTube) or [directStreamCache]
-     * (Qobuz / Tidal) and playback starts within ~100ms instead of the
-     * usual 1-3 second resolution delay.
-     *
-     * Idempotent: re-invoking cancels the previous prefetch. Failures are
-     * silently swallowed — prefetch is an optimization, not a requirement.
-     */
     private fun prefetchNextMediaItemStream() {
         if (player.mediaItemCount == 0 || player.currentTimeline.isEmpty) return
         val nextIndex = player.nextMediaItemIndex
@@ -7742,23 +7529,18 @@ class MusicService :
         val nextItem = player.getMediaItemAt(nextIndex)
         val mediaId = nextItem.mediaId.trim().takeIf { it.isNotBlank() } ?: return
 
-        // Don't cancel a prefetch whose result is still wanted. This used to cancel
-        // unconditionally, so skipping twice inside the resolve window killed the in-flight job
-        // for the very track being skipped onto — the one case where the work was about to pay
-        // off — and that track then resolved from scratch, synchronously, while the user waited.
-        // A job for the now-current item is finishing into the same caches the resolver reads.
         val inFlight = prefetchingMediaId
         if (nextMediaItemPrefetchJob?.isActive == true && inFlight != null) {
             val currentId = player.currentMediaItem?.mediaId?.trim()
             if (inFlight == mediaId || inFlight == currentId) return
         }
         nextMediaItemPrefetchJob?.cancel()
-        // Skip prefetch for local/telegram files (no network resolution needed).
+
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
-        // Skip if we already have a fresh cached entry.
+
         if (playbackUrlCache[mediaId] != null) return
         if (directStreamCache[mediaId]?.let { it.expiresAtMs > System.currentTimeMillis() } == true) return
-        // Skip in low-data mode (user wants minimal background data).
+
         if (isLowDataModeActive()) return
 
         prefetchingMediaId = mediaId
@@ -7766,8 +7548,7 @@ class MusicService :
             scope.launch(Dispatchers.IO + SilentHandler) {
                 runCatching {
                     Timber.tag(TAG).d("Prefetching stream URL for next media item: %s", mediaId)
-                    // First, try multi-source (Qobuz / Tidal) resolution.
-                    // If a lossless source is configured and matches, cache it.
+
                     val lowData = isLowDataModeActive()
                     if (!lowData) {
                         val dataSpec = DataSpec.Builder()
@@ -7776,21 +7557,12 @@ class MusicService :
                             .build()
                         val resolved = resolveMultiSourceDataSpec(dataSpec, mediaId, lowData, isPrefetch = true)
                         if (resolved != null) {
-                            // resolveMultiSourceDataSpec already cached the
-                            // stream URL via applyDirectStream; we just need
-                            // to record it in directStreamCache so the next
-                            // call can find it without re-resolving.
-                            // The cache is implicit in tidalActiveMediaIds +
-                            // sourceCacheKey() — we don't need to duplicate it.
+
                             Timber.tag(TAG).d("Prefetch: lossless stream resolved for %s", mediaId)
                             return@runCatching
                         }
                     }
-                    // Fall back to YouTube stream URL prefetch. Ported from
-                    // vossgraves/ArchiveTune: skip it while the ARCHIVETUNE_EXTRACTOR
-                    // client is preferred — that path resolves through the backend
-                    // only, so an InnerTube prefetch would cache a URL the resolver
-                    // would never use.
+
                     if (preferredStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
                         val result =
                             retryWithoutPlaybackLoginContext {
@@ -7842,14 +7614,7 @@ class MusicService :
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             } else if (playbackState == Player.STATE_ENDED) {
-                // The crossfade was supposed to hand off to the next item before STATE_ENDED
-                // fired, but it didn't complete in time. A stale `isCrossfading = true` here
-                // means `pauseAtEndOfMediaItems` is still `true`, which prevents ExoPlayer's
-                // auto-advance — the player stops at the end of the current song and the user
-                // has to press Play to continue. Tear the crossfade down so the player can
-                // auto-advance normally. The crossfade's secondary player (if any) was either
-                // already promoting itself or never became ready — either way, releasing it
-                // here is safe and prevents a stuck `pauseAtEndOfMediaItems`.
+
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             }
             if (playbackState == Player.STATE_ENDED &&
@@ -7862,12 +7627,7 @@ class MusicService :
                 onInfiniteQueueEnabled(currentQueue.infiniteQueueSeedMediaId())
             }
         } else if (playbackState == Player.STATE_READY) {
-            // Source-switch completion hook: once the deterministic re-create reaches READY,
-            // the new MediaSource is fully prepared and the live flows are authoritative again.
-            // Apply the volume captured before the switch, cancel the delayed reassert (it
-            // already did its job / is redundant now), and re-arm the watchdog — the watchdog
-            // self-cancels while the player is IDLE mid-switch, so READY is where it must be
-            // restarted.
+
             if (sourceSwitchPending) {
                 sourceSwitchPending = false
                 sourceSwitchReassertJob?.cancel()
@@ -7972,7 +7732,7 @@ class MusicService :
         }
         if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             playbackStreamRecoveryTracker.onMediaItemChanged(currentMediaId)
-            // Reset codec-recovery budget for the new media item.
+
             if (currentMediaId != codecRecoveryMediaId) {
                 codecRecoveryMediaId = currentMediaId
                 codecRecoveryAttemptCount = 0
@@ -7983,9 +7743,7 @@ class MusicService :
             (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && player.isPlaying)
         ) {
             playbackStreamRecoveryTracker.onPlaybackRecovered(currentMediaId)
-            // Codec successfully reached READY / isPlaying after a recovery re-prepare —
-            // the current codec instance is healthy, so reset the per-media counter so the
-            // NEXT background+pause cycle gets a fresh budget.
+
             if (codecRecoveryAttemptCount > 0) {
                 Timber.tag("MusicService").i(
                     "Codec recovery succeeded for %s after %d attempt(s); resetting codec-recovery budget",
@@ -8089,9 +7847,7 @@ class MusicService :
                 reason = "timeline_or_position_discontinuity",
                 force = true,
             )
-            // Snapshot player state on the Main thread up front. Media3's player must only be
-            // accessed on its application (main) thread; reading player.* inside the IO coroutine
-            // below throws "Player is accessed on the wrong thread" and silently breaks scrobbling.
+
             val timelineMediaId = player.currentMediaItem?.mediaId
             val timelineMetadata = player.currentMetadata
             val timelineDuration = player.duration
@@ -8128,7 +7884,6 @@ class MusicService :
                             }
                         }
 
-                        // Last.fm now playing - handled by ScrobbleManager
                     } catch (_: Exception) {
                     }
                 } catch (e: Exception) {
@@ -8140,7 +7895,6 @@ class MusicService :
             scheduleCrossfade()
         }
 
-        // Also handle immediate update for play state and media item transition events explicitly
         if (events.containsAny(
                 Player.EVENT_PLAYBACK_STATE_CHANGED,
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,
@@ -8155,7 +7909,7 @@ class MusicService :
                 reason = "is_playing_or_media_item_transition",
                 force = true,
             )
-            // Capture player state on Main thread
+
             val currentMediaId = player.currentMediaItem?.mediaId
             val currentMetadata = player.currentMetadata
             val currentPosition = player.currentPosition
@@ -8194,7 +7948,6 @@ class MusicService :
                             }
                         }
 
-                        // Last.fm now playing - handled by ScrobbleManager
                     } catch (_: Exception) {
                     }
                 } catch (e: Exception) {
@@ -8204,11 +7957,10 @@ class MusicService :
         }
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
-            // Scrobble: Track play/pause state
+
             scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
         }
 
-        // Persist queue on play/pause so a force-stop right after pausing still restores the correct position
         if (events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED) && player.mediaItemCount > 0) {
             scope.launch(SilentHandler) {
                 if (withContext(Dispatchers.IO) { dataStore.get(PersistentQueueKey, true) }) {
@@ -8257,7 +8009,6 @@ class MusicService :
             applyCurrentFirstShuffleOrder()
         }
 
-        // Save state when shuffle mode changes - must be on Main thread to access player
         scope.launch {
             if (dataStore.get(PersistentQueueKey, true)) {
                 saveQueueToDisk()
@@ -8291,7 +8042,6 @@ class MusicService :
             }
         }
 
-        // Save state when repeat mode changes - must be on Main thread to access player
         scope.launch {
             if (dataStore.get(PersistentQueueKey, true)) {
                 saveQueueToDisk()
@@ -8317,22 +8067,12 @@ class MusicService :
                 contentLength > 0L && downloadCache.isCached(currentMediaId, 0L, contentLength)
             }.getOrDefault(false)
 
-        // Check for cached spans across all source-prefixed keys. Even if the
-        // cache metadata is missing the content length (which would make
-        // `isFullyDownloadedMedia` false), having cached spans means the song
-        // was at least partially downloaded and we should try to play it from
-        // cache instead of waiting for network. This is the key fix for the
-        // "downloaded songs don't play when offline" bug — the cache metadata
-        // sometimes doesn't have the content length persisted, but the bytes
-        // are still there.
         val hasAnyCachedData =
             isFullyDownloadedMedia ||
                 runCatching {
                     downloadCache.getCachedSpans(currentMediaId).isNotEmpty() ||
                         playerCache.getCachedSpans(currentMediaId).isNotEmpty() ||
-                        // Also check source-prefixed keys (qobuz:, tidal:, deezer:) —
-                        // downloads from external lossless sources are cached under
-                        // these keys, not the bare mediaId.
+
                         downloadCache.getCachedSpans("qobuz:$currentMediaId").isNotEmpty() ||
                         downloadCache.getCachedSpans("tidal:$currentMediaId").isNotEmpty() ||
                         downloadCache.getCachedSpans("deezer:$currentMediaId").isNotEmpty() ||
@@ -8345,13 +8085,6 @@ class MusicService :
             (error.cause?.cause is PlaybackException) &&
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
-        // Offline bypass: if we have ANY cached data for this mediaId (a
-        // complete download, or even partial cached spans under the bare or
-        // source-prefixed keys), do NOT call `waitOnNetworkError()` — the
-        // cache resolver in `resolveCachedDataSpec` will serve the cached
-        // bytes on the next prepare(). Calling `waitOnNetworkError()` here
-        // would freeze playback indefinitely even though the song is fully
-        // available locally.
         if (!isLocalMedia && !isFullyDownloadedMedia && !hasAnyCachedData &&
             (!isNetworkConnected.value || isConnectionError)
         ) {
@@ -8359,12 +8092,6 @@ class MusicService :
             return
         }
 
-        // If we have cached data but the player still errored (typically
-        // because the resolver tried the network first and failed), force a
-        // re-prepare so the cache resolver gets a chance to serve the bytes.
-        // This handles the case where the initial resolvePlaybackDataSpec
-        // call fell through to the YouTube resolver before the cache was
-        // consulted, and the YouTube resolver failed because we're offline.
         if (!isLocalMedia && hasAnyCachedData && (!isNetworkConnected.value || isConnectionError)) {
             Timber.tag("MusicService").i(
                 "Offline playback recovery for %s (fullyCached=%b, hasSpans=%b); re-preparing to force cache read",
@@ -8372,8 +8099,7 @@ class MusicService :
                 isFullyDownloadedMedia,
                 hasAnyCachedData,
             )
-            // Invalidate any stale stream URL cache so the resolver is forced
-            // to consult the cache first on the next prepare.
+
             playbackUrlCache.remove(currentMediaId)
             if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
                 player.prepare()
@@ -8390,9 +8116,7 @@ class MusicService :
 
         val streamHttpFailure = findStreamHttpFailure(error)
         if (streamHttpFailure != null) {
-            // Ported from vossgraves/ArchiveTune: extractor-origin failures (401
-            // bearer rejected / 403 tampered signature / 410 expired) get their own
-            // handling before the generic retryable-code path.
+
             if (handleExtractorStreamHttpFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)) {
                 return
             }
@@ -8404,22 +8128,10 @@ class MusicService :
         }
 
         if (!isLocalMedia && isCacheCorruptionError(error, hasAnyCachedData)) {
-            // Snapshot on the Main thread before dispatching; these can change.
+
             val mediaItemIndex = player.currentMediaItemIndex
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
 
-            // Detect "the offline download itself is corrupt" so we can purge
-            // the download cache too — otherwise the player re-reads the same
-            // corrupt bytes, fails the same way, exhausts the retry budget,
-            // and the user sees a stuck error with no way to recover without
-            // manually removing the download. The signature is a
-            // ParserException cause whose message contains "Skipping atom
-            // with length" (the MP4 container parser bailing on a length
-            // field that exceeds Int.MAX_VALUE — typical of a truncated or
-            // mid-stream-corrupted file). Any other cache-corruption
-            // signature (EOFException, "unexpected end of stream", etc.)
-            // falls back to the conservative behavior of keeping the
-            // offline download in place.
             val isOfflineDownloadCorrupt =
                 isFullyDownloadedMedia && run {
                     var t: Throwable? = error.cause
@@ -8448,21 +8160,13 @@ class MusicService :
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
 
             scope.launch(Dispatchers.IO) {
-                // Always purge the streaming/player cache.
+
                 runCatching { playerCache.removeResource(currentMediaId) }
-                // Keep a complete offline download in place; deleting a user's saved download
-                // to recover from a read error is surprising. Only purge partial entries —
-                // UNLESS the download itself is the source of the corruption (a ParserException
-                // with "Skipping atom with length" against a fully-cached file), in which case
-                // keeping it would mean re-reading the same corrupt bytes on every retry until
-                // the retry budget is exhausted and the user is stuck. Purge and let the next
-                // prepare fall through to a fresh download.
+
                 if (!isFullyDownloadedMedia || isOfflineDownloadCorrupt) {
                     runCatching { downloadCache.removeResource(currentMediaId) }
                     if (isOfflineDownloadCorrupt) {
-                        // Also clear any source-prefixed download cache entries
-                        // (qobuz:, tidal:, deezer:) so a fresh download is forced
-                        // from the respective source.
+
                         for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
                             runCatching {
                                 downloadCache.removeResource("$sourcePrefix$currentMediaId")
@@ -8480,14 +8184,12 @@ class MusicService :
                     )
                 }
 
-                // Re-prepare ONLY after the purge completes, back on the Main thread, so the
-                // fresh prepare cannot re-read the spans we just deleted.
                 withContext(Dispatchers.Main) {
                     if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
                         player.seekTo(mediaItemIndex, resumePosition)
                         player.prepare()
                     } else {
-                        // Retry budget for this item is spent; fall back to configured behavior.
+
                         if (dataStore.get(AutoSkipNextOnErrorKey, false)) skipOnError() else stopOnError()
                     }
                 }
@@ -8540,12 +8242,7 @@ class MusicService :
                 playbackUrlCache[currentMediaId]?.url
             playbackUrlCache.remove(currentMediaId)
             contentLengthCache.remove(currentMediaId)
-            // Drop the cached QobuzBackup/Tidal/Qobuz/Deezer resolution so the next
-            // prepare() re-resolves from scratch. Without this the multi-source
-            // cache HIT path (resolveMultiSourceDataSpec) re-serves the same broken
-            // mirror URL and the same parser error 3003 fires again on retry — the
-            // user observed exactly this loop on T5GzEN6fsGo (kouzu.in FLAC-mislabeled
-            // fMP4 stream → FragmentedMp4Extractor → "atom length > 2147483647").
+
             directStreamCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             failedUrl
@@ -8570,33 +8267,10 @@ class MusicService :
             }
         }
 
-        // MediaCodec decoder-state recovery.
-        //
-        // When streaming lossless ALAC (.m4a) from Telegram on devices with a flaky hardware
-        // ALAC decoder (notably MediaTek's c2.mtk.alac.decoder), the OS may release the codec
-        // out from under ExoPlayer while the app is backgrounded + paused for a few minutes
-        // (low-memory reclamation). The renderer's next queueInputBuffer() call then throws
-        // one of:
-        //   IllegalStateException("queueInputBuffer() is valid only at Executing states;
-        //   currently at Released state")    — renderer races against an already-released codec
-        //   CodecException("Error 0x80000000") — generic undefined MediaCodec error from the
-        //   same root cause on MediaTek's c2.mtk.alac.decoder
-        // Both surface as a MediaCodecDecoderException, with errorCode == ERROR_CODE_DECODING_FAILED
-        // (4003). The codec itself is recoverable — the player just needs to be re-prepared so a
-        // fresh codec instance is instantiated. Re-prepare resumes from the current position; no
-        // queue reshuffle needed.
-        //
-        // IMPORTANT: the failure can recur — once at song start (codec init race / transient
-        // resource pressure) and again on the next background+pause cycle. The single-shot
-        // playbackStreamRecoveryTracker is too tight for this; we keep a SEPARATE per-media
-        // budget (codecRecoveryMaxAttempts = 4) so transient codec reclamation doesn't kill
-        // the queue. The counter resets when playback reaches READY/playing (see onEvents),
-        // so each successful recovery earns a fresh budget for the next cycle.
         if (isMediaCodecStateError(error)) {
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
 
-            // Reset budget if we've moved to a different media item since the last attempt.
             if (currentMediaId != codecRecoveryMediaId) {
                 codecRecoveryMediaId = currentMediaId
                 codecRecoveryAttemptCount = 0
@@ -8617,18 +8291,13 @@ class MusicService :
                 codecRecoveryAttemptCount = attemptNumber
                 scope.launch(Dispatchers.Main) {
                     try {
-                        // Give the OS a moment to finish releasing the dead codec instance
-                        // before we ask ExoPlayer to instantiate a fresh one. Without this,
-                        // the new codec can race the old one's teardown and fail with the
-                        // same 0x80000000 / Released-state signature on the very first
-                        // queueInputBuffer() call.
+
                         if (attemptNumber > 1) {
                             kotlinx.coroutines.delay(400L)
                         }
                         player.seekTo(mediaItemIndex, resumePosition)
                         player.prepare()
-                        // Honor the user's prior play/pause intent — if they had paused,
-                        // keep it paused after recovery so we don't surprise-start playback.
+
                         if (!player.playWhenReady) {
                             player.pause()
                         }
@@ -8651,10 +8320,7 @@ class MusicService :
                 )
             }
         }
-        // One final bounded retry covers transient decoder/container/network failures that do not
-        // match the specialised branches above. Retrying the same media item before honoring
-        // AutoSkipNextOnError prevents a single short-lived failure from silently advancing the
-        // queue. The tracker keeps this from looping forever.
+
         if (
             !isLocalMedia &&
                 !isFullyDownloadedMedia &&
@@ -8676,7 +8342,6 @@ class MusicService :
             return
         }
 
-
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
         } else {
@@ -8687,7 +8352,6 @@ class MusicService :
     private fun isMediaCodecStateError(error: PlaybackException): Boolean =
         isRecoverableMediaCodecStateError(error)
 
-    /** Debug-only helper: short human-readable description of the cause chain for logging. */
     private fun describeCauseChain(error: Throwable): String {
         val causeChain = generateSequence<Throwable>(error) { it.cause }
         return causeChain
@@ -8772,10 +8436,7 @@ class MusicService :
         val directFactory = createResolvedUpstreamDataSourceFactory()
         val telegramFactory = TelegramDataSource.Factory()
         val tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient)
-        // Deezer needs its own chain rather than cachedFactory's: that one runs the YouTube
-        // resolver over the dataSpec, which would rewrite our deezer:// URI. Decryption sits below
-        // the cache so what gets cached is already-decrypted audio, letting a replay skip both the
-        // CDN fetch and the Blowfish work.
+
         val deezerFactory =
             CacheDataSource
                 .Factory()
@@ -8803,17 +8464,13 @@ class MusicService :
                 this,
                 OkHttpDataSource.Factory(mediaOkHttpClient),
             )
-        // Ported from vossgraves/ArchiveTune: extractor media gets its own factory on
-        // the no-proxy client so signed backend URLs never pass through the YouTube
-        // UA/origin interceptor.
+
         val extractorMediaFactory =
             DefaultDataSource.Factory(
                 this,
                 OkHttpDataSource.Factory(extractorMediaOkHttpClient),
             )
-        // Resolved source URIs pass through this factory a second time after the outer resolver has
-        // selected a provider. Route those private schemes here instead of asking DefaultDataSource
-        // to handle an unknown `deezer://` or `tidal-dash://` URI.
+
         val routingFactory =
             DataSource.Factory {
                 ResolvedSchemeRoutingDataSource(
@@ -8885,40 +8542,22 @@ class MusicService :
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-    /** Metadata used to look a track up across the configured audio sources. */
     private data class SourceQuery(
         val mediaId: String,
         val title: String,
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
-        /**
-         * When non-null, the Qobuz resolver skips its title/artist search and
-         * downloads this exact trackId. Set when the user picks a specific
-         * Qobuz track from the "Play from" source-search popup — the mediaId
-         * encodes the trackId as "qobuz:{trackId}" and [resolveMultiSourceDataSpec]
-         * extracts it into this field.
-         */
+
         val directQobuzTrackId: String? = null,
-        /**
-         * When non-null, the Qobuz-backup resolver asks the mirror for THIS video id
-         * instead of [mediaId]. Set when the user picks a specific row in the
-         * "Play from" search popup — the mirror is keyed by YouTube video id, and the
-         * row they chose is a different catalogue entry from the song that is playing.
-         * Keeping [mediaId] untouched is what makes the switch audio-only.
-         */
+
         val directQobuzBackupVideoId: String? = null,
     )
 
-    /**
-     * The ordered list of enabled non-YouTube sources to try for [resolveMultiSourceDataSpec],
-     * with the user's primary/search source pinned first and YouTube (implicit fallback) excluded.
-     */
     private fun sourceResolutionChain(): List<AudioSourceType> {
         val enabledDefaults =
             mapOf(
-                // Defaults MUST match the toggle defaults in PlaybackSourceSections so the
-                // UI and the resolver agree on which sources are active out of the box.
+
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
@@ -8927,9 +8566,7 @@ class MusicService :
                 AudioSourceType.APPLE to dataStore.get(AppleMusicSourceEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
-        // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
-        // YouTube act as lossless overrides; once YouTube is reached the user has chosen to use
-        // YouTube's own stream, so any sources after it are not attempted as overrides.
+
         return AudioSourceConfig
             .resolutionChain(
                 rawOrder = dataStore.get(AudioSourceOrderKey, "").ifBlank { null },
@@ -8938,13 +8575,6 @@ class MusicService :
             ).takeWhile { it != AudioSourceType.YOUTUBE }
     }
 
-    /**
-     * Returns true if [source] is currently enabled in the user's preferences. YouTube is always
-     * enabled. Used by [resolveMultiSourceDataSpec] to:
-     *   1. Decide whether to honor a per-song override whose source has since been disabled
-     *      (fall through to the chain instead of trying only the disabled source).
-     *   2. Guard the auto-pin write so we never pin to a source the user just turned off.
-     */
     private fun isSourceEnabled(source: AudioSourceType): Boolean =
         when (source) {
             AudioSourceType.YOUTUBE -> true
@@ -8956,7 +8586,6 @@ class MusicService :
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
 
-    /** Builds the shared lookup metadata for [mediaId] from the database / queue metadata. */
     private fun buildSourceQuery(mediaId: String): SourceQuery? {
         val song =
             runCatching {
@@ -8982,23 +8611,12 @@ class MusicService :
                 ?.toLong()
                 ?.times(1000L)
                 ?: queuedMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1000L)
-        // Read the per-song Qobuz trackId override (set when the user picked a
-        // specific Qobuz track from the "Play from" source-search popup). When
-        // set, the Qobuz resolver downloads the exact track instead of
-        // re-searching by title+artist.
-        //
-        // IMPORTANT: read directly from dataStore.data.first() instead of the
-        // cached dataStore.get(). The cached PreferenceStore._prefs may be
-        // stale right after setSongSourceOverrideWithQobuzTrackId wrote the
-        // new trackId — the PreferenceStore collector is async and may not
-        // have received the emission yet. Reading from data.first() guarantees
-        // we see the write that just happened.
+
         val qobuzTrackIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
-        // Same treatment for the Qobuz-backup mirror's video id (see the field docs
-        // on SourceQuery.directQobuzBackupVideoId), read fresh for the same reason.
+
         val qobuzBackupVideoIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
         }.getOrNull()
@@ -9014,19 +8632,6 @@ class MusicService :
         )
     }
 
-    // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
-    // resolution). Used by the player's Source chooser to only offer sources that actually have the
-    // song. Process-lived only; YouTube is always available as the fallback and is added implicitly.
-    /**
-     * mediaId -> MediaMetadata for every item currently in the queue.
-     *
-     * The multi-source resolver runs on a loader thread, so it cannot touch [player] to read the
-     * MediaItem tags itself. This cache is filled on the application thread from
-     * [onTimelineChanged] / [onMediaItemTransition] so [buildSourceQuery] can still recover
-     * title/artist/album for tracks that are being resolved *before* they become the current item
-     * and that are not in the local database yet (radio/autoplay continuations). Without it those
-     * tracks were skipped with "missing metadata" and fell straight through to YouTube.
-     */
     private val queuedMetadataByMediaId = ConcurrentHashMap<String, MediaMetadata>()
 
     private fun cacheQueuedMetadata() {
@@ -9042,13 +8647,6 @@ class MusicService :
 
     private val resolvedSourcesByMediaId = ConcurrentHashMap<String, MutableSet<AudioSourceType>>()
 
-    /**
-     * Called on app foreground (MainActivity.onStart) for the currently-playing song (or null to
-     * clear all). Drops the in-memory record of which lossless sources last resolved successfully
-     * so the "Play from" picker re-resolves fresh instead of returning a stale cached set. This
-     * pairs with [moe.rukamori.archivetune.qobuz.QobuzAudioProvider.clearTransientCaches] to fix
-     * the bug where Qobuz lossless was unavailable until force-stop.
-     */
     fun clearResolvedSources(mediaId: String?) {
         if (mediaId == null) {
             resolvedSourcesByMediaId.clear()
@@ -9058,10 +8656,6 @@ class MusicService :
         _resolvedSourcesRevision.value = _resolvedSourcesRevision.value + 1L
     }
 
-    /**
-     * Observable wrapper around [resolvedSourcesByMediaId] so the Source chooser UI can recompose
-     * when a refresh completes. Updated whenever [recordResolvedSource] adds a source.
-     */
     private val _resolvedSourcesRevision = MutableStateFlow(0L)
 
     private fun recordResolvedSource(
@@ -9074,27 +8668,10 @@ class MusicService :
         }
     }
 
-    /**
-     * Sources the player's "Play from" chooser should offer for [mediaId], based on the last
-     * resolution result: any lossless source that matched the track, plus YouTube (always available
-     * as the fallback), plus the user's per-song override source (so the user can always see, change
-     * or clear their pinned choice even if the last resolution attempt failed transiently — e.g.
-     * "Qobuz token returned preview-only; skipping"). Returned in the canonical Tidal, Qobuz, YouTube
-     * order.
-     */
     fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
-        // Sources are surfaced in the Source chooser when ANY of:
-        //   - Always-available: YouTube (the implicit fallback).
-        //   - The source was previously resolved successfully for this media id.
-        //   - The user previously pinned this song to this source (override).
-        //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
-        //     on in Settings, so they should be able to pick it per-song even if the
-        //     initial resolution hasn't completed (or failed transiently). Previously
-        //     JioSaavn / Qobuz would not appear in the chooser until they happened to
-        //     resolve, which made the user think the source "did nothing" when picked
-        //     elsewhere. Now any enabled source is selectable.
+
         return AudioSourceConfig.DEFAULT_ORDER.filter {
             it == AudioSourceType.YOUTUBE ||
                 it in resolved ||
@@ -9103,91 +8680,25 @@ class MusicService :
         }
     }
 
-    /**
-     * Triggers a fresh resolution of every enabled non-YouTube source for [mediaId], bypassing
-     * the in-memory DirectStream cache.
-     *
-     * Why this exists: [resolveMultiSourceDataSpec] records each source that passes the metadata
-     * match gate into [resolvedSourcesByMediaId]. If a source failed transiently on the first
-     * resolution attempt (network blip, Qobuz/Tidal API timeout, pool-account rate-limit), it
-     * never gets recorded for the lifetime of the process — even though a retry would succeed.
-     * The user sees YouTube (and JioSaavn) as the only available sources until they force-stop
-     * and reopen the app, which clears the in-memory cache and triggers a fresh resolution.
-     *
-     * This function replicates the "force-stop and reopen" effect on demand: it evicts the cached
-     * DirectStream for [mediaId] and re-runs the lossless resolution chain in the background. The
-     * UI picks up the new sources via [_resolvedSourcesRevision] (a StateFlow the Source dialog
-     * collects to trigger recomposition).
-     *
-     * Safe to call repeatedly — concurrent invocations are coalesced by the [scope] coroutine
-     * and the cache eviction is idempotent.
-     */
     fun refreshSourcesForSong(mediaId: String) {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
         scope.launch(Dispatchers.IO) {
-            // Evict the in-memory cache so the slow path runs again. Without this, the fast
-            // path in resolveMultiSourceDataSpec would short-circuit to the previously cached
-            // (YouTube) stream and never re-try Qobuz/Tidal.
+
             directStreamCache.remove(mediaId)
-            // Re-resolve by calling the same slow-path logic the player uses. We pass a dummy
-            // DataSpec because resolveMultiSourceDataSpec only uses it as a buildUpon base —
-            // the URI and key are overwritten inside. The returned DataSpec is discarded; we
-            // only care about the side effect of recording sources into resolvedSourcesByMediaId.
+
             runCatching {
                 val dummySpec = DataSpec.Builder().setUri(mediaId.toUri()).build()
                 resolveMultiSourceDataSpec(dummySpec, mediaId, lowDataModeActive = false)
             }.onFailure { error ->
                 Timber.tag("MusicService").w(error, "refreshSourcesForSong: resolution failed for %s", mediaId)
             }
-            // Bump the revision even on failure so the UI can re-render with whatever sources
-            // were recorded (if any) and stop showing the loading state.
+
             _resolvedSourcesRevision.value = _resolvedSourcesRevision.value + 1L
         }
     }
 
-    /**
-     * A monotonically increasing counter that bumps whenever [recordResolvedSource] or
-     * [refreshSourcesForSong] updates [resolvedSourcesByMediaId]. The Source dialog collects
-     * this flow to know when to re-query [availableSourcesForSong].
-     */
     val resolvedSourcesRevision: StateFlow<Long> get() = _resolvedSourcesRevision
 
-    /**
-     * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
-     * immediately so the change takes effect without the user having to skip the track. Passing a
-     * null [source] clears the override for that song.
-
-     *
-     * Bugs addressed here:
-     *
-     * 1. **"Sometimes changing source only restarts the song but doesn't change the source."**
-     *    `directStreamCache[mediaId]` and the bare-keyed `contentLengthCache[mediaId]` were not
-     *    evicted, so the resolver's fast path could short-circuit to the previous source's
-     *    resolved URL (when the override happened to be re-applied to the same id) or to a stale
-     *    content-length that made the byte-cache short-circuit in [resolveCachedDataSpec] think
-     *    the request was fully cached. Both are now evicted explicitly so the slow path always
-     *    re-resolves through the new override.
-     *
-     * 2. **"Qobuz → YouTube plays from YouTube but muted."** `player.prepare()` on the same
-     *    MediaItem is effectively a no-op — the switch only "worked" because the seek-triggered
-     *    re-open re-resolved the data source, and the re-create is nondeterministic (stale data
-     *    sources, retried expired URLs, and the reactive volume pipeline interleaving with the
-     *    transition can pin the primary player's volume low). The deterministic fix:
-     *    - evict all per-source caches (URLs, content length, player/download cache resources),
-     *    - cancel any pending crossfade and reset its volume,
-     *    - re-claim audio focus BEFORE capturing the expected volume (so the baseline uses the
-     *      post-focus-restore `audioFocusVolumeFactor` instead of a stale ducked one),
-     *    - re-create the media item from scratch (`clearMediaItems()` + `setMediaItem()` + fresh
-     *      `prepare()`) — the exact same path as "skip to previous song and back", which the user
-     *      confirms always fixes the mute,
-     *    - apply the captured (pre-switch) effective volume immediately, and re-apply that same
-     *      captured baseline on a delayed reassert AND on STATE_READY (whichever fires last —
-     *      the READY hook cancels the delayed job), instead of recomputing from live flows that
-     *      can be stale/ducked mid-transition,
-     *    - re-arm the audible-playback watchdog on STATE_READY (it self-cancels while the player
-     *      is IDLE mid-switch and was never re-armed before — a dead watchdog let any later
-     *      volume dip stick forever).
-     */
     fun setSongSourceOverride(
         mediaId: String,
         source: AudioSourceType?,
@@ -9195,21 +8706,6 @@ class MusicService :
         setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
     }
 
-    /**
-     * Sets a per-song source override AND persists the chosen Qobuz trackId.
-     * Used when the user picks a specific Qobuz track from the "Play from"
-     * source-search popup — the exact Qobuz trackId is preserved across the
-     * re-resolution so the resolver downloads the exact track (not a
-     * bestMatch-by-title search that could pick a different master / deluxe
-     * edition).
-     *
-     * The mediaId is NOT changed — the song's existing mediaId (typically the
-     * YouTube video id) is preserved, so the song is NOT registered as a
-     * duplicate in the playback history / "recently listened" section. The
-     * queue is also preserved (this calls the same internal implementation
-     * as `setSongSourceOverride`, which uses `player.setMediaItems(allItems,
-     * currentIndex, capturedPositionMs)` to keep the queue intact).
-     */
     fun setSongSourceOverrideWithQobuzTrackId(
         mediaId: String,
         source: AudioSourceType?,
@@ -9218,16 +8714,6 @@ class MusicService :
         setSongSourceOverrideInternal(mediaId, source, qobuzTrackId, qobuzBackupVideoId = null)
     }
 
-    /**
-     * Sets a per-song source override AND persists the chosen Qobuz-**backup** mirror
-     * video id — the counterpart of [setSongSourceOverrideWithQobuzTrackId] for the
-     * kouzu.in mirror, which is keyed by YouTube video id rather than a catalogue
-     * track id.
-     *
-     * As with the Qobuz variant, the song's own mediaId is left alone: the queue, its
-     * position, the artwork and the listening history are all preserved, and only the
-     * bytes being decoded change.
-     */
     fun setSongSourceOverrideWithQobuzBackupVideoId(
         mediaId: String,
         source: AudioSourceType?,
@@ -9242,20 +8728,11 @@ class MusicService :
         qobuzTrackId: String?,
         qobuzBackupVideoId: String?,
     ) {
-        // A direct Qobuz selection is an explicit user choice. A failed
-        // background probe may have left the provider's negative cache or an
-        // instance cooldown in place, causing this fresh selection to resolve
-        // as YouTube instead. Clear only transient failures before recreating
-        // the media source; successful stream/search caches remain intact.
+
         if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
             QobuzAudioProvider.clearTransientCaches()
         }
-        // Persist the exact-track ids (if any) BEFORE triggering re-resolution.
-        //
-        // Both are always written, with null for whichever is not part of this
-        // selection: a song can only play from one source at a time, so leaving a
-        // previous pick's id behind would keep pinning the resolver to the old source
-        // even after the user chose a different one.
+
         runCatching {
             runBlocking {
                 dataStore.edit { prefs ->
@@ -9282,17 +8759,8 @@ class MusicService :
         }
         if (player.currentMediaItem?.mediaId == mediaId) {
 
-            // Capture the item FIRST: clearMediaItems() empties the timeline, so
-            // currentMediaItem would be null afterwards. Bail before touching any state if it
-            // somehow is null here.
             val item = player.currentMediaItem ?: return
-            // Capture the expected volume BEFORE any state churn. The teardown below (cache
-            // eviction, crossfade cancel, audio-focus re-claim, playlist re-create) makes the
-            // reactive volume pipeline (playerVolume x normalizeFactor x focus factor) re-fire
-            // mid-transition; recomputing the effective volume from the live flows at that
-            // point can pin the player at a stale/ducked value. We re-apply this captured
-            // baseline at every recovery point until the switch has deterministically reached
-            // STATE_READY, after which the pipeline's live values are authoritative again.
+
             val expectedVolume = currentEffectivePlayerVolume()
             val wasPlaying = player.playWhenReady
             sourceSwitchPending = true
@@ -9302,11 +8770,8 @@ class MusicService :
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
             tidalActiveMediaIds.remove(mediaId)
 
-            // Evict the resolved DirectStream so the slow path re-resolves through the new
-            // override instead of serving the previous source's URL.
             directStreamCache.remove(mediaId)
-            // Evict the bare-keyed content length so [resolveCachedDataSpec] can't conclude the
-            // request is fully cached based on the previous source's byte size.
+
             contentLengthCache.remove(mediaId)
             runCatching { playerCache.removeResource(mediaId) }
             runCatching { downloadCache.removeResource(mediaId) }
@@ -9314,36 +8779,14 @@ class MusicService :
                 val key = sourceCacheKey(src, mediaId)
                 runCatching { playerCache.removeResource(key) }
                 runCatching { downloadCache.removeResource(key) }
-                // Source-prefixed content-length entries are also stale after a source switch.
+
                 contentLengthCache.remove(key)
             }
-            // Cancel any in-flight crossfade so its volume ramp / secondary player can't pin the
-            // primary player's volume low while the new source is preparing.
+
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-            // Re-claim audio focus BEFORE computing/applying the effective volume. The previous
-            // order applied the volume first (which would multiply by a stale ducked
-            // audioFocusVolumeFactor if focus had been transiently lost) and then restored
-            // focus — leaving the player pinned at the ducked volume until the reactive volume
-            // flow happened to re-fire. Restoring focus first means the captured baseline
-            // reflects the restored 1.0 factor.
+
             ensureAudioFocusForActivePlayback()
 
-            // Deterministic re-create: replace ONLY the current media item with a fresh one
-            // (so the new source's MediaSource is built from scratch) while preserving the
-            // rest of the queue. The previous implementation called clearMediaItems() +
-            // setMediaItem(item, 0), which discarded the entire queue — when the current
-            // song ended the player had no next item to auto-advance to, so playback stopped
-            // until the user manually pressed Play. We now capture the full media-items list
-            // and current index BEFORE the teardown, swap the current item for the freshly
-            // resolved one, and call setMediaItems(items, currentIndex, startPositionMs) so
-            // the queue is intact and ExoPlayer's auto-advance works as expected.
-            //
-            // POSITION PRESERVATION: the previous call passed 0L as startPositionMs, which
-            // restarted the song from the beginning on every source switch. The user's
-            // expectation is that the original song stays where it was — only the audio
-            // source changes. We now capture player.currentPosition BEFORE setMediaItems
-            // (it would be 0 / unset after the call) and pass it as startPositionMs so
-            // ExoPlayer resumes the new source's stream at the same playback position.
             val currentIndex = player.currentMediaItemIndex
             val capturedPositionMs = player.currentPosition.coerceAtLeast(0L)
             val allItems = ArrayList(player.mediaItems)
@@ -9359,17 +8802,10 @@ class MusicService :
             )
             player.prepare()
             player.playWhenReady = wasPlaying
-            // Restore the effective volume immediately (bypass the smooth ramp) so the new source
-            // doesn't briefly play muted while the ramp catches up. Start the audible-playback
-            // watchdog so any later volume dip gets corrected within the next polling window.
+
             applyEffectiveVolumeImmediately(expectedVolume)
             updateAudiblePlaybackRecovery()
-            // Defensive delayed re-apply: player.prepare() is async, and the state transitions
-            // it triggers (BUFFERING -> READY, audio session ID change, audio-effect rebind,
-            // reactive volume flow re-firing) can interleave with the synchronous restore above
-            // and re-pin the volume low. Re-apply the CAPTURED baseline once more after the
-            // prepare pipeline has settled (or when STATE_READY arrives — whichever fires
-            // last), so the user never hears a muted stream. The READY hook cancels this job.
+
             sourceSwitchReassertJob?.cancel()
             sourceSwitchReassertJob =
                 scope.launch {
@@ -9400,14 +8836,6 @@ class MusicService :
         }
     }
 
-    /**
-     * Attempts to resolve the current media item through the configured audio sources, in the
-     * user's chosen priority order. Returns a [DataSpec] pointing at the first source that
-     * resolves a stream, or null so playback falls through to the YouTube resolver.
-     *
-     * Resolves lossless audio through the configured sources (currently Tidal), falling through to
-     * the YouTube resolver when none produce a stream.
-     */
     private fun resolveMultiSourceDataSpec(
         dataSpec: DataSpec,
         mediaId: String,
@@ -9418,49 +8846,25 @@ class MusicService :
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
             return null
         }
-        // Direct Qobuz track playback: when the user picks a specific Qobuz
-        // track from the "Play from" source-search popup, a per-song Qobuz
-        // trackId override is persisted in SongSourceQobuzTrackIdKey. We
-        // detect that here so we can force the chain to [QOBUZ] and bypass
-        // the metadata match gate — the user explicitly chose this track.
-        // The mediaId is NOT changed (it stays as the song's existing YouTube
-        // id), so the song is not registered as a duplicate in the playback
-        // history.
-        //
-        // IMPORTANT: read directly from dataStore.data.first() instead of the
-        // cached dataStore.get() — see buildSourceQuery for the rationale.
+
         val qobuzTrackIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         val isDirectQobuzTrack = directQobuzTrackId != null
-        // Same for an explicit Qobuz-backup pick: the mirror is addressed by video id,
-        // so a chosen row is only reachable through the stored id. Treat it exactly like
-        // a direct Qobuz track — force the chain to that one source, skip the
-        // DirectStream cache (which may hold the previous source's URL for this media
-        // id) and let it through low-data mode, because it is an explicit user choice.
+
         val qobuzBackupVideoIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
         }.getOrNull()
         val directQobuzBackupVideoId = SongSourceQobuzBackupVideoId.get(qobuzBackupVideoIdRaw, mediaId)
         val isDirectQobuzBackupTrack = directQobuzBackupVideoId != null
-        // A song can only be pinned to one source at a time, so at most one of these is
-        // set; `isDirectPick` is the shared "the user chose this exact track" signal.
+
         val isDirectPick = isDirectQobuzTrack || isDirectQobuzBackupTrack
-        // Read the source override FRESH from DataStore — not from the stale
-        // PreferenceStore cache. The PreferenceStore collector is async and
-        // may not have received the write from setSongSourceOverride yet.
-        // This must use data.first() to see the latest value.
+
         val sourceOverrideRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceOverrideKey] }
         }.getOrNull()
-        // Fast path: serve from the in-memory DirectStream cache if we have a
-        // fresh entry. This makes "skip to next" instant when the next song
-        // was prefetched (see prefetchNextMediaItemStream).
-        //
-        // SKIP the fast path entirely when a direct Qobuz track override is
-        // set — the user just picked a specific Qobuz track, so we must
-        // re-resolve through Qobuz even if a cached YouTube stream exists.
+
         val now = System.currentTimeMillis()
         val cached = directStreamCache[mediaId]
         if (!isDirectPick && cached != null && cached.expiresAtMs > now) {
@@ -9489,25 +8893,13 @@ class MusicService :
                     .setKey(cacheKey)
                     .build()
             }
-            // Cache entry doesn't match the per-song override or low-data
-            // mode flipped on — evict and fall through to the slow path.
+
             directStreamCache.remove(mediaId, cached)
         } else if (cached != null) {
-            // Expired entry — evict.
+
             directStreamCache.remove(mediaId, cached)
         }
-        // A per-song "play from" override (set via the player's Source chooser, or auto-pinned
-        // by a previous successful lossless resolution — see the Source WIN block below) takes
-        // precedence over the global order. YOUTUBE means "always use YouTube for this song"
-        // (skip lossless entirely); a lossless override forces just that source (still subject
-        // to the metadata match gate).
-        //
-        // DISABLED-SOURCE FALLTHROUGH: if the pinned source has since been disabled by the
-        // user (e.g. they turned off the Qobuz toggle in Settings), we do NOT try only that
-        // source — that would always fail and force a YouTube fallback even when other
-        // lossless sources are still enabled. Instead we fall through to the full enabled
-        // chain so a different lossless source can still win. The stale pin remains in
-        // storage and will become effective again if the user re-enables the source.
+
         val override =
             when {
                 isDirectQobuzTrack -> AudioSourceType.QOBUZ
@@ -9520,7 +8912,7 @@ class MusicService :
                 isSourceEnabled(override)
         val chain =
             if (isDirectPick) {
-                // `override` was pinned to the picked source above.
+
                 listOfNotNull(override)
             } else when (override) {
                 null -> sourceResolutionChain()
@@ -9546,10 +8938,6 @@ class MusicService :
             return null
         }
 
-        // Low Data Mode normally bypasses lossless sources, but it must not discard an exact
-        // Qobuz track the user explicitly selected in the Play from popup. That choice carries
-        // a concrete Qobuz track id and must not silently turn into a YouTube Opus stream on a
-        // metered network.
         if (lowDataModeActive && !isDirectPick) {
             tidalActiveMediaIds.remove(mediaId)
             Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
@@ -9563,17 +8951,6 @@ class MusicService :
         }
         Timber.tag("MusicService").d("Source query built: title=\"%s\" artists=%s durationMs=%s", query.title, query.artists.joinToString("/"), query.durationMs?.toString() ?: "?")
 
-        // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
-        // Title, artist, duration, album and version markers are evaluated together; title-only
-        // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
-        //
-        // OVERRIDE BYPASS: when the user has explicitly pinned this song to a single source via
-        // the player's Source chooser ("Play from"), we trust their intent — the TitleMatch gate is
-        // skipped for that source's candidate. This fixes the bug where picking JioSaavn (or any
-        // non-YouTube source) from the Source chooser "did nothing": the JioSaavn candidate's
-        // title formatting often differs from the YouTube-derived wanted title enough to fail the
-        // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
-        // The override is the user's manual override of the gate — we should respect it.
         val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectPick
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
@@ -9600,8 +8977,7 @@ class MusicService :
             }
             val match =
                 if (overrideIsSourceOverride && source == override) {
-                    // Explicit per-song override: trust the user's choice. Still record the source
-                    // as resolved so the Source chooser remembers it for next time.
+
                     Timber.tag("MusicService").i(
                         "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
                         source.name, query.title, stream.label,
@@ -9634,16 +9010,14 @@ class MusicService :
                 "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
                 source.name, query.title, match.score * 100, match.reason, stream.label,
             )
-            // Remember that this source has this song (title-gate passed) so the player's Source
-            // chooser can list only the sources that actually have the track.
+
             recordResolvedSource(mediaId, source)
             if (match.score > bestScore) {
                 best = stream
                 bestSource = source
                 bestScore = match.score
             }
-            // The list is the user's source preference order. The first valid source wins;
-            // later sources are fallbacks, not competitors selected by metadata score.
+
             if (best != null) break
         }
 
@@ -9654,7 +9028,7 @@ class MusicService :
                 "Source WIN: %s resolved \"%s\" [%s] metadata match %.1f%% (%s)",
                 winningSource.name, query.title, winningStream.label, bestScore * 100, winningStream.uri.take(80),
             )
-            // Persist the winning source's track id as a future health-probe track.
+
             if (winningSource == AudioSourceType.TIDAL) {
                 TidalAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
                     runCatching {
@@ -9671,38 +9045,26 @@ class MusicService :
             return applyDirectStream(dataSpec, mediaId, winningStream)
         }
 
-        // A non-YouTube source was requested but none matched the title accurately enough; silently
-        // fall back to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a
-        // debug log only.
         Timber.tag("MusicService").w("No lossless source cleared the metadata match gate for \"%s\"; falling back to YouTube", query.title)
         tidalActiveMediaIds.remove(mediaId)
         return null
     }
 
-    /** Resolves a Tidal stream, trying the signed-in account (official API) before public instances. */
-    /**
-     * Returns a currently-valid Tidal access token, transparently refreshing it via the stored
-     * refresh token when it is missing or within 60s of expiry, and persisting the refreshed
-     * token. Returns null when there is no usable token (never logged in, or the refresh token is
-     * expired/revoked), so the caller falls back to public instances.
-     */
     private fun ensureValidTidalToken(): String? {
         val token = dataStore.get(TidalAccessTokenKey, "")
         val expiry = dataStore.get(TidalTokenExpiryKey, 0L)
-        // 60s skew so we never hand out a token that expires mid-request.
+
         if (token.isNotBlank() && expiry > System.currentTimeMillis() + 60_000L) return token
 
         val refresh = dataStore.get(TidalRefreshTokenKey, "")
         val flow = dataStore.get(TidalAuthFlowKey, TidalAccountManager.FLOW_OAUTH)
         if (refresh.isBlank()) {
-            // No refresh token: either never had one (web-capture session) or it was cleared. If we
-            // still hold an unexpired-ish access token, keep using it; otherwise flag re-login.
+
             if (token.isBlank()) markTidalNeedsRelogin()
             Timber.tag("MusicService").d("Tidal token expired/absent and no refresh token; account path unavailable")
             return token.ifBlank { null }
         }
-        // Serialize with the 401 refresh path and double-check under the lock in case another thread
-        // already refreshed while we waited.
+
         return synchronized(tidalTokenRefreshLock) {
             val currentToken = dataStore.get(TidalAccessTokenKey, "")
             val currentExpiry = dataStore.get(TidalTokenExpiryKey, 0L)
@@ -9729,7 +9091,6 @@ class MusicService :
         }
     }
 
-    /** Persists a refreshed/renewed Tidal token bundle and clears the re-login flag. */
     private fun persistRefreshedTidalToken(refreshed: TidalAccountManager.TokenResult) {
         runBlocking {
             dataStore.edit { prefs ->
@@ -9743,44 +9104,18 @@ class MusicService :
         }
     }
 
-    /** Flags that the stored Tidal session can no longer be refreshed and needs an interactive re-login. */
     private fun markTidalNeedsRelogin() {
         runBlocking { dataStore.edit { prefs -> prefs[TidalNeedsReloginKey] = true } }
     }
 
-    /**
-     * Forces a Tidal token refresh via the stored refresh token, ignoring the cached expiry. Used
-     * when the API rejects a token we believed was valid (401), e.g. after a server-side
-     * invalidation. Persists and returns the new access token, or null if refresh is impossible.
-     */
-    /**
-     * Returns true if a [TidalAccountManager.TidalUnauthorizedException] (401) appears anywhere in
-     * the throwable's cause or suppressed chain. Needed because ExoPlayer can interrupt the loader
-     * thread mid-request, surfacing an [InterruptedException] with the real 401 attached only as a
-     * suppressed exception — in which case a naive `catch (TidalUnauthorizedException)` misses it.
-     */
     private fun isTidalUnauthorized(root: Throwable?) = TidalAccountManager.isUnauthorized(root)
 
-    /**
-     * Serializes all Tidal token refreshes. Tracks resolve on parallel ExoPlayer loader threads, so
-     * multiple 401s can fire at once; this lock + the double-check below guarantee exactly one
-     * network refresh per expiry, and later waiters observe the already-refreshed token and reuse
-     * it (avoids redundant token calls and races on the persisted session).
-     */
     private val tidalTokenRefreshLock = Any()
 
-    /**
-     * Refreshes the Tidal access token after a 401. [rejectedToken] is the token the API just
-     * rejected. Under the lock we re-read the stored token: if it already differs from
-     * [rejectedToken], another thread refreshed while we waited, so we return that fresh token
-     * WITHOUT another network call. Returns null when there is no usable refresh token or the
-     * refresh genuinely fails — in which case we flag the account for interactive re-login. The
-     * refresh runs against the client that issued the session (see [TidalAuthFlowKey]).
-     */
     private fun refreshTidalToken(rejectedToken: String?): String? =
         synchronized(tidalTokenRefreshLock) {
             val current = dataStore.get(TidalAccessTokenKey, "")
-            // Double-check: another thread already refreshed the token while we waited on the lock.
+
             if (current.isNotBlank() && current != rejectedToken) {
                 Timber.tag("MusicService").d("Tidal token already refreshed by another thread; reusing")
                 return@synchronized current
@@ -9830,8 +9165,6 @@ class MusicService :
             }
         if (candidates.isEmpty()) return null
 
-        // Gate candidates locally (shared metadata gate) so a wrong search hit falls through
-        // to the next candidate; with a per-song override the user's pick wins outright.
         var winner: Pair<AppleMusicAudioProvider.AppleMusicStream, DirectStream>? = null
         var bestScore = -1.0
         for (candidate in candidates) {
@@ -9869,18 +9202,13 @@ class MusicService :
         }
         val (candidate, placeholder) = winner ?: return null
 
-        // Materialize the winning candidate into a cache file; playback is an ordinary
-        // progressive file stream with the Widevine L3 session decrypting at the codec level.
         return try {
             val file =
                 appleStreamFile(query.mediaId, appleQuality) {
                     AppleMusicVirtualStream.build(mediaOkHttpClient, candidate.playlistUrl, candidate.keyIdHex).bytes
                 }
             appleDrmTrackInfo[query.mediaId] = AppleTrackDrmInfo(adamId = candidate.songId, drmUri = candidate.drmUri)
-            // Nerd-info adaptation: patch the format row so the media-info sheet shows the
-            // Apple codec/size for this song instead of the stale YouTube values (mirrors the
-            // contentLength backfill pattern; the YouTube resolver rewrites the row whenever
-            // the song is played from YouTube again).
+
             runCatching {
                 runBlocking(Dispatchers.IO) {
                     val row = database.getFormatsByIds(listOf(query.mediaId)).firstOrNull()
@@ -9908,10 +9236,6 @@ class MusicService :
         }
     }
 
-    /**
-     * Cache file for an Apple stream (cacheDir/applemusic/<mediaId>.m4a), built via [build]
-     * when missing, with a simple prune: oldest files go first past ~300 MB.
-     */
     private fun appleStreamFile(
         mediaId: String,
         quality: AppleMusicQuality,
@@ -9926,12 +9250,7 @@ class MusicService :
             f.delete()
         }
         val safeId = mediaId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        // The v2 marker invalidates files built before the pssh KID fix (ported from
-        // vossgraves/ArchiveTune, claude/pool-lease-kotlin-plan-1rcjuz, 4cacd27b1): v1 files can
-        // carry an all-zero Widevine key id, so they are structurally valid (and therefore cached
-        // and replayed forever) but decode to silence. Bumping the name is what makes the fix
-        // observable on a song the user has already played; the size prune above retires the
-        // stale v1 files.
+
         val out = java.io.File(dir, "${safeId}_${quality.name.lowercase()}_v2.m4a")
         if (out.exists() && out.length() > 0) return out
         out.writeBytes(build())
@@ -9942,10 +9261,6 @@ class MusicService :
         val quality = parseTidalAudioQuality()
         Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, dataStore.get(TidalAccountFirstKey, true))
 
-        // Account-first: use a real Tidal subscriber token via the official API when available —
-        // first the user's own signed-in account, then shared premium accounts from the community
-        // Source Pool. Both paths yield full-quality FLAC directly, so a proxy instance is only a
-        // last resort.
         if (dataStore.get(TidalAccountFirstKey, true)) {
             val apiQuality =
                 when (quality) {
@@ -9966,9 +9281,6 @@ class MusicService :
                     )
                 }
 
-            // 1) The user's own token. Resolve, transparently refreshing and retrying once if the
-            //    API rejects it (401) — the stored token may have been invalidated server-side even
-            //    though it has not expired by our clock.
             var token = ensureValidTidalToken()
             Timber.tag("MusicService").d("Tidal account token available=%s", token != null)
             if (token != null) {
@@ -9977,13 +9289,10 @@ class MusicService :
                     try {
                         attempt(token, accountCountry)
                     } catch (e: Throwable) {
-                        // A 401 may surface directly, or wrapped as a *suppressed*/cause exception
-                        // inside an InterruptedException when ExoPlayer interrupts the loader thread
-                        // mid-request. Detect it anywhere in the chain so the refresh path still runs.
+
                         if (isTidalUnauthorized(e)) {
                             Timber.tag("MusicService").w("Tidal account 401 (possibly wrapped); refreshing token + retrying")
-                            // Clear any pending interrupt on this loader thread; otherwise the
-                            // runBlocking calls in refresh + retry would immediately abort.
+
                             Thread.interrupted()
                             val refreshed = refreshTidalToken(rejectedToken = token)
                             if (refreshed != null && refreshed != token) {
@@ -10002,9 +9311,6 @@ class MusicService :
                 if (accountStream != null) return accountStream
             }
 
-            // 2) Shared premium Tidal accounts contributed to the community Source Pool (premium
-            //    first). These are genuine subscriber tokens, so they stream full-quality FLAC via
-            //    the official API without anyone hosting a restream instance.
             for (poolAccount in PoolAccountManager.tidalAccounts()) {
                 val poolCountry = poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
                 val poolStream =
@@ -10022,18 +9328,11 @@ class MusicService :
                     PoolAccountManager.noteAccountSuccess("tidal", poolAccount.id)
                     return poolStream
                 }
-                // Threw, or returned null because this account has no match. Either way it just
-                // cost up to 20s, so sort it last for a while rather than paying that again on
-                // the next track — the server's own dead-account handling is far slower than a
-                // listening session.
+
                 PoolAccountManager.noteAccountFailure("tidal", poolAccount.id)
             }
         }
 
-        // Fallback: public HiFi/QQDL instances (empty list falls back to built-in defaults).
-        // Union the user's configured instances with community instances discovered from the
-        // Source Pool website (verified-healthy ones, cached by the startup scan). User entries are
-        // kept and ordered first; discovery only adds, never removes.
         val configuredInstances = parseTidalInstances()
         val discoveredInstances = TidalInstanceHealthManager.healthyUrls(this)
         val mergedInstances =
@@ -10083,21 +9382,16 @@ class MusicService :
         )
     }
 
-    /** Resolves a Qobuz stream through the user-provided proxy instances. */
     private fun resolveQobuzStream(query: SourceQuery): DirectStream? {
         val userInstances = parseQobuzInstances()
-        // Union user-configured instances with community instances discovered from the Source Pool
-        // website (cached ~10min inside the provider). User entries stay first; discovery only adds.
+
         val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }.getOrDefault(emptyList())
         val configuredInstances =
             LinkedHashSet<String>().apply {
                 addAll(userInstances)
                 addAll(discoveredInstances)
             }.toList()
-        // Union the user's own Qobuz tokens with shared premium accounts from the community Source
-        // Pool. Pool accounts carry the app_secret needed to sign stream URLs, so they resolve FLAC
-        // directly against www.qobuz.com. User entries stay first; pool accounts are appended and
-        // deduped by auth token.
+
         val poolTokens =
             PoolAccountManager.qobuzAccounts().map {
                 QobuzToken(
@@ -10145,31 +9439,8 @@ class MusicService :
         }.getOrNull()
     }
 
-    /**
-     * Resolves a **Qobuz backup** stream — the community-hosted `mlc-ytify.kouzu.in` mirror, which
-     * serves a FLAC per YouTube video id.
-     *
-     * The two-step resolve (envelope → mirror probe) lives in
-     * [QobuzBackupProvider.resolveStream], shared with the download path
-     * (`LosslessStreamResolver.resolveQobuzBackup`). It used to be duplicated here, which is how
-     * the two drifted: the playback copy was fixed to prefer the `lossless` mirror over the lossy
-     * `url` one while the download path had no Qobuz-backup support at all.
-     *
-     * [mediaOkHttpClient] is passed in so the probe goes out through the same proxy-aware client
-     * that will fetch the bytes, and so the interceptor adds `x-request-source: muzo` — without
-     * that header kouzu.in rate-limits aggressively.
-     *
-     * Returns null when the id is not a YouTube video id, the mirror has nothing for it, or no
-     * candidate mirror serves audio.
-     *
-     * Marked [DirectStream.trustedDirectId] because the mirror is keyed by the very id we asked
-     * for: the YouTube media id IS the authoritative identity here, so the title/artist gate that
-     * guards catalogue-search sources has nothing to check.
-     */
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
-        // An explicit pick from the "Play from" popup addresses a specific mirror entry, which is
-        // usually NOT the playing song's own id — honour it when present and fall back to the media
-        // id for the automatic path.
+
         val ytId = (query.directQobuzBackupVideoId ?: query.mediaId).trim()
         val resolved =
             runCatching {
@@ -10203,13 +9474,10 @@ class MusicService :
             matchedTitle = query.title,
             matchedArtist = query.artists.joinToString(", ").ifBlank { null },
             matchedAlbum = query.album,
-            // The FLAC header's own sample count is the exact length of the file being served;
-            // prefer it over the catalogue duration so the Details card and the measured bitrate
-            // are both computed from the real file.
+
             matchedDurationMs = resolved.durationMs ?: query.durationMs,
         )
     }
-
 
     private fun parseQobuzInstances(): List<String> =
         dataStore
@@ -10223,16 +9491,8 @@ class MusicService :
         return runCatching { QobuzAudioQuality.valueOf(stored) }.getOrDefault(QobuzAudioQuality.FLAC)
     }
 
-    /**
-     * Resolves a Deezer stream. Unlike Tidal/Qobuz there is no proxy-instance tier, so the pool is the
-     * only credential source and the whole source is a no-op until the pool has accounts.
-     */
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
-        // DeezerAudioProvider.accounts() merges the manually signed-in account (setManualArl) with
-        // PoolAccountManager.deezerAccounts(). Calling PoolAccountManager directly here bypassed the
-        // manual account entirely: a user who signed in through the Deezer login screen would see an
-        // empty list even though their ARL was registered, and every track would silently produce null.
-        // The guard now uses DeezerAudioProvider.hasAccounts() so both sources are considered.
+
         if (!DeezerAudioProvider.hasAccounts()) {
             Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
@@ -10253,8 +9513,7 @@ class MusicService :
                             ),
                         format = quality.toFormatName(),
                     )?.let { resolved ->
-                        // The provider deliberately returns its own type so it stays independent of the
-                        // playback layer; map it here, at the single point where the two meet.
+
                         DirectStream(
                             uri = resolved.uri,
                             mimeType = resolved.mimeType,
@@ -10281,27 +9540,12 @@ class MusicService :
         return runCatching { DeezerAudioQuality.valueOf(stored) }.getOrDefault(DeezerAudioQuality.FLAC)
     }
 
-    /**
-     * Resolves a JioSaavn stream. Ported from vivi-music (https://github.com/vivizzz007/vivi-music).
-     *
-     * JioSaavn is unauthenticated: we search the public JioSaavn API, pick the best match by
-     * title/artist/duration, decrypt the encrypted_media_url via DES-ECB, and select the
-     * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
-     */
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-        // NOTE: the global JioSaavnEnabledKey gate was removed here. The chain
-        // (sourceResolutionChain / the override list) already filters by enabled-ness,
-        // so re-checking it here is redundant for the global-on case. More importantly,
-        // it BLOCKED the per-song override path: if the user has JioSaavn globally OFF
-        // but explicitly pinned one song to JioSaavn via the Source chooser, this gate
-        // returned null and the resolver silently fell back to YouTube — making the
-        // override look like it "did nothing". Removing the gate lets the override
-        // resolve even when JioSaavn is globally disabled.
+
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
 
-        // Build a search query from title + primary artist (+ album as a soft hint).
         val artistHint = query.artists.firstOrNull()?.takeIf { it.isNotBlank() } ?: ""
         val albumHint = query.album?.takeIf { it.isNotBlank() } ?: ""
         val searchQuery =
@@ -10316,25 +9560,23 @@ class MusicService :
                 val searchResult = SaavnService.searchSongs(searchQuery).getOrNull() ?: return@runBlocking null
                 if (searchResult.isEmpty()) return@runBlocking null
 
-                // Pick best candidate by title/artist/duration. Prefer non-Pro tracks (Pro-Only tracks
-                // return a 30-second preview from JioSaavn's CDN and we cannot stream them).
                 val wantedDurationSec = query.durationMs?.let { it / 1000 }
                 val candidate =
                     searchResult
                         .filter { !it.isProOnly && it.downloadUrl.isNotEmpty() }
                         .minByOrNull { song ->
                             var penalty = 0
-                            // Title similarity (simple normalized contains + length delta)
+
                             val normTitle = song.name.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             val normWanted = query.title.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             penalty += if (normTitle == normWanted) 0 else if (normTitle.contains(normWanted) || normWanted.contains(normTitle)) 1 else 5
-                            // Artist match
+
                             val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace(JIO_SAAVN_NORMALIZE_REGEX, "") ?: ""
                             val wantedArtist = artistHint.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             if (wantedArtist.isNotBlank() && candidateArtist.isNotBlank()) {
                                 penalty += if (candidateArtist == wantedArtist) 0 else if (candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)) 1 else 3
                             }
-                            // Duration delta
+
                             if (wantedDurationSec != null && song.duration != null) {
                                 val candidateDuration = song.duration!!.toLong()
                                 val wantedSec = wantedDurationSec!!
@@ -10369,11 +9611,6 @@ class MusicService :
         }.getOrNull()
     }
 
-    /**
-     * Applies a resolved [DirectStream] to the [dataSpec]: namespaces the cache key per-source so
-     * bytes never collide with the YouTube stream (or another source) for the same media id, and
-     * marks the track so YouTube-derived audio normalization is skipped for it.
-     */
     private fun applyDirectStream(
         dataSpec: DataSpec,
         mediaId: String,
@@ -10384,14 +9621,9 @@ class MusicService :
         stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
         tidalActiveMediaIds.add(mediaId)
         audioNormalizationFactorCache[mediaId] = 1f
-        // Persist a FormatEntity for the resolved external stream so the media-info "Details" tab
-        // has data to show. Without this, the nerd-stats Details card spun on "please wait" forever
-        // for Tidal (and any non-YouTube source), because only the YouTube resolver wrote a format.
-        // itag = 0 is a sentinel for "not a YouTube itag" and is hidden in the UI.
+
         persistDirectStreamFormat(mediaId, stream)
-        // Cache the resolved DirectStream so the next playback / prefetch for
-        // this media id skips the slow Qobuz/Tidal resolution. The TTL matches
-        // the typical signed-URL lifetime on those providers (~5 min).
+
         directStreamCache[mediaId] = CachedDirectStream(
             stream = stream,
             expiresAtMs = System.currentTimeMillis() + DIRECT_STREAM_CACHE_TTL_MS,
@@ -10403,20 +9635,6 @@ class MusicService :
             .build()
     }
 
-    /**
-     * Writes a [FormatEntity] describing a resolved external ([DirectStream]) source so the
-     * media-info "Details" tab can render technical stats instead of spinning forever. Only the
-     * YouTube resolver used to persist a format, leaving Tidal streams with no row. We derive what
-     * we can from the stream: MIME/codec directly, and a best-effort sample rate / bit depth from
-     * the quality tier embedded in [DirectStream.label] (e.g. "HI_RES", "LOSSLESS").
-     *
-     * If [DirectStream.contentLength] is null (common for Tidal/Qobuz stream URLs that don't
-     * expose a Content-Length header upfront), we fire a HEAD request in the background to
-     * fetch the real byte size. Without this the nerd-stats card shows "Unknown content
-     * length" for FLAC tracks even when the stream itself is fully playable. The HEAD request
-     * is best-effort and never blocks playback — the row is upserted immediately with a 0
-     * placeholder, then updated once the HEAD round-trip completes.
-     */
     private fun persistDirectStreamFormat(
         mediaId: String,
         stream: DirectStream,
@@ -10427,17 +9645,7 @@ class MusicService :
             stream.codecs.ifBlank {
                 stream.mimeType.substringAfter("codecs=", "").removeSurrounding("\"").ifBlank { "flac" }
             }
-        // Use the ACTUAL sample rate and bit depth from the DirectStream when
-        // the provider reported them. Fall back to label-based heuristics only
-        // when the provider didn't report the actual values (some providers
-        // don't expose sampleRate/bitDepth — e.g. JioSaavn always returns null).
-        //
-        // BUG FIXED: the previous implementation always used hardcoded guesses
-        // (44100 Hz / 1411 kbps for "LOSSLESS", 96000 Hz / 2304 kbps for "HI_RES")
-        // regardless of the actual stream's properties. This meant ALL lossless
-        // songs showed the same bitrate/sample rate in the player's Details tab
-        // even when they were different (e.g. a 48kHz/24-bit track showed as
-        // 44.1kHz/16-bit).
+
         val sampleRate = stream.sampleRate?.takeIf { it > 0 }
             ?: when {
                 label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 96_000
@@ -10467,10 +9675,7 @@ class MusicService :
                 perceptualLoudnessDb = null,
                 playbackUrl = null,
             )
-        // Update the format row with the resolved stream's codec info so the player codec badge
-        // reflects what's actually playing (e.g. FLAC, not the YouTube opus row that was
-        // persisted by the YouTube resolver). Preserve the authoritative itag and loudness data
-        // so the details card and the normalization pipeline keep the real YouTube metadata.
+
         val existing =
             runBlocking(Dispatchers.IO) {
                 database.getFormatsByIds(listOf(mediaId)).firstOrNull()
@@ -10491,9 +9696,6 @@ class MusicService :
             database.query { upsert(formatEntity) }
         }
 
-        // Backfill the content length via a HEAD request if the source didn't
-        // provide it. This is what makes the nerd-stats card show e.g.
-        // "32.45 MB" for a FLAC track instead of "Unknown content length".
         if (knownContentLength == null) {
             ioScope.launch(SilentHandler) {
                 runCatching {
@@ -10504,11 +9706,7 @@ class MusicService :
                     mediaOkHttpClient.newCall(headRequest).execute().use { response ->
                         val len = response.header("Content-Length")?.toLongOrNull() ?: -1L
                         if (len > 0L) {
-                            // Re-read the row so we don't clobber any concurrent
-                            // updates to other fields (e.g. loudness) — only
-                            // patch the contentLength column, plus the bitrate that
-                            // can now be measured from it (the row was written with
-                            // the tier estimate because the length was unknown).
+
                             val backfilledBitrate = measuredBitrate(len, stream.matchedDurationMs)
                             val refreshed =
                                 runBlocking(Dispatchers.IO) {
@@ -10522,9 +9720,7 @@ class MusicService :
                             if (refreshed != null) {
                                 database.query { upsert(refreshed) }
                             }
-                            // Also surface the size in the in-memory cache so the
-                            // download resolver picks it up immediately for the
-                            // cache-first prewarm partial-cache check.
+
                             contentLengthCache[sourceCacheKey(stream.source, mediaId)] = len
                         }
                     }
@@ -10535,19 +9731,6 @@ class MusicService :
         }
     }
 
-    /**
-     * The stream's true average bitrate in bits/sec, derived from its byte length and
-     * playing time, or null when either is unknown.
-     *
-     * This is what makes the Details card show something specific to the track that is
-     * actually playing. The alternative — sample rate x bit depth x channels — is the
-     * *uncompressed* PCM ceiling, and it is identical for every file that shares a tier:
-     * the Qobuz backup mirror serves almost its whole catalogue as 24-bit/44.1 kHz FLAC,
-     * so every lossless track reported exactly the same "2116 kbps" no matter how
-     * compressible it was. A measured rate distinguishes them (a sparse ballad
-     * compresses to well under half of a dense mix) and is the honest figure for a
-     * variable-bitrate codec.
-     */
     private fun measuredBitrate(
         contentLength: Long?,
         durationMs: Long?,
@@ -10555,8 +9738,7 @@ class MusicService :
         val bytes = contentLength?.takeIf { it > 0L } ?: return null
         val millis = durationMs?.takeIf { it > 0L } ?: return null
         val bitsPerSecond = bytes * 8_000L / millis
-        // Guard against a bogus duration producing an absurd rate; 50 Mbps is far above
-        // anything a music file reaches, so treat it as "unknown" instead of showing it.
+
         return bitsPerSecond.takeIf { it in 1L..50_000_000L }?.toInt()
     }
 
@@ -10570,17 +9752,9 @@ class MusicService :
             else -> "${source.name.lowercase()}:$mediaId"
         }
 
-    /**
-     * Cheap check (no network) for whether an external lossless source (Tidal) should be preferred
-     * for [mediaId]. Used to gate the ephemeral YouTube player-cache short-circuit so enabling a
-     * source takes effect immediately instead of replaying previously cached YouTube bytes.
-     */
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
-        // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal, Qobuz, Qobuz backup, Deezer, Apple Music) must bypass
-        // the ephemeral YouTube player cache so toggling a source on takes effect immediately
-        // instead of replaying cached YT bytes.
+
         return dataStore.get(TidalEnabledKey, true) ||
             dataStore.get(QobuzEnabledKey, false) ||
             dataStore.get(QobuzBackupEnabledKey, false) ||
@@ -10617,32 +9791,6 @@ class MusicService :
 
         knownContentLength?.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // Cache-first playback (user request 2026-08-30):
-        // "everytime I restart the app and I start a song it always checks for the
-        //  available sources and then play the song. Instead it should just play
-        //  the cached song everytime until the cached song data is cleared
-        //  manually. The available sources shouldn't affect it all unless I
-        //  manually try to change the track."
-        //
-        // Previously, when any lossless source (Tidal/Qobuz/QobuzBackup/Deezer) was
-        // enabled, the YouTube-bytes player-cache short-circuit was bypassed so that
-        // toggling a lossless source on would take effect immediately instead of
-        // replaying the previously cached YouTube bytes. Per the user's new
-        // requirement, cached bytes now ALWAYS short-circuit the source-check —
-        // regardless of which source produced them or which source is currently
-        // preferred. Source resolution only runs on cache-miss. The user's existing
-        // "Clear song cache" action (StorageSettingsViewModel.clearSongCache →
-        // StorageLocationRepository.clearMediaCache(playerCache, SONGS)) remains the
-        // manual escape hatch that invalidates cached bytes and forces a fresh
-        // source-check on the next play.
-        //
-        // `tidalApplies` is preserved as a computed value (no longer used to gate
-        // the cache short-circuit) so that future logic that wants to know whether
-        // a lossless source is currently preferred can read it without re-running
-        // the datastore lookups. It is intentionally annotated @Suppress("unused")
-        // to keep the compiler quiet without removing the value.
-        // ─────────────────────────────────────────────────────────────────────────
         @Suppress("unused") val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
         val allowPlayerCacheShortCircuit = true
 
@@ -10680,15 +9828,11 @@ class MusicService :
             }
         }
 
-        // Multi-source: attempt to resolve a lossless stream (Tidal) before YouTube.
         resolveMultiSourceDataSpec(dataSpec, mediaId, lowDataModeActive)?.let { sourceDataSpec ->
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return sourceDataSpec
         }
 
-        // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR playback client
-        // bypasses the InnerTube client chain entirely and asks the moriextractor
-        // backend for a signed stream URL.
         if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
             return resolveArchiveTuneExtractorDataSpec(
                 dataSpec = dataSpec,
@@ -10887,16 +10031,6 @@ class MusicService :
         } ?: resolvedDataSpec
     }
 
-    // ─── ArchiveTune Extractor resolution (ported from vossgraves/ArchiveTune) ──
-
-    /**
-     * Resolves [mediaId] through the moriextractor backend and returns a DataSpec
-     * pointed at the backend's signed stream URL. Ported verbatim from
-     * vossgraves/ArchiveTune: cache entries are keyed by the prefixed auth
-     * fingerprint, PO tokens / cookies / GVS tokens from the current playback
-     * auth state are forwarded as query parameters, and the signed URL's expiry
-     * is enforced with a 30 s safety margin.
-     */
     private fun resolveArchiveTuneExtractorDataSpec(
         dataSpec: DataSpec,
         mediaId: String,
@@ -11018,14 +10152,7 @@ class MusicService :
                 }
 
                 else -> {
-                    // No known content length and no explicit request length.
-                    // For offline playback of fully-downloaded songs whose
-                    // cache metadata never had the content length persisted,
-                    // compute the total cached byte range across all candidate
-                    // keys and use that as the requested length. This is the
-                    // key fix for "downloaded songs don't play when offline" —
-                    // without it, the resolver returns null here, falls
-                    // through to the YouTube resolver, and fails offline.
+
                     val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
                     val maxCachedLength =
                         candidateKeys.maxOfOrNull { key ->
@@ -11035,9 +10162,7 @@ class MusicService :
                                 if (spans.isEmpty()) {
                                     0L
                                 } else {
-                                    // Sum up the total cached bytes starting from
-                                    // dataSpec.position. For a fully-downloaded
-                                    // song, this equals the content length.
+
                                     val sortedSpans = spans.sortedBy { it.position }
                                     var total = 0L
                                     var cursor = dataSpec.position
@@ -11060,15 +10185,6 @@ class MusicService :
                 }
             }
 
-        // Find the first source-prefixed key (or the bare mediaId) that
-        // has the requested byte range fully cached. Returning the
-        // DataSpec with the matching key is critical — without it the
-        // CacheDataSource would look up the bytes under the bare mediaId
-        // and miss the lossless FLAC bytes cached under "qobuz:$mediaId"
-        // / "tidal:$mediaId", then fall through to the YouTube resolver
-        // and serve a lossy MP3 stream — producing Code 3003 when the
-        // Media3 extractors then tried to read MP3 bytes under a FLAC
-        // FormatEntity.
         val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
         val matchingKey = candidateKeys.firstOrNull { key ->
             getContinuousCachedLengthForKey(
@@ -11079,15 +10195,6 @@ class MusicService :
             ) >= requestedLength
         } ?: return null
 
-        // DataSpec.Builder.buildUpon() preserves the original DataSpec's
-        // position — we only need to set the matching cache key and trim the
-        // length to the bytes that are actually cached. Resetting the
-        // position to 0 here was a regression introduced when migrating
-        // off of DataSpec.subrange() — it caused CacheDataSource to return
-        // bytes [0..requestedLength) for byte-range requests at non-zero
-        // offsets, which the extractor fed to the decoder at the wrong
-        // position and produced silence for the second half of cached songs
-        // after process death (force-stop) until the song repeated.
         return dataSpec
             .buildUpon()
             .setKey(matchingKey)
@@ -11095,11 +10202,6 @@ class MusicService :
             .build()
     }
 
-    /**
-     * Same as [getContinuousCachedLength] but for a specific cache key.
-     * Used by [resolveCachedDataSpec] to find the source-prefixed key
-     * whose cache spans fully cover the requested range.
-     */
     private fun getContinuousCachedLengthForKey(
         key: String,
         position: Long,
@@ -11143,14 +10245,7 @@ class MusicService :
     ): Long {
         val targetEnd = position.saturatingAdd(requestedLength)
         var cursor = position
-        // Include source-prefixed cache keys (qobuz:, tidal:, deezer:) so
-        // that a song downloaded from a lossless source plays back as the
-        // lossless bytes — not as a re-fetched YouTube Music stream. Without
-        // this, playing a downloaded FLAC song would bypass the cached FLAC
-        // bytes (keyed as "qobuz:abc") and fall through to the YouTube
-        // resolver, which serves a different (lossy MP3/AAC) stream —
-        // causing the "Code 3003 UnrecognizedInputFormatException" when the
-        // Media3 extractors received an MP3 stream under a FLAC cache key.
+
         val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
         val playerCacheSpans =
             if (includePlayerCache) {
@@ -11220,28 +10315,16 @@ class MusicService :
         DefaultMediaSourceFactory(
             createDataSourceFactory(),
             DefaultExtractorsFactory()
-                // Enable constant-bitrate seeking for CBR streams (most MP3/AAC files) so
-                // the user can seek to any position without needing a seek table. Without
-                // this, ExoPlayer can only seek to keyframes, making seeking in .m4a/.mp3
-                // files imprecise or impossible.
+
                 .setConstantBitrateSeekingEnabled(true),
         )
-            // Apple Music full-track streams are CENC-encrypted fMP4; the Widevine L3
-            // session (license exchanged against Apple's acquireWebPlaybackLicense) is
-            // attached only for media ids resolved through the Apple source — everything
-            // else stays DRM-free with the default behavior.
+
             .setDrmSessionManagerProvider { mediaItem ->
                 val appleTrack = mediaItem.mediaId?.let { appleDrmTrackInfo[it] }
                 if (appleTrack != null) buildAppleDrmSessionManager(appleTrack) ?: DrmSessionManager.DRM_UNSUPPORTED
                 else DrmSessionManager.DRM_UNSUPPORTED
             }
 
-    /**
-     * Media ids resolved through the Apple Music source, with the per-track values Apple's
-     * license exchange needs (adamId + the playlist's raw EXT-X-KEY `uri`). Registered when
-     * the resolver returns an Apple stream so the DRM provider knows which media items need
-     * the Widevine session. Entries stay for the process lifetime (tiny; ids only).
-     */
     private class AppleTrackDrmInfo(
         val adamId: String,
         val drmUri: String,
@@ -11258,14 +10341,10 @@ class MusicService :
             .setUuidAndExoMediaDrmProvider(
                 C.WIDEVINE_UUID,
                 ExoMediaDrm.Provider { uuid ->
-                    // FrameworkMediaDrm's constructor is private — use newInstance and force
-                    // software-level L3: Apple's license server issues keys for the web
-                    // playback pipeline, which is L3-shaped. On failure fall back to the
-                    // default provider (handles unsupported-scheme gracefully).
+
                     val created =
                         runCatching { FrameworkMediaDrm.newInstance(uuid) }.getOrNull()?.apply {
-                            // The exact property value differs across vendors; try both and
-                            // ignore failures — worst case the device default level is used.
+
                             runCatching { setPropertyString("securityLevel", "L3") }
                                 .recoverCatching { setPropertyString("securityLevel", "3") }
                         }
@@ -11275,21 +10354,12 @@ class MusicService :
             .build(callback)
     }
 
-    /**
-     * Speaks Apple's license-exchange protocol (verified against gamdl): the Widevine
-     * challenge travels BASE64 inside a JSON envelope —
-     * `{"challenge", "key-system", "uri", "adamId", "isLibrary", "user-initiated"}` —
-     * and the response is JSON whose `license` field carries the base64 license bytes.
-     * A plain HttpMediaDrmCallback posts the raw challenge and chokes on the JSON response,
-     * which is why Apple playback was silent. Provisioning (L3 device registration) still
-     * goes to Google's default endpoint.
-     */
     private inner class AppleLicenseCallback(
         private val track: AppleTrackDrmInfo,
         private val devToken: String?,
         private val mediaToken: String,
     ) : MediaDrmCallback {
-        // Provisioning uses Widevine's normal server, not Apple's.
+
         private val provisionFallback = HttpMediaDrmCallback(null, OkHttpDataSource.Factory(mediaOkHttpClient))
 
         private fun fail(message: String): Nothing {
@@ -11376,15 +10446,13 @@ class MusicService :
             val normalizedScheme = dataSpec.uri.scheme?.lowercase(Locale.US)
             val selectedFactory =
                 if (normalizedScheme == "telegram") {
-                    // Telegram tracks stream through TDLib's own partial-file cache; Media3's
-                    // caches and the YouTube resolver chain must both stay out of the way.
+
                     telegramFactory
                 } else if (normalizedScheme == DeezerCrypto.SCHEME) {
-                    // Carries its own cache; the YouTube resolver would rewrite the URI.
+
                     deezerFactory
                 } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
-                    // Streams through its own progressive-DASH source; the YouTube resolver
-                    // would rewrite the URI.
+
                     tidalProgressiveDashFactory
                 } else if (
                     normalizedScheme == "content" ||
@@ -11417,13 +10485,11 @@ class MusicService :
         }
     }
 
-    /** Routes provider URIs after the resolving/cache layers have already selected a stream. */
     private class ResolvedSchemeRoutingDataSource(
         private val defaultFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
         private val tidalProgressiveDashFactory: DataSource.Factory,
-        // Ported from vossgraves/ArchiveTune: extractor-origin URLs (the moriextractor
-        // backend's signed /api/play/ links) get the dedicated no-proxy OkHttp client.
+
         private val extractorFactory: DataSource.Factory,
         private val shouldUseExtractorFactory: (Uri) -> Boolean,
     ) : DataSource {
@@ -11530,13 +10596,7 @@ class MusicService :
     private fun createRenderersFactory() =
         object : DefaultRenderersFactory(this) {
             init {
-                // Enable decoder fallback so that when a primary (typically hardware) decoder fails
-                // — e.g. MediaTek's c2.mtk.alac.decoder on .m4a/ALAC files (error 0x80000000) —
-                // ExoPlayer can fall back to any alternative decoder advertised by the platform,
-                // including any extension software decoder that may be registered.
-                // Also opt in to extension renderers as a fallback tier (EXTENSION_RENDERER_MODE_ON):
-                // extension decoders come AFTER the platform MediaCodec ones, so default hardware
-                // acceleration is preserved but a software fallback becomes reachable.
+
                 setEnableDecoderFallback(true)
                 setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             }
@@ -11709,7 +10769,6 @@ class MusicService :
             !id.contains("privately_owned_artist", ignoreCase = true)
     }
 
-    // Create a transient Song object from current Player MediaMetadata when the DB doesn't have it.
     private fun createTransientSongFromMedia(media: MediaMetadata): Song {
         val songEntity =
             SongEntity(
@@ -11898,21 +10957,9 @@ class MusicService :
         )
     }
 
-    /**
-     * Last player state actually written, compared ignoring [PersistPlayerState.timestamp] so a
-     * paused player — whose position does not move — stops rewriting an identical file every tick.
-     */
     @Volatile
     private var lastPersistedPlayerState: PersistPlayerState? = null
 
-    /**
-     * Writes just the resume position and transport flags, skipping the queue snapshot.
-     *
-     * Deliberately not [saveQueueToDisk]: that maps every media item to persistable metadata on
-     * the main thread and writes two files. For the periodic save none of that changes between
-     * ticks — only the position does — and the queue file is already written by every handler that
-     * can change it.
-     */
     private suspend fun savePlayerStateToDisk() {
         val saveGeneration = persistentSaveGeneration.get()
         val state =
@@ -11936,7 +10983,6 @@ class MusicService :
                 )
             } ?: return
 
-        // timestamp defaults to now, so it always differs — compare everything else.
         val previous = lastPersistedPlayerState
         if (previous != null && previous.copy(timestamp = 0L) == state.copy(timestamp = 0L)) return
 
@@ -12216,8 +11262,6 @@ class MusicService :
             .onFailure { reportException(it) }
     }
 
-    // ���─ Widget Support ──────────────────────────────���─────────────────────────────
-
     fun updateWidget() {
         widgetUpdater.update()
         widgetUpdater.updateProgressTracking()
@@ -12244,11 +11288,8 @@ class MusicService :
         const val HOME = "home"
         const val HOME_QUICK_PICKS = "home_quick_picks"
 
-        // Prefix for the dedicated player-cache key used by Tidal streams so their bytes never
-        // collide with the YouTube stream cached under the bare media id.
         private const val TIDAL_CACHE_KEY_PREFIX = "tidal:"
 
-        /** Apple Music license endpoint (Widevine L3 key exchange, verified live). */
         private const val APPLE_LICENSE_URL =
             "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/acquireWebPlaybackLicense"
         const val HOME_FORGOTTEN_FAVORITES = "home_forgotten_favorites"
@@ -12268,8 +11309,7 @@ class MusicService :
         const val ONLINE_PLAYLIST = "online_playlist"
 
         private const val TAG = "MusicService"
-        // ─── ArchiveTune Extractor (moriextractor backend) — ported from
-        // vossgraves/ArchiveTune ───
+
         private const val ArchiveTuneExtractorHost = "moriextractor.koyeb.app"
         private const val ArchiveTuneExtractorCacheFingerprintPrefix = "archivetune_extractor:"
         private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
@@ -12298,14 +11338,6 @@ class MusicService :
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
 
-        /**
-         * How often the resume position is written while the service is alive.
-         *
-         * This only bounds how far back a restore lands after a process death, so 30s of accuracy
-         * is plenty; it used to be 10s while playing, which meant six wakeups and six pairs of file
-         * writes a minute for a queue that had not changed. Every event that changes the queue
-         * saves it directly, so nothing is lost by ticking less often.
-         */
         private val PERSISTENT_POSITION_SAVE_INTERVAL = 30.seconds
         const val MAX_CONSECUTIVE_ERR = 5
         const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 350L
@@ -12313,12 +11345,7 @@ class MusicService :
         const val AUDIO_ROUTE_RECOVERY_MIN_INTERVAL_MS = 1_500L
         const val AUDIO_ROUTE_RECOVERY_RESUME_DELAY_MS = 150L
         const val DEVICE_MUTE_PLAYBACK_NOTICE_INTERVAL_MS = 1_200L
-        // Delay before re-asserting the captured baseline volume after a source switch's
-        // player.prepare() call. Long enough that the prepare pipeline has settled (and any
-        // async state transitions complete within one frame after that) without being so long
-        // that the user perceives a muted gap. Originally added in commit 9a224662b alongside
-        // a broken import from the morideobfuscator submodule (where the constant never
-        // existed) — moved back here so the reference resolves.
+
         const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
@@ -12338,20 +11365,7 @@ class MusicService :
         const val CROSSFADE_MAX_BUFFER_BEFORE_START_MS = 12_500L
         const val PRIMARY_MIN_BUFFER_MS = 20_000
         const val PRIMARY_MAX_BUFFER_MS = 60_000
-        // Reduced from 750ms / 2_500ms → 150ms / 750ms for faster song-start
-        // latency. Combined with stream URL prefetching (see
-        // prefetchNextMediaItemStream) this cuts perceived "tap to play" time
-        // from ~1.5-3s down to ~150-400ms when the stream URL is cached.
-        // 150ms is just above the ExoPlayer default of 250ms but small enough
-        // that FLAC / YouTube streams start audibly within ~1 RTT of the
-        // first TCP packet arriving. The after-rebuffer floor was lowered
-        // from 1_000ms → 750ms for the same reason — the user is already
-        // waiting on a rebuffer, so making them wait a full extra second on
-        // top of the network RTT is excessive. `setPrioritizeTimeOverSizeThresholds(true)`
-        // on the LoadControl means ExoPlayer will start playback as soon as
-        // the time threshold is met, even if the size-based threshold hasn't
-        // been reached — important for FLAC where the bitrate is 4-6× higher
-        // than AAC, so the same byte count represents far less playback time.
+
         const val PRIMARY_BUFFER_FOR_PLAYBACK_MS = 150
         const val PRIMARY_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 750
         const val CROSSFADE_MIN_BUFFER_MS = 15_000
@@ -12359,25 +11373,9 @@ class MusicService :
         const val CROSSFADE_FRAME_MS = 32L
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
-        /**
-         * How often the stuck-mute watchdog re-checks the player volume during active playback.
-         *
-         * This is only a backstop: ensureAudiblePlaybackVolume already runs from onEvents and from
-         * both source-switch paths, so any state change that could mute the player is covered
-         * event-driven. The watchdog exists for a mute that arrives with no player event at all.
-         *
-         * It was 2s, which is 30 CPU wakeups a minute for a check that almost always does nothing,
-         * and background audio is exactly where that stops the SoC reaching deep idle between
-         * buffer fills. At 15s the worst-case recovery for an already-rare bug goes from 2s to 15s
-         * and the wakeups drop by 7.5x.
-         */
+
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 15_000L
 
-        /**
-         * TTL for cached Qobuz/Tidal DirectStreams. Set to 5 minutes to match the
-         * typical signed-URL lifetime on those providers (4-6 minutes). After this,
-         * a cached stream is considered stale and re-resolved from the source.
-         */
         private const val DIRECT_STREAM_CACHE_TTL_MS = 5L * 60L * 1000L
     }
 }

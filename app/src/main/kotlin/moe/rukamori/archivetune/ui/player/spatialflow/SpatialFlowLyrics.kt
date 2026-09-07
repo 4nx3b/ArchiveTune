@@ -112,10 +112,6 @@ import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
-/**
- * Optimized circular reveal modifier utilizing a remembered path and in-place
- * reset/rebuild (SpatialFlow's `circularRevealFrom`).
- */
 private fun Modifier.circularRevealFrom(
     progressProvider: () -> Float,
     centerProvider: () -> Offset?,
@@ -160,8 +156,7 @@ private fun Modifier.drawWithCachePathClip(
                         bottom = revealCenter.y + radius,
                     ),
                 )
-                // clipPath's block receiver is a plain DrawScope; drawContent()
-                // lives on the ContentDrawScope of onDrawWithContent — qualify it.
+
                 clipPath(revealPath, ClipOp.Intersect) {
                     this@onDrawWithContent.drawContent()
                 }
@@ -188,22 +183,9 @@ internal fun SpatialFlowLyricsOverlay(
     val playerConnection = LocalPlayerConnection.current ?: return
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
-    // ── Lyrics overflow menu (2026-09-05) ─────────────────────────────────
-    // The SpatialFlow lyrics screen previously had NO lyrics overflow menu
-    // at all, so Translate / AI Translation / Romanise / Undo / Search were
-    // simply unreachable here (user report: "Translation/AI Translation/
-    // Romanisation doesn't work in ... SpatialFlow lyrics screens"). The
-    // header's leading slot (a 48dp Spacer) becomes the more button opening
-    // the same anchored Apple-Music-style popup the Apple Music and
-    // SimpMusic styles show, rendered as the last child of this overlay's
-    // root Box (always above the lyrics).
     var showLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
-    // Backdrop that records THIS overlay's content (title header + lyrics)
-    // while the popup is open, so its drawBackdrop sampler blurs what is
-    // actually behind the menu. Android 12+ only; below that the popup
-    // falls back to its dark tint. The popup renders as a SIBLING of the
-    // layer-capturing Box (never nested inside it).
+
     val popupBackdrop: PlatformBackdrop? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
@@ -211,11 +193,6 @@ internal fun SpatialFlowLyricsOverlay(
             null
         }
 
-    // ── Automatic AI translation (2026-09-05) ──────────────────────────────
-    // Mirrors the LaunchedEffect in AppleMusicPlayer.kt / LyricsScreen.kt —
-    // the SpatialFlow lyrics screen previously had no auto-translate
-    // trigger (user report: "Auto translation and auto romanisation doesn't
-    // work in ... SpatialFlow lyrics screens").
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
     val (autoTranslateExcludedLanguages) =
@@ -255,11 +232,6 @@ internal fun SpatialFlowLyricsOverlay(
         )
     }
 
-    // ── AI romanisation (2026-09-05) ─────────────────────────────────────
-    // Mirrors LyricsEnhanced's consumption of AiLyricsRomanization results —
-    // without this the menu's "AI Romanise Now" and the "Auto AI
-    // Romanisation" setting had no visible effect in the SpatialFlow
-    // lyrics screen. Lines are resolved by line TEXT (not index).
     val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
     val aiRomanizationSessionKey =
         remember(currentLyricsEntity?.lyrics) {
@@ -314,10 +286,7 @@ internal fun SpatialFlowLyricsOverlay(
                 .navigationBarsPadding()
                 .padding(vertical = 12.dp),
     ) {
-        // Inner content Box — records the overlay's header + lyrics into
-        // `popupBackdrop` WHILE the anchored overflow popup is open (same
-        // pattern as the SimpMusic lyrics sheet); the popup renders as a
-        // SIBLING below, never nested inside this layer-capturing Box.
+
         Box(
             modifier =
                 Modifier.fillMaxSize().let { base ->
@@ -329,7 +298,7 @@ internal fun SpatialFlowLyricsOverlay(
                 },
         ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Centered Title Header Layout
+
             Row(
                 modifier =
                     Modifier
@@ -339,10 +308,7 @@ internal fun SpatialFlowLyricsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Lyrics overflow menu button (2026-09-05): opens the same
-                // anchored Apple-Music-style popup the other player styles
-                // show — Translate / AI Translation / Romanise / Undo /
-                // Search were unreachable in this screen before.
+
                 IconButton(
                     onClick = { showLyricsMenu = true },
                     modifier =
@@ -496,12 +462,8 @@ internal fun SpatialFlowLyricsOverlay(
                 }
             }
         }
-        } // end inner content Box (popup backdrop recording layer)
+        }
 
-        // ── Anchored Apple-Music-style overflow popup ─────────────────────
-        // Rendered as the LAST child of the overlay's root Box so it draws
-        // above everything else (title header, lyrics). Same menu the Apple
-        // Music and SimpMusic player styles show over their lyrics.
         if (showLyricsMenu) {
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = moreIconBounds,
@@ -516,17 +478,6 @@ internal fun SpatialFlowLyricsOverlay(
     }
 }
 
-/**
- * The synced-lyrics list — SpatialFlow's SyncedLyricsCompose, INCLUDING the word-by-word
- * karaoke highlighting (ported 2026-09-05 after "word synced lyrics don't work correctly in
- * SpatialFlow player"): a karaoke line renders as a dim base Text plus a fully-lit overlay
- * Text whose not-yet-sung characters are erased with a DstOut sweep — per character, driven
- * by each word's own start/end timestamps, with a soft gradient at the sweep front and a
- * 200ms linear position smoothing so the 100ms position polls sweep continuously. Lines with
- * no word timings keep the line-level highlight (active 38sp Bold, inactive 20sp dimmed);
- * instrumental breaks render SpatialFlow's breathing-note interlude row with a wavy progress
- * bar. Tap a line to seek; the list auto-scrolls so the active line stays centred.
- */
 @Composable
 private fun SpatialFlowSyncedLyrics(
     lyrics: List<LyricsEntry>,
@@ -539,13 +490,11 @@ private fun SpatialFlowSyncedLyrics(
     val listState = rememberLazyListState()
     val dimColor = contentColor.copy(alpha = 0.35f)
 
-    // ── Detect karaoke mode (SpatialFlow's isKaraokeMode) ────────────────────────────
     val isKaraokeMode =
         remember(lyrics) {
             lyrics.any { !it.isInstrumental && LyricsUtils.hasTrueWordSync(it) }
         }
 
-    // ── Filter out interludes when in karaoke mode ───────────────────────────────────
     val displayItems =
         remember(lyrics, isKaraokeMode) {
             lyrics.mapIndexedNotNull { index, line ->
@@ -564,8 +513,6 @@ private fun SpatialFlowSyncedLyrics(
         }
     }
 
-    // Auto-scroll: only animate when the active line CHANGES, and never fight the user's
-    // own scroll (SpatialFlow's guard — animateScrollToItem cancels a drag mid-gesture).
     LaunchedEffect(activeIndex) {
         if (activeIndex >= 0 && !listState.isScrollInProgress) {
             listState.animateScrollToItem(
@@ -616,15 +563,6 @@ private fun SpatialFlowSyncedLyrics(
     }
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
-// ─ Lyric Line Item — SpatialFlow's APPLE-MUSIC-STYLE WORD HIGHLIGHTING ───────────
-// ════════════════════════════════════════════════════════════════════════════════
-
-/**
- * A word span mapped onto the rendered string's character range. [WordTimestamp] carries no
- * char positions, so the spans are computed by sequentially locating each word's text inside
- * the line's text — the same contract SpatialFlow's LyricWord.charRange serves upstream.
- */
 private data class WordCharSpan(
     val start: Int,
     val endExclusive: Int,
@@ -663,9 +601,6 @@ private fun SpatialFlowLyricLineItem(
     val dimColor = contentColor.copy(alpha = 0.35f)
     val litColor = contentColor
 
-    // 200ms linear smoothing of the playback position (SpatialFlow's SmoothKaraokePos): the
-    // position polls every ~100ms, and animating between polls is what makes the per-word
-    // sweep continuous instead of stepping.
     val rawPos = if (isKaraoke && isActive) currentPositionProvider() else line.time
     val smoothedPos by animateFloatAsState(
         targetValue = rawPos.toFloat(),
@@ -696,12 +631,9 @@ private fun SpatialFlowLyricLineItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            // Text stack — the base dim text and the karaoke overlay text
-            // OVERLAP here (Box children stack), exactly as before; the
-            // romanisation sub-line then flows below the stack.
+
             Box(modifier = Modifier.fillMaxWidth()) {
-                // Base dim text — for karaoke lines it stays dim and the overlay lights the sung part;
-                // for line-synced lines it carries the whole highlight when active.
+
                 Text(
                     text = line.text,
                     style = mainTextStyle,
@@ -712,7 +644,6 @@ private fun SpatialFlowLyricLineItem(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                // Overlay lit text, erased ahead of the sung position (SpatialFlow's eraseFutureText).
                 if (isKaraoke && isActive) {
                     Text(
                         text = line.text,
@@ -737,9 +668,6 @@ private fun SpatialFlowLyricLineItem(
                 }
             }
 
-            // AI romanisation sub-line (2026-09-05) — smaller and dimmer under
-            // the lyric line, the same presentation the Apple Music renderer's
-            // romanisation uses.
             romanizedText
                 ?.takeIf { it.isNotBlank() && it != line.text }
                 ?.let { romanized ->
@@ -761,12 +689,6 @@ private fun SpatialFlowLyricLineItem(
     }
 }
 
-/**
- * Erases the characters that have not been sung yet from an overlay text, per character:
- * fully-sung characters stay lit, future characters are erased outright (DstOut), and the
- * character under the sweep front is erased through a short horizontal gradient so the
- * leading edge is soft. Port of SpatialFlow's eraseFutureText/calculateCharProgress.
- */
 private fun DrawScope.eraseFutureText(
     layout: androidx.compose.ui.text.TextLayoutResult,
     spans: List<WordCharSpan>,
@@ -783,13 +705,13 @@ private fun DrawScope.eraseFutureText(
             }
 
         if (charProgress >= 0.99f) {
-            // Fully swept character: leave it fully lit (do not erase).
+
         } else if (charProgress < 0.01f) {
-            // Fully future character: erase it completely.
+
             val path = layout.getPathForRange(charIndex, charIndex + 1)
             drawPath(path, color = Color.Black, blendMode = BlendMode.DstOut)
         } else {
-            // Partially sweeping character: soft gradient erase.
+
             val path = layout.getPathForRange(charIndex, charIndex + 1)
             val box = layout.getBoundingBox(charIndex)
 
@@ -821,7 +743,6 @@ private fun findControllingSpan(
     if (charIndex < spans.first().start) return spans.first()
     if (charIndex >= spans.last().endExclusive) return spans.last()
 
-    // Between words: the word that already passed owns the gap (spaces stay lit with it).
     return spans.lastOrNull { it.endExclusive <= charIndex } ?: spans.first()
 }
 
@@ -830,7 +751,7 @@ private fun calculateCharProgress(
     span: WordCharSpan,
     pos: Long,
 ): Float {
-    // WordTimestamp times are SECONDS (both the TTML and QRC parsers) — milliseconds here.
+
     val wordStartMs = (span.word.startTime * 1000.0).toLong()
     val wordEndMs = (span.word.endTime * 1000.0).toLong().coerceAtLeast(wordStartMs + 120L)
 
@@ -865,10 +786,6 @@ private fun calculateCharProgress(
 
 private fun easeOutCubic(x: Float): Float = 1f - (1f - x) * (1f - x) * (1f - x)
 
-// ════════════════════════════════════════════════════════════════════════════════
-// ─ Interlude Item (instrumental break) ────────────────────────────────────────────
-// ════════════════════════════════════════════════════════════════════════════════
-
 @Composable
 private fun SpatialFlowInterludeItem(
     isActive: Boolean,
@@ -890,7 +807,6 @@ private fun SpatialFlowInterludeItem(
         label = "InterludeProgress",
     )
 
-    // Breathing scale for the note icon (SpatialFlow's InterludeBreathing).
     val infiniteTransition = rememberInfiniteTransition(label = "InterludeBreathing")
     val breatheScale by infiniteTransition.animateFloat(
         initialValue = 0.82f,
