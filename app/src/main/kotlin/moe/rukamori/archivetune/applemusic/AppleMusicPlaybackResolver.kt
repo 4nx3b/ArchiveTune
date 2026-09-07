@@ -73,12 +73,15 @@ object AppleMusicPlaybackResolver {
             }
         }
 
-        if (track.durationMs > 0 && candidate.duration != null) {
-            val diff = abs(candidate.duration * 1000L - track.durationMs)
-            if (diff < 3000) {
-                score += 10
-            } else if (diff < 10000) {
-                score += 5
+        if (track.durationMs > 0) {
+            val candidateDuration = candidate.duration
+            if (candidateDuration != null) {
+                val diff = abs(candidateDuration * 1000L - track.durationMs)
+                if (diff < 3000) {
+                    score += 10
+                } else if (diff < 10000) {
+                    score += 5
+                }
             }
         }
 

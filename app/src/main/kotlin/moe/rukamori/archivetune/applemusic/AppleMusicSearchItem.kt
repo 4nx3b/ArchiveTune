@@ -11,13 +11,14 @@ sealed interface AppleMusicSearchItem {
     val id: String
     val title: String
     val key: String
+    val artworkUrl: String?
 
     data class Track(
         override val id: String,
         override val title: String,
         val artist: String,
         val album: String?,
-        val artworkUrl: String?,
+        override val artworkUrl: String?,
         val durationMs: Long,
         val viewUrl: String?,
         val explicit: Boolean,
@@ -29,7 +30,7 @@ sealed interface AppleMusicSearchItem {
         override val id: String,
         override val title: String,
         val artist: String,
-        val artworkUrl: String?,
+        override val artworkUrl: String?,
         val trackCount: Int,
         val releaseYear: String?,
         val viewUrl: String?,
@@ -42,6 +43,7 @@ sealed interface AppleMusicSearchItem {
         override val title: String,
         val genre: String?,
         val viewUrl: String?,
+        override val artworkUrl: String? = null,
     ) : AppleMusicSearchItem {
         override val key: String get() = "artist:$id"
     }
