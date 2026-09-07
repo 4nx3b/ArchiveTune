@@ -775,23 +775,7 @@ private fun SelectableReleaseItem(
     Box(
         modifier =
             itemModifier
-                .let { if (fillMaxWidth) it.fillMaxWidth() else it }
-                .let {
-                    if (isSelectionMode) {
-                        it.border(
-                            width = if (selected) 2.dp else 1.dp,
-                            color =
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                                },
-                            shape = shape,
-                        )
-                    } else {
-                        it
-                    }
-                },
+                .let { if (fillMaxWidth) it.fillMaxWidth() else it },
     ) {
         YouTubeGridItem(
             item = album,
@@ -799,6 +783,10 @@ private fun SelectableReleaseItem(
             isPlaying = isPlaying,
             fillMaxWidth = fillMaxWidth,
             coroutineScope = coroutineScope,
+            // Edit mode: the thumbnail play affordance disappears — the tile's
+            // click now toggles selection, so a play glyph would read as a
+            // playable control and fight the selection checkbox.
+            showPlayOverlay = !isSelectionMode,
             modifier =
                 Modifier.combinedClickable(
                     onClick = { onReleaseClick(album) },
@@ -847,6 +835,27 @@ private fun SelectableReleaseItem(
                     modifier = Modifier.size(20.dp),
                 )
             }
+            // Selection border — drawn LAST (over the scrim) as an INSET
+            // overlay (2dp from the cell edges) instead of a modifier on the
+            // container, so the content never re-flows when edit mode toggles
+            // and adjacent cells' borders keep a 4dp gap between them instead
+            // of colliding into one merged 2dp line.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .padding(2.dp)
+                        .border(
+                            width = if (selected) 2.dp else 1.dp,
+                            color =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                                },
+                            shape = shape,
+                        ),
+            )
         }
     }
 }

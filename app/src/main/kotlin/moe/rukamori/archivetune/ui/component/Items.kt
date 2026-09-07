@@ -1481,6 +1481,11 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    // When false, the thumbnail's play overlays (song OverlayPlayButton +
+    // album AlbumPlayButton) are suppressed — used by selection-mode grids
+    // (e.g. NewReleaseScreen's edit mode) where the play affordance would
+    // fight the selection checkbox and mislead as a playable control.
+    showPlayOverlay: Boolean = true,
 ) {
     val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
     val resolvedThumbnailRatio = thumbnailRatio ?: item.preferredThumbnailRatio(cropThumbnailToSquare)
@@ -1530,33 +1535,35 @@ fun YouTubeGridItem(
                 sourceAspectRatio = item.thumbnailSourceRatio,
             )
 
-            if (item is SongItem && !isActive) {
+            if (item is SongItem && !isActive && showPlayOverlay) {
                 OverlayPlayButton(
                     visible = true,
                 )
             }
 
-            AlbumPlayButton(
-                visible = item is AlbumItem && !isActive,
-                onClick = {
-                    coroutineScope?.launch(Dispatchers.IO) {
-                        var albumWithSongs = database.albumWithSongs(item.id).first()
-                        if (albumWithSongs?.songs.isNullOrEmpty()) {
-                            YouTube
-                                .album(item.id)
-                                .onSuccess { albumPage ->
-                                    database.transaction { insert(albumPage) }
-                                    albumWithSongs = database.albumWithSongs(item.id).first()
-                                }.onFailure { reportException(it) }
-                        }
-                        albumWithSongs?.let {
-                            withContext(Dispatchers.Main) {
-                                playerConnection.playQueue(LocalAlbumRadio(it))
+            if (showPlayOverlay) {
+                AlbumPlayButton(
+                    visible = item is AlbumItem && !isActive,
+                    onClick = {
+                        coroutineScope?.launch(Dispatchers.IO) {
+                            var albumWithSongs = database.albumWithSongs(item.id).first()
+                            if (albumWithSongs?.songs.isNullOrEmpty()) {
+                                YouTube
+                                    .album(item.id)
+                                    .onSuccess { albumPage ->
+                                        database.transaction { insert(albumPage) }
+                                        albumWithSongs = database.albumWithSongs(item.id).first()
+                                    }.onFailure { reportException(it) }
+                            }
+                            albumWithSongs?.let {
+                                withContext(Dispatchers.Main) {
+                                    playerConnection.playQueue(LocalAlbumRadio(it))
+                                }
                             }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
         thumbnailRatio = resolvedThumbnailRatio,
         fillMaxWidth = fillMaxWidth,

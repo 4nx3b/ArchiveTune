@@ -47,13 +47,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -99,7 +98,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -148,6 +146,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import moe.rukamori.archivetune.ui.screens.HomeTopFadeBlur
 import moe.rukamori.archivetune.ui.screens.LocalHomeHazeState
+import moe.rukamori.archivetune.ui.screens.LocalSearchHazeState
+import moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState
 import dev.chrisbanes.haze.HazeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -302,6 +302,8 @@ import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -800,6 +802,18 @@ class MainActivity : ComponentActivity() {
             // the haze source; the top bar renders the blurred strip (see the
             // topBar slot). Provided to the tree via LocalHomeHazeState.
             val homeHazeState = remember { HazeState() }
+            // Search-page redesign: the Search route's own haze state —
+            // SearchScreen tags its root Box as the source and the top bar
+            // renders the SAME progressive top-fade blur over the Search
+            // route. Separate instance so the two tabs never cross-sample
+            // while both compose during the slide transition.
+            val searchHazeState = remember { HazeState() }
+            // Library-tab redesign: the Library route's own haze state —
+            // LibraryScreen tags its root Box as the source and the top bar
+            // renders the SAME progressive top-fade blur over the Library
+            // route. Separate instance so the top-level tabs never
+            // cross-sample during the fade-through transition.
+            val libraryHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
@@ -2102,6 +2116,8 @@ class MainActivity : ComponentActivity() {
                         // between HomeScreen's hazeSource and the top bar's progressive
                         // fade blur over the Home route.
                         moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
+                        moe.rukamori.archivetune.ui.screens.LocalSearchHazeState provides searchHazeState,
+                        moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState provides libraryHazeState,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
@@ -2314,6 +2330,21 @@ class MainActivity : ComponentActivity() {
                                         // note on AutoResizeText below for why the fade that came with
                                         // this design was wrong here.
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
+                                        // Search-page redesign: the Search route follows the Home
+                                        // route's behaviour exactly — pinned transparent bar,
+                                        // content scrolling under it into the progressive
+                                        // top-fade blur, centered page title.
+                                        val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
+                                        val homeBarScrolled by remember(isHomeRoute) {
+                                            derivedStateOf {
+                                                homeScrollBehavior.state.collapsedFraction > 0.05f
+                                            }
+                                        }
+                                        val homeBarTitleAlpha by animateFloatAsState(
+                                            targetValue = if (isHomeRoute && homeBarScrolled) 1f else 0f,
+                                            animationSpec = tween(220),
+                                            label = "homeBarTitleAlpha",
+                                        )
 
                                         var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
@@ -2342,9 +2373,9 @@ class MainActivity : ComponentActivity() {
                                                     // user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
-                                                            if (isLibraryRoute || isHomeRoute) {
-                                                                // Library and Home both keep the bar
-                                                                // pinned: Home's content scrolls under
+                                                            if (isLibraryRoute || isHomeRoute || isSearchRoute) {
+                                                                // Library, Home and Search all keep the
+                                                                // bar pinned: content scrolls under
                                                                 // it into the progressive blur.
                                                                 0f
                                                             } else {
@@ -2353,19 +2384,24 @@ class MainActivity : ComponentActivity() {
                                                     },
                                         ) {
                                             if (shouldShowBlurBackground) {
-                                                if (isHomeRoute &&
+                                                if ((isHomeRoute || isSearchRoute || isLibraryRoute) &&
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
-                                                    // ── BitChord TopFadeBlur (2026-09-03) ──────────────────
+                                                    // ── BitChord TopFadeBlur ──────────────────
                                                     // Full blur along the top edge ramping to nothing on the
                                                     // way down (progressive vertical gradient, EaseOutCubic,
-                                                    // peak 0.75), over the HazeState HomeScreen tags its
+                                                    // peak 0.75), over the HazeState the active tab tags its
                                                     // content with. A modest readability scrim sits over
                                                     // the blur so the bar's glyphs keep a floor whatever
                                                     // scrolls beneath them.
                                                     HomeTopFadeBlur(
-                                                        hazeState = homeHazeState,
+                                                        hazeState =
+                                                            when {
+                                                                isHomeRoute -> homeHazeState
+                                                                isSearchRoute -> searchHazeState
+                                                                else -> libraryHazeState
+                                                            },
                                                         pageColor = surfaceColor,
                                                         barHeight = AppBarHeight + effectiveStatusBarTop,
                                                     )
@@ -2379,7 +2415,7 @@ class MainActivity : ComponentActivity() {
                                                             // Box above. This is the blur background
                                                             // overlay under the top app bar.
                                                             .graphicsLayer {
-                                                                if (!isLibraryRoute && !isHomeRoute) {
+                                                                if (!isLibraryRoute && !isHomeRoute && !isSearchRoute) {
                                                                     val raw = currentScrollBehavior.state.heightOffset
                                                                     val clamped = raw.coerceAtLeast(-appBarHeightPx)
                                                                     translationY = clamped - raw
@@ -2413,50 +2449,22 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
-                                                title = {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        // app icon
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.about_appbar),
-                                                            contentDescription = null,
-                                                            modifier =
-                                                                Modifier
-                                                                    .size(35.dp)
-                                                                    .padding(end = 3.dp),
-                                                        )
-                                                        // Always visible, on Home too. The BitChord
-                                                        // design this came from fades the bar title in
-                                                        // only once scrolled, because there the big
-                                                        // in-list header IS the page title and the two
-                                                        // would otherwise say the same thing twice.
-                                                        // Ours is a greeting — "Good morning, <name>" —
-                                                        // so fading the bar title left nothing on the
-                                                        // home screen naming the app at all.
-                                                        AutoResizeText(
-                                                            text = stringResource(R.string.app_name),
-                                                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                            fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Visible,
-                                                            softWrap = true,
-                                                            modifier = Modifier.weight(1f, fill = false),
-                                                        )
-                                                    }
-                                                },
-                                                actions = {
-                                                    Box(
-                                                        modifier = Modifier.padding(end = 4.dp),
-                                                    ) {
+                                                // ── Home header ──
+                                                // Plain profile avatar, no pill around it —
+                                                // the same menu the avatar button opens, so no
+                                                // functionality moves; it only exists on the
+                                                // Home route.
+                                                navigationIcon = {
+                                                    if (isHomeRoute) {
                                                         IconButton(
                                                             onClick = { profileMenuExpanded = true },
-                                                            colors = IconButtonDefaults.iconButtonColors(
-                                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                                                    .copy(alpha = TopAppBarIconButtonContainerAlpha),
-                                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            ),
+                                                            onLongClick = {},
+                                                            modifier = Modifier.padding(start = 10.dp),
                                                         ) {
+                                                            // avatar 36dp; the fallback person glyph
+                                                            // scales with it (24dp).
                                                             Surface(
-                                                                modifier = Modifier.size(28.dp),
+                                                                modifier = Modifier.size(36.dp),
                                                                 shape = CircleShape,
                                                                 color = MaterialTheme.colorScheme.primaryContainer,
                                                             ) {
@@ -2474,7 +2482,7 @@ class MainActivity : ComponentActivity() {
                                                                         Icon(
                                                                             painter = painterResource(R.drawable.account),
                                                                             contentDescription = stringResource(R.string.account),
-                                                                            modifier = Modifier.size(20.dp),
+                                                                            modifier = Modifier.size(24.dp),
                                                                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                                                         )
                                                                     }
@@ -2482,22 +2490,174 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                     }
+                                                },
+                                                title = {
+                                                    if (isLibraryRoute) {
+                                                        // ── Library title (centered) ──
+                                                        // The big bold "Library" text, horizontally
+                                                        // centered in the bar; the bar stays pinned
+                                                        // and content scrolls under it into the
+                                                        // progressive top-fade blur.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.library),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 38.sp,
+                                                                lineHeight = 44.sp,
+                                                                letterSpacing = (-0.5).sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
+                                                    } else if (isHomeRoute) {
+                                                        // ── Home title (centered) ──
+                                                        // Just the "Home" text, horizontally centered
+                                                        // in the bar, always visible, and NO app logo
+                                                        // in front of it. The fillMaxWidth centers it
+                                                        // in the space between the avatar and the
+                                                        // settings icon — the two side elements are
+                                                        // nearly equal width, so the title reads as
+                                                        // screen-centered.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.home),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
+                                                    } else if (isSearchRoute) {
+                                                        // ── Search title (centered) ──
+                                                        // The Search route follows the Home route's
+                                                        // header exactly: just the "Search" text,
+                                                        // horizontally centered in the bar, always
+                                                        // visible — with NO app logo on the left and
+                                                        // NO trailing icon. The search entry stays
+                                                        // the in-feed SearchEntryField; this bar only
+                                                        // owns the page identity + the haze.
+                                                        Box(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            contentAlignment = Alignment.Center,
+                                                        ) {
+                                                            Text(
+                                                                text = stringResource(R.string.search),
+                                                                color = MaterialTheme.colorScheme.onBackground,
+                                                                fontWeight = FontWeight.Bold,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            // app icon — visible on every non-Home route
+                                                            Icon(
+                                                                painter = painterResource(R.drawable.about_appbar),
+                                                                contentDescription = null,
+                                                                modifier =
+                                                                    Modifier
+                                                                        .size(35.dp)
+                                                                        .padding(end = 3.dp),
+                                                            )
+                                                            AutoResizeText(
+                                                                text = stringResource(R.string.app_name),
+                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                                                fontSizeRange = FontSizeRange(min = 14.sp, max = 22.sp),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Visible,
+                                                                softWrap = true,
+                                                                modifier =
+                                                                    Modifier
+                                                                        .weight(1f, fill = false)
+                                                                        .graphicsLayer { alpha = homeBarTitleAlpha },
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                                actions = {
+                                                    // The settings-update badge is computed once
+                                                    // for the Home route's liquid-glass settings
+                                                    // icon. Settings is reachable from the Home
+                                                    // top-end icon only.
+                                                    val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
+                                                        latestUpdateChannel == effectiveUpdateChannel &&
+                                                        Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
+                                                    if (isHomeRoute) {
+                                                        // ── Home header settings ──
+                                                        // The ONLY top-end action on the Home route
+                                                        // is the settings icon in a liquid-glass
+                                                        // pill. The search entry point stays the
+                                                        // Search tab in the bottom navigation. The
+                                                        // small accent dot on the icon carries over
+                                                        // the update-available badge.
+                                                        val liquidGlassBackdrop =
+                                                            LocalLiquidGlassBackdrop.current
+                                                        if (liquidGlassBackdrop != null) {
+                                                            Box(
+                                                                modifier = Modifier.padding(end = 10.dp),
+                                                            ) {
+                                                                LiquidGlassIconButton(
+                                                                    backdrop = liquidGlassBackdrop,
+                                                                    painter = painterResource(R.drawable.settings),
+                                                                    contentDescription = stringResource(R.string.settings),
+                                                                    onClick = {
+                                                                        navController.navigate("settings")
+                                                                    },
+                                                                )
+                                                                if (showSettingsBadge) {
+                                                                    Box(
+                                                                        modifier =
+                                                                            Modifier
+                                                                                .align(Alignment.TopEnd)
+                                                                                .offset(x = 2.dp, y = 2.dp)
+                                                                                .size(10.dp)
+                                                                                .graphicsLayer { alpha = 0.95f }
+                                                                                .background(
+                                                                                    MaterialTheme.colorScheme.error,
+                                                                                    CircleShape,
+                                                                                ),
+                                                                    )
+                                                                }
+                                                            }
+                                                        } else {
+                                                            FrostedHeaderPill(
+                                                                modifier = Modifier.padding(end = 6.dp),
+                                                            ) {
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        navController.navigate("settings")
+                                                                    },
+                                                                    onLongClick = {},
+                                                                ) {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.settings),
+                                                                        contentDescription = stringResource(R.string.settings),
+                                                                        modifier = Modifier.size(20.dp),
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    // Non-Home routes (Search / Library) render
+                                                    // no profile avatar in the top bar. The
+                                                    // profile menu remains reachable from the
+                                                    // Home tab's avatar.
                                                     if (profileMenuExpanded) {
-                                                        val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
-                                                            latestUpdateChannel == effectiveUpdateChannel &&
-                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                         ProfileMenuDialog(
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
                                                             items = listOf(
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.history,
-                                                                    label = stringResource(R.string.history),
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("history")
-                                                                    },
-                                                                ),
+                                                                // History entry removed — it already lives in the
+                                                                // Library tab, so duplicating it here was redundant.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.newspaper,
                                                                     label = stringResource(R.string.news),
@@ -2523,7 +2683,7 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate("lastfm_dashboard")
                                                                     },
                                                                 ),
-                                                                // Task 2: Music Recognition + Listen Together moved here from the
+                                                                // Music Recognition + Listen Together moved here from the
                                                                 // removed Home FAB. The third FAB action (Shuffle) is dropped entirely.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.mic,
@@ -2541,15 +2701,10 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate("settings/music_together")
                                                                     },
                                                                 ),
-                                                                ProfileMenuItem(
-                                                                    icon = R.drawable.settings,
-                                                                    label = stringResource(R.string.settings),
-                                                                    showBadge = showSettingsBadge,
-                                                                    onClick = {
-                                                                        profileMenuExpanded = false
-                                                                        navController.navigate("settings")
-                                                                    },
-                                                                ),
+                                                                // Settings entry removed — the Home route's
+                                                                // top-end settings icon in liquid glass is
+                                                                // now the sole entry point, and it carries
+                                                                // the update-available badge.
                                                             ),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
@@ -2982,17 +3137,34 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Material "fade through" for bottom-nav switches: the
-                                            // incoming screen fades in slightly delayed while gently
-                                            // scaling up from 92%, so Home↔Search↔Library feels animated
-                                            // instead of an imperceptible straight crossfade.
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            // Fluid Material-style fade-through for bottom-nav
+                                            // switches. The outgoing page is still partly visible
+                                            // (~50% alpha) when the incoming page starts to fade
+                                            // in — the two animations overlap continuously so
+                                            // there's no visible "gap" between the two screens,
+                                            // which is what makes a transition feel abrupt.
+                                            // - exit: 220ms LinearOutSlowInEasing — gentle,
+                                            //   decelerating fade-out (no scale; the outgoing
+                                            //   page is just dissolving away).
+                                            // - enter: 260ms FastOutSlowInEasing with 60ms
+                                            //   delay, scaled up from 0.94→1.0 — the small
+                                            //   delay lets the outgoing page establish before
+                                            //   the incoming settles in, and the cubic-bezier
+                                            //   easing keeps both motions buttery.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { it / 2 }
+                                            // Detail route (e.g. tapping a song → album screen).
+                                            // Same fluid fade-through as bottom-nav so the whole
+                                            // app has a single, consistent motion language.
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     exitTransition = {
@@ -3001,9 +3173,9 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     popEnterTransition = {
@@ -3015,13 +3187,17 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeIn(tween(220, delayMillis = 90)) +
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
-                                                    animationSpec = tween(220, delayMillis = 90),
-                                                    initialScale = 0.92f,
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
                                                 )
                                         } else {
-                                            fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
+                                            fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
+                                                    initialScale = 0.94f,
+                                                )
                                         }
                                     },
                                     popExitTransition = {
@@ -3033,9 +3209,9 @@ class MainActivity : ComponentActivity() {
                                             ) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(tween(90))
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         } else {
-                                            fadeOut(tween(200)) + slideOutHorizontally { it / 2 }
+                                            fadeOut(tween(220, easing = LinearOutSlowInEasing))
                                         }
                                     },
                                     modifier =
@@ -3625,8 +3801,6 @@ val LocalPlayerAwareWindowInsets =
 val LocalStableSystemBarsTopPadding = compositionLocalOf<Dp> { 0.dp }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
-
-private const val TopAppBarIconButtonContainerAlpha = 0.48f
 
 @Composable
 private fun OnlineSearchSortMenu(
