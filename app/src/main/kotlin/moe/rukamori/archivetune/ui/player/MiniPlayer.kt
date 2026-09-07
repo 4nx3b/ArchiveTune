@@ -76,7 +76,6 @@ import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.isLowEndDevice
-import kotlin.math.roundToInt
 
 @Composable
 fun MiniPlayer(

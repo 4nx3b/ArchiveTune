@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -693,12 +692,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         )
     }
 }
-
-private fun resolveSpans(
-    cache: androidx.media3.datasource.cache.Cache,
-    songId: String,
-): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>? =
-    resolveSpansWithSource(cache, songId)?.spans
 
 private data class ResolvedSpansWithSource(
     val spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,

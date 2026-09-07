@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.os.SystemClock
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween

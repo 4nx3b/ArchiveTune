@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
