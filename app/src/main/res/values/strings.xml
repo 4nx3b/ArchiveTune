@@ -446,6 +446,12 @@
     <string name="custom_font">Custom font</string>
     <string name="custom_font_desc">Pick a .ttf font</string>
     <string name="custom_font_invalid">Pick a .ttf font file</string>
+    <string name="sf_pro_fonts">SF Pro fonts</string>
+    <string name="sf_pro_fonts_desc">Browse sf-pro.kouzu.in and download a font</string>
+    <string name="sf_pro_error">Couldn\&apos;t load the font catalog. Check your connection and try again.</string>
+    <string name="sf_pro_retry">Retry</string>
+    <string name="sf_pro_download_failed">Download failed</string>
+    <string name="sf_pro_applied">Now using %1$s</string>
     <string name="color_palette">Color Palette</string>
     <string name="customize_theme_colors">Choose your app theme colors</string>
     <string name="palette_default">Default</string>

@@ -58,6 +58,8 @@ class YtdlnisStreamRepository
                 Timber.tag(TAG).d(error, "External yt-dlp fallback failed for %s", request.mediaId)
                 throw YtDlpExtractionException("External yt-dlp failed for ${request.mediaId}", error)
             }
+
+            throw YtDlpExtractionException("All Ytdlnis fallbacks failed for ${request.mediaId}")
         }
 
         private suspend fun tryNewPipe(request: AudioStreamRequest): ResolvedAudioStream? {

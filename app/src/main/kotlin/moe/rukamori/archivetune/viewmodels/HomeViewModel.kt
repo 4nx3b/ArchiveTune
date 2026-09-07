@@ -509,7 +509,6 @@ class HomeViewModel
                                 attempts = 0
                                 quickPicks.value = picks
                                 refreshHeroPicks(picks.orEmpty())
-                                updateAllLocalItems()
                             }
                     } catch (cancellation: CancellationException) {
                         throw cancellation
@@ -526,12 +525,6 @@ class HomeViewModel
                         } else {
                             delay(1_000L)
                         }
-                    }.catch { throwable ->
-                        reportException(throwable)
-                        emit(quickPicksWithFallback(emptyList()))
-                    }.collect { picks ->
-                        quickPicks.value = picks
-                        refreshHeroPicks(picks.orEmpty())
                     }
                 }
             }

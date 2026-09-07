@@ -143,9 +143,12 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -159,6 +162,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
@@ -281,6 +285,10 @@ fun AppleMusicPlayerContent(
     var queueOpen by remember { mutableStateOf(false) }
 
     var lyricsOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(mediaMetadata.id) { lyricsOpen = false }
+
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
 
     val animationsDisabled = LocalAnimationsDisabled.current
 
@@ -996,21 +1004,44 @@ fun AppleMusicPlayerContent(
 
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         if (lyricsContentReady) {
+                            when (lyricsMode) {
+                                LyricsMode.V2 ->
+                                    LyricsV2(
+                                        sliderPositionProvider = lyricsPosProvider,
+                                        lyricsSyncOffset = lyricsSyncOffset,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = lyricsHorizontalPadding),
+                                    )
 
-                            LyricsEnhanced(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
-                            LyricsMode.SIMPMUSIC -> SimpMusicLyrics(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
+                                LyricsMode.ENHANCED ->
+                                    LyricsEnhanced(
+                                        sliderPositionProvider = lyricsPosProvider,
+                                        lyricsSyncOffset = lyricsSyncOffset,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = lyricsHorizontalPadding),
+                                    )
+
+                                LyricsMode.SPOTIFY ->
+                                    LyricsV2(
+                                        sliderPositionProvider = lyricsPosProvider,
+                                        lyricsSyncOffset = lyricsSyncOffset,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = lyricsHorizontalPadding),
+                                        spotifyStyle = true,
+                                    )
+
+                                LyricsMode.SIMPMUSIC ->
+                                    SimpMusicLyrics(
+                                        sliderPositionProvider = lyricsPosProvider,
+                                        lyricsSyncOffset = lyricsSyncOffset,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = lyricsHorizontalPadding),
+                                    )
+                            }
                         }
                     }
                 }

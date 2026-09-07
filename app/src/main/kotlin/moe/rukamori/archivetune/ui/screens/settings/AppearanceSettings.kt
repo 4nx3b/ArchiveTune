@@ -489,6 +489,10 @@ fun AppearanceSectionSettings(
         mutableStateOf(false)
     }
 
+    var showSfProFontPicker by rememberSaveable {
+        mutableStateOf(false)
+    }
+
     LaunchedEffect(section, isPlayerStyleCustomizationEnabled, playerBackground) {
         if (section == AppearanceSection.PLAYER &&
             !isPlayerStyleCustomizationEnabled && playerBackground != PlayerBackgroundStyle.DEFAULT
@@ -553,6 +557,22 @@ fun AppearanceSectionSettings(
                 }
             }
         }
+    }
+
+    if (showSfProFontPicker) {
+        SfProFontPickerDialog(
+            onDismiss = { showSfProFontPicker = false },
+            onApply = { uri, name ->
+                onCustomFontUriChange(uri)
+                onCustomFontNameChange(name)
+                onFontPreferenceChange(AppFontPreference.CUSTOM)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.sf_pro_applied, name),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+        )
     }
 
     val headerHaze = rememberScreenHeaderHaze()
@@ -934,6 +954,15 @@ fun AppearanceSectionSettings(
                         description = customFontDescription,
                         icon = { Icon(painterResource(R.drawable.text_fields), null) },
                         onClick = pickCustomFont,
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("sf_pro_fonts"),
+                        title = { Text(stringResource(R.string.sf_pro_fonts)) },
+                        description = stringResource(R.string.sf_pro_fonts_desc),
+                        icon = { Icon(painterResource(R.drawable.solar_download_minimalistic_linear), null) },
+                        onClick = { showSfProFontPicker = true },
                     )
                 }
                 }

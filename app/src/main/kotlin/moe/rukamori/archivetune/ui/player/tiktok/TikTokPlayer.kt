@@ -224,6 +224,8 @@ fun TikTokPlayerContent(
 
     var lyricsOpen by rememberSaveable { mutableStateOf(false) }
 
+    LaunchedEffect(mediaMetadata.id) { lyricsOpen = false }
+
     var queueOpen by rememberSaveable { mutableStateOf(false) }
 
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)

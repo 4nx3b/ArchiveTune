@@ -398,8 +398,6 @@ private fun HomeContent(
                         }
                     }
 
-                    val minimalMode = uiState.minimalHomeMode
-
                     if (!minimalMode && uiState.showCategoryChips) {
                         item(
                             key = "home_category_chips",
