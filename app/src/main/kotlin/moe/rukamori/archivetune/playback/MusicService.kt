@@ -4650,7 +4650,9 @@ class MusicService :
         playbackUrlCache.clear()
         remotePlaybackTrackingUrlCache.clear()
         contentLengthCache.clear()
+        directStreamCache.clear()
         audioNormalizationFactorCache.clear()
+        resolvedSourcesByMediaId.clear()
         if (clearPersistentState) {
             clearPersistedQueueFiles()
         }

@@ -179,7 +179,7 @@ abstract class InternalDatabase : RoomDatabase() {
             val db = Room
                 .databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
                 .addMigrations(MIGRATION_1_2, *universalMigrations)
-                .addCallback(DatabaseCallback(queryExecutor))
+                .addCallback(DatabaseCallback())
                 .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
@@ -216,9 +216,14 @@ abstract class InternalDatabase : RoomDatabase() {
     }
 }
 
-private class DatabaseCallback(private val executor: Executor) : RoomDatabase.Callback() {
+private class DatabaseCallback : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
+        // One-shot off-thread setup. The executor is shut down as soon as the task is queued:
+        // shutdown() lets the already-submitted work run to completion, then terminates the idle
+        // thread instead of leaking one per database open (this fires on every open, including the
+        // repair path's rebuilds).
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
         executor.execute {
             try {
                 db.query("PRAGMA busy_timeout = 60000").close()
@@ -234,6 +239,7 @@ private class DatabaseCallback(private val executor: Executor) : RoomDatabase.Ca
                 Log.e(TAG, "Failed to set PRAGMA settings", e)
             }
         }
+        executor.shutdown()
     }
 
     private fun cleanupDuplicatePlaylistsOnOpen(db: SupportSQLiteDatabase) {
