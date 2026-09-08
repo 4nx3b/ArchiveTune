@@ -41,8 +41,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import timber.log.Timber
@@ -75,7 +77,7 @@ object TelegramBotClient {
             TelegramIncomingMessage(
                 chatId = chatId,
                 messageId = messageId,
-                track = TgJsProtocol.parseTrack(payload.tgObj("track")),
+                track = parseTgTrack(payload.tgObj("track")),
                 prompt = parsePrompt(payload.tgObj("prompt")),
             )
         if (message.track == null && message.prompt == null) return
@@ -153,7 +155,7 @@ object TelegramBotClient {
                         put("chatId", chatId)
                     }.toString(),
                 )
-            result.objArray("commands").map { cmd ->
+            result.tgObjArray("commands").map { cmd ->
                 TelegramBotCommand(
                     command = cmd.tgString("command"),
                     description = cmd.tgString("description"),
