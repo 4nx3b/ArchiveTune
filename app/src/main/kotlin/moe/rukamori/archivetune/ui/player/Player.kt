@@ -1108,6 +1108,9 @@ fun BottomSheetPlayer(
                     playerConnection.player.play()
                 }
             },
+            // Keep the video surface from running ahead of a buffering main
+            // player — both sides of the A/V pair start and recover together.
+            isMainAudioBuffering = playbackState == STATE_BUFFERING,
         )
 
     CompositionLocalProvider(

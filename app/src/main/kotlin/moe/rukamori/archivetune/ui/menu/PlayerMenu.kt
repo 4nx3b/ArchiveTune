@@ -177,9 +177,12 @@ fun PlayerMenu(
     val coroutineScope = rememberCoroutineScope()
 
     val downloadUtil = LocalDownloadUtil.current
-    val download by downloadUtil
-        .getDownload(mediaMetadata.id)
-        .collectAsStateWithLifecycle(initialValue = null)
+    // Per-source download state — "Download" vs "Remove download" tracks the
+    // CURRENT source (per-song pin first, else the download priority order's
+    // top entry), so switching a song's source re-evaluates the offline copy.
+    val downloadStateIds = remember(mediaMetadata.id) { downloadUtil.currentSourceDownloadIds(mediaMetadata.id) }
+    val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
+    val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -954,12 +957,14 @@ fun PlayerMenu(
                                 },
                                 modifier =
                                     Modifier.clickable {
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            mediaMetadata.id,
-                                            false,
-                                        )
+                                        download?.let { dl ->
+                                            DownloadService.sendRemoveDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                dl.request.id,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -975,12 +980,14 @@ fun PlayerMenu(
                                 },
                                 modifier =
                                     Modifier.clickable {
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            mediaMetadata.id,
-                                            false,
-                                        )
+                                        download?.let { dl ->
+                                            DownloadService.sendRemoveDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                dl.request.id,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -1002,18 +1009,25 @@ fun PlayerMenu(
                                         }
 
                                         coroutineScope.launch {
-                                            // Clear stale per-source spans (including
-                                            // a previous YouTube webm fallback) so
-                                            // the new download always reflects the
-                                            // current source priority.
-                                            downloadUtil.removeSongCacheEntries(mediaMetadata.id)
+                                            // Clear stale spans for the CURRENT target
+                                            // source only — other sources' completed
+                                            // downloads coexist as their own offline
+                                            // copies (one entry per source in the
+                                            // export/offline pages).
+                                            downloadUtil.clearCurrentTargetCacheSpans(mediaMetadata.id)
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(mediaMetadata.id)
                                             }
+                                            // The request id + cache key carry the
+                                            // target source's identity ("ytm:<id>",
+                                            // "qobuz:<id>", ...) so the download lands
+                                            // in its own per-source slot.
+                                            val downloadId = downloadUtil
+                                                .currentSourceDownloadTarget(mediaMetadata.id).key
                                             val downloadRequest =
                                                 DownloadRequest
-                                                    .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                                    .setCustomCacheKey(mediaMetadata.id)
+                                                    .Builder(downloadId, mediaMetadata.id.toUri())
+                                                    .setCustomCacheKey(downloadId)
                                                     .setData(mediaMetadata.title.toByteArray())
                                                     .build()
                                             DownloadService.sendAddDownload(

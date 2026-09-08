@@ -143,16 +143,18 @@ fun SongMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsStateWithLifecycle(initialValue = originalSong)
     val song = songState.value ?: originalSong
-    val download by LocalDownloadUtil.current
-        .getDownload(originalSong.id)
-        .collectAsStateWithLifecycle(initialValue = null)
+    val downloadUtil = LocalDownloadUtil.current
+    // Per-source download state — "Download" vs "Remove download" tracks the
+    // CURRENT source (per-song pin first, else the download priority order's
+    // top entry), so switching a song's source re-evaluates the offline copy.
+    val downloadStateIds = remember(originalSong.id) { downloadUtil.currentSourceDownloadIds(originalSong.id) }
+    val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
+    val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
 
     val cacheViewModel = hiltViewModel<CachePlaylistViewModel>()
-
-    val downloadUtil = LocalDownloadUtil.current
 
     val songFormat by database.format(song.id).collectAsStateWithLifecycle(initialValue = null)
     val detectedExt by produceState(
@@ -607,12 +609,16 @@ fun SongMenu(
                     onClick = {
                         when (download?.state) {
                             Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                                DownloadService.sendRemoveDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    song.id,
-                                    false,
-                                )
+                                // Remove by the ACTUAL entry id so only the
+                                // current source's copy is removed.
+                                download?.let { dl ->
+                                    DownloadService.sendRemoveDownload(
+                                        context,
+                                        ExoDownloadService::class.java,
+                                        dl.request.id,
+                                        false,
+                                    )
+                                }
                             }
 
                             else -> {
@@ -622,19 +628,20 @@ fun SongMenu(
                                     DownloadService.sendRemoveDownload(
                                         context,
                                         ExoDownloadService::class.java,
-                                        song.id,
+                                        dl.request.id,
                                         false,
                                     )
                                 }
-                                // Clear ALL per-source cached spans (not just the plain
-                                // YouTube key) so stale bytes from a previous
-                                // download-source setting never leak into the new
-                                // download or the export-downloads page.
-                                downloadUtil.removeSongCacheEntries(song.id)
+                                // Clear stale spans for the CURRENT target
+                                // source only — other sources' completed
+                                // downloads coexist as their own offline copies.
+                                downloadUtil.clearCurrentTargetCacheSpans(song.id)
+                                val downloadId = downloadUtil
+                                    .currentSourceDownloadTarget(song.id).key
                                 val downloadRequest =
                                     DownloadRequest
-                                        .Builder(song.id, song.id.toUri())
-                                        .setCustomCacheKey(song.id)
+                                        .Builder(downloadId, song.id.toUri())
+                                        .setCustomCacheKey(downloadId)
                                         .setData(song.song.title.toByteArray())
                                         .build()
                                 DownloadService.sendAddDownload(
@@ -1048,12 +1055,14 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-                                                DownloadService.sendRemoveDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    song.id,
-                                                    false,
-                                                )
+                                                download?.let { dl ->
+                                                    DownloadService.sendRemoveDownload(
+                                                        context,
+                                                        ExoDownloadService::class.java,
+                                                        dl.request.id,
+                                                        false,
+                                                    )
+                                                }
                                             },
                                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     )
@@ -1069,12 +1078,14 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-                                                DownloadService.sendRemoveDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    song.id,
-                                                    false,
-                                                )
+                                                download?.let { dl ->
+                                                    DownloadService.sendRemoveDownload(
+                                                        context,
+                                                        ExoDownloadService::class.java,
+                                                        dl.request.id,
+                                                        false,
+                                                    )
+                                                }
                                             },
                                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     )
@@ -1099,19 +1110,23 @@ fun SongMenu(
                                                     DownloadService.sendRemoveDownload(
                                                         context,
                                                         ExoDownloadService::class.java,
-                                                        song.id,
+                                                        dl.request.id,
                                                         false,
                                                     )
                                                 }
 
-                                                // Clear ALL per-source cached spans (not just the plain YouTube key) so
-                                                // stale bytes from a previous download-source setting never leak
-                                                // into the new download or the export-downloads page.
-                                                downloadUtil.removeSongCacheEntries(song.id)
+                                                // Clear stale spans for the CURRENT target
+                                                // source only — other sources' completed
+                                                // downloads coexist as their own offline
+                                                // copies (one entry per source in the
+                                                // export/offline pages).
+                                                downloadUtil.clearCurrentTargetCacheSpans(song.id)
+                                                val downloadId = downloadUtil
+                                                    .currentSourceDownloadTarget(song.id).key
                                                 val downloadRequest =
                                                     DownloadRequest
-                                                        .Builder(song.id, song.id.toUri())
-                                                        .setCustomCacheKey(song.id)
+                                                        .Builder(downloadId, song.id.toUri())
+                                                        .setCustomCacheKey(downloadId)
                                                         .setData(song.song.title.toByteArray())
                                                         .build()
                                                 DownloadService.sendAddDownload(

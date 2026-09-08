@@ -124,7 +124,7 @@ private const val VideoHardResyncCooldownMs = 30_000L
 
 private const val VideoSyncPollIntervalMs = 250L
 
-private const val VideoStuckBufferingTimeoutMs = 20000L
+private const val VideoStuckBufferingTimeoutMs = 8000L
 
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
@@ -163,6 +163,12 @@ class VideoArtworkState internal constructor(
     var isResolvingUrl: Boolean by mutableStateOf(true)
         internal set
     var bufferingStartedAtMs: Long by mutableLongStateOf(0L)
+        internal set
+
+    /** Consecutive watchdog recoveries while stuck in BUFFERING; reset once
+     * the player renders/turns READY. Bounded recovery, then artwork
+     * fallback — a post-seek stall must never look like "never loads". */
+    var bufferingRecoveries: Int by mutableStateOf(0)
         internal set
 
     /**
@@ -260,6 +266,14 @@ fun rememberVideoArtworkState(
     onLoadingStateChange: (Boolean) -> Unit,
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
+    /**
+     * True while the MAIN audio player is buffering. The video surface must
+     * not run ahead of silent audio: while the main player re-buffers, the
+     * video is paused so both sides of the A/V pair start (and recover)
+     * together in every player style — previously a fast-loading video played
+     * mutely while the audio was still buffering, then jumped via re-anchor.
+     */
+    isMainAudioBuffering: Boolean = false,
 ): VideoArtworkState {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -272,6 +286,7 @@ fun rememberVideoArtworkState(
     val updatedOnRequestPauseMain by rememberUpdatedState(onRequestPauseMain)
     val updatedOnRequestResumeMain by rememberUpdatedState(onRequestResumeMain)
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
+    val updatedIsMainAudioBuffering by rememberUpdatedState(isMainAudioBuffering)
 
     val okHttpClient =
         remember {
@@ -413,6 +428,7 @@ fun rememberVideoArtworkState(
         state.isResyncing = false
         state.wasPlayingBeforeResync = false
         state.bufferingStartedAtMs = 0L
+        state.bufferingRecoveries = 0
         state.selectedCaptionTrack = null
         state.captionTracks = emptyList()
         state.currentCaptionText = null
@@ -558,15 +574,34 @@ fun rememberVideoArtworkState(
         exoPlayer.playWhenReady = shouldPlay && !awaitingVideoReady
     }
 
-    LaunchedEffect(isPlaying, awaitingVideoReady, state.isChangingQuality) {
+    LaunchedEffect(isPlaying, awaitingVideoReady, state.isChangingQuality, state.isResyncing, updatedIsMainAudioBuffering) {
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
 
+            // The video is still resolving/buffering: hold the main audio as
+            // well — including when the main player just turned READY mid-hold
+            // (new-song start race where the audio would begin playing over a
+            // still-black video surface). The hold releases with the first
+            // rendered frame, which schedules the audio's resume.
+            if (isPlaying) {
+                resumeAudioAfterVideoReady = true
+                updatedOnRequestPauseMain()
+            }
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
 
             if (isPlaying) updatedOnRequestPauseMain()
+            exoPlayer.pause()
+        } else if (state.isResyncing) {
+
+            // A resync owns the pause-load-resume cycle; playing here would
+            // race the pending first-frame resume.
+            exoPlayer.pause()
+        } else if (updatedIsMainAudioBuffering) {
+
+            // Main audio is buffering — freeze the video on its current frame
+            // instead of advancing silently ahead of the audio.
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
@@ -677,6 +712,7 @@ fun rememberVideoArtworkState(
         var prevVideoPos = -1L
         var prevAudioPos = -1L
         var frozenCycles = 0
+        var frozenKicks = 0
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
             if (state.hasPlaybackFailed) continue
@@ -684,11 +720,37 @@ fun rememberVideoArtworkState(
             if (state.bufferingStartedAtMs > 0L) {
                 val bufferingForMs = SystemClock.elapsedRealtime() - state.bufferingStartedAtMs
                 if (bufferingForMs > VideoStuckBufferingTimeoutMs) {
-                    Timber
-                        .tag(VideoPlaybackLogTag)
-                        .w("Video stuck in BUFFERING for ${bufferingForMs}ms — forcing re-prepare")
-                    state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
-                    exoPlayer.prepare()
+                    // A stall (typically right after a seek: the target range's
+                    // request hangs or the renderer never re-renders) must not
+                    // outlive the user's patience. Re-anchor to wherever the
+                    // main audio actually is and re-prepare; after two failed
+                    // recoveries give up on video and let the audio continue
+                    // (artwork fallback) instead of spinning forever.
+                    state.bufferingRecoveries = state.bufferingRecoveries + 1
+                    if (state.bufferingRecoveries >= 3) {
+                        Timber
+                            .tag(VideoPlaybackLogTag)
+                            .w("Video stuck in BUFFERING for ${bufferingForMs}ms after ${state.bufferingRecoveries - 1} recoveries — falling back to artwork")
+                        state.bufferingStartedAtMs = 0L
+                        state.hasPlaybackFailed = true
+                        exoPlayer.stop()
+                        releaseAudioHold(resumeMainAudio = true)
+                        state.pendingResumeAtMs = 0L
+                        state.pendingResumeMainAudio = false
+                        state.pendingResumeVideo = false
+                        updatedOnPlaybackFailed()
+                    } else {
+                        val mainPos = currentPosition()
+                        Timber
+                            .tag(VideoPlaybackLogTag)
+                            .w("Video stuck in BUFFERING for ${bufferingForMs}ms — re-anchoring to ${mainPos}ms and re-preparing")
+                        state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                        if (mainPos > 0) {
+                            exoPlayer.seekTo(mainPos)
+                            state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                        }
+                        exoPlayer.prepare()
+                    }
                 }
             }
 
@@ -726,23 +788,46 @@ fun rememberVideoArtworkState(
                 if (audioAdvanced >= VideoSyncPollIntervalMs && videoAdvanced <= VideoFrozenRendererMaxAdvanceMs) {
                     frozenCycles++
                     if (frozenCycles >= VideoFrozenRendererCycles) {
-                        Timber
-                            .tag(VideoPlaybackLogTag)
-                            .w(
-                                "Video renderer frozen: position stuck at ${videoPos}ms while " +
-                                    "audio advanced to ${mainPos}ms (${frozenCycles} cycles) — " +
-                                    "restarting renderer",
-                            )
-                        frozenCycles = 0
-                        prevVideoPos = -1L
-                        state.kickRenderer(now)
+                        frozenKicks++
+                        if (frozenKicks >= 2) {
+                            // The renderer did not recover from a pause+play
+                            // kick — hard re-anchor to the audio position and
+                            // re-prepare so the stall (common right after a
+                            // seek) ends in seconds instead of "video never
+                            // loads while the audio keeps going".
+                            Timber
+                                .tag(VideoPlaybackLogTag)
+                                .w(
+                                    "Video renderer frozen at ${videoPos}ms through a kick (audio at " +
+                                        "${mainPos}ms) — re-anchoring and re-preparing",
+                                )
+                            frozenKicks = 0
+                            frozenCycles = 0
+                            prevVideoPos = -1L
+                            state.lastSeekAtMs = now
+                            exoPlayer.seekTo(mainPos)
+                            exoPlayer.prepare()
+                        } else {
+                            Timber
+                                .tag(VideoPlaybackLogTag)
+                                .w(
+                                    "Video renderer frozen: position stuck at ${videoPos}ms while " +
+                                        "audio advanced to ${mainPos}ms (${frozenCycles} cycles) — " +
+                                        "restarting renderer",
+                                )
+                            frozenCycles = 0
+                            prevVideoPos = -1L
+                            state.kickRenderer(now)
+                        }
                     }
                 } else {
                     frozenCycles = 0
+                    frozenKicks = 0
                 }
             } else if (!exoPlayer.playWhenReady) {
 
                 frozenCycles = 0
+                frozenKicks = 0
             }
             prevVideoPos = videoPos
             prevAudioPos = mainPos
@@ -852,6 +937,7 @@ fun rememberVideoArtworkState(
 
                     val wasAlreadyReady = state.isVideoReady
                     state.isVideoReady = true
+                    state.bufferingRecoveries = 0
 
                     val shouldResumeAudioAfterHold = resumeAudioAfterVideoReady
                     releaseAudioHold()
@@ -930,6 +1016,7 @@ fun rememberVideoArtworkState(
                         }
                         Player.STATE_READY -> {
                             state.bufferingStartedAtMs = 0L
+                            state.bufferingRecoveries = 0
 
                             val effectiveShouldPlay =
                                 shouldPlay ||
@@ -991,6 +1078,7 @@ fun rememberVideoArtworkStateOrNull(
     onLoadingStateChange: (Boolean) -> Unit,
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
+    isMainAudioBuffering: Boolean = false,
 ): VideoArtworkState? {
     return if (videoId.isNullOrBlank()) {
         onPlaybackFailed()
@@ -1007,6 +1095,7 @@ fun rememberVideoArtworkStateOrNull(
             onLoadingStateChange = onLoadingStateChange,
             onRequestPauseMain = onRequestPauseMain,
             onRequestResumeMain = onRequestResumeMain,
+            isMainAudioBuffering = isMainAudioBuffering,
         )
     }
 }

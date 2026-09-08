@@ -108,7 +108,14 @@ fun YouTubeSongMenu(
     val blockedSongIds by database.blockedSongIds().collectAsStateWithLifecycle(initialValue = emptyList())
     val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
     val downloadUtil = LocalDownloadUtil.current
-    val download by downloadUtil.getDownload(song.id).collectAsStateWithLifecycle(initialValue = null)
+    // Per-source download state: the menu reflects the CURRENT source's
+    // offline copy (per-song source pin first, else the top of the download
+    // priority order), so switching a song's source flips "Download" back on
+    // until that source's own copy exists — and back to "Remove download"
+    // once the user returns to a source they already downloaded from.
+    val downloadStateIds = remember(song.id) { downloadUtil.currentSourceDownloadIds(song.id) }
+    val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
+    val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
     val artists =
@@ -327,12 +334,17 @@ fun YouTubeSongMenu(
                     onClick = {
                         when (download?.state) {
                             Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                                DownloadService.sendRemoveDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    song.id,
-                                    false,
-                                )
+                                // Remove by the ACTUAL entry id (source-scoped or
+                                // legacy plain) so only the current source's copy
+                                // is removed; other sources' downloads survive.
+                                download?.let { dl ->
+                                    DownloadService.sendRemoveDownload(
+                                        context,
+                                        ExoDownloadService::class.java,
+                                        dl.request.id,
+                                        false,
+                                    )
+                                }
                             }
 
                             else -> {
@@ -341,18 +353,23 @@ fun YouTubeSongMenu(
                                     insert(song.toMediaMetadata())
                                 }
                                 coroutineScope.launch {
-                                    // Clear stale per-source spans (including a
-                                    // previous YouTube webm fallback) so the new
-                                    // download always reflects the current source
-                                    // priority.
-                                    downloadUtil.removeSongCacheEntries(song.id)
+                                    // Clear stale spans for the CURRENT target
+                                    // source only — other sources' completed
+                                    // downloads are kept so each source can hold
+                                    // its own offline copy of the song.
+                                    downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                     runCatching {
                                         downloadUtil.prewarmSongForDownload(song.id)
                                     }
+                                    // The request id + cache key carry the target
+                                    // source's identity, so the download lands in
+                                    // its own per-source slot.
+                                    val downloadId = downloadUtil
+                                        .currentSourceDownloadTarget(song.id).key
                                     val downloadRequest =
                                         DownloadRequest
-                                            .Builder(song.id, song.id.toUri())
-                                            .setCustomCacheKey(song.id)
+                                            .Builder(downloadId, song.id.toUri())
+                                            .setCustomCacheKey(downloadId)
                                             .setData(song.title.toByteArray())
                                             .build()
                                     DownloadService.sendAddDownload(
@@ -642,12 +659,14 @@ fun YouTubeSongMenu(
                                 },
                                 modifier =
                                     Modifier.clickable {
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            song.id,
-                                            false,
-                                        )
+                                        download?.let { dl ->
+                                            DownloadService.sendRemoveDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                dl.request.id,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -663,12 +682,14 @@ fun YouTubeSongMenu(
                                 },
                                 modifier =
                                     Modifier.clickable {
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            song.id,
-                                            false,
-                                        )
+                                        download?.let { dl ->
+                                            DownloadService.sendRemoveDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                dl.request.id,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -690,18 +711,19 @@ fun YouTubeSongMenu(
                                         }
 
                                         coroutineScope.launch {
-                                            // Clear stale per-source spans (including
-                                            // a previous YouTube webm fallback) so
-                                            // the new download always reflects the
-                                            // current source priority.
-                                            downloadUtil.removeSongCacheEntries(song.id)
+                                            // Clear stale spans for the CURRENT
+                                            // target source only; other sources'
+                                            // completed downloads are kept.
+                                            downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(song.id)
                                             }
+                                            val downloadId = downloadUtil
+                                                .currentSourceDownloadTarget(song.id).key
                                             val downloadRequest =
                                                 DownloadRequest
-                                                    .Builder(song.id, song.id.toUri())
-                                                    .setCustomCacheKey(song.id)
+                                                    .Builder(downloadId, song.id.toUri())
+                                                    .setCustomCacheKey(downloadId)
                                                     .setData(song.title.toByteArray())
                                                     .build()
                                             DownloadService.sendAddDownload(

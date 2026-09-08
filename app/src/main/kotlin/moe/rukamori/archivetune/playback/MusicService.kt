@@ -147,6 +147,7 @@ import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoLoadMoreKey
@@ -8101,13 +8102,11 @@ class MusicService :
                 runCatching {
                     downloadCache.getCachedSpans(currentMediaId).isNotEmpty() ||
                         playerCache.getCachedSpans(currentMediaId).isNotEmpty() ||
-
-                        downloadCache.getCachedSpans("qobuz:$currentMediaId").isNotEmpty() ||
-                        downloadCache.getCachedSpans("tidal:$currentMediaId").isNotEmpty() ||
-                        downloadCache.getCachedSpans("deezer:$currentMediaId").isNotEmpty() ||
-                        playerCache.getCachedSpans("qobuz:$currentMediaId").isNotEmpty() ||
-                        playerCache.getCachedSpans("tidal:$currentMediaId").isNotEmpty() ||
-                        playerCache.getCachedSpans("deezer:$currentMediaId").isNotEmpty()
+                        DownloadSourceConfig.CACHE_KEY_PREFIXES.any { prefix ->
+                            val key = "$prefix$currentMediaId"
+                            downloadCache.getCachedSpans(key).isNotEmpty() ||
+                                playerCache.getCachedSpans(key).isNotEmpty()
+                        }
                 }.getOrDefault(false)
 
         val isConnectionError =
@@ -8804,6 +8803,10 @@ class MusicService :
             contentLengthCache.remove(mediaId)
             runCatching { playerCache.removeResource(mediaId) }
             runCatching { downloadCache.removeResource(mediaId) }
+            val ytmKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId
+            runCatching { playerCache.removeResource(ytmKey) }
+            runCatching { downloadCache.removeResource(ytmKey) }
+            contentLengthCache.remove(ytmKey)
             AudioSourceType.entries.forEach { src ->
                 val key = sourceCacheKey(src, mediaId)
                 runCatching { playerCache.removeResource(key) }
@@ -9834,7 +9837,9 @@ class MusicService :
      * mediaId key (YouTube, the fallback) always probed last.
      */
     private fun cachedDataSpecCandidateKeys(mediaId: String): List<String> =
-        sourceResolutionChain().map { sourceCacheKey(it, mediaId) } + mediaId
+        sourceResolutionChain().map { sourceCacheKey(it, mediaId) } +
+            (DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId) +
+            mediaId
 
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false

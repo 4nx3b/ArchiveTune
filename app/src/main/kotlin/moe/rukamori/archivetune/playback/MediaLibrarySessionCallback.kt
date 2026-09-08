@@ -44,6 +44,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.MediaSessionConstants
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
@@ -2110,19 +2111,27 @@ class MediaLibrarySessionCallback
         )
 
         private fun downloadedSongs(): Flow<List<Song>> {
-            val downloads = downloadUtil.downloads.value
+            // Download index ids are source-scoped ("ytm:<id>", "qobuz:<id>",
+            // ... or legacy plain "<id>") — normalize to raw song ids so DB
+            // lookups keep matching while every source's copy still counts.
+            val updateTimeBySongId =
+                downloadUtil.downloads.value
+                    .filterValues { it.state == Download.STATE_COMPLETED }
+                    .entries
+                    .fold(mutableMapOf<String, Long>()) { acc, (id, dl) ->
+                        val songId = DownloadSourceConfig.downloadIdToSongId(id)
+                        val time = dl.updateTimeMs ?: 0L
+                        if (time > (acc[songId] ?: 0L)) acc[songId] = time
+                        acc
+                    }
             return database
                 .allSongs()
                 .flowOn(Dispatchers.IO)
                 .map { songs ->
-                    songs.filter {
-                        downloads[it.id]?.state == Download.STATE_COMPLETED
-                    }
+                    songs.filter { it.id in updateTimeBySongId }
                 }.map { songs ->
                     songs
-                        .map { it to downloads[it.id] }
-                        .sortedBy { it.second?.updateTimeMs ?: 0L }
-                        .map { it.first }
+                        .sortedBy { updateTimeBySongId[it.id] ?: 0L }
                 }
         }
 
@@ -2182,7 +2191,7 @@ class MediaLibrarySessionCallback
                 downloadUtil.downloads.value
                     .asSequence()
                     .filter { (_, download) -> download.state == Download.STATE_COMPLETED }
-                    .map { (id, _) -> id }
+                    .map { (id, _) -> DownloadSourceConfig.downloadIdToSongId(id) }
             val downloadCacheIds =
                 runCatching { downloadUtil.downloadCache.keys.asSequence() }
                     .getOrDefault(emptySequence())
