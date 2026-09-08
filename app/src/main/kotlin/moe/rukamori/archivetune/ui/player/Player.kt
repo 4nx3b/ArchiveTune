@@ -435,7 +435,12 @@ fun BottomSheetPlayer(
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showCodecOnPlayer) = rememberPreference(booleanPreferencesKey("show_codec_on_player"), false)
     val (incrementalSeekSkipEnabled) = rememberPreference(moe.rukamori.archivetune.constants.SeekExtraSeconds, defaultValue = false)
-    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = false)
+    // Fork default: video playback ON. The upstream vossgraves port (29dbb4ea3)
+    // carried over upstream's default-OFF and silently disabled the fork's
+    // music-video playback for users who never toggled the setting — the
+    // player then fell back to the artwork thumbnail (reported 2026-09-08:
+    // "playing videos does nothing, just a still zoomed-in thumbnail").
+    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = true)
     var keyboardSkipMultiplier by remember { mutableStateOf(1) }
     var lastKeyboardTapTime by remember { mutableLongStateOf(0L) }
 
