@@ -5,13 +5,13 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * One-on-one chat screen with a saved Telegram bot. The user pastes a song link, the app sends it
- * to the bot via [TdApi.SendMessage], then waits on [TelegramBotClient.messagesForChat] for audio
+ * to the bot via the mtcute host, then waits on [TelegramBotClient.messagesForChat] for audio
  * replies. Each reply is persisted as a Song + Format row so it can be played / downloaded /
  * added-to-playlist through the existing infrastructure.
  *
  * When the user adds a bot-fetched song to a Telegram-channel playlist (LPtg<chatId>) AND the
  * "Auto-forward to my channel" toggle is on, the original bot message is forwarded to that channel
- * via [TdApi.ForwardMessages] — matching the user's spec: "if I add it to my telegram playlist the
+ * via server-side message forwarding — matching the user's spec: "if I add it to my telegram playlist the
  * song should also get forwarded to my own channel automatically".
  *
  * "Streaming a lot of files": the collector returns every audio reply that arrives within the
@@ -20,7 +20,7 @@
  * Quality picker: many music bots reply with an inline keyboard ("Choose quality: ALAC / AAC /
  * Cancel") instead of the audio file directly. The screen surfaces those buttons as a row of
  * chips. When the user taps one, the screen calls [TelegramBotClient.clickInlineButton] (which
- * fires a [TdApi.GetCallbackQueryAnswer]) and then re-enters the collector with
+ * fires the callback answer) and then re-enters the collector with
  * `afterMessageId = prompt.messageId` so the bot's resulting audio reply is captured.
  */
 
@@ -172,13 +172,8 @@ fun TelegramBotChatScreen(
     suspend fun ensureBotChatId(): TelegramBot {
         if (bot.chatId != 0L) return bot
         val resolved = TelegramBotClient.resolveBot(bot.username) ?: return bot
-        val title = runCatching {
-            val type = resolved.type as org.drinkless.tdlib.TdApi.ChatTypePrivate
-            moe.rukamori.archivetune.telegram.TelegramClient.send(
-                org.drinkless.tdlib.TdApi.GetUser(type.userId),
-            ).firstName
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: bot.title
-        val updated = bot.copy(chatId = resolved.id, title = title.ifBlank { bot.title })
+        val title = resolved.firstName.takeIf { it.isNotBlank() } ?: bot.title
+        val updated = bot.copy(chatId = resolved.chatId, title = title.ifBlank { bot.title })
         persistBot(updated)
         return updated
     }
@@ -628,8 +623,7 @@ private fun BotResultRow(
 ) {
 
     val thumbModel = remember(track) {
-        val metadata = track.lookupMetadata
-        telegramArtworkModel(track.thumbnailFileId, metadata.title, metadata.artist)
+        telegramArtworkModel(track)
             ?: moe.rukamori.archivetune.telegram.TelegramClient.cacheArtwork(
                 uniqueKey = track.fileUniqueId.ifEmpty { "${track.chatId}-${track.messageId}" },
                 data = track.albumCoverMinithumbnail,

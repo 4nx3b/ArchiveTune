@@ -26,7 +26,7 @@ fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata {
         duration = durationSeconds,
 
         thumbnailUrl =
-            telegramArtworkModel(thumbnailFileId, metadata.title, metadata.artist)
+            telegramArtworkModel(this)
                 ?: TelegramClient.cacheArtwork(
                     uniqueKey = fileUniqueId.ifEmpty { "$chatId-$messageId" },
                     data = albumCoverMinithumbnail,

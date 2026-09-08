@@ -1,0 +1,16 @@
+{
+  "name": "archivetune-mtcute-host",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build environment for the mtcute (MTProto) host bundle embedded in ArchiveTune (app/src/main/assets/telegram/mtcute_host.js). Run build.sh to rebuild; run test/smoke.js to verify.",
+  "scripts": {
+    "build": "bash build.sh",
+    "test": "node test/smoke.js"
+  },
+  "dependencies": {
+    "@mtcute/core": "0.32.1",
+    "@mtcute/web": "0.32.1",
+    "esbuild": "0.28.2",
+    "ws": "8.21.3"
+  }
+}

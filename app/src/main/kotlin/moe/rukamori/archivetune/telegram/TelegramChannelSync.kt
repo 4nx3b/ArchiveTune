@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.time.LocalDateTime
 
@@ -119,7 +118,7 @@ object TelegramChannelSync {
         delay(OPEN_CHAT_SETTLE_MS)
 
         val playlistId = playlistId(chatId)
-        val filters = listOf(TdApi.SearchMessagesFilterAudio(), TdApi.SearchMessagesFilterDocument())
+        val filters = listOf(TelegramMessageFilter.AUDIO, TelegramMessageFilter.DOCUMENT)
         var inserted = 0
         val seen = mutableSetOf<Long>()
 
@@ -132,7 +131,7 @@ object TelegramChannelSync {
 
                 if (page == null) {
 
-                    Timber.tag(TAG).w("fetchPageWithRetry exhausted for chat %d filter %s", chatId, filter::class.simpleName)
+                    Timber.tag(TAG).w("fetchPageWithRetry exhausted for chat %d filter %s", chatId, filter.name)
                     break
                 }
 
@@ -153,7 +152,7 @@ object TelegramChannelSync {
     private suspend fun fetchPageWithRetry(
         chatId: Long,
         fromMessageId: Long,
-        filter: TdApi.SearchMessagesFilter,
+        filter: TelegramMessageFilter,
         isFirstPage: Boolean = false,
     ): TelegramAudioPage? {
         repeat(FETCH_RETRY_COUNT) { attempt ->
@@ -169,11 +168,11 @@ object TelegramChannelSync {
                         page.nextFromMessageId == 0L
                 if (isEmptyFirstPage && attempt < FETCH_RETRY_COUNT - 1) {
                     Timber.tag(TAG).w(
-                        "fetchAudioPage attempt %d/%d returned empty first page for chat %d filter %s (will retry — TDLib history not indexed yet)",
+                        "fetchAudioPage attempt %d/%d returned empty first page for chat %d filter %s (will retry — server history not indexed yet)",
                         attempt + 1,
                         FETCH_RETRY_COUNT,
                         chatId,
-                        filter::class.simpleName,
+                        filter.name,
                     )
                 } else {
                     return page

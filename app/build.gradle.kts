@@ -1,7 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.security.MessageDigest
 import java.util.Properties
-import java.util.zip.ZipFile
 
 // Print the FULL stack trace of every failing unit test to the console so CI
 // logs are self-sufficient for diagnosis (Gradle's default 1-line summary
@@ -144,14 +142,6 @@ android {
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
 
-        val slimTdlib = (project.findProperty("slimTdlib") as String?)?.toBoolean() ?: false
-        buildConfigField("boolean", "TDLIB_BUNDLED", "${!slimTdlib}")
-        buildConfigField(
-            "String",
-            "TDLIB_NATIVE_BASE_URL",
-            "\"${project.findProperty("tdlibNativeBaseUrl") as String?
-                ?: "https://github.com/vossgraves/ArchiveTune/releases/download/tdlib-1.8.56"}\"",
-        )
 
         val sourceProviderUrl =
             (
@@ -433,8 +423,6 @@ dependencies {
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
 
-    implementation("com.github.tdlibx:td:1.8.56")
-
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
     ksp(libs.room.compiler)
@@ -568,40 +556,3 @@ configurations.configureEach {
     )
 }
 
-tasks.register("extractTdLibNatives") {
-    group = "distribution"
-    description = "Extract libtdjni.so per ABI from the td AAR for publishing as release assets."
-
-    val outputDir = layout.buildDirectory.dir("tdlib-natives")
-    val aars =
-        configurations
-            .detachedConfiguration(dependencies.create("com.github.tdlibx:td:1.8.56@aar"))
-            .also { it.isTransitive = false }
-
-    outputs.dir(outputDir)
-    doLast {
-        val aar = aars.singleFile
-        val destination = outputDir.get().asFile
-        destination.deleteRecursively()
-        destination.mkdirs()
-        val version = "1.8.56"
-        ZipFile(aar).use { zip ->
-            zip.entries().asSequence()
-                .filter { it.name.startsWith("jni/") && it.name.endsWith("/libtdjni.so") }
-                .forEach { entry ->
-                    val abi = entry.name.removePrefix("jni/").substringBefore('/')
-                    val target = File(destination, "libtdjni-$version-$abi.so")
-                    zip.getInputStream(entry).use { input ->
-                        target.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    val digest =
-                        MessageDigest
-                            .getInstance("SHA-256")
-                            .digest(target.readBytes())
-                            .joinToString("") { "%02x".format(it) }
-                    logger.lifecycle("$abi  $digest  ${target.name}")
-                }
-        }
-        logger.lifecycle("Wrote to $destination")
-    }
-}

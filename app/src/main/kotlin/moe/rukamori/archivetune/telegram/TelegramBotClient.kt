@@ -4,31 +4,35 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * TDLib wrapper for the "Telegram bots" feature. Bots are private 1:1 chats with a Telegram bot
- * account. The user pastes a song link, the app sends it as a text message to the bot via
- * [TdApi.SendMessage], and then listens on a per-chat SharedFlow of incoming messages
- * (driven by [TdApi.UpdateNewMessage] in TelegramClient.onUpdate) until the bot replies with an
- * audio/document message — that reply becomes a playable [TelegramTrack].
+ * mtcute-host wrapper for the "Telegram bots" feature. Bots are private 1:1
+ * chats with a Telegram bot account. The user pastes a song link, the app sends
+ * it as a text message to the bot, and then listens on a per-chat SharedFlow of
+ * incoming messages (driven by the mtcute host's new_message events routed
+ * through TelegramClient) until the bot replies with an audio/document message
+ * — that reply becomes a playable [TelegramTrack].
  *
- * Forwarding to the user's own channel uses [TdApi.ForwardMessages] so the audio bytes aren't
- * re-uploaded (Telegram copies the file server-side) — this matches the user's spec: "if I add it
- * to my telegram playlist the song should also get forwarded to my own channel automatically".
+ * Forwarding to the user's own channel uses server-side message forwarding so
+ * the audio bytes aren't re-uploaded — this matches the user's spec: "if I add
+ * it to my telegram playlist the song should also get forwarded to my own
+ * channel automatically".
  *
- * A 60s timeout caps how long we wait for a bot reply. Bots that stream "a lot of files" (e.g.
- * a Spotify-album link returns one message per track) all arrive on the same SharedFlow and are
- * collected into the result list.
+ * A 60s timeout caps how long we wait for a bot reply. Bots that stream "a lot
+ * of files" (e.g. a Spotify-album link returns one message per track) all
+ * arrive on the same SharedFlow and are collected into the result list.
  *
- * Inline-keyboard support: many music bots reply to a song link with a message that has a
- * [TdApi.ReplyMarkupInlineKeyboard] ("Choose quality: ALAC / AAC / Cancel") instead of the audio
- * directly. The user must tap one of the buttons to actually trigger the audio download. This
- * file exposes [collectBotReplies] which returns BOTH audio tracks and inline-keyboard prompts,
- * and [clickInlineButton] which sends a [TdApi.GetCallbackQueryAnswer] to simulate tapping a
- * button — after which the bot sends the actual audio file, which the caller collects with
- * another [collectBotReplies] cycle.
+ * Inline-keyboard support: many music bots reply to a song link with a message
+ * that has an inline keyboard ("Choose quality: ALAC / AAC / Cancel") instead
+ * of the audio directly. The user must tap one of the buttons to actually
+ * trigger the audio download. This file exposes [collectBotReplies] which
+ * returns BOTH audio tracks and inline-keyboard prompts, and
+ * [clickInlineButton] which requests the callback answer — after which the bot
+ * sends the actual audio file, which the caller collects with another
+ * [collectBotReplies] cycle.
  */
 
 package moe.rukamori.archivetune.telegram
 
+import android.util.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -36,7 +40,11 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import org.drinkless.tdlib.TdApi
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
@@ -49,65 +57,111 @@ object TelegramBotClient {
 
     private const val POST_REPLY_GRACE_MS = 5_000L
 
-    private val chatMessageFlows = ConcurrentHashMap<Long, MutableSharedFlow<TdApi.Message>>()
+    private val chatMessageFlows = ConcurrentHashMap<Long, MutableSharedFlow<TelegramIncomingMessage>>()
 
-    fun messagesForChat(chatId: Long): SharedFlow<TdApi.Message> =
+    fun messagesForChat(chatId: Long): SharedFlow<TelegramIncomingMessage> =
         chatMessageFlows.getOrPut(chatId) {
             MutableSharedFlow(replay = 0, extraBufferCapacity = 64)
         }.asSharedFlow()
 
-    internal fun onNewMessage(message: TdApi.Message) {
-        chatMessageFlows[message.chatId]?.tryEmit(message)
+    /** Routed from TelegramClient's subscription to the mtcute host's new_message events. */
+    internal fun onNewMessageEvent(payloadJson: String) {
+        val payload =
+            runCatching { parseTgObject(payloadJson) }.getOrNull() ?: return
+        val chatId = payload.tgLong("chatId")
+        val messageId = payload.tgLong("messageId")
+        if (chatId == 0L || messageId == 0L) return
+        val message =
+            TelegramIncomingMessage(
+                chatId = chatId,
+                messageId = messageId,
+                track = TgJsProtocol.parseTrack(payload.tgObj("track")),
+                prompt = parsePrompt(payload.tgObj("prompt")),
+            )
+        if (message.track == null && message.prompt == null) return
+        chatMessageFlows[chatId]?.tryEmit(message)
     }
 
     fun forgetChat(chatId: Long) {
         chatMessageFlows.remove(chatId)
     }
 
-    suspend fun resolveBot(username: String): TdApi.Chat? {
+    suspend fun resolveBot(username: String): TelegramBotInfo? {
         val cleaned = username.removePrefix("@").trim().lowercase()
         if (cleaned.isEmpty()) return null
-        val chat = runCatching {
-            TelegramClient.send(TdApi.SearchPublicChat(cleaned))
-        }.getOrNull() ?: return null
-
-        if (chat.type !is TdApi.ChatTypePrivate) {
-            Timber.tag(TAG).w("resolveBot: %s is not a private/bot chat (type=%s)", cleaned, chat.type)
-            return null
-        }
-
-        val userId = (chat.type as TdApi.ChatTypePrivate).userId
-        val user = runCatching { TelegramClient.send(TdApi.GetUser(userId)) }.getOrNull()
-        if (user != null && user.type !is TdApi.UserTypeBot) {
+        val result =
+            runCatching {
+                TelegramClient.call(
+                    "resolveBot",
+                    buildJsonObject {
+                        put("username", cleaned)
+                    }.toString(),
+                )
+            }.getOrNull() ?: return null
+        val info =
+            TelegramBotInfo(
+                chatId = result.tgLong("chatId"),
+                userId = result.tgLong("userId"),
+                firstName = result.tgString("firstName"),
+                isBot = result.tgBool("isBot"),
+            )
+        if (info.chatId == 0L) return null
+        if (!info.isBot) {
             Timber.tag(TAG).w("resolveBot: @%s is a user, not a bot — refusing", cleaned)
             return null
         }
-        return chat
+        return info
     }
 
-    suspend fun sendTextMessage(chatId: Long, text: String): TdApi.Message {
-        val input = TdApi.InputMessageText(
-            TdApi.FormattedText(text, emptyArray()),
-
-            null,
-            false,
-        )
-
-        return TelegramClient.send(
-            TdApi.SendMessage(chatId, null, null, null, null, input),
-        )
+    /** Stripped profile photo of the bot (patched to a displayable JPEG), if any. */
+    suspend fun resolveBotPhoto(username: String): ByteArray? {
+        val cleaned = username.removePrefix("@").trim().lowercase()
+        if (cleaned.isEmpty()) return null
+        val result =
+            runCatching {
+                TelegramClient.call(
+                    "resolveBot",
+                    buildJsonObject {
+                        put("username", cleaned)
+                    }.toString(),
+                )
+            }.getOrNull() ?: return null
+        return result.tgBytesB64("photoStripped")?.let(TgStrippedJpeg::reconstruct)
     }
 
-    suspend fun fetchBotCommands(chatId: Long): List<TelegramBotCommand> = runCatching {
-        val result = TelegramClient.send(
-            TdApi.GetCommands(TdApi.BotCommandScopeChat(chatId), ""),
-        )
-        result?.commands?.map { cmd ->
-            TelegramBotCommand(command = cmd.command, description = cmd.description)
-        } ?: emptyList()
-    }.onFailure { e ->
-        Timber.tag(TAG).w(e, "fetchBotCommands: failed for chatId=%s", chatId)
-    }.getOrDefault(emptyList())
+    suspend fun sendTextMessage(
+        chatId: Long,
+        text: String,
+    ): Long {
+        val result =
+            TelegramClient.call(
+                "sendTextMessage",
+                buildJsonObject {
+                    put("chatId", chatId)
+                    put("text", text)
+                }.toString(),
+            )
+        return result.tgLong("messageId")
+    }
+
+    suspend fun fetchBotCommands(chatId: Long): List<TelegramBotCommand> =
+        runCatching {
+            val result =
+                TelegramClient.call(
+                    "fetchBotCommands",
+                    buildJsonObject {
+                        put("chatId", chatId)
+                    }.toString(),
+                )
+            result.objArray("commands").map { cmd ->
+                TelegramBotCommand(
+                    command = cmd.tgString("command"),
+                    description = cmd.tgString("description"),
+                )
+            }
+        }.onFailure { e ->
+            Timber.tag(TAG).w(e, "fetchBotCommands: failed for chatId=%s", chatId)
+        }.getOrDefault(emptyList())
 
     suspend fun collectAudioReplies(
         chatId: Long,
@@ -118,8 +172,8 @@ object TelegramBotClient {
         val collectJob = CoroutineScope(coroutineContext).launch {
             try {
                 messagesForChat(chatId).collect { message ->
-                    if (message.id <= afterMessageId) return@collect
-                    val track = TelegramClient.messageToTrack(message) ?: return@collect
+                    if (message.messageId <= afterMessageId) return@collect
+                    val track = message.track ?: return@collect
                     channel.send(track)
                 }
             } finally {
@@ -128,7 +182,6 @@ object TelegramBotClient {
         }
 
         try {
-
             val first = withTimeoutOrNull(BOT_REPLY_TIMEOUT) { channel.receive() }
                 ?: return emptyList()
             if (expectedCount == 1) return listOf(first)
@@ -156,8 +209,8 @@ object TelegramBotClient {
         val collectJob = CoroutineScope(coroutineContext).launch {
             try {
                 messagesForChat(chatId).collect { message ->
-                    if (message.id <= afterMessageId) return@collect
-                    val reply = messageToBotReply(message) ?: return@collect
+                    if (message.messageId <= afterMessageId) return@collect
+                    val reply = message.toBotReply() ?: return@collect
                     channel.send(reply)
                 }
             } finally {
@@ -166,7 +219,6 @@ object TelegramBotClient {
         }
 
         try {
-
             val first = withTimeoutOrNull(BOT_REPLY_TIMEOUT) { channel.receive() }
                 ?: return emptyList()
 
@@ -184,76 +236,76 @@ object TelegramBotClient {
         }
     }
 
-    private fun messageToBotReply(message: TdApi.Message): BotReply? {
-
-        val track = TelegramClient.messageToTrack(message)
-        if (track != null) return BotReply.Track(track)
-
-        val markup = message.replyMarkup as? TdApi.ReplyMarkupInlineKeyboard ?: return null
-        if (markup.rows.isEmpty()) return null
-        val rows = markup.rows.mapNotNull { row ->
-            val buttons = row.mapNotNull { button -> button.toPromptButton() }
-            if (buttons.isEmpty()) null else buttons
-        }
+    private fun parsePrompt(raw: JsonObject?): TelegramBotPrompt? {
+        if (raw == null) return null
+        val rows =
+            raw.tgObjArray("rows").mapNotNull { row ->
+                val buttons =
+                    row.tgObjArray("buttons").mapNotNull { button ->
+                        val text = button.tgString("text").takeIf(String::isNotBlank) ?: return@mapNotNull null
+                        val callbackB64 = button.tgStringOrNull("callbackData")
+                        val url = button.tgStringOrNull("url")
+                        if (callbackB64 == null && url == null) return@mapNotNull null
+                        TelegramBotPromptButton(
+                            text = text,
+                            callbackData = callbackB64?.let {
+                                runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull()
+                            },
+                            url = url,
+                        )
+                    }
+                if (buttons.isEmpty()) null else buttons
+            }
         if (rows.isEmpty()) return null
-
-        val text = (message.content as? TdApi.MessageText)?.text?.text.orEmpty()
-        return BotReply.Prompt(
-            TelegramBotPrompt(
-                chatId = message.chatId,
-                messageId = message.id,
-                text = text,
-                rows = rows,
-            ),
+        return TelegramBotPrompt(
+            chatId = raw.tgLong("chatId"),
+            messageId = raw.tgLong("messageId"),
+            text = raw.tgString("text"),
+            rows = rows,
         )
     }
 
-    private fun TdApi.InlineKeyboardButton.toPromptButton(): TelegramBotPromptButton? {
-        val label = text.takeIf { it.isNotBlank() } ?: return null
-        return when (val type = type) {
-            is TdApi.InlineKeyboardButtonTypeCallback ->
-                TelegramBotPromptButton(text = label, callbackData = type.data)
-            is TdApi.InlineKeyboardButtonTypeUrl ->
-                TelegramBotPromptButton(text = label, url = type.url)
-            else -> null
-        }
-    }
+    private fun TelegramIncomingMessage.toBotReply(): BotReply? =
+        track?.let(BotReply::Track) ?: prompt?.let(BotReply::Prompt)
 
     suspend fun clickInlineButton(
         chatId: Long,
         messageId: Long,
         callbackData: ByteArray,
-    ): TdApi.CallbackQueryAnswer? = runCatching {
-        TelegramClient.send(
-            TdApi.GetCallbackQueryAnswer(
-                chatId,
-                messageId,
-                TdApi.CallbackQueryPayloadData(callbackData),
-            ),
-        )
-    }.onFailure { e ->
-        Timber.tag(TAG).w(e, "clickInlineButton: callback query failed")
-    }.getOrNull()
+    ) {
+        runCatching {
+            TelegramClient.call(
+                "pressInlineButton",
+                buildJsonObject {
+                    put("chatId", chatId)
+                    put("messageId", messageId)
+                    put("callbackData", Base64.encodeToString(callbackData, Base64.NO_WRAP))
+                }.toString(),
+            )
+        }.onFailure { e ->
+            Timber.tag(TAG).w(e, "clickInlineButton: callback query failed")
+        }
+    }
 
     suspend fun forwardMessages(
         toChatId: Long,
         fromChatId: Long,
         messageIds: LongArray,
-    ): List<TdApi.Message> {
+    ): List<Long> {
         if (messageIds.isEmpty()) return emptyList()
-        val result = TelegramClient.send(
-            TdApi.ForwardMessages(
-                toChatId,
-                null,
-                fromChatId,
-                messageIds,
-                null,
-                false,
-                false,
-            ),
-        )
-
-        return result.messages?.toList() ?: emptyList()
+        val result =
+            TelegramClient.call(
+                "forwardMessages",
+                buildJsonObject {
+                    put("toChatId", toChatId)
+                    put("fromChatId", fromChatId)
+                    put("messageIds", JsonArray(messageIds.map { JsonPrimitive(it) }))
+                }.toString(),
+            )
+        val arr = result["messageIds"]?.jsonArray ?: return emptyList()
+        return arr.mapNotNull { el ->
+            runCatching { el.jsonPrimitive.content.toLongOrNull() }.getOrNull()
+        }
     }
 
     suspend fun forwardMessage(
@@ -262,9 +314,16 @@ object TelegramBotClient {
         messageId: Long,
     ): Long {
         val forwarded = forwardMessages(toChatId, fromChatId, longArrayOf(messageId))
-        return forwarded.firstOrNull()?.id ?: 0L
+        return forwarded.firstOrNull() ?: 0L
     }
 }
+
+data class TelegramIncomingMessage(
+    val chatId: Long,
+    val messageId: Long,
+    val track: TelegramTrack?,
+    val prompt: TelegramBotPrompt?,
+)
 
 data class TelegramBotPromptButton(
     val text: String,
@@ -299,7 +358,6 @@ data class TelegramBotPrompt(
 
     val rows: List<List<TelegramBotPromptButton>>,
 ) {
-
     val allButtons: List<TelegramBotPromptButton> get() = rows.flatten()
 
     fun isCancelButton(button: TelegramBotPromptButton): Boolean {
@@ -310,6 +368,7 @@ data class TelegramBotPrompt(
 
 sealed interface BotReply {
     data class Track(val track: TelegramTrack) : BotReply
+
     data class Prompt(val prompt: TelegramBotPrompt) : BotReply
 }
 
@@ -317,6 +376,5 @@ data class TelegramBotCommand(
     val command: String,
     val description: String,
 ) {
-
     val withSlash: String get() = "/$command"
 }

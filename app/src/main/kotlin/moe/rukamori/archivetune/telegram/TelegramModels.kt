@@ -5,7 +5,12 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Plain models for the Telegram channel browser plus the lossless-format detection used to filter
- * channel content. Kept free of Android/TDLib imports so the detection logic is unit-testable.
+ * channel content. Kept free of Android/mtcute imports so the detection logic is unit-testable.
+ *
+ * Track addressing changed with the TDLib -> mtcute swap: TDLib-local file ids
+ * are gone; a track now carries the server-stable unique file id
+ * ("<docId>:<dcId>") plus the raw document coordinates (docId / accessHash /
+ * fileReference / dcId) needed to build MTProto download locations.
  */
 
 package moe.rukamori.archivetune.telegram
@@ -20,7 +25,8 @@ data class TelegramChannel(
     val isBroadcastChannel: Boolean,
     val photoMinithumbnail: ByteArray?,
 
-    val photoFileId: Int = 0,
+    // mtcute era: chat photos are resolved by chat id (inputPeerPhotoFileLocation)
+    val photoDownloadable: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean = other is TelegramChannel && other.chatId == chatId
 
@@ -30,8 +36,11 @@ data class TelegramChannel(
 data class TelegramTrack(
     val chatId: Long,
     val messageId: Long,
-    val fileId: Int,
     val fileUniqueId: String,
+    val docId: String,
+    val accessHash: String,
+    val fileReference: String,
+    val dcId: Int,
     val title: String,
     val performer: String?,
     val fileName: String,
@@ -41,14 +50,13 @@ data class TelegramTrack(
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
 
-    val thumbnailFileId: Int = 0,
+    val hasThumbnail: Boolean = false,
 ) {
     val mediaId: String
         get() =
             TelegramMediaId(
                 chatId = chatId,
                 messageId = messageId,
-                fileId = fileId,
                 fileUniqueId = fileUniqueId,
             ).encode()
 
@@ -73,6 +81,27 @@ data class TelegramTrack(
 data class TelegramAudioPage(
     val tracks: List<TelegramTrack>,
     val nextFromMessageId: Long,
+)
+
+data class TelegramAccount(
+    val id: Long,
+    val firstName: String,
+    val lastName: String?,
+    val username: String?,
+    val phoneNumber: String?,
+    val isBot: Boolean,
+) {
+    val displayName: String
+        get() = listOfNotNull(firstName.takeIf { it.isNotBlank() }, lastName?.takeIf { it.isNotBlank() })
+            .joinToString(" ")
+            .ifBlank { username ?: "" }
+}
+
+data class TelegramBotInfo(
+    val chatId: Long,
+    val userId: Long,
+    val firstName: String,
+    val isBot: Boolean,
 )
 
 private val LOSSLESS_MIME_TYPES =

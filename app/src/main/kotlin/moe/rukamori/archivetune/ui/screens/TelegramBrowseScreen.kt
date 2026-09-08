@@ -221,7 +221,7 @@ private fun TelegramChannelRow(
     ) {
         TelegramChatAvatar(
             photoMinithumbnail = channel.photoMinithumbnail,
-            photoFileId = channel.photoFileId,
+            photoChatId = channel.chatId,
         )
 
         Spacer(Modifier.width(12.dp))
