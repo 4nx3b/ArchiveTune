@@ -629,7 +629,10 @@ class MainActivity : ComponentActivity() {
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val pipEnabled = dataStore.get(EnablePipModeKey, false)
         if (!pipEnabled) return false
-        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, false)
+        // Fork default ON (restored 2026-09-08 — the vossgraves port flipped
+        // this to false, breaking music-video PiP eligibility the same way it
+        // broke video playback itself).
+        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true)
         if (!videoPlaybackEnabled) return false
         val connection = playerConnection ?: return false
         val metadata = connection.mediaMetadata.value ?: return false

@@ -153,7 +153,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (enableVideoPlayback, onEnableVideoPlaybackChange) =
         rememberPreference(
             EnableVideoPlaybackKey,
-            defaultValue = false,
+            // Fork default ON (restored 2026-09-08 — the vossgraves port flipped
+            // this to false, silently disabling music-video playback).
+            defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
         rememberPreference(

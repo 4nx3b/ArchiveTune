@@ -176,7 +176,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             LyricsModeKey,
             defaultValue = LyricsMode.ENHANCED,
         )
-    val (appleMusicExperience, onAppleMusicExperienceChange) =
+    // No value read needed here anymore: the Appearance row is gone (2026-09-08),
+    // so the only writer left is the style picker below, and the reader that
+    // matters is MediaDetailHero's rememberAppleMusicExperience(). The setter is
+    // kept so leaving the Apple Music style can end the experience.
+    val (_, onAppleMusicExperienceChange) =
         rememberPreference(
             AppleMusicExperienceKey,
             defaultValue = false,
@@ -831,35 +835,31 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("disable_blur"),
                 title = stringResource(R.string.player),
             ) {
-                // The Apple Music experience toggle is only an entry point INTO the
-                // style — once the style itself is selected the row is redundant, so
-                // it is hidden while APPLE_MUSIC is selected (code kept).
-                if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
-                    item {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("apple_music_experience"),
-                            title = { Text(stringResource(R.string.apple_music_experience)) },
-                            description = stringResource(R.string.apple_music_experience_desc),
-                            icon = { Icon(painterResource(R.drawable.music_note), null) },
-                            checked = appleMusicExperience,
-                            onCheckedChange = { enabled ->
-                                onAppleMusicExperienceChange(enabled)
-                                // Turning the experience on also puts the player in Apple Music's
-                                // style: half an Apple Music app is not an experience. Turning it
-                                // off leaves the player alone — someone who liked that player and
-                                // only wanted the old headers back should keep it.
-                                if (enabled) onPlayerDesignStyleChange(PlayerDesignStyle.APPLE_MUSIC)
-                            },
-                        )
-                    }
-                }
+                // The Apple Music experience row is gone from the UI (user request
+                // 2026-09-08): it was already hidden while APPLE_MUSIC was selected,
+                // and it is now removed for every other player style as well — the
+                // style picker is the single entry point into the Apple Music look,
+                // and a switch that hijacks a deliberately chosen other style back
+                // into Apple Music's has no business sitting under it. The
+                // preference and its plumbing stay intact: MediaDetailHero still
+                // swaps to the iOS header while the key is on, and leaving the
+                // Apple Music style (below) is what turns it off.
                 item {
                     Column(modifier = positions.modifierFor("player_design_style")) {
                         EnumListPreference(
                             title = { Text(stringResource(R.string.player_design_style)) },
                             icon = { Icon(painterResource(R.drawable.palette), null) },
                             selectedValue = playerDesignStyle,
-                            onValueSelected = onPlayerDesignStyleChange,
+                            onValueSelected = { style ->
+                                onPlayerDesignStyleChange(style)
+                                // With the experience row gone no switch remains to turn
+                                // the iOS detail headers off, so deliberately leaving the
+                                // Apple Music style ends the experience instead of
+                                // stranding it on over another player style.
+                                if (style != PlayerDesignStyle.APPLE_MUSIC) {
+                                    onAppleMusicExperienceChange(false)
+                                }
+                            },
                             valueText = {
                                 when (it) {
                                     PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
