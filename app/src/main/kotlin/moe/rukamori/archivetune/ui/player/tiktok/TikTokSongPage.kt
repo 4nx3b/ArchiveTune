@@ -89,6 +89,8 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
+import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.utils.resize
 
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
@@ -173,6 +175,31 @@ internal fun TikTokSongPage(
                     Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
+            )
+        }
+
+        // A music video on the current page plays full-bleed in the canvas's
+        // slot. Player.kt's videoMediaId gate provides the state only for the
+        // current track, so non-current feed pages keep rendering their own
+        // artwork; the canvas itself never loads for a music video (it is
+        // disabled for them), so the two never compete for the slot. Mirrors
+        // the canvas contract — same full-bleed ZOOM geometry, same corner
+        // clip, hidden while the inline lyrics pane is open — and the square
+        // artwork fades out over it exactly as it does over a playing canvas.
+        val videoState = LocalVideoArtworkState.current
+        val videoShowing =
+            isCurrentPage &&
+                videoState != null &&
+                !videoState.hasPlaybackFailed &&
+                !lyricsOpen
+        if (videoShowing) {
+            InlineVideoPlayer(
+                state = videoState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
             )
         }
         Box(modifier = Modifier.fillMaxSize().tiktokScrim())
@@ -264,7 +291,7 @@ internal fun TikTokSongPage(
                             ) {
 
                                 val artworkFallbackAlpha by animateFloatAsState(
-                                    targetValue = if (canvasShowing) 0f else 1f,
+                                    targetValue = if (canvasShowing || videoShowing) 0f else 1f,
                                     animationSpec = tween(300),
                                     label = "tiktokArtworkFallbackAlpha",
                                 )
