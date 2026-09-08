@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -89,8 +90,10 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import moe.rukamori.archivetune.ui.player.InlineVideoControlsPill
 import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
+import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
 import moe.rukamori.archivetune.ui.utils.resize
 
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
@@ -178,13 +181,19 @@ internal fun TikTokSongPage(
             )
         }
 
-        // A music video on the current page plays full-bleed in the canvas's
-        // slot. Player.kt's videoMediaId gate provides the state only for the
-        // current track, so non-current feed pages keep rendering their own
-        // artwork; the canvas itself never loads for a music video (it is
-        // disabled for them), so the two never compete for the slot. Mirrors
-        // the canvas contract — same full-bleed ZOOM geometry, same corner
-        // clip, hidden while the inline lyrics pane is open — and the square
+        // A music video on the current page plays in the canvas's slot at its
+        // ORIGINAL dimensions. Player.kt's videoMediaId gate provides the state
+        // only for the current track, so non-current feed pages keep rendering
+        // their own artwork; the canvas itself never loads for a music video (it
+        // is disabled for them), so the two never compete for the slot.
+        //
+        // Geometry: the surface is sized to the video's intrinsic aspect ratio
+        // (from VideoArtworkState.videoAspectRatio, 16:9 until the first frame
+        // reports its size) and centered, with RESIZE_MODE_FIT inside. A 16:9
+        // video therefore letterboxes in the portrait feed instead of being
+        // zoom-cropped by the previous full-bleed ZOOM geometry (which cropped a
+        // landscape video down to ~27% of its width). Same corner clip as the
+        // canvas, hidden while the inline lyrics pane is open, and the square
         // artwork fades out over it exactly as it does over a playing canvas.
         val videoState = LocalVideoArtworkState.current
         val videoShowing =
@@ -192,15 +201,23 @@ internal fun TikTokSongPage(
                 videoState != null &&
                 !videoState.hasPlaybackFailed &&
                 !lyricsOpen
+        val videoFullscreenHolder = LocalVideoFullscreenState.current
+        val videoRatio = videoState?.videoAspectRatio ?: TIKTOK_VIDEO_FALLBACK_RATIO
         if (videoShowing) {
-            InlineVideoPlayer(
-                state = videoState,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-            )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                InlineVideoPlayer(
+                    state = videoState,
+                    showControls = false,
+                    modifier =
+                        Modifier
+                            .aspectRatio(videoRatio)
+                            .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+                )
+            }
         }
         Box(modifier = Modifier.fillMaxSize().tiktokScrim())
 
@@ -376,6 +393,32 @@ internal fun TikTokSongPage(
             }
 
             Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
+        }
+
+        // Quality + fullscreen controls for the on-video music video, anchored to the
+        // video's bottom-right corner. Rendered ABOVE the Column (whose tap-to-pause
+        // artwork layer would otherwise swallow the pill's taps) as an invisible
+        // anchor box with exactly the video's geometry — the same centering + aspect
+        // ratio — so the pill tracks the letterboxed video, not the full screen. The
+        // end clearance keeps the pill left of the TikTok action rail (48dp buttons +
+        // 10dp rail padding = 58dp from the screen edge, + 8dp gap).
+        if (videoShowing && !videoFullscreenHolder.isFullscreen) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(modifier = Modifier.aspectRatio(videoRatio)) {
+                    InlineVideoControlsPill(
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(
+                                    end = TIKTOK_VIDEO_CONTROLS_END_CLEARANCE,
+                                    bottom = 8.dp,
+                                ),
+                    )
+                }
+            }
         }
 
         if (!immersive) {
@@ -665,6 +708,14 @@ internal fun Modifier.tiktokScrim(): Modifier = drawBehind { drawRect(TIKTOK_SCR
 internal const val TIKTOK_ART_PX = 1080
 
 internal val TIKTOK_CANVAS_CORNER = 20.dp
+
+/** Aspect ratio used to size the inline video surface before the first frame reports
+ * the video's true dimensions (and whenever they are degenerate). */
+internal val TIKTOK_VIDEO_FALLBACK_RATIO = 16f / 9f
+
+/** Distance between the video's right edge and the inline controls pill, sized to clear
+ * the TikTok action rail (48dp buttons inset 10dp from the screen edge) plus a gap. */
+internal val TIKTOK_VIDEO_CONTROLS_END_CLEARANCE = 66.dp
 
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)
 
