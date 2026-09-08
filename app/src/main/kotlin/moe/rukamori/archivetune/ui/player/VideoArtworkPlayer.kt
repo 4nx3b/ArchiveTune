@@ -88,6 +88,7 @@ import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.simpstream.SimpMusicPlayer
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -128,6 +129,8 @@ private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreferen
 
 private const val VideoReadyHoldTimeoutMs = 10000L
 private const val VideoClientAttemptTimeoutMs = 8000L
+
+private const val VideoSimpMusicAttemptTimeoutMs = 12000L
 
 private const val VideoLoadResumeDelayMs = 1000L
 
@@ -1166,10 +1169,109 @@ private fun List<PlayerResponse.StreamingData.Format>?.withUsableHeight(): List<
         h != null && h > 0
     }
 
+/**
+ * Resolve the video stream through SimpMusic's extractor — the same machinery the
+ * audio path uses (see YTPlayerUtils.playerResponseForPlaybackOnce, where it runs
+ * ahead of the per-client innertube chain). The extractor performs a WEB_REMIX
+ * player request and splices NewPipe-harvested stream URLs into the response by
+ * itag, so the video formats carry working URLs even when the direct innertube
+ * URLs are bot-blocked or 403'd — the failure mode where audio keeps playing
+ * through the SimpMusic-resolved stream while the video surface never mounts and
+ * the player sits on the artwork fallback (the reported "still zoomed-in
+ * thumbnail"). Never throws; returns null on any failure or timeout so the
+ * caller falls back to the per-client innertube chain.
+ */
+private suspend fun resolveVideoStreamUrlViaSimpMusic(
+    videoId: String,
+    preferredHeight: Int?,
+): VideoStreamInfo? {
+    val result =
+        withTimeoutOrNull(VideoSimpMusicAttemptTimeoutMs) {
+            try {
+                SimpMusicPlayer.player(videoId = videoId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                Result.failure(t)
+            }
+        } ?: run {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w(
+                    "SimpMusic video resolution timed out for $videoId after " +
+                        "${VideoSimpMusicAttemptTimeoutMs}ms — using the innertube chain",
+                )
+            return null
+        }
+
+    val response = result.getOrNull()?.second
+    if (response == null) {
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .w(
+                result.exceptionOrNull(),
+                "SimpMusic video resolution failed for $videoId — using the innertube chain",
+            )
+        return null
+    }
+
+    // Only URL-bearing formats are usable here: a spliced format carries the
+    // NewPipe-harvested URL directly, while an unspliced one keeps the original
+    // (possibly signature-ciphered) URL that only the innertube chain's
+    // NewPipeUtils.getStreamUrl can decode — leave those to the fallback.
+    val format =
+        pickVideoFormat(response, preferredHeight)?.takeIf { !it.url.isNullOrBlank() }
+    if (format == null) {
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .w("SimpMusic resolution produced no URL-bearing video format for $videoId")
+        return null
+    }
+    val streamUrl =
+        format.url ?: run {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("SimpMusic video format for $videoId lost its URL — using the innertube chain")
+            return null
+        }
+
+    val availableHeights =
+        (response.streamingData?.formats.orEmpty() + response.streamingData?.adaptiveFormats.orEmpty())
+            .mapNotNull { candidate ->
+                candidate.height?.takeIf { it in 1..VideoDecoderCapabilities.maxSupportedHeight() }
+            }.distinct()
+            .sorted()
+    val captionTracks =
+        response.captions
+            ?.playerCaptionsTracklistRenderer
+            ?.captionTracks
+            .orEmpty()
+
+    Timber
+        .tag(VideoPlaybackLogTag)
+        .i("Resolved video stream for $videoId via SimpMusic (itag=${format.itag}, height=${format.height})")
+    return VideoStreamInfo(
+        streamUrl = streamUrl,
+        availableHeights = availableHeights,
+        captionTracks = captionTracks,
+        selectedHeight = format.height?.takeIf { it > 0 },
+    )
+}
+
 private suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {
+
+    // SimpMusic resolver first — the same machinery the audio path trusts
+    // (YTPlayerUtils.playerResponseForPlaybackOnce). It runs a WEB_REMIX player
+    // request and splices NewPipe-harvested URLs into the response by itag, so
+    // video formats come back with working URLs even when the direct innertube
+    // URLs are bot-blocked or 403'd — the failure mode that leaves the video
+    // surface stuck on the artwork fallback (a zoomed still) while audio keeps
+    // playing through the SimpMusic-resolved stream. Returns null on any
+    // failure so the per-client innertube chain below remains the fallback.
+    resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { return it }
 
     val authState = YouTube.currentPlaybackAuthState()
     val preferredClient =
