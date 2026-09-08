@@ -148,6 +148,85 @@ fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
     }
 }
 
+/**
+ * The floating controls pill shared by every inline video surface: the video-quality
+ * picker (only when YouTube offered more than one height) and the fullscreen toggle.
+ *
+ * Extracted from [InlineVideoPlayer] so hosts that render the video surface in one layer
+ * (e.g. the TikTok player style, which layers its tap-to-pause artwork above the video)
+ * can hoist the pill into a layer where its buttons stay tappable, and anchor it wherever
+ * that layout needs it — without duplicating the pill + sheet wiring.
+ *
+ * All state defaults come from the video CompositionLocals, so a bare call with just a
+ * Modifier is enough.
+ */
+@Composable
+fun InlineVideoControlsPill(
+    preferredHeight: Int? = LocalVideoPreferredHeight.current,
+    onPreferredHeightChange: (Int?) -> Unit = LocalVideoOnPreferredHeightChange.current,
+    availableHeights: List<Int> = LocalVideoAvailableHeights.current,
+    selectedHeight: Int? = LocalVideoSelectedHeight.current,
+    modifier: Modifier = Modifier,
+) {
+    val fullscreenHolder = LocalVideoFullscreenState.current
+    var qualityMenuOpen by remember { mutableStateOf(false) }
+
+    Row(
+        modifier =
+            modifier
+                .background(
+                    color = Color.Black.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(28.dp),
+                ).padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Quality picker — only render if YouTube offered more than one height.
+        // Opens the same VideoQualitySheet the fullscreen overlay uses, so the two
+        // surfaces offer identical choices.
+        if (availableHeights.size > 1) {
+            IconButton(
+                onClick = { qualityMenuOpen = true },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_settings_linear),
+                    contentDescription = stringResource(R.string.video_quality),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+
+        // Fullscreen toggle — writes to the hoisted holder so the
+        // host can render the FullscreenVideoOverlay.
+        IconButton(
+            onClick = { fullscreenHolder.isFullscreen = true },
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.solar_fullscreen_linear),
+                contentDescription = stringResource(R.string.video_fullscreen),
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+
+    // The sheet is a window of its own, so it lives outside the pill Row — that way it is
+    // not torn down by any visibility animation applied to the pill itself, and fullscreen
+    // can be entered while it is up without tearing it down mid-animation.
+    if (qualityMenuOpen) {
+        VideoQualitySheet(
+            preferredHeight = preferredHeight,
+            availableHeights = availableHeights,
+            selectedHeight = selectedHeight,
+            onPreferredHeightChange = onPreferredHeightChange,
+            onDismissRequest = { qualityMenuOpen = false },
+        )
+    }
+}
+
 @Composable
 fun InlineVideoPlayer(
     state: VideoArtworkState? = LocalVideoArtworkState.current,
@@ -158,6 +237,13 @@ fun InlineVideoPlayer(
     modifier: Modifier = Modifier,
     onPlaybackFailed: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    /**
+     * When false, the quality/fullscreen pill is NOT rendered here — for hosts that layer
+     * other input-consuming surfaces above the video (the TikTok player style layers its
+     * tap-to-pause artwork on top) and render [InlineVideoControlsPill] themselves in a
+     * layer where the buttons stay tappable.
+     */
+    showControls: Boolean = true,
 ) {
     if (state == null) {
         onPlaybackFailed()
@@ -166,8 +252,6 @@ fun InlineVideoPlayer(
 
     val fullscreenHolder = LocalVideoFullscreenState.current
     val isFullscreen = fullscreenHolder.isFullscreen
-
-    var qualityMenuOpen by remember { mutableStateOf(false) }
 
     val playerConnection = LocalPlayerConnection.current
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
@@ -197,56 +281,21 @@ fun InlineVideoPlayer(
                 }
             }
 
-            Row(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .background(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(28.dp),
-                        ).padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-
-                if (availableHeights.size > 1) {
-                    IconButton(
-                        onClick = { qualityMenuOpen = true },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.solar_settings_linear),
-                            contentDescription = stringResource(R.string.video_quality),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = { fullscreenHolder.isFullscreen = true },
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.solar_fullscreen_linear),
-                        contentDescription = stringResource(R.string.video_fullscreen),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
+            // Controls overlay: quality picker + fullscreen button, grouped in a single
+            // dark pill so the inline and fullscreen controls look consistent.
+            if (showControls) {
+                InlineVideoControlsPill(
+                    preferredHeight = preferredHeight,
+                    onPreferredHeightChange = onPreferredHeightChange,
+                    availableHeights = availableHeights,
+                    selectedHeight = selectedHeight,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp),
+                )
             }
         }
-    }
-
-    if (qualityMenuOpen) {
-        VideoQualitySheet(
-            preferredHeight = preferredHeight,
-            availableHeights = availableHeights,
-            selectedHeight = selectedHeight,
-            onPreferredHeightChange = onPreferredHeightChange,
-            onDismissRequest = { qualityMenuOpen = false },
-        )
     }
 }
 

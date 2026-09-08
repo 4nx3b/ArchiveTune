@@ -236,6 +236,12 @@ fun TikTokPlayerContent(
 
     val videoFullscreenHolder = LocalVideoFullscreenState.current
     val videoState = LocalVideoArtworkState.current
+    // True when the current track's music video is live on the feed — the quality +
+    // fullscreen pill then sits on the video's bottom-right corner (TikTokSongPage),
+    // so the top navigation's fullscreen button is hidden to avoid a duplicate control.
+    // Non-video tracks keep the header button (it toggles the feed's immersive mode).
+    val videoControlsShowing =
+        videoState != null && !videoState.hasPlaybackFailed && !lyricsOpen
     var immersive by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = lyricsOpen && !lyricsVisible) { lyricsOpen = false }
@@ -430,6 +436,7 @@ fun TikTokPlayerContent(
                 state = state,
                 isLoading = isLoading,
                 onFullscreen = onFullscreenAction,
+                showFullscreenButton = !videoControlsShowing,
             )
         }
 
@@ -508,6 +515,11 @@ private fun TikTokTopNavigation(
     state: BottomSheetState,
     isLoading: Boolean,
     onFullscreen: () -> Unit,
+    // While the current track plays its music video, the fullscreen + quality pill
+    // already lives on the video's bottom-right corner — the header button would be a
+    // duplicate fullscreen entry, so it yields its slot (a same-size spacer keeps the
+    // Home/Library tabs centered).
+    showFullscreenButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -542,20 +554,24 @@ private fun TikTokTopNavigation(
                 .padding(horizontal = 6.dp),
     ) {
 
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier =
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .tiktokNoRippleClickable(onClick = onFullscreen),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.solar_fullscreen_linear),
-                contentDescription = stringResource(R.string.tiktok_feed_fullscreen),
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
-            )
+        if (showFullscreenButton) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .tiktokNoRippleClickable(onClick = onFullscreen),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_fullscreen_linear),
+                    contentDescription = stringResource(R.string.tiktok_feed_fullscreen),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        } else {
+            Spacer(Modifier.size(40.dp))
         }
 
         Spacer(Modifier.weight(1f))

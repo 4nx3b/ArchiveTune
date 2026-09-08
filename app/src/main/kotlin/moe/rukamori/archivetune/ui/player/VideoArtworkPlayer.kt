@@ -59,6 +59,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -162,6 +163,18 @@ class VideoArtworkState internal constructor(
     var isResolvingUrl: Boolean by mutableStateOf(true)
         internal set
     var bufferingStartedAtMs: Long by mutableLongStateOf(0L)
+        internal set
+
+    /**
+     * The video's intrinsic width/height ratio (e.g. 16/9 for a landscape video), reported
+     * by ExoPlayer once the first frame's size is known. Null until then — callers fall back
+     * to 16/9. Reset to null whenever a new stream is loaded so a stale ratio from a previous
+     * video never sizes the surface of the next one.
+     *
+     * Used by the TikTok player style to lay the inline video out at its ORIGINAL dimensions
+     * (letterboxed, never stretched) instead of cropping a 16:9 video into a portrait slot.
+     */
+    var videoAspectRatio: Float? by mutableStateOf(null)
         internal set
 
     var currentSpeedCorrectionFactor by mutableStateOf(1.0f)
@@ -496,6 +509,9 @@ fun rememberVideoArtworkState(
         state.isVideoReady = false
         state.hasPlaybackFailed = false
         state.currentCaptionText = null
+        // A new stream may have a different intrinsic size — drop the stale ratio until
+        // onVideoSizeChanged reports the new one.
+        state.videoAspectRatio = null
 
         val lowercaseUrl = url.lowercase(Locale.ROOT)
         val mimeType =
@@ -815,6 +831,21 @@ fun rememberVideoArtworkState(
                             .joinToString("\n") { it.text?.toString().orEmpty() }
                             .takeIf { it.isNotBlank() }
                     state.currentCaptionText = text
+                }
+
+                // The intrinsic video dimensions arrive with the first frame. Recording the
+                // ratio lets inline surfaces (TikTok player style) size themselves to the
+                // video's true aspect so it is letterboxed at original proportions rather
+                // than zoom-cropped or stretched. Guarded against degenerate decode sizes.
+                override fun onVideoSizeChanged(videoSize: VideoSize) {
+                    val width = videoSize.width
+                    val height = videoSize.height
+                    state.videoAspectRatio =
+                        if (width > 0 && height > 0) {
+                            (width.toFloat() / height.toFloat()).coerceIn(0.2f, 5f)
+                        } else {
+                            null
+                        }
                 }
 
                 override fun onRenderedFirstFrame() {
