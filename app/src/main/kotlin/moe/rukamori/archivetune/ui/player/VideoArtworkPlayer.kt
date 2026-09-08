@@ -129,6 +129,19 @@ private const val VideoStuckBufferingTimeoutMs = 8000L
 private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
 private const val VideoReadyHoldTimeoutMs = 10000L
+
+/**
+ * Fast-start cap for the audio-until-video-ready hold. The hold exists so a
+ * fast-loading video and the audio begin together, but it previously waited
+ * for the ENTIRE video pipeline (stream resolution + prepare + first frame),
+ * bounded only by the 10 s artwork-fallback watchdog — so audio start could
+ * lag the tap by up to 10 s. Now the hold auto-releases after this window:
+ * audio starts immediately, and a video that becomes ready later simply
+ * re-anchors to the live audio position in onRenderedFirstFrame (the drift
+ * seek there is the same path used for every late-render recovery), so A/V
+ * sync is preserved in both cases.
+ */
+private const val VideoAudioHoldFastStartMs = 1800L
 private const val VideoClientAttemptTimeoutMs = 8000L
 
 private const val VideoSimpMusicAttemptTimeoutMs = 12000L
@@ -384,7 +397,7 @@ fun rememberVideoArtworkState(
         if (shouldPlay) updatedOnRequestPauseMain()
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Video for $videoId loading — audio paused for 1s settling")
+            .d("Video for $videoId loading — audio paused (bounded to ${VideoAudioHoldFastStartMs}ms)")
     }
 
     fun releaseAudioHold(resumeMainAudio: Boolean = false) {
@@ -619,6 +632,26 @@ fun rememberVideoArtworkState(
                     }
                 }.build()
         trackSelector.setParameters(params)
+    }
+
+    // Fast-start watchdog for the audio hold: if the video is not ready
+    // within VideoAudioHoldFastStartMs, start the audio anyway. The video
+    // keeps loading; its first rendered frame re-anchors it to the audio
+    // position (see the drift seek in onRenderedFirstFrame), so sync is
+    // recovered rather than sacrificed. This converts a worst-case 10 s
+    // silent start (slow video resolution) into a ~1.8 s one.
+    LaunchedEffect(awaitingVideoReady, state.hasPlaybackFailed) {
+        if (!awaitingVideoReady || state.hasPlaybackFailed) return@LaunchedEffect
+        delay(VideoAudioHoldFastStartMs)
+        if (awaitingVideoReady && !state.isVideoReady) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .i(
+                    "Video for $videoId not ready within ${VideoAudioHoldFastStartMs}ms — " +
+                        "starting audio now; video re-anchors on first frame",
+                )
+            releaseAudioHold(resumeMainAudio = true)
+        }
     }
 
     LaunchedEffect(state.streamUrl) {
@@ -990,11 +1023,23 @@ fun rememberVideoArtworkState(
                         state.pendingResumeMainAudio = resumeMainAudio
                         state.pendingResumeVideo = true
                         state.pendingResumeAtMs =
-                            SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
+                            if (resumeMainAudio) {
+                                SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
+                            } else {
+                                // No audio resume is scheduled — either the
+                                // fast-start watchdog already released the hold
+                                // (audio is live) or no hold was ever armed.
+                                // Parking the video for the extra settle delay
+                                // here would start it VideoLoadResumeDelayMs
+                                // BEHIND the already-playing audio, so resume
+                                // it immediately instead.
+                                SystemClock.elapsedRealtime()
+                            }
                         Timber
                             .tag(VideoPlaybackLogTag)
                             .d(
-                                "First frame rendered — resume scheduled in ${VideoLoadResumeDelayMs}ms " +
+                                "First frame rendered — resume scheduled " +
+                                    "(${if (resumeMainAudio) "in ${VideoLoadResumeDelayMs}ms" else "immediately"}) " +
                                     "(audio=$resumeMainAudio, video=true)",
                             )
                     } else if (!nothingToResume) {

@@ -375,6 +375,28 @@ class DownloadUtil
             }
         }
 
+        /**
+         * Failure-path purge for a single download REQUEST: clears only the
+         * request's own cache key from both caches (partial spans of a failed
+         * fetch must not poison the next attempt via the resolver's
+         * completeness short-circuit), plus the legacy plain/"ytm:" twin pair
+         * so a failed legacy entry never lingers beside its scoped twin.
+         * Other sources' completed offline copies of the same song are
+         * intentionally preserved — one offline copy per source.
+         */
+        private fun removeDownloadCacheEntriesForRequest(requestId: String) {
+            val keys = buildSet {
+                add(requestId)
+                if (!requestId.contains(':')) {
+                    add(DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + requestId)
+                }
+            }
+            keys.forEach { key ->
+                runCatching { downloadCache.removeResource(key) }
+                runCatching { playerCache.removeResource(key) }
+            }
+        }
+
         private val playerCacheDownloadUpstreamFactory =
             CacheDataSource
                 .Factory()
@@ -527,17 +549,33 @@ class DownloadUtil
                     }?.let {
                         return@Factory dataSpec.buildUpon().setKey(requestKey).setUri(it.url.toUri()).build()
                     }
+                // Bounded resolution: the 5-client download chain (SimpMusic →
+                // Echo → native fallbacks) can spend minutes on a failing
+                // network while the DownloadManager worker sits blocked in
+                // "Downloading 0%" — the reported "infinite loading". The
+                // timeout fires at the coroutine suspension points inside the
+                // chain's network awaits, cutting the whole attempt short.
                 val playbackData =
-                    runBlocking(Dispatchers.IO) {
-                        context.retryWithoutPlaybackLoginContext {
-                            YTPlayerUtils.playerResponseForDownload(
-                                mediaId,
-                                audioQuality = requestedAudioQuality,
-                                connectivityManager = connectivityManager,
-                                networkMetered = lowDataMode,
-                            )
-                        }
-                    }.getOrThrow()
+                    try {
+                        runBlocking(Dispatchers.IO) {
+                            kotlinx.coroutines.withTimeout(YT_DOWNLOAD_RESOLVE_TIMEOUT_MS) {
+                                context.retryWithoutPlaybackLoginContext {
+                                    YTPlayerUtils.playerResponseForDownload(
+                                        mediaId,
+                                        audioQuality = requestedAudioQuality,
+                                        connectivityManager = connectivityManager,
+                                        networkMetered = lowDataMode,
+                                    )
+                                }
+                            }
+                        }.getOrThrow()
+                    } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                        throw IOException(
+                            "YouTube download stream resolution timed out after " +
+                                "${YT_DOWNLOAD_RESOLVE_TIMEOUT_MS / 1000}s for $mediaId",
+                            timeout,
+                        )
+                    }
                 persistPlaybackMetadata(mediaId, playbackData)
 
                 val streamUrl = playbackData.streamUrl
@@ -600,7 +638,16 @@ class DownloadUtil
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 val failedMediaId = DownloadSourceConfig.downloadIdToSongId(download.request.id)
                                 songUrlCache.keys.removeIf { it.startsWith("$failedMediaId:") }
-                                removeSongCacheEntries(failedMediaId)
+                                // Per-source failure purge: only THIS request's
+                                // own cache key (plus the legacy plain/ytm twin
+                                // pair) is cleared. The previous behavior called
+                                // removeSongCacheEntries(failedMediaId), which
+                                // wiped EVERY source's offline copy of the song
+                                // — a failed YouTube download destroyed the
+                                // completed Qobuz download, which is exactly the
+                                // "old download gets overwritten, only a single
+                                // entry remains" report.
+                                removeDownloadCacheEntriesForRequest(download.request.id)
                             }
                             downloadState.put(download.request.id, download)
                         }
@@ -684,9 +731,15 @@ class DownloadUtil
             // means newly-contributed accounts become available to downloads
             // without an app restart, and avoids the "downloads always fall back
             // to YouTube .webm" failure mode when the pool cache has been evicted
-            // by the OS or never loaded on this cold start.
+            // by the OS or never loaded on this cold start. Bounded with a
+            // timeout so a hung pool endpoint can never stall the whole prewarm
+            // (and with it the visible start of the download) indefinitely.
             if (PoolAccountManager.isEnabled) {
-                runCatching { PoolAccountManager.refresh(appContext) }
+                runCatching {
+                    kotlinx.coroutines.withTimeout(POOL_REFRESH_TIMEOUT_MS) {
+                        PoolAccountManager.refresh(appContext)
+                    }
+                }
             }
 
             val songSourcePrefs = readSongSourcePreferences(mediaId)
@@ -780,16 +833,32 @@ class DownloadUtil
                 }
             }
 
+            // YouTube Music targets: do NOT prewarm-fetch here. The menu's
+            // download flow awaits this method before enqueueing the
+            // DownloadRequest, so a full-file OkHttp prewarm fetch of a
+            // (frequently throttled) googlevideo URL held the download
+            // invisible for minutes — the reported "YouTube songs infinite
+            // loading". The DownloadManager download itself resolves and
+            // fetches the stream with its own bounded timeouts and visible
+            // progress, so enqueueing immediately is both faster and more
+            // robust. Non-YouTube sources keep the prewarm: their CDN fetches
+            // are fast and let the download short-circuit from the cache.
+            if (target.source == DownloadSource.YOUTUBE_MUSIC) {
+                return null
+            }
+
             val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
             val playbackData = runCatching {
-                appContext.retryWithoutPlaybackLoginContext {
-                    YTPlayerUtils.playerResponseForDownload(
-                        mediaId,
-                        audioQuality = requestedAudioQuality,
-                        connectivityManager = connectivityManager,
-                        networkMetered = lowDataModeActive,
-                    )
-                }.getOrThrow()
+                kotlinx.coroutines.withTimeout(YT_DOWNLOAD_RESOLVE_TIMEOUT_MS) {
+                    appContext.retryWithoutPlaybackLoginContext {
+                        YTPlayerUtils.playerResponseForDownload(
+                            mediaId,
+                            audioQuality = requestedAudioQuality,
+                            connectivityManager = connectivityManager,
+                            networkMetered = lowDataModeActive,
+                        )
+                    }.getOrThrow()
+                }
             }.getOrNull() ?: return null
             persistPlaybackMetadata(mediaId, playbackData)
             // YouTube downloads live under the "ytm:" key so they stay distinct
@@ -1408,6 +1477,19 @@ class DownloadUtil
         companion object {
 
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 12
+
+            /** Hard ceiling on the YouTube stream-resolution chain inside the
+             * download resolver/prewarm. 120 s covers the 5-client fallback
+             * sequence on a normal network while keeping a pathological
+             * network state from parking the download worker in a
+             * "Downloading 0%" forever (the "infinite loading" report). */
+            internal const val YT_DOWNLOAD_RESOLVE_TIMEOUT_MS = 120_000L
+
+            /** Ceiling on the Source Pool account refresh inside the prewarm
+             * path — it runs before the download request is even enqueued, so
+             * an unresponsive pool endpoint must not delay the visible start
+             * of a download by more than a few seconds. */
+            internal const val POOL_REFRESH_TIMEOUT_MS = 10_000L
 
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 96
             private const val MAX_DOWNLOAD_HTTP_REQUESTS = 256

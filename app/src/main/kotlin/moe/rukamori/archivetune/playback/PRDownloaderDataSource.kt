@@ -28,6 +28,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 internal class PRDownloaderDataSource private constructor(
@@ -119,9 +120,20 @@ internal class PRDownloaderDataSource private constructor(
 
         val latch = CountDownLatch(1)
         val errorRef = AtomicReference<Error?>(null)
+        // Stall watchdog bookkeeping: PRDownloader invokes the progress
+        // listener on every delivered chunk. A healthy fetch — even a slow
+        // one — keeps producing bytes; a wedged connection (googlevideo
+        // throttling to zero, a dead keep-alive socket) stops calling it
+        // entirely while the 5-minute read timeout inside PRDownloader keeps
+        // the request "alive". The latch poll below compares the last
+        // progress timestamp against PROGRESS_STALL_TIMEOUT_MS and cancels
+        // the request so the download fails fast and retries with a fresh
+        // resolution instead of hanging at 0% for the full latch window —
+        // the "YouTube downloads infinite loading" report.
+        val lastProgressAtMs = AtomicLong(android.os.SystemClock.elapsedRealtime())
 
         builder.setOnProgressListener { progress ->
-
+            lastProgressAtMs.set(android.os.SystemClock.elapsedRealtime())
         }
 
         activeDownloadId = builder.start(object : OnDownloadListener {
@@ -135,10 +147,40 @@ internal class PRDownloaderDataSource private constructor(
             }
         })
 
-        if (!latch.await(DOWNLOAD_WAIT_TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+        // Poll the latch instead of awaiting it blind: every poll checks
+        // (a) whether the download finished, (b) whether bytes stopped
+        // flowing (stall watchdog), and (c) the overall deadline. Bounded by
+        // DOWNLOAD_WAIT_TIMEOUT_MINUTES so a slow-but-healthy large file
+        // still has minutes of headroom, while a stalled one dies in
+        // seconds.
+        val deadlineNs = System.nanoTime() + TimeUnit.MINUTES.toNanos(DOWNLOAD_WAIT_TIMEOUT_MINUTES)
+        var stalled = false
+        var timedOut = false
+        while (true) {
+            if (latch.await(PROGRESS_POLL_SECONDS, TimeUnit.SECONDS)) break
+            val idleMs = android.os.SystemClock.elapsedRealtime() - lastProgressAtMs.get()
+            if (idleMs > PROGRESS_STALL_TIMEOUT_MS) {
+                stalled = true
+                break
+            }
+            if (System.nanoTime() >= deadlineNs) {
+                timedOut = true
+                break
+            }
+        }
+        if (stalled || timedOut) {
             runCatching { PRDownloader.cancel(activeDownloadId) }
+            // Give the cancelled request a brief window to surface its error
+            // through the listener before we discard the temp file.
+            latch.await(2, TimeUnit.SECONDS)
             runCatching { target.delete() }
-            throw IOException("PRDownloader timed out after $DOWNLOAD_WAIT_TIMEOUT_MINUTES min for $url")
+            throw IOException(
+                if (stalled) {
+                    "PRDownloader stalled for $url (no bytes for ${PROGRESS_STALL_TIMEOUT_MS / 1000}s)"
+                } else {
+                    "PRDownloader timed out after $DOWNLOAD_WAIT_TIMEOUT_MINUTES min for $url"
+                },
+            )
         }
 
         errorRef.get()?.let { err ->
@@ -282,7 +324,13 @@ internal class PRDownloaderDataSource private constructor(
 
     companion object {
         private const val DEFAULT_USER_AGENT = "ArchiveTune"
-        private const val DOWNLOAD_WAIT_TIMEOUT_MINUTES = 30L
+        private const val DOWNLOAD_WAIT_TIMEOUT_MINUTES = 12L
+
+        /** Cancel the fetch when no bytes have arrived for this long. */
+        private const val PROGRESS_STALL_TIMEOUT_MS = 90_000L
+
+        /** How often the latch poll re-checks progress staleness. */
+        private const val PROGRESS_POLL_SECONDS = 5L
 
         private const val MAX_DOWNLOAD_ATTEMPTS = 3
 

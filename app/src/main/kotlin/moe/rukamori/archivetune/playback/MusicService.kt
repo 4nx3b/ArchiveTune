@@ -8801,16 +8801,25 @@ class MusicService :
             evictDirectStreamCache(mediaId)
 
             contentLengthCache.remove(mediaId)
+            // Source switch purges PLAYBACK state only (playerCache spans +
+            // resolvers + content-length metadata) so the next prepare
+            // re-resolves from the new source. The DOWNLOAD cache is
+            // deliberately NOT touched: it holds per-source OFFLINE COPIES
+            // ("qobuz:<id>", "ytm:<id>", ...) that must coexist — wiping it
+            // here destroyed the previous source's completed download, so the
+            // export-downloads page collapsed back to a single entry after a
+            // source change (user report: qobuz download "overwritten" when
+            // switching to another source). A download for another source is
+            // never served for playback of this source (the resolver only
+            // short-circuits on the request's own source-scoped key), so
+            // leaving those bytes in place is safe for playback too.
             runCatching { playerCache.removeResource(mediaId) }
-            runCatching { downloadCache.removeResource(mediaId) }
             val ytmKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId
             runCatching { playerCache.removeResource(ytmKey) }
-            runCatching { downloadCache.removeResource(ytmKey) }
             contentLengthCache.remove(ytmKey)
             AudioSourceType.entries.forEach { src ->
                 val key = sourceCacheKey(src, mediaId)
                 runCatching { playerCache.removeResource(key) }
-                runCatching { downloadCache.removeResource(key) }
 
                 contentLengthCache.remove(key)
             }

@@ -177,10 +177,22 @@ fun PlayerMenu(
     val coroutineScope = rememberCoroutineScope()
 
     val downloadUtil = LocalDownloadUtil.current
+    // Per-song source pin, read BEFORE the download state so the ids list can
+    // key on it: switching the song's source re-evaluates which offline copy
+    // the menu row reflects (previously remembered on mediaId alone, so the
+    // row kept pointing at the previous source's download entry).
+    val (songSourceRaw, onSongSourceChange) = rememberPreference(SongSourceOverrideKey, "")
+    val currentSongSource =
+        remember(songSourceRaw, mediaMetadata.id) {
+            SongSourceOverride.get(songSourceRaw.ifBlank { null }, mediaMetadata.id)
+        }
     // Per-source download state — "Download" vs "Remove download" tracks the
     // CURRENT source (per-song pin first, else the download priority order's
     // top entry), so switching a song's source re-evaluates the offline copy.
-    val downloadStateIds = remember(mediaMetadata.id) { downloadUtil.currentSourceDownloadIds(mediaMetadata.id) }
+    val downloadStateIds =
+        remember(mediaMetadata.id, currentSongSource) {
+            downloadUtil.currentSourceDownloadIds(mediaMetadata.id)
+        }
     val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
     val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
 
@@ -321,11 +333,6 @@ fun PlayerMenu(
         },
     )
 
-    val (songSourceRaw, onSongSourceChange) = rememberPreference(SongSourceOverrideKey, "")
-    val currentSongSource =
-        remember(songSourceRaw, mediaMetadata.id) {
-            SongSourceOverride.get(songSourceRaw.ifBlank { null }, mediaMetadata.id)
-        }
     var showSourceDialog by rememberSaveable { mutableStateOf(false) }
 
     val sourceRevision by playerConnection.service.resolvedSourcesRevision.collectAsStateWithLifecycle()
@@ -349,6 +356,11 @@ fun PlayerMenu(
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
                 playerConnection.service.setSongSourceOverride(mediaMetadata.id, source)
                 showSourceDialog = false
+                // Close the whole overflow popup too — the user has just
+                // made their pick; leaving the menu open with a now-stale
+                // per-source download row only invites a second tap that
+                // would act on outdated source state.
+                onDismiss()
             },
             onPlaySong = { song ->
 
@@ -386,6 +398,9 @@ fun PlayerMenu(
                             )
                     }
                     showSourceDialog = false
+                    // Same as onSelect: the source decision is complete, so
+                    // the overflow popup closes with the dialog.
+                    onDismiss()
                 }
             },
         )
