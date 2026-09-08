@@ -245,10 +245,51 @@ object DownloadSourceConfig {
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
 
+    /**
+     * Source-scoped cache-key prefix for YouTube Music downloads. The plain
+     * mediaId key is reserved for PLAYBACK caching; YouTube downloads live
+     * under "ytm:<mediaId>" so they never collide with (nor get served from)
+     * the playback cache — which can hold an arbitrary itag chosen by the
+     * player, including an unexportable WebM/Opus stream.
+     */
+    val YOUTUBE_MUSIC_CACHE_KEY_PREFIX = "ytm:"
+
     val CACHE_KEY_PREFIXES: List<String> =
         DownloadSource.entries
-            .filterNot { it == DownloadSource.AUTO || it == DownloadSource.YOUTUBE_MUSIC }
+            .filterNot { it == DownloadSource.AUTO }
             .map { "${it.name.lowercase(Locale.US)}:" }
+
+    fun cacheKeyPrefix(source: DownloadSource): String? =
+        when (source) {
+            DownloadSource.AUTO -> null
+            DownloadSource.YOUTUBE_MUSIC -> YOUTUBE_MUSIC_CACHE_KEY_PREFIX
+            else -> "${source.name.lowercase(Locale.US)}:"
+        }
+
+    fun downloadCacheKey(source: DownloadSource, mediaId: String): String =
+        cacheKeyPrefix(source)?.let { "$it$mediaId" } ?: mediaId
+
+    /** Strips any known source-scoped download-key prefix (incl. "ytm:")
+     * from a download index id / cache key. Plain YouTube ids have no colon. */
+    fun downloadIdToSongId(id: String): String {
+        for (prefix in CACHE_KEY_PREFIXES) {
+            if (id.startsWith(prefix)) return id.removePrefix(prefix)
+        }
+        return id
+    }
+
+    /** Every download index id a song's entries can live under: all
+     * source-scoped ids plus the legacy plain mediaId id. */
+    fun songIdToDownloadIds(songId: String): List<String> =
+        CACHE_KEY_PREFIXES.map { "$it$songId" } + songId
+
+    fun downloadSourceForCacheKey(key: String): DownloadSource? {
+        if (!key.contains(':')) return DownloadSource.YOUTUBE_MUSIC
+        val prefix = key.substringBefore(":") + ":"
+        return DownloadSource.entries.firstOrNull {
+            it != DownloadSource.AUTO && cacheKeyPrefix(it) == prefix
+        }
+    }
 
     private fun parseType(name: String): DownloadSource? =
         runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()

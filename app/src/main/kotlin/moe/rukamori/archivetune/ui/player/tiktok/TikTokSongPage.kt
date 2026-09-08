@@ -379,24 +379,17 @@ internal fun TikTokSongPage(
                                             ),
                                 )
 
+                                // Artwork-slot pause indicator — only when no music
+                                // video is on screen (the video case renders its own
+                                // copy anchored to the video's geometry above, which
+                                // fixed the icon floating near the video's upper edge).
                                 TikTokPausedOverlay(
                                     visible =
                                         isCurrentPage &&
+                                            !videoShowing &&
                                             !isPlaying &&
                                             !suppressPauseOverlay &&
-                                            // While the video's loading spinner is up, the
-                                            // loader holds the main player paused
-                                            // (holdAudioUntilVideoReady), which would pop
-                                            // this play icon on top of the spinner — the
-                                            // spinner alone communicates the busy state.
-                                            // Once the video is ready, a user pause still
-                                            // shows the icon over the video.
-                                            !videoLoading &&
-                                            // While the tap-to-show controls overlay is
-                                            // up, its center play/pause button already
-                                            // communicates the paused state — hide the big
-                                            // center play icon so the two never stack.
-                                            !(videoShowing && videoControlsVisible),
+                                            !lyricsOpen,
                                 )
 
                                 heartBursts.forEach { burst ->
@@ -457,6 +450,29 @@ internal fun TikTokSongPage(
             Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
         }
 
+        // The paused-state indicator for the on-video music video is anchored to
+        // THE VIDEO's geometry (root-centered aspectRatio box, identical to the
+        // video surface above). Centering it in the square artwork slot instead
+        // made the icon float near the letterboxed video's upper edge — the
+        // "second pause icon near the top of the video" double-indicator.
+        if (videoShowing && !videoFullscreenHolder.isFullscreen) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(modifier = Modifier.aspectRatio(videoRatio)) {
+                    TikTokPausedOverlay(
+                        visible =
+                            isCurrentPage &&
+                                !isPlaying &&
+                                !suppressPauseOverlay &&
+                                !videoLoading &&
+                                !(videoShowing && videoControlsVisible),
+                    )
+                }
+            }
+        }
+
         // Quality + fullscreen controls for the on-video music video, anchored to the
         // video's bottom-right corner. Rendered ABOVE the Column (whose tap-to-pause
         // artwork layer would otherwise swallow the pill's taps) as an invisible
@@ -465,47 +481,76 @@ internal fun TikTokSongPage(
         // end clearance keeps the pill left of the TikTok action rail (48dp buttons +
         // 10dp rail padding = 58dp from the screen edge, + 8dp gap). The whole overlay
         // only appears while the user has tapped the video once (videoControlsVisible);
-        // a second tap on the video hides it again.
-        if (videoShowing && !videoFullscreenHolder.isFullscreen && videoControlsVisible) {
+        // a second tap on the video hides it again. It fades/scales in and out (the
+        // abrupt pop in/out felt jarring) and auto-hides a few seconds after the last
+        // interaction while playing — paused playback keeps it up so the play button
+        // stays reachable.
+        if (videoShowing && !videoFullscreenHolder.isFullscreen) {
+            LaunchedEffect(videoControlsVisible, isPlaying) {
+                if (videoControlsVisible && isPlaying) {
+                    kotlinx.coroutines.delay(TIKTOK_VIDEO_CONTROLS_AUTO_HIDE_MS)
+                    videoControlsVisible = false
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(modifier = Modifier.aspectRatio(videoRatio)) {
-                    // Center play/pause — hidden while the stream is still loading so
-                    // it never stacks on the video's loading spinner.
-                    if (!videoLoading) {
-                        IconButton(
-                            onClick = onTogglePlayPause,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .size(64.dp)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.45f),
-                                        CircleShape,
-                                    ),
-                        ) {
-                            Icon(
-                                painter =
-                                    painterResource(
-                                        if (isPlaying) R.drawable.solar_pause_linear else R.drawable.solar_play_linear,
-                                    ),
-                                contentDescription = stringResource(R.string.video_fs_play_pause),
-                                tint = Color.White,
-                                modifier = Modifier.size(44.dp),
+                    AnimatedVisibility(
+                        visible = videoControlsVisible,
+                        enter =
+                            fadeIn(tween(220)) +
+                                scaleIn(
+                                    initialScale = 0.92f,
+                                    animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                ),
+                        exit =
+                            fadeOut(tween(180)) +
+                                scaleOut(targetScale = 0.92f, animationSpec = tween(180)),
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // Center play/pause — hidden while the stream is still
+                            // loading so it never stacks on the video's loading
+                            // spinner. Its own fade keeps the swap smooth.
+                            AnimatedVisibility(
+                                visible = !videoLoading,
+                                enter = fadeIn(tween(200)),
+                                exit = fadeOut(tween(150)),
+                            ) {
+                                IconButton(
+                                    onClick = onTogglePlayPause,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.Center)
+                                            .size(64.dp)
+                                            .background(
+                                                Color.Black.copy(alpha = 0.45f),
+                                                CircleShape,
+                                            ),
+                                ) {
+                                    Icon(
+                                        painter =
+                                            painterResource(
+                                                if (isPlaying) R.drawable.solar_pause_linear else R.drawable.solar_play_linear,
+                                            ),
+                                        contentDescription = stringResource(R.string.video_fs_play_pause),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(44.dp),
+                                    )
+                                }
+                            }
+                            InlineVideoControlsPill(
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(
+                                            end = TIKTOK_VIDEO_CONTROLS_END_CLEARANCE,
+                                            bottom = 8.dp,
+                                        ),
                             )
                         }
                     }
-                    InlineVideoControlsPill(
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(
-                                    end = TIKTOK_VIDEO_CONTROLS_END_CLEARANCE,
-                                    bottom = 8.dp,
-                                ),
-                    )
                 }
             }
         }
@@ -805,6 +850,10 @@ internal val TIKTOK_VIDEO_FALLBACK_RATIO = 16f / 9f
 /** Distance between the video's right edge and the inline controls pill, sized to clear
  * the TikTok action rail (48dp buttons inset 10dp from the screen edge) plus a gap. */
 internal val TIKTOK_VIDEO_CONTROLS_END_CLEARANCE = 66.dp
+
+/** Auto-hide delay for the tap-to-show video controls overlay while playing;
+ * paused playback keeps the overlay up so the play button stays reachable. */
+internal const val TIKTOK_VIDEO_CONTROLS_AUTO_HIDE_MS = 3500L
 
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)
 

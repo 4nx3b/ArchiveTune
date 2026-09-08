@@ -301,6 +301,62 @@ class DownloadUtil
             }
         }
 
+        /** The concrete download target for a song RIGHT NOW: the source the
+         * next download request resolves from, its source-scoped cache/index
+         * key, and the legacy plain ids that older builds may have stored the
+         * same logical download under. A per-song source pin (the player's
+         * source switcher) wins outright — including a YOUTUBE pin, which maps
+         * to the YouTube Music target — otherwise the first entry of the
+         * download-source priority order wins (YouTube Music when it sits at
+         * the top). The state flows and menus key off this so "Download" vs
+         * "Remove download" reflects the CURRENT source, and switching the
+         * source back re-detects an already-downloaded version. */
+        data class DownloadTarget(
+            val source: DownloadSource,
+            val key: String,
+            val legacyIds: List<String>,
+        )
+
+        fun currentSourceDownloadTarget(mediaId: String): DownloadTarget {
+            val songPrefs = readSongSourcePreferences(mediaId)
+            val overrideSource = songPrefs.overrideSource
+                ?.let(::downloadSourceForAudioSource)
+                ?.takeIf { it != null && it != DownloadSource.AUTO }
+            val source =
+                overrideSource
+                    ?: downloadSourceChain(songPrefs).firstOrNull()
+                    ?: DownloadSource.YOUTUBE_MUSIC
+            val key = DownloadSourceConfig.downloadCacheKey(source, mediaId)
+            val legacyIds =
+                if (source == DownloadSource.YOUTUBE_MUSIC) {
+                    listOf(mediaId)
+                } else {
+                    emptyList()
+                }
+            return DownloadTarget(source, key, legacyIds)
+        }
+
+        /** Download index ids to probe for the current source's download
+         * state: the target key first, then any legacy ids. */
+        fun currentSourceDownloadIds(mediaId: String): List<String> {
+            val target = currentSourceDownloadTarget(mediaId)
+            return (listOf(target.key) + target.legacyIds).distinct()
+        }
+
+        /** Clears stale spans for the CURRENT download target only (plus the
+         * legacy plain twin for a YouTube target) from both caches — other
+         * sources' completed downloads are intentionally preserved so a song
+         * can hold one offline copy per source. Used right before a fresh
+         * download request is queued. */
+        fun clearCurrentTargetCacheSpans(mediaId: String) {
+            val target = currentSourceDownloadTarget(mediaId)
+            val keys = (listOf(target.key) + target.legacyIds).distinct()
+            keys.forEach { key ->
+                runCatching { downloadCache.removeResource(key) }
+                runCatching { playerCache.removeResource(key) }
+            }
+        }
+
         /**
          * Removes every cached representation of [mediaId] — the plain key
          * (YouTube) and all source-scoped keys — from BOTH caches. Used when a
@@ -347,47 +403,119 @@ class DownloadUtil
                 // Media3 invokes resolvers on its download worker, including
                 // resumed downloads that never pass through the activity.
                 runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
-                val mediaId = dataSpec.key ?: error("No media id")
+                val requestKey = dataSpec.key ?: error("No media id")
+                val mediaId = DownloadSourceConfig.downloadIdToSongId(requestKey)
 
-                val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
-                if (expectedLength > 0L) {
-                    val cachedBytes = runCatching {
-                        playerCache.getCachedSpans(mediaId).sumOf { it.length }
-                    }.getOrDefault(0L)
-                    if (cachedBytes >= expectedLength) {
-                        return@Factory dataSpec
-                    }
-                }
-
-                // Probe the per-source disk caches in the user's download-source
-                // PRIORITY order (the chain honors the per-song override first
-                // and stops at YOUTUBE_MUSIC, matching the playback resolver) —
-                // the cached stream from the top-priority source (identified by
-                // its source-scoped cache key) wins.
                 val songSourcePrefs = readSongSourcePreferences(mediaId)
-                for (source in downloadSourceChain(songSourcePrefs)) {
-                    if (source == DownloadSource.YOUTUBE_MUSIC) continue
-                    val sourceKey = "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
-                    val sourceExpected = expectedLength
-                    if (sourceExpected > 0L) {
+
+                // The download request itself carries the target source's
+                // identity ("ytm:<id>", "qobuz:<id>", …, or a legacy plain id).
+                // NEVER fall back to the plain mediaId PLAYBACK cache here: the
+                // player writes whatever itag it chose (often WebM/Opus) under
+                // that key, and serving a download from it produced unexportable
+                // opus bytes that then showed as "skipped (legacy WebM/Opus)".
+                // Only the prewarm-fetched spans under the request's own key
+                // (or a fully-cached legacy plain download) short-circuit.
+                val shortCircuitKeys = listOf(requestKey)
+                for (key in shortCircuitKeys) {
+                    val expectedForKey =
+                        runCatching {
+                            playerCache
+                                .getContentMetadata(key)
+                                .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                        }.getOrDefault(-1L).takeIf { it > 0L }
+                            ?: database.getSongByIdBlocking(mediaId)?.format?.contentLength?.takeIf { it > 0L }
+                            ?: 0L
+                    if (expectedForKey > 0L) {
                         val cachedBytes = runCatching {
-                            playerCache.getCachedSpans(sourceKey).sumOf { it.length }
+                            playerCache.getCachedSpans(key).sumOf { it.length }
                         }.getOrDefault(0L)
-                        if (cachedBytes >= sourceExpected) {
-                            return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                        if (cachedBytes >= expectedForKey) {
+                            return@Factory dataSpec.buildUpon().setKey(key).build()
                         }
                     }
                 }
 
-                if (dataSpec.length >= 0 && playerCache.isCached(mediaId, dataSpec.position, dataSpec.length)) {
-                    return@Factory dataSpec
+                val targetSource = DownloadSourceConfig.downloadSourceForCacheKey(requestKey)
+
+                // A source-scoped request resolves from THAT source directly —
+                // the priority order has already spoken when the request was
+                // created (DownloadTarget), so no chain probing is needed.
+                if (targetSource != null && targetSource != DownloadSource.YOUTUBE_MUSIC) {
+                    val song = database.getSongByIdBlocking(mediaId)
+                    if (song != null) {
+                        val title = song.song.title.takeIf { it.isNotBlank() } ?: mediaId
+                        val resolved =
+                            runCatching {
+                                resolveSourceStream(
+                                    targetSource,
+                                    mediaId,
+                                    title,
+                                    song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) },
+                                    song.album?.title?.takeIf { it.isNotBlank() },
+                                    song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L),
+                                    directQobuzTrackId = songSourcePrefs.directQobuzTrackId,
+                                    directQobuzBackupVideoId = songSourcePrefs.directQobuzBackupVideoId,
+                                )
+                            }.getOrNull()
+                        if (resolved != null) {
+                            persistSourceFormatEntity(
+                                mediaId = mediaId,
+                                mimeType = resolved.mimeType,
+                                codecs = resolved.codecs,
+                                contentLength = resolved.contentLength,
+                            )
+                            if (targetSource == DownloadSource.APPLE) {
+                                val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
+                                if (appleFile != null && appleFile.isFile &&
+                                    copyLocalFileIntoPlayerCache(appleFile, requestKey)
+                                ) {
+                                    return@Factory dataSpec
+                                }
+                            } else {
+                                return@Factory dataSpec
+                                    .buildUpon()
+                                    .setKey(requestKey)
+                                    .setUri(resolved.uri.toUri())
+                                    .setHttpRequestHeaders(
+                                        dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri),
+                                    ).build()
+                            }
+                        }
+                    }
                 }
 
-                val lowDataModeActive = context.isLowDataModeActive()
-                if (!lowDataModeActive) {
-                    resolvePreferredDownloadDataSpec(dataSpec, mediaId, songSourcePrefs)?.let { return@Factory it }
+                // Legacy plain-key requests keep the chain-probing behavior for
+                // pre-refactor resumed downloads: probe the per-source disk
+                // caches in the user's download-source PRIORITY order (the chain
+                // honors the per-song override first and stops at YOUTUBE_MUSIC).
+                if (requestKey == mediaId) {
+                    val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
+                    for (source in downloadSourceChain(songSourcePrefs)) {
+                        if (source == DownloadSource.YOUTUBE_MUSIC) continue
+                        val sourceKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
+                        if (expectedLength > 0L) {
+                            val cachedBytes = runCatching {
+                                playerCache.getCachedSpans(sourceKey).sumOf { it.length }
+                            }.getOrDefault(0L)
+                            if (cachedBytes >= expectedLength) {
+                                return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                            }
+                        }
+                    }
+
+                    val lowDataModeActive = context.isLowDataModeActive()
+                    if (!lowDataModeActive) {
+                        resolvePreferredDownloadDataSpec(dataSpec, mediaId, songSourcePrefs)?.let { return@Factory it }
+                    }
                 }
-                val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
+
+                // YouTube stream for the request — either a "ytm:" download
+                // target or a legacy plain request. preferM4A defaults to true
+                // so downloads always fetch an AAC/MP4 container when the
+                // extractor offers one, keeping exports jaudiotagger-readable.
+                val lowDataMode = context.isLowDataModeActive()
+                val requestedAudioQuality = resolveDownloadAudioQuality(lowDataMode)
                 val streamCacheKey = buildSongUrlCacheKey(mediaId, requestedAudioQuality)
                 val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
                 songUrlCache[streamCacheKey]
@@ -397,7 +525,7 @@ class DownloadUtil
                             minimumRemainingMs = YTPlayerUtils.STREAM_URL_EXPIRY_SAFETY_MS,
                         )
                     }?.let {
-                        return@Factory dataSpec.withUri(it.url.toUri())
+                        return@Factory dataSpec.buildUpon().setKey(requestKey).setUri(it.url.toUri()).build()
                     }
                 val playbackData =
                     runBlocking(Dispatchers.IO) {
@@ -406,7 +534,7 @@ class DownloadUtil
                                 mediaId,
                                 audioQuality = requestedAudioQuality,
                                 connectivityManager = connectivityManager,
-                                networkMetered = lowDataModeActive,
+                                networkMetered = lowDataMode,
                             )
                         }
                     }.getOrThrow()
@@ -420,7 +548,7 @@ class DownloadUtil
                         expiresAtMs = System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L),
                         authFingerprint = playbackData.authFingerprint,
                     )
-                dataSpec.withUri(streamUrl.toUri())
+                dataSpec.buildUpon().setKey(requestKey).setUri(streamUrl.toUri()).build()
             }
 
         private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
@@ -470,8 +598,9 @@ class DownloadUtil
                             finalException: Exception?,
                         ) {
                             if (finalException != null || download.state == Download.STATE_FAILED) {
-                                songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
-                                removeSongCacheEntries(download.request.id)
+                                val failedMediaId = DownloadSourceConfig.downloadIdToSongId(download.request.id)
+                                songUrlCache.keys.removeIf { it.startsWith("$failedMediaId:") }
+                                removeSongCacheEntries(failedMediaId)
                             }
                             downloadState.put(download.request.id, download)
                         }
@@ -480,8 +609,20 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
-                            removeSongCacheEntries(download.request.id)
-                            downloadState.remove(download.request.id)
+                            // Per-source removal: removing the Qobuz entry must
+                            // NOT wipe the YouTube entry's bytes. Only the
+                            // removed request's own cache key goes; a legacy
+                            // plain entry additionally clears its "ytm:" twin so
+                            // the two never linger as duplicate YouTube rows.
+                            val removedKey = download.request.id
+                            runCatching { downloadCache.removeResource(removedKey) }
+                            runCatching { playerCache.removeResource(removedKey) }
+                            if (!removedKey.contains(':')) {
+                                val ytmKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + removedKey
+                                runCatching { downloadCache.removeResource(ytmKey) }
+                                runCatching { playerCache.removeResource(ytmKey) }
+                            }
+                            downloadState.remove(removedKey)
                         }
                     },
                 )
@@ -518,7 +659,21 @@ class DownloadUtil
             }
         }
 
-        fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
+        /**
+         * Source-aware download state for a song: the CURRENT source's entry
+         * (per-song pin first, else the download priority order's top) wins;
+         * when the current source has no entry, any OTHER source's completed
+         * copy still counts as "downloaded" for row-level indicators.
+         */
+        fun getDownload(songId: String): Flow<Download?> =
+            downloads.map { map ->
+                currentSourceDownloadIds(songId).firstNotNullOfOrNull { map[it] }
+                    ?: DownloadSourceConfig
+                        .songIdToDownloadIds(songId)
+                        .firstNotNullOfOrNull { id ->
+                            map[id]?.takeIf { it.state == Download.STATE_COMPLETED }
+                        }
+            }
 
         suspend fun prewarmSongForDownload(mediaId: String): String? {
             moe.rukamori.archivetune.App.startupReadiness.awaitReady()
@@ -534,35 +689,42 @@ class DownloadUtil
                 runCatching { PoolAccountManager.refresh(appContext) }
             }
 
-            // Probe the per-source disk caches in the user's download-source
-            // PRIORITY order (each cached stream's identity is its source-scoped
-            // key "<source>:<mediaId>"), then the plain mediaId key (YouTube) —
-            // so the top-priority source's cached stream wins, matching the
-            // playback resolver's cache-identity behavior. The chain honors a
-            // per-song override first and stops at YOUTUBE_MUSIC (sources below
-            // YouTube Music in the priority list are never probed).
             val songSourcePrefs = readSongSourcePreferences(mediaId)
+            val target = currentSourceDownloadTarget(mediaId)
+
+            // "Already downloaded" probes look at the DOWNLOAD cache only —
+            // the playerCache's plain mediaId spans are PLAYBACK data (whatever
+            // itag the player picked), not a download, and must never satisfy a
+            // download request. Probe the current target first, then the other
+            // sources in the user's priority order (the chain honors the
+            // per-song override first and stops at YOUTUBE_MUSIC), then the
+            // "ytm:" twin and a legacy plain YouTube download, so a re-download
+            // never re-fetches bytes the app already has under any identity.
             val priorityProbeKeys =
-                downloadSourceChain(songSourcePrefs)
-                    .map { source ->
-                        if (source == DownloadSource.YOUTUBE_MUSIC) {
-                            mediaId
-                        } else {
-                            "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
-                        }
-                    }.distinct() + mediaId
+                (
+                    listOf(target.key) +
+                        downloadSourceChain(songSourcePrefs)
+                            .map { DownloadSourceConfig.downloadCacheKey(it, mediaId) } +
+                        (DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId)
+                    ).distinct() + mediaId
             for (key in priorityProbeKeys) {
-                val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
+                val spans = runCatching { downloadCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
-                    val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
+                    val expected = expectedDownloadLengthFor(key, mediaId)
                     val cachedBytes = spans.sumOf { it.length }
                     if (expected > 0L && cachedBytes >= expected) {
                         return key
                     }
-
+                }
+                // Stale partial prewarm fetches under this key would poison the
+                // resolver's completeness check — clear them.
+                val partialPlayerSpans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
+                if (partialPlayerSpans.isNotEmpty()) {
+                    val expected = expectedDownloadLengthFor(key, mediaId)
+                    val cachedBytes = partialPlayerSpans.sumOf { it.length }
                     if (expected <= 0L || cachedBytes < expected) {
                         runCatching {
-                            spans.forEach { playerCache.removeSpan(it) }
+                            partialPlayerSpans.forEach { playerCache.removeSpan(it) }
                         }
                     }
                 }
@@ -570,7 +732,7 @@ class DownloadUtil
 
             val lowDataModeActive = appContext.isLowDataModeActive()
             val song = database.getSongByIdBlocking(mediaId)
-            if (song != null && downloadSource != DownloadSource.YOUTUBE_MUSIC) {
+            if (song != null && target.source != DownloadSource.YOUTUBE_MUSIC) {
                 val title = song.song.title.takeIf { it.isNotBlank() }
                 val artists = song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) }
                 val album = song.album?.title?.takeIf { it.isNotBlank() }
@@ -598,7 +760,7 @@ class DownloadUtil
                             codecs = resolved.codecs,
                             contentLength = resolved.contentLength,
                         )
-                        val cacheKey = "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
+                        val cacheKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
 
                         if (source == DownloadSource.APPLE) {
                             val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
@@ -630,16 +792,39 @@ class DownloadUtil
                 }.getOrThrow()
             }.getOrNull() ?: return null
             persistPlaybackMetadata(mediaId, playbackData)
+            // YouTube downloads live under the "ytm:" key so they stay distinct
+            // from (and are never served from) the playback cache's plain
+            // mediaId spans.
+            val ytDownloadKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId
             val fetched = runCatching {
                 fetchStreamIntoPlayerCache(
                     playbackData.streamUrl,
-                    mediaId,
+                    ytDownloadKey,
 
                     playbackData.format.contentLength,
                 )
             }.isSuccess
-            return if (fetched) mediaId else null
+            return if (fetched) ytDownloadKey else null
         }
+
+        /** Best-effort expected byte length for a download cache key: the
+         * cache's own content metadata first, then the DB format entity. */
+        private fun expectedDownloadLengthFor(
+            key: String,
+            mediaId: String,
+        ): Long =
+            runCatching {
+                playerCache
+                    .getContentMetadata(key)
+                    .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+            }.getOrDefault(-1L).takeIf { it > 0L }
+                ?: runCatching {
+                    downloadCache
+                        .getContentMetadata(key)
+                        .get(androidx.media3.datasource.cache.ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+                }.getOrDefault(-1L).takeIf { it > 0L }
+                ?: database.getSongByIdBlocking(mediaId)?.format?.contentLength?.takeIf { it > 0L }
+                ?: 0L
 
         private fun fetchStreamIntoPlayerCache(
             url: String,
@@ -750,12 +935,13 @@ class DownloadUtil
                 )
 
                 if (source == DownloadSource.APPLE) {
+                    val appleKey = DownloadSourceConfig.downloadCacheKey(source, mediaId)
                     val appleFile = runCatching { File(resolved.uri.toUri().path ?: "") }.getOrNull()
                     if (appleFile != null && appleFile.isFile &&
-                        copyLocalFileIntoPlayerCache(appleFile, "apple:$mediaId")
+                        copyLocalFileIntoPlayerCache(appleFile, appleKey)
                     ) {
                         return dataSpec.buildUpon()
-                            .setKey("apple:$mediaId")
+                            .setKey(appleKey)
                             .build()
                     }
 
@@ -764,7 +950,7 @@ class DownloadUtil
 
                 return dataSpec.buildUpon()
                     .setUri(resolved.uri.toUri())
-                    .setKey("${source.name.lowercase(java.util.Locale.US)}:$mediaId")
+                    .setKey(DownloadSourceConfig.downloadCacheKey(source, mediaId))
 
                     .setHttpRequestHeaders(dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri))
                     .build()

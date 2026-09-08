@@ -20,6 +20,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -111,6 +113,9 @@ private tailrec fun Context.findActivity(): Activity? =
         is ContextWrapper -> baseContext.findActivity()
         else -> null
     }
+
+/** Auto-hide delay for the inline tap-to-show video controls while playing. */
+private const val INLINE_VIDEO_CONTROLS_AUTO_HIDE_MS = 3500L
 
 @Stable
 class VideoFullscreenStateHolder {
@@ -286,6 +291,18 @@ fun InlineVideoPlayer(
                     },
                 ),
         ) {
+            // Auto-hide the tap-to-show controls a few seconds after the last
+            // reveal while playing — paused playback keeps them up so the play
+            // button stays reachable (mirrors the fullscreen overlay's cadence).
+            if (controlsOnTap) {
+                LaunchedEffect(controlsVisible, isPlaying) {
+                    if (controlsVisible && isPlaying) {
+                        kotlinx.coroutines.delay(INLINE_VIDEO_CONTROLS_AUTO_HIDE_MS)
+                        controlsVisible = false
+                    }
+                }
+            }
+
             VideoArtworkSurface(
                 state = state,
                 resizeMode = resizeMode,
@@ -309,14 +326,26 @@ fun InlineVideoPlayer(
 
             // Center play/pause revealed together with the pill while the controls
             // are up. Hidden while the stream is loading so it never stacks on the
-            // video's loading spinner.
-            if (controlsOnTap && controlsVisible && !isLoadingState(state) && playerConnection != null) {
+            // video's loading spinner. Fades/scales in and out — the previous hard
+            // pop in/out read as abrupt.
+            AnimatedVisibility(
+                visible = controlsOnTap && controlsVisible && !isLoadingState(state) && playerConnection != null,
+                enter =
+                    fadeIn(tween(220)) +
+                        scaleIn(
+                            initialScale = 0.7f,
+                            animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        ),
+                exit =
+                    fadeOut(tween(160)) +
+                        scaleOut(targetScale = 0.7f, animationSpec = tween(160)),
+            ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
                     IconButton(
-                        onClick = { playerConnection.player.togglePlayPause() },
+                        onClick = { playerConnection?.player?.togglePlayPause() },
                         modifier =
                             Modifier
                                 .size(64.dp)
@@ -337,7 +366,29 @@ fun InlineVideoPlayer(
 
             // Controls overlay: quality picker + fullscreen button, grouped in a single
             // dark pill so the inline and fullscreen controls look consistent.
-            if (showControls && (!controlsOnTap || controlsVisible)) {
+            // Animated only for the tap-to-reveal hosts; the legacy always-visible
+            // pill path keeps its exact prior behavior.
+            if (controlsOnTap) {
+                AnimatedVisibility(
+                    visible = showControls && controlsVisible,
+                    enter =
+                        fadeIn(tween(220)) +
+                            slideInVertically(
+                                initialOffsetY = { -it / 2 },
+                                animationSpec = tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                            ),
+                    exit = fadeOut(tween(180)) + slideOutVertically(targetOffsetY = { -it / 2 }, animationSpec = tween(180)),
+                    modifier = Modifier.align(Alignment.TopEnd),
+                ) {
+                    InlineVideoControlsPill(
+                        preferredHeight = preferredHeight,
+                        onPreferredHeightChange = onPreferredHeightChange,
+                        availableHeights = availableHeights,
+                        selectedHeight = selectedHeight,
+                        modifier = Modifier.padding(8.dp),
+                    )
+                }
+            } else if (showControls) {
                 InlineVideoControlsPill(
                     preferredHeight = preferredHeight,
                     onPreferredHeightChange = onPreferredHeightChange,

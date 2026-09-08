@@ -197,6 +197,8 @@
     <string name="download_source_apple_music_hint">Sign in to Apple Music in Settings to enable</string>
     <string name="download_source_qobuz">Qobuz</string>
     <string name="download_source_deezer">Deezer</string>
+    <string name="download_source_jiosaavn">JioSaavn</string>
+    <string name="download_source_qobuz_backup">Qobuz Backup</string>
     <string name="download_source_auto">Auto (FLAC when available)</string>
     <string name="download_cover">Download cover</string>
     <string name="cover_saved">Cover saved to Pictures/ArchiveTune</string>

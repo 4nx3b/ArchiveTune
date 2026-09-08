@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import javax.inject.Inject
@@ -87,15 +90,22 @@ class ManageDownloadsUseCase
         private fun mapSnapshot(snapshot: DownloadRepositorySnapshot): DownloadLibraryUiModel {
             val now = SystemClock.elapsedRealtime()
             val speeds = calculateSpeeds(snapshot.downloads, now)
+            // Download index ids are source-scoped ("ytm:<id>", "qobuz:<id>",
+            // ... plus legacy plain "<id>"); DB groupings key off the RAW song
+            // id, so normalize once here and map back for actions.
             val songsById = snapshot.songs.associateBy { it.song.id }
+            val downloadIdsByRawSongId: Map<String, List<String>> =
+                snapshot.downloads.keys.groupBy { DownloadSourceConfig.downloadIdToSongId(it) }
             val completedIds =
                 snapshot.downloads.values
                     .filter { it.state == Download.STATE_COMPLETED }
                     .mapTo(mutableSetOf()) { it.request.id }
+            val completedRawIds = completedIds.mapTo(mutableSetOf()) { DownloadSourceConfig.downloadIdToSongId(it) }
             val activeIds =
                 snapshot.downloads.values
                     .filter { it.isVisibleInProgress() }
                     .mapTo(mutableSetOf()) { it.request.id }
+            val activeRawIds = activeIds.mapTo(mutableSetOf()) { DownloadSourceConfig.downloadIdToSongId(it) }
 
             val albumSongIds =
                 snapshot.songs
@@ -112,20 +122,22 @@ class ManageDownloadsUseCase
                     buildPlaylistEntries(
                         snapshot = snapshot,
                         groupSongIds = playlistSongIds,
-                        relevantIds = completedIds,
+                        relevantIds = completedRawIds,
                         downloads = snapshot.downloads,
                         speeds = speeds,
                         requireCompleted = true,
+                        downloadIdsByRawSongId = downloadIdsByRawSongId,
                     ).takeIf { it.isNotEmpty() }?.let {
                         add(DownloadSectionUiModel(DownloadMediaType.PLAYLIST, it))
                     }
                     buildAlbumEntries(
                         snapshot = snapshot,
                         groupSongIds = albumSongIds,
-                        relevantIds = completedIds,
+                        relevantIds = completedRawIds,
                         downloads = snapshot.downloads,
                         speeds = speeds,
                         requireCompleted = true,
+                        downloadIdsByRawSongId = downloadIdsByRawSongId,
                     ).takeIf { it.isNotEmpty() }?.let {
                         add(DownloadSectionUiModel(DownloadMediaType.ALBUM, it))
                     }
@@ -144,20 +156,22 @@ class ManageDownloadsUseCase
                     buildPlaylistEntries(
                         snapshot = snapshot,
                         groupSongIds = playlistSongIds,
-                        relevantIds = activeIds,
+                        relevantIds = activeRawIds,
                         downloads = snapshot.downloads,
                         speeds = speeds,
                         requireCompleted = false,
+                        downloadIdsByRawSongId = downloadIdsByRawSongId,
                     ).takeIf { it.isNotEmpty() }?.let {
                         add(DownloadSectionUiModel(DownloadMediaType.PLAYLIST, it))
                     }
                     buildAlbumEntries(
                         snapshot = snapshot,
                         groupSongIds = albumSongIds,
-                        relevantIds = activeIds,
+                        relevantIds = activeRawIds,
                         downloads = snapshot.downloads,
                         speeds = speeds,
                         requireCompleted = false,
+                        downloadIdsByRawSongId = downloadIdsByRawSongId,
                     ).takeIf { it.isNotEmpty() }?.let {
                         add(DownloadSectionUiModel(DownloadMediaType.ALBUM, it))
                     }
@@ -184,11 +198,15 @@ class ManageDownloadsUseCase
             downloads: Map<String, Download>,
             speeds: Map<String, Long>,
             requireCompleted: Boolean,
+            downloadIdsByRawSongId: Map<String, List<String>>,
         ): List<DownloadEntryUiModel> =
             snapshot.playlists
                 .mapNotNull { playlist ->
-                    val songIds = groupSongIds[playlist.id].orEmpty().distinct()
-                    if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    val rawSongIds = groupSongIds[playlist.id].orEmpty().distinct()
+                    if (!rawSongIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    // Expand raw ids to their per-source download ids so
+                    // pause/resume/remove act on every offline copy.
+                    val songIds = rawSongIds.flatMap { downloadIdsByRawSongId[it].orEmpty() }.ifEmpty { rawSongIds }
                     buildEntry(
                         id = "playlist:${playlist.id}",
                         title = playlist.title,
@@ -212,11 +230,13 @@ class ManageDownloadsUseCase
             downloads: Map<String, Download>,
             speeds: Map<String, Long>,
             requireCompleted: Boolean,
+            downloadIdsByRawSongId: Map<String, List<String>>,
         ): List<DownloadEntryUiModel> =
             snapshot.albums
                 .mapNotNull { album ->
-                    val songIds = groupSongIds[album.id].orEmpty().distinct()
-                    if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    val rawSongIds = groupSongIds[album.id].orEmpty().distinct()
+                    if (!rawSongIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    val songIds = rawSongIds.flatMap { downloadIdsByRawSongId[it].orEmpty() }.ifEmpty { rawSongIds }
                     buildEntry(
                         id = "album:${album.id}",
                         title = album.title,
@@ -240,17 +260,25 @@ class ManageDownloadsUseCase
             songIds
                 .mapNotNull { songId ->
                     val download = downloads[songId] ?: return@mapNotNull null
-                    val song = songsById[songId]
+                    // songId is a source-scoped download id — DB lookups use the
+                    // raw song id, and the supporting text carries the source
+                    // label ("Qobuz", "YouTube Music", ...) so the offline page
+                    // shows one entry per downloaded source, as intended.
+                    val rawSongId = DownloadSourceConfig.downloadIdToSongId(songId)
+                    val song = songsById[rawSongId]
+                    val sourceLabel = downloadSourceLabel(songId)
+                    val artistText = song?.artists?.joinToString { it.name }?.ifBlank { null }
                     buildEntry(
                         id = "song:$songId",
                         title = song?.song?.title ?: download.requestTitle(),
-                        supportingText = song?.artists?.joinToString { it.name }?.ifBlank { null },
+                        supportingText =
+                            if (artistText.isNullOrBlank()) sourceLabel else "$artistText · $sourceLabel",
                         thumbnailUrl = song?.song?.thumbnailUrl,
                         destinationRoute = null,
                         playbackMetadata =
                             song?.toMediaMetadata()
                                 ?: MediaMetadata(
-                                    id = songId,
+                                    id = rawSongId,
                                     title = download.requestTitle(),
                                     artists = emptyList(),
                                     duration = -1,
@@ -261,6 +289,17 @@ class ManageDownloadsUseCase
                         speeds = speeds,
                     )
                 }.sortedByDescending { downloads[it.songIds.single()]?.updateTimeMs ?: 0L }
+
+        private fun downloadSourceLabel(downloadId: String): String =
+            when (DownloadSourceConfig.downloadSourceForCacheKey(downloadId)) {
+                DownloadSource.QOBUZ -> "Qobuz"
+                DownloadSource.TIDAL -> "Tidal"
+                DownloadSource.APPLE -> "Apple Music"
+                DownloadSource.DEEZER -> "Deezer"
+                DownloadSource.JIOSAAVN -> "JioSaavn"
+                DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
+                else -> "YouTube Music"
+            }
 
         private fun buildEntry(
             id: String,
@@ -340,10 +379,18 @@ class ManageDownloadsUseCase
             requireCompleted: Boolean,
         ): Boolean {
             if (size < MIN_COLLECTION_SIZE || none(relevantIds::contains)) return false
+            // rawSongIds here; resolve each to its per-source download ids for
+            // the state check (a collection shows as downloaded only when every
+            // member has a completed offline copy from SOME source).
+            val membersDownloadIds = mapNotNull { rawId ->
+                val ids = DownloadSourceConfig.songIdToDownloadIds(rawId).filter { it in downloads }
+                ids.firstOrNull { downloads[it]?.state == Download.STATE_COMPLETED } ?: ids.firstOrNull()
+            }
+            if (membersDownloadIds.size < size) return false
             return if (requireCompleted) {
-                all { downloads[it]?.state == Download.STATE_COMPLETED }
+                membersDownloadIds.all { downloads[it]?.state == Download.STATE_COMPLETED }
             } else {
-                all { downloads[it]?.state?.isTrackedState() == true }
+                membersDownloadIds.all { downloads[it]?.state?.isTrackedState() == true }
             }
         }
 
