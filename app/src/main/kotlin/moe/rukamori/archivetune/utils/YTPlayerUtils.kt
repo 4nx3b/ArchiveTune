@@ -178,6 +178,10 @@ object YTPlayerUtils {
         val audioQuality: AudioQuality,
         val networkMetered: Boolean,
         val authFingerprint: String,
+        // Download resolutions (preferM4A=true) must not be served from a
+        // playback-cached OPUS entry — that turned every download taken right
+        // after playing a song into an un-exportable .webm file.
+        val preferM4A: Boolean = false,
     )
 
     private data class CachedPlaybackData(
@@ -696,6 +700,7 @@ object YTPlayerUtils {
                 audioQuality = audioQuality,
                 networkMetered = isMetered,
                 authFingerprint = YouTube.currentPlaybackAuthState().streamCacheFingerprint,
+                preferM4A = preferM4A,
             )
         getCachedPlaybackData(initialKey)?.let { return Result.success(it) }
         val resolutionMutex =
@@ -707,6 +712,7 @@ object YTPlayerUtils {
                     audioQuality = audioQuality,
                     networkMetered = isMetered,
                     authFingerprint = YouTube.currentPlaybackAuthState().streamCacheFingerprint,
+                    preferM4A = preferM4A,
                 )
             getCachedPlaybackData(currentKey)?.let { return@withLock Result.success(it) }
             resolvePlaybackData(
@@ -798,12 +804,14 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         networkMetered: Boolean,
         authFingerprint: String,
+        preferM4A: Boolean = false,
     ): PlaybackDataCacheKey =
         PlaybackDataCacheKey(
             videoId = videoId,
             audioQuality = audioQuality,
             networkMetered = networkMetered,
             authFingerprint = authFingerprint,
+            preferM4A = preferM4A,
         )
 
     private fun getCachedPlaybackData(key: PlaybackDataCacheKey): PlaybackData? {
@@ -909,6 +917,7 @@ object YTPlayerUtils {
         playlistId: String?,
         audioQuality: AudioQuality,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): PlaybackData? {
         val authState = YouTube.currentPlaybackAuthState()
         val result =
@@ -953,12 +962,30 @@ object YTPlayerUtils {
 
         val itag = simpMusicItagForQuality(audioQuality, networkMetered)
         val audioTwinItag = ITAG.highQualityTwinOf(itag)
-        val audioFormat =
-            formatList.find { it.itag == itag } ?: if (audioTwinItag != null) {
-                formatList.find { it.itag == audioTwinItag }
+        val preferM4AFormat: PlayerResponse.StreamingData.Format? =
+            if (preferM4A) {
+                // Downloads need a jaudiotagger-readable container (.m4a), not
+                // .webm — pick the best AAC/MP4 audio format when one exists,
+                // mirroring codecRankPreferM4A in the native resolver path.
+                formatList
+                    .filter { it.isAudio && it.url.isNullOrEmpty().not() }
+                    .maxWithOrNull(
+                        compareByDescending<PlayerResponse.StreamingData.Format> {
+                            codecRankPreferM4A(extractCodec(it.mimeType))
+                        }.thenByDescending { it.bitrate }
+                            .thenByDescending { it.audioSampleRate ?: 0 },
+                    )
             } else {
-                formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
+                null
             }
+        val audioFormat =
+            preferM4AFormat
+                ?: formatList.find { it.itag == itag }
+                ?: if (audioTwinItag != null) {
+                    formatList.find { it.itag == audioTwinItag }
+                } else {
+                    formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
+                }
         var format = audioFormat
         if (format == null) {
             format = formatList.lastOrNull { it.url.isNullOrEmpty().not() }
@@ -1056,6 +1083,7 @@ object YTPlayerUtils {
                 playlistId = playlistId,
                 audioQuality = audioQuality,
                 networkMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+                preferM4A = preferM4A,
             )?.let { return it }
         }
 

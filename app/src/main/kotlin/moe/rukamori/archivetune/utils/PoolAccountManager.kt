@@ -100,6 +100,9 @@ object PoolAccountManager {
     private var lastRefreshAt = 0L
 
     @Volatile
+    private var lastFeedFailureAt = 0L
+
+    @Volatile
     private var loadedFromDisk = false
 
     private val refreshMutex = Mutex()
@@ -131,6 +134,15 @@ object PoolAccountManager {
     private val legacySourcesUrl: String? get() = poolBaseUrl?.let { "$it/api/sources" }
 
     private const val ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000L
+
+    /**
+     * How long a FAILED feed fetch (revoked key / network error) suppresses
+     * further non-forced refresh attempts. Without this, every prewarm,
+     * source-check and periodic refresh re-hits the pool with the same dead
+     * key, spamming "Pool account feed rejected the presented key (HTTP 401)"
+     * for the whole session.
+     */
+    private const val FEED_FAILURE_BACKOFF_MS = 5 * 60 * 1000L
 
     private val accountCooldownUntil = ConcurrentHashMap<String, Long>()
 
@@ -225,11 +237,19 @@ object PoolAccountManager {
             if (!force && hasAccounts() && now - lastRefreshAt < refreshIntervalMs()) {
                 return@withContext true
             }
+            if (!force && now - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
+                // A recent feed failure (401/timeout) is still backing off —
+                // serve from the on-disk cache instead of hammering the pool.
+                return@withContext hasAccounts()
+            }
 
             refreshMutex.withLock {
 
                 if (!force && hasAccounts() && System.currentTimeMillis() - lastRefreshAt < refreshIntervalMs()) {
                     return@withLock true
+                }
+                if (!force && System.currentTimeMillis() - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
+                    return@withLock hasAccounts()
                 }
                 val url = accountsUrl ?: legacySourcesUrl
                 if (url == null) {
@@ -287,6 +307,11 @@ object PoolAccountManager {
                             result.code == 0 -> "Could not reach $poolBaseUrl — network error."
                             else -> "Pool feed returned HTTP ${result.code}."
                         }
+
+                    // Back off after a failed feed fetch so non-forced callers
+                    // (download prewarms, source checks, periodic refreshes) stop
+                    // re-requesting with the same dead key for a few minutes.
+                    lastFeedFailureAt = if (result.succeeded) 0L else System.currentTimeMillis()
                 }
 
                 hasAccounts()
@@ -492,7 +517,7 @@ object PoolAccountManager {
                         }
                     }
                 }
-            }.onFailure { Timber.tag(TAG).w(it, "Pool report failed") }
+            }.onFailure { Timber.tag(TAG).d("Pool report failed: %s", it.message ?: it.javaClass.simpleName) }
         }
     }
 

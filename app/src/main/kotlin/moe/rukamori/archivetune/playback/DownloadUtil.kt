@@ -71,14 +71,22 @@ import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
+import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
+import moe.rukamori.archivetune.constants.SongSourceOverrideKey
+import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
+import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.enumPreference
 import moe.rukamori.archivetune.utils.preference
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
+import kotlinx.coroutines.flow.first
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -232,6 +240,85 @@ class DownloadUtil
         private val okHttpDataSourceFactory =
             PRDownloaderDataSource.Factory(context)
 
+        /**
+         * Per-song source identity used when picking which source a download
+         * resolves from — mirrors the playback resolver: a song pinned via the
+         * source switcher (per-song override) and/or with a direct catalog
+         * mapping (Qobuz track id / Qobuz-backup video id chosen from the
+         * source picker) resolves from THAT source instead of re-running the
+         * metadata search that already failed for it.
+         */
+        private data class SongSourcePreferences(
+            val overrideSource: AudioSourceType?,
+            val directQobuzTrackId: String?,
+            val directQobuzBackupVideoId: String?,
+        )
+
+        private fun readSongSourcePreferences(mediaId: String): SongSourcePreferences =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    val prefs = appContext.dataStore.data.first()
+                    SongSourcePreferences(
+                        overrideSource = SongSourceOverride.get(prefs[SongSourceOverrideKey], mediaId),
+                        directQobuzTrackId = SongSourceQobuzTrackId.get(prefs[SongSourceQobuzTrackIdKey], mediaId),
+                        directQobuzBackupVideoId =
+                            SongSourceQobuzBackupVideoId.get(prefs[SongSourceQobuzBackupVideoIdKey], mediaId),
+                    )
+                }
+            }.getOrDefault(SongSourcePreferences(null, null, null))
+
+        private fun downloadSourceForAudioSource(source: AudioSourceType): DownloadSource? =
+            when (source) {
+                AudioSourceType.YOUTUBE -> DownloadSource.YOUTUBE_MUSIC
+                else ->
+                    runCatching { DownloadSource.valueOf(source.name) }.getOrNull()
+            }
+
+        /**
+         * The source chain a download resolves from, in priority order:
+         * 1. the song's per-song override (if the user pinned a source for this
+         *    specific song via the player's source switcher);
+         * 2. the user's download-source priority order, up to (excluding)
+         *    YOUTUBE_MUSIC — YOUTUBE_MUSIC is the terminal entry, exactly like
+         *    the playback chain (`takeWhile { it != YOUTUBE }`): sources placed
+         *    BELOW YouTube Music in the priority list are not probed, and when
+         *    YouTube Music is at the top the download goes straight to the
+         *    YouTube stream instead of silently skipping to a lower-priority
+         *    source.
+         */
+        private fun downloadSourceChain(songPrefs: SongSourcePreferences): List<DownloadSource> {
+            val chainSources =
+                downloadSourceOrder
+                    .takeWhile { it != DownloadSource.YOUTUBE_MUSIC }
+                    .filter { it != DownloadSource.AUTO }
+            val overridden = songPrefs.overrideSource
+                ?.let(::downloadSourceForAudioSource)
+                ?.takeIf { it != DownloadSource.YOUTUBE_MUSIC && it != DownloadSource.AUTO }
+            return if (overridden != null && overridden !in chainSources) {
+                listOf(overridden) + chainSources
+            } else {
+                chainSources
+            }
+        }
+
+        /**
+         * Removes every cached representation of [mediaId] — the plain key
+         * (YouTube) and all source-scoped keys — from BOTH caches. Used when a
+         * download is retried/removed so stale spans from a previous
+         * download-source setting never leak into the next download or the
+         * export-downloads page.
+         */
+        fun removeSongCacheEntries(mediaId: String) {
+            val keys = buildList {
+                add(mediaId)
+                addAll(DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" })
+            }
+            keys.forEach { key ->
+                runCatching { downloadCache.removeResource(key) }
+                runCatching { playerCache.removeResource(key) }
+            }
+        }
+
         private val playerCacheDownloadUpstreamFactory =
             CacheDataSource
                 .Factory()
@@ -273,9 +360,12 @@ class DownloadUtil
                 }
 
                 // Probe the per-source disk caches in the user's download-source
-                // PRIORITY order — the cached stream from the top-priority source
-                // (identified by its source-scoped cache key) wins.
-                for (source in downloadSourceOrder) {
+                // PRIORITY order (the chain honors the per-song override first
+                // and stops at YOUTUBE_MUSIC, matching the playback resolver) —
+                // the cached stream from the top-priority source (identified by
+                // its source-scoped cache key) wins.
+                val songSourcePrefs = readSongSourcePreferences(mediaId)
+                for (source in downloadSourceChain(songSourcePrefs)) {
                     if (source == DownloadSource.YOUTUBE_MUSIC) continue
                     val sourceKey = "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
                     val sourceExpected = expectedLength
@@ -295,7 +385,7 @@ class DownloadUtil
 
                 val lowDataModeActive = context.isLowDataModeActive()
                 if (!lowDataModeActive) {
-                    resolvePreferredDownloadDataSpec(dataSpec, mediaId)?.let { return@Factory it }
+                    resolvePreferredDownloadDataSpec(dataSpec, mediaId, songSourcePrefs)?.let { return@Factory it }
                 }
                 val requestedAudioQuality = resolveDownloadAudioQuality(lowDataModeActive)
                 val streamCacheKey = buildSongUrlCacheKey(mediaId, requestedAudioQuality)
@@ -381,13 +471,7 @@ class DownloadUtil
                         ) {
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
-                                runCatching { downloadCache.removeResource(download.request.id) }
-
-                                val mediaId = download.request.id
-                                runCatching { playerCache.removeResource(mediaId) }
-                                for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
-                                    runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
-                                }
+                                removeSongCacheEntries(download.request.id)
                             }
                             downloadState.put(download.request.id, download)
                         }
@@ -396,12 +480,7 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
-
-                            val mediaId = download.request.id
-                            runCatching { playerCache.removeResource(mediaId) }
-                            for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
-                                runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
-                            }
+                            removeSongCacheEntries(download.request.id)
                             downloadState.remove(download.request.id)
                         }
                     },
@@ -459,9 +538,12 @@ class DownloadUtil
             // PRIORITY order (each cached stream's identity is its source-scoped
             // key "<source>:<mediaId>"), then the plain mediaId key (YouTube) —
             // so the top-priority source's cached stream wins, matching the
-            // playback resolver's cache-identity behavior.
+            // playback resolver's cache-identity behavior. The chain honors a
+            // per-song override first and stops at YOUTUBE_MUSIC (sources below
+            // YouTube Music in the priority list are never probed).
+            val songSourcePrefs = readSongSourcePreferences(mediaId)
             val priorityProbeKeys =
-                downloadSourceOrder
+                downloadSourceChain(songSourcePrefs)
                     .map { source ->
                         if (source == DownloadSource.YOUTUBE_MUSIC) {
                             mediaId
@@ -495,10 +577,19 @@ class DownloadUtil
                 val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
                 if (title != null) {
 
-                    val sourceOrder: List<DownloadSource> = downloadSourceOrder
+                    val sourceOrder: List<DownloadSource> = downloadSourceChain(songSourcePrefs)
                     for (source in sourceOrder) {
                         val resolved = runCatching {
-                            resolveSourceStream(source, mediaId, title, artists, album, durationMs)
+                            resolveSourceStream(
+                                source,
+                                mediaId,
+                                title,
+                                artists,
+                                album,
+                                durationMs,
+                                directQobuzTrackId = songSourcePrefs.directQobuzTrackId,
+                                directQobuzBackupVideoId = songSourcePrefs.directQobuzBackupVideoId,
+                            )
                         }.getOrNull() ?: continue
                         if (resolved == null) continue
                         persistSourceFormatEntity(
@@ -621,6 +712,7 @@ class DownloadUtil
         private fun resolvePreferredDownloadDataSpec(
             dataSpec: DataSpec,
             mediaId: String,
+            songSourcePrefs: SongSourcePreferences,
         ): DataSpec? {
             if (downloadSource == DownloadSource.YOUTUBE_MUSIC) return null
             val song = database.getSongByIdBlocking(mediaId) ?: return null
@@ -629,11 +721,21 @@ class DownloadUtil
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
 
-            val sourceOrder: List<DownloadSource> = downloadSourceOrder
+            val sourceOrder: List<DownloadSource> = downloadSourceChain(songSourcePrefs)
 
             for (source in sourceOrder) {
-                val resolved = runCatching { resolveSourceStream(source, mediaId, queryTitle, artists, album, durationMs) }
-                    .getOrNull() ?: continue
+                val resolved = runCatching {
+                    resolveSourceStream(
+                        source,
+                        mediaId,
+                        queryTitle,
+                        artists,
+                        album,
+                        durationMs,
+                        directQobuzTrackId = songSourcePrefs.directQobuzTrackId,
+                        directQobuzBackupVideoId = songSourcePrefs.directQobuzBackupVideoId,
+                    )
+                }.getOrNull() ?: continue
 
                 if (source == DownloadSource.DEEZER) {
                     enrichSongMetadataFromDeezer(mediaId, queryTitle, artists, album, durationMs)
@@ -677,6 +779,8 @@ class DownloadUtil
             artists: List<String>,
             album: String?,
             durationMs: Long?,
+            directQobuzTrackId: String? = null,
+            directQobuzBackupVideoId: String? = null,
         ): ResolvedStreamData? = when (source) {
             DownloadSource.QOBUZ -> {
                 LosslessStreamResolver.resolveQobuz(
@@ -687,6 +791,7 @@ class DownloadUtil
                     album = album,
                     durationMs = durationMs,
                     formatId = qobuzAudioQuality.toFormatId(),
+                    directTrackId = directQobuzTrackId,
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.TIDAL -> {
@@ -704,7 +809,7 @@ class DownloadUtil
             DownloadSource.QOBUZ_BACKUP -> {
 
                 LosslessStreamResolver
-                    .resolveQobuzBackup(mediaId)
+                    .resolveQobuzBackup(directQobuzBackupVideoId ?: mediaId)
                     ?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.DEEZER -> {
