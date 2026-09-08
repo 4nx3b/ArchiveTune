@@ -94,6 +94,7 @@ import moe.rukamori.archivetune.ui.player.InlineVideoControlsPill
 import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
+import moe.rukamori.archivetune.ui.player.isLoadingState
 import moe.rukamori.archivetune.ui.utils.resize
 
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
@@ -168,6 +169,11 @@ internal fun TikTokSongPage(
                 !lyricsOpen
         val videoFullscreenHolder = LocalVideoFullscreenState.current
         val videoRatio = videoState?.videoAspectRatio ?: TIKTOK_VIDEO_FALLBACK_RATIO
+
+        // True while the current track's music video is resolving/buffering —
+        // mirrors the exact condition InlineVideoPlayer uses to show its loading
+        // spinner, so hosts can keep other overlays from stacking on top of it.
+        val videoLoading = videoState != null && isLoadingState(videoState)
 
         val meshColors = rememberTikTokArtworkColors(artUrl)
         TikTokMeshBackdrop(
@@ -356,7 +362,18 @@ internal fun TikTokSongPage(
                                 )
 
                                 TikTokPausedOverlay(
-                                    visible = isCurrentPage && !isPlaying && !suppressPauseOverlay,
+                                    visible =
+                                        isCurrentPage &&
+                                            !isPlaying &&
+                                            !suppressPauseOverlay &&
+                                            // While the video's loading spinner is up, the
+                                            // loader holds the main player paused
+                                            // (holdAudioUntilVideoReady), which would pop
+                                            // this play icon on top of the spinner — the
+                                            // spinner alone communicates the busy state.
+                                            // Once the video is ready, a user pause still
+                                            // shows the icon over the video.
+                                            !videoLoading,
                                 )
 
                                 heartBursts.forEach { burst ->

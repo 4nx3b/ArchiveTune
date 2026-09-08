@@ -1054,7 +1054,7 @@ private fun formatTime(ms: Long): String {
     }
 }
 
-private fun isLoadingState(state: VideoArtworkState): Boolean =
+internal fun isLoadingState(state: VideoArtworkState): Boolean =
     !state.hasPlaybackFailed &&
         (
             state.isResolvingUrl ||
