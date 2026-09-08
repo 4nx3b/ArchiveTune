@@ -101,7 +101,7 @@ fun TelegramLoginScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         callingCode = defaultCallingCode(context)
-        if (!TelegramClient.ensureStarted(context)) {
+        if (!TelegramClient.ensureStartedAwait(context)) {
             Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
             navController.navigateUp()
         }

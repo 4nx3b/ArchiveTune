@@ -74,7 +74,6 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
-import org.drinkless.tdlib.TdApi
 import java.util.UUID
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
@@ -129,24 +128,21 @@ fun TelegramBotsScreen(navController: NavController) {
         }
         adding = true
         coroutineScope.launch {
-            val chat = TelegramBotClient.resolveBot(username)
+            val botInfo = TelegramBotClient.resolveBot(username)
             adding = false
-            if (chat == null) {
+            if (botInfo == null) {
                 Toast.makeText(context, R.string.telegram_bots_resolve_failed, Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val title = runCatching {
-                val type = chat.type as TdApi.ChatTypePrivate
-                TelegramClient.send(TdApi.GetUser(type.userId)).firstName
-            }.getOrNull()?.takeIf { it.isNotBlank() } ?: "@$username"
+            val title = botInfo.firstName.takeIf { it.isNotBlank() } ?: "@$username"
+            val photo = TelegramBotClient.resolveBotPhoto(username)
             val bot = TelegramBot(
                 id = UUID.randomUUID().toString(),
                 username = username,
-                chatId = chat.id,
+                chatId = botInfo.chatId,
                 title = title,
                 addedAtMs = System.currentTimeMillis(),
-                photoMinithumbnail = chat.photo?.minithumbnail?.data,
-                photoFileId = chat.photo?.small?.id ?: 0,
+                photoMinithumbnail = photo,
             )
             persistBots(botsState + bot)
             newBotInput = ""
@@ -285,7 +281,7 @@ private fun BotRow(
     ) {
         TelegramChatAvatar(
             photoMinithumbnail = bot.photoMinithumbnail,
-            photoFileId = bot.photoFileId,
+            photoChatId = bot.chatId,
         )
 
         Spacer(Modifier.width(12.dp))

@@ -34,8 +34,6 @@ data class TelegramBot(
     val addedAtMs: Long,
 
     val photoMinithumbnail: ByteArray? = null,
-
-    val photoFileId: Int = 0,
 ) {
     val displayHandle: String
         get() = "@$username"
@@ -56,7 +54,6 @@ object TelegramBotCodec {
     private const val KEY_TITLE = "title"
     private const val KEY_ADDED_AT = "addedAtMs"
     private const val KEY_PHOTO_MINI = "photoMini"
-    private const val KEY_PHOTO_FILE_ID = "photoFileId"
 
     fun encode(bots: List<TelegramBot>): String {
         val arr = JSONArray()
@@ -70,9 +67,6 @@ object TelegramBotCodec {
                     put(KEY_ADDED_AT, bot.addedAtMs)
                     bot.photoMinithumbnail?.let {
                         put(KEY_PHOTO_MINI, Base64.getEncoder().encodeToString(it))
-                    }
-                    if (bot.photoFileId != 0) {
-                        put(KEY_PHOTO_FILE_ID, bot.photoFileId)
                     }
                 },
             )
@@ -97,7 +91,6 @@ object TelegramBotCodec {
                     title = obj.optString(KEY_TITLE).ifBlank { "" },
                     addedAtMs = obj.optLong(KEY_ADDED_AT, 0L),
                     photoMinithumbnail = photoMini,
-                    photoFileId = obj.optInt(KEY_PHOTO_FILE_ID, 0),
                 )
             }.filter { it.username.isNotBlank() }
         }.getOrDefault(emptyList())

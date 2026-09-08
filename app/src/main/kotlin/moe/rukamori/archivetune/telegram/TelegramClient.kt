@@ -4,38 +4,47 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Singleton wrapper around TDLib (org.drinkless.tdlib) that powers the Telegram channel streaming
- * integration: account login (phone → code → optional 2FA password), public channel search,
- * paging through a channel's audio/document messages, and partial-file access for streaming
- * playback (see TelegramDataSource).
+ * Kotlin face of the Telegram integration, backed by the mtcute (MTProto) host
+ * inside QuickJS (TgJsRuntime) — previously the TDLib native library.
  *
- * The user supplies their own api_id/api_hash from https://my.telegram.org (stored in DataStore);
- * the actual session lives in TDLib's own database under filesDir/telegram and survives restarts,
- * so login is a one-time flow.
+ * Account login (phone -> code -> optional 2FA password), public channel
+ * search, paging through a channel's audio/document messages, chat photo and
+ * artwork helpers, and the byte-level file access used for streaming playback
+ * (see TelegramDataSource + TelegramStreamCache).
+ *
+ * The user supplies their own api_id/api_hash from https://my.telegram.org
+ * (compiled in via BuildConfig); the session lives in the mtcute storage under
+ * filesDir/telegram-js and survives restarts, so login is a one-time flow.
+ *
+ * NOTE for TDLib-era users: TDLib sessions cannot be migrated to mtcute, so
+ * accounts logged in with the TDLib build need one re-login after updating.
  */
 
 package moe.rukamori.archivetune.telegram
 
 import android.content.Context
 import android.os.Build
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import moe.rukamori.archivetune.BuildConfig
-import org.drinkless.tdlib.Client
-import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 sealed interface TelegramAuthState {
-
     data object Idle : TelegramAuthState
 
     data object Connecting : TelegramAuthState
@@ -44,11 +53,8 @@ sealed interface TelegramAuthState {
 
     data class WaitCode(
         val phoneNumber: String,
-
         val codeType: TelegramCodeType,
-
         val canResend: Boolean,
-
         val resendTimeoutSeconds: Int,
     ) : TelegramAuthState
 
@@ -72,6 +78,12 @@ enum class TelegramCodeType {
     OTHER,
 }
 
+/** Channel audio paging filters (replaces TdApi.SearchMessagesFilter). */
+enum class TelegramMessageFilter {
+    AUDIO,
+    DOCUMENT,
+}
+
 class TelegramApiException(
     val code: Int,
     message: String,
@@ -80,125 +92,305 @@ class TelegramApiException(
 object TelegramClient {
     private const val TAG = "TelegramClient"
 
-    const val STREAM_DOWNLOAD_PRIORITY = 32
+    private const val INIT_TIMEOUT_MS = 25_000L
+
+    /** Auth/search/chat calls fail fast enough for UI feedback; streams use longer limits. */
+    private const val INTERACTIVE_CALL_TIMEOUT_MS = 45_000L
 
     private const val HISTORY_PRIME_LIMIT = 100
 
     private const val LOCAL_CHAT_SEARCH_LIMIT = 30
 
-    private val lock = Any()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    @Volatile
-    private var client: Client? = null
+    private val initMutex = Mutex()
 
     @Volatile
     private var appContext: Context? = null
 
+    @Volatile
+    private var initialized = false
+
+    @Volatile
+    private var account: TelegramAccount? = null
+
+    @Volatile
+    private var pendingPhone: String? = null
+
+    @Volatile
+    private var pendingPhoneCodeHash: String? = null
+
+    private var eventsJob: Job? = null
+
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Idle)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
-
-    private val chatCache = ConcurrentHashMap<Long, TdApi.Chat>()
 
     val isReady: Boolean
         get() = _authState.value is TelegramAuthState.Ready
 
-    fun ensureStarted(context: Context): Boolean {
-        val ctx = context.applicationContext
-        synchronized(lock) {
-            if (client != null) return true
-            if (BuildConfig.TELEGRAM_API_ID <= 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) return false
+    val hasApiCredentials: Boolean
+        get() = BuildConfig.TELEGRAM_API_ID > 0 || BuildConfig.TELEGRAM_API_HASH.isNotBlank()
 
-            if (!TdLibNativeLibrary.ensureLoaded(ctx)) {
-                Timber.tag(TAG).w("TDLib native library is not available yet; not starting")
-                _authState.value = TelegramAuthState.Unsupported("NativeLibraryMissing")
-                return false
-            }
-            appContext = ctx
-            runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
-            _authState.value = TelegramAuthState.Connecting
-            client =
-                Client.create(
-                    { update -> onUpdate(update) },
-                    { throwable -> Timber.tag(TAG).e(throwable, "TDLib update handler exception") },
-                    { throwable -> Timber.tag(TAG).e(throwable, "TDLib exception") },
-                )
-            return true
+    // ---------------------------------------------------------------------------
+    // lifecycle
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Fire-and-forget start used from non-suspending UI callbacks. Returns false
+     * only when the build has no Telegram api credentials (or a previous start
+     * failed permanently); runtime failures surface later through [authState]
+     * and per-call exceptions.
+     */
+    fun ensureStarted(context: Context): Boolean {
+        if (!hasApiCredentials) return false
+        if (initialized || isReady) return true
+        if (_authState.value is TelegramAuthState.Unsupported) return false
+        appContext = context.applicationContext
+        scope.launch {
+            runCatching { initialize(context) }
+                .onFailure { Timber.tag(TAG).w(it, "Telegram init failed") }
         }
+        return true
     }
 
-    private fun sessionDir(context: Context) = File(File(context.filesDir, "telegram"), "db")
+    /** Awaited start used from coroutines (login screen, app boot). */
+    suspend fun ensureStartedAwait(context: Context): Boolean {
+        if (!hasApiCredentials) return false
+        appContext = context.applicationContext
+        return initialize(context)
+    }
 
     fun startIfSessionExists(context: Context): Boolean {
-        if (!runCatching { sessionDir(context).exists() }.getOrDefault(false)) return false
+        if (!TgJsStorage.hasSession(context)) return false
         return ensureStarted(context)
     }
 
-    suspend fun logOut() {
+    private suspend fun initialize(context: Context): Boolean =
+        initMutex.withLock {
+            if (initialized && (TgJsRuntime.isRunning || isReady)) return true
 
+            if (!TgJsRuntime.start(context)) {
+                _authState.value = TelegramAuthState.Unsupported("RuntimeStartFailed")
+                return false
+            }
+            TelegramStreamCache.attach(context)
+            subscribeClientEvents()
+
+            _authState.value = TelegramAuthState.Connecting
+            val params =
+                buildJsonObject {
+                    put("apiId", BuildConfig.TELEGRAM_API_ID)
+                    put("apiHash", BuildConfig.TELEGRAM_API_HASH)
+                    put("deviceModel", Build.MODEL ?: "Android")
+                    put("systemVersion", Build.VERSION.RELEASE ?: "0")
+                    put("appVersion", BuildConfig.VERSION_NAME)
+                    put("langCode", Locale.getDefault().language.ifBlank { "en" })
+                }
+            val result =
+                withTimeoutOrNull(INIT_TIMEOUT_MS) {
+                    runCatching { TgJsRuntime.call("init", params.toString()) }.getOrNull()
+                }
+            // A timeout here means the transport is still connecting/retrying
+            // (e.g. no network) — the host stays alive, login errors surface per call.
+            val payload = result
+            if (payload == null) {
+                initialized = true
+                _authState.value = TelegramAuthState.WaitPhoneNumber
+                Timber.tag(TAG).w("init timed out (still connecting) — awaiting network")
+                return true
+            }
+            initialized = true
+            account = parseTgAccount(payload.tgObj("me"))
+            val warning = payload.tgStringOrNull("warning")
+            if (warning != null) {
+                Timber.tag(TAG).w("init warning: %s", warning)
+            }
+            _authState.value =
+                if (payload.tgBool("authorized")) {
+                    TelegramAuthState.Ready
+                } else {
+                    TelegramAuthState.WaitPhoneNumber
+                }
+            true
+        }
+
+    private fun subscribeClientEvents() {
+        if (eventsJob?.isActive == true) return
+        eventsJob =
+            scope.launch {
+                TgJsRuntime.clientEvents.collect { (type, payload) ->
+                    if (type == "newMessage") {
+                        runCatching { TelegramBotClient.onNewMessageEvent(payload) }
+                            .onFailure { Timber.tag(TAG).w(it, "newMessage event failed") }
+                    }
+                }
+            }
+    }
+
+    // ---------------------------------------------------------------------------
+    // auth
+    // ---------------------------------------------------------------------------
+
+    suspend fun logOut() {
         runCatching { TelegramDataSource.cancelRetainedDownloads() }
-        runCatching { send(TdApi.LogOut()) }
-            .onFailure { Timber.tag(TAG).w(it, "logOut failed") }
+        _authState.value = TelegramAuthState.LoggingOut
+        val loggedOut = runCatching { call("logOut") }.isSuccess
+        if (!loggedOut) {
+            // offline (server unreachable): wipe the local session and restart the
+            // host so the account is signed out locally as well
+            runCatching { TgJsRuntime.call("resetSession") }
+            val context = appContext
+            if (context != null) {
+                runCatching { TgJsRuntime.restart(context) }
+            }
+            initialized = false
+        }
+        account = null
+        pendingPhone = null
+        pendingPhoneCodeHash = null
+        _authState.value = TelegramAuthState.Idle
     }
 
     suspend fun submitPhoneNumber(phoneNumber: String) {
-        send(TdApi.SetAuthenticationPhoneNumber(phoneNumber.trim(), null))
+        requireStarted()
+        val phone = phoneNumber.trim()
+        val result =
+            call(
+                "sendCode",
+                buildJsonObject {
+                    put("phone", phone)
+                }.toString(),
+            )
+        if (result.tgBool("authorized")) {
+            refreshAccount()
+            return
+        }
+        pendingPhone = phone
+        pendingPhoneCodeHash = result.tgStringOrNull("phoneCodeHash")
+        _authState.value =
+            TelegramAuthState.WaitCode(
+                phoneNumber = phone,
+                codeType = codeTypeOf(result.tgStringOrNull("type")),
+                canResend = result.tgStringOrNull("nextType")?.let { it != "none" } ?: false,
+                resendTimeoutSeconds = result.tgInt("timeout"),
+            )
     }
 
     suspend fun submitCode(code: String) {
-        send(TdApi.CheckAuthenticationCode(code.trim()))
+        requireStarted()
+        val result =
+            call(
+                "signIn",
+                buildJsonObject {
+                    put("phone", pendingPhone.orEmpty())
+                    put("phoneCodeHash", pendingPhoneCodeHash.orEmpty())
+                    put("code", code.trim())
+                }.toString(),
+            )
+        if (result.tgBool("needsPassword")) {
+            val hint =
+                runCatching { call("getPasswordHint") }
+                    .getOrNull()
+                    ?.tgStringOrNull("hint")
+            _authState.value = TelegramAuthState.WaitPassword(hint?.takeIf(String::isNotBlank))
+        } else {
+            refreshAccount()
+        }
     }
 
     suspend fun submitPassword(password: String) {
-        send(TdApi.CheckAuthenticationPassword(password))
+        requireStarted()
+        call(
+            "checkPassword",
+            buildJsonObject {
+                put("password", password)
+            }.toString(),
+        )
+        refreshAccount()
     }
 
     suspend fun resendCode() {
-        send(TdApi.ResendAuthenticationCode(TdApi.ResendCodeReasonUserRequest()))
+        requireStarted()
+        val result =
+            call(
+                "resendCode",
+                buildJsonObject {
+                    put("phone", pendingPhone.orEmpty())
+                    put("phoneCodeHash", pendingPhoneCodeHash.orEmpty())
+                }.toString(),
+            )
+        pendingPhoneCodeHash = result.tgStringOrNull("phoneCodeHash") ?: pendingPhoneCodeHash
+        _authState.value =
+            TelegramAuthState.WaitCode(
+                phoneNumber = pendingPhone.orEmpty(),
+                codeType = codeTypeOf(result.tgStringOrNull("type")),
+                canResend = result.tgStringOrNull("nextType")?.let { it != "none" } ?: false,
+                resendTimeoutSeconds = result.tgInt("timeout"),
+            )
     }
 
-    suspend fun getMe(): TdApi.User = send(TdApi.GetMe())
+    private suspend fun refreshAccount() {
+        account =
+            runCatching { getMe() }.getOrNull()
+        _authState.value = TelegramAuthState.Ready
+    }
+
+    suspend fun getMe(): TelegramAccount {
+        requireStarted()
+        val me = call("getMe").let(TgJsProtocol::parseAccount) ?: throw IOException("getMe failed")
+        account = me
+        return me
+    }
+
+    private fun codeTypeOf(type: String?): TelegramCodeType =
+        when (type) {
+            "app", "email" -> TelegramCodeType.TELEGRAM_APP
+            "sms", "sms_word", "sms_phrase", "fragment" -> TelegramCodeType.SMS
+            "call", "flash_call", "missed_call" -> TelegramCodeType.CALL
+            else -> TelegramCodeType.OTHER
+        }
+
+    // ---------------------------------------------------------------------------
+    // chats & channels
+    // ---------------------------------------------------------------------------
 
     suspend fun searchChannels(query: String): List<TelegramChannel> {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        val chatIds = linkedSetOf<Long>()
-
-        extractInviteLink(trimmed)?.let { inviteLink ->
-            runCatching {
-                val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteLink))
-
-                val joinedChatId = runCatching {
-                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteLink)).id
-                }.getOrNull()
-                val chatId = joinedChatId ?: inviteInfo.chatId
-                if (chatId != 0L) {
-                    chatIds += chatId
-                }
-            }.onFailure { e ->
-                Timber.w(e, "Failed to resolve Telegram invite link")
-            }
-        }
-
-        extractUsername(trimmed)?.let { username ->
-            runCatching { send(TdApi.SearchPublicChat(username)) }
-                .onSuccess { chatIds += it.id }
-        }
-        runCatching { send(TdApi.SearchPublicChats(trimmed)) }
-            .onSuccess { chatIds += it.chatIds.toList() }
-
-        runCatching { send(TdApi.SearchChats(trimmed, LOCAL_CHAT_SEARCH_LIMIT)) }
-            .onSuccess { chatIds += it.chatIds.toList() }
-
-        return chatIds.mapNotNull { chatId ->
-            runCatching { toChannel(getChat(chatId)) }.getOrNull()
-        }
+        val result =
+            call(
+                "searchChats",
+                buildJsonObject {
+                    put("query", trimmed)
+                    put("limit", LOCAL_CHAT_SEARCH_LIMIT)
+                }.toString(),
+            )
+        return result.tgObjArray("results").mapNotNull { parseTgChannel(it) }
     }
 
-    suspend fun getChat(chatId: Long): TdApi.Chat = chatCache[chatId] ?: send(TdApi.GetChat(chatId))
+    suspend fun channelInfo(chatId: Long): TelegramChannel? {
+        val result =
+            runCatching {
+                call(
+                    "getChat",
+                    buildJsonObject {
+                        put("chatId", chatId)
+                    }.toString(),
+                )
+            }.getOrNull() ?: return null
+        return parseTgChannel(result)
+    }
 
     suspend fun openChat(chatId: Long) {
-        send(TdApi.OpenChat(chatId))
+        runCatching {
+            call(
+                "openChat",
+                buildJsonObject {
+                    put("chatId", chatId)
+                }.toString(),
+            )
+        }
     }
 
     suspend fun primeChatHistory(
@@ -206,168 +398,152 @@ object TelegramClient {
         maxRounds: Int = 8,
         perRoundDelayMs: Long = 400L,
     ): Boolean {
+        runCatching { channelInfo(chatId) }
 
-        runCatching { getChat(chatId) }
-
-        var fromMessageId = 0L
         repeat(maxRounds) { round ->
-            val messages =
+            val hasMessages =
                 runCatching {
-
-                    send(TdApi.GetChatHistory(chatId, fromMessageId, 0, HISTORY_PRIME_LIMIT, false))
-                }.getOrNull()
-
-            val count = messages?.messages?.size ?: 0
-            if (count > 0) {
-                Timber.tag(TAG).d(
-                    "primeChatHistory(%d): round %d loaded %d messages",
-                    chatId,
-                    round + 1,
-                    count,
-                )
+                    val result =
+                        call(
+                            "getHistoryHasMessages",
+                            buildJsonObject {
+                                put("chatId", chatId)
+                                put("limit", HISTORY_PRIME_LIMIT)
+                            }.toString(),
+                        )
+                    result.tgBool("hasMessages")
+                }.getOrDefault(false)
+            if (hasMessages) {
+                Timber.tag(TAG).d("primeChatHistory(%d): ready after round %d", chatId, round + 1)
                 return true
             }
-
             delay(perRoundDelayMs)
-            fromMessageId = 0L
         }
         Timber.tag(TAG).w("primeChatHistory(%d): no history after %d rounds", chatId, maxRounds)
         return false
     }
 
-    suspend fun channelInfo(chatId: Long): TelegramChannel? =
-        runCatching { toChannel(getChat(chatId)) }.getOrNull()
-
     suspend fun fetchAudioPage(
         chatId: Long,
         fromMessageId: Long,
         limit: Int,
-        filter: TdApi.SearchMessagesFilter,
+        filter: TelegramMessageFilter,
     ): TelegramAudioPage {
-        val found =
-            send(
-                TdApi.SearchChatMessages(
-                    chatId,
-                    null,
-                    "",
-                    null,
-                    fromMessageId,
-                    0,
-                    limit,
-                    filter,
-                ),
+        val result =
+            call(
+                "fetchAudioPage",
+                buildJsonObject {
+                    put("chatId", chatId)
+                    put("fromMessageId", fromMessageId)
+                    put("limit", limit)
+                    put("filter", if (filter == TelegramMessageFilter.DOCUMENT) "document" else "audio")
+                }.toString(),
             )
+        val tracks =
+            result.tgObjArray("tracks").mapNotNull { parseTgTrack(it) }
         return TelegramAudioPage(
-            tracks = found.messages.mapNotNull(::messageToTrack),
-            nextFromMessageId = found.nextFromMessageId,
+            tracks = tracks,
+            nextFromMessageId = result.tgLong("nextFromMessageId"),
         )
     }
 
-    fun messageToTrack(message: TdApi.Message): TelegramTrack? =
-        when (val content = message.content) {
-            is TdApi.MessageAudio -> {
-                val audio = content.audio
-                TelegramTrack(
-                    chatId = message.chatId,
-                    messageId = message.id,
-                    fileId = audio.audio.id,
-                    fileUniqueId = audio.audio.remote?.uniqueId.orEmpty(),
-                    title = audio.title.orEmpty(),
-                    performer = audio.performer?.takeIf(String::isNotBlank),
-                    fileName = audio.fileName.orEmpty(),
-                    mimeType = audio.mimeType.orEmpty(),
-                    durationSeconds = audio.duration,
-                    sizeBytes = audio.audio.size,
-                    dateSeconds = message.date,
-                    albumCoverMinithumbnail = audio.albumCoverMinithumbnail?.data,
-                    thumbnailFileId = audio.albumCoverThumbnail?.file?.id ?: 0,
+    /** Re-resolves a message into a track (stale unique id / fresh file reference). */
+    suspend fun resolveTrack(chatId: Long, messageId: Long): TelegramTrack? {
+        val result =
+            runCatching {
+                call(
+                    "resolveTrack",
+                    buildJsonObject {
+                        put("chatId", chatId)
+                        put("messageId", messageId)
+                    }.toString(),
                 )
-            }
+            }.getOrNull() ?: return null
+        return parseTgTrack(result.tgObj("track"))
+    }
 
-            is TdApi.MessageDocument -> {
-                val document = content.document
-                val fileName = document.fileName.orEmpty()
-                val mimeType = document.mimeType.orEmpty()
-                if (!isAudioDocument(mimeType, fileName)) {
-                    null
-                } else {
-                    TelegramTrack(
-                        chatId = message.chatId,
-                        messageId = message.id,
-                        fileId = document.document.id,
-                        fileUniqueId = document.document.remote?.uniqueId.orEmpty(),
-                        title = "",
-                        performer = null,
-                        fileName = fileName,
-                        mimeType = mimeType,
-                        durationSeconds = 0,
-                        sizeBytes = document.document.size,
-                        dateSeconds = message.date,
-                        albumCoverMinithumbnail = document.minithumbnail?.data,
-                        thumbnailFileId = document.thumbnail?.file?.id ?: 0,
-                    )
-                }
-            }
+    // ---------------------------------------------------------------------------
+    // file access (streaming + downloads)
+    // ---------------------------------------------------------------------------
 
-            else -> null
-        }
-
-    suspend fun getFile(fileId: Int): TdApi.File = send(TdApi.GetFile(fileId))
-
-    suspend fun resolveTrackFile(
+    /**
+     * Reads an arbitrary byte range of a channel file — TDLib ReadFilePart's
+     * replacement, backed by mtcute's precise download chunks.
+     */
+    suspend fun readFilePart(
         chatId: Long,
         messageId: Long,
-    ): TdApi.File? {
-        runCatching { getChat(chatId) }
-        val message = runCatching { send(TdApi.GetMessage(chatId, messageId)) }.getOrNull() ?: return null
-        return when (val content = message.content) {
-            is TdApi.MessageAudio -> content.audio.audio
-            is TdApi.MessageDocument -> content.document.document
-            else -> null
-        }
-    }
-
-    suspend fun startDownload(
-        fileId: Int,
-        offset: Long,
-    ): TdApi.File =
-        send(
-            TdApi.DownloadFile(fileId, STREAM_DOWNLOAD_PRIORITY, offset, 0L, false),
-        )
-
-    suspend fun cancelDownload(fileId: Int) {
-        runCatching { send(TdApi.CancelDownloadFile(fileId, false)) }
-    }
-
-    suspend fun readyFilePath(
-        fileId: Int,
-        minPrefixBytes: Long = 64 * 1024,
-    ): String? {
-        val file = runCatching { getFile(fileId) }.getOrNull() ?: return null
-        val local = file.local
-        val path = local.path
-        if (path.isEmpty()) return null
-        val headerReady =
-            local.isDownloadingCompleted ||
-                (local.downloadOffset == 0L && local.downloadedPrefixSize >= minPrefixBytes)
-        return if (headerReady) path else null
-    }
-
-    suspend fun readFilePart(
-        fileId: Int,
         offset: Long,
         count: Long,
-    ): ByteArray = send(TdApi.ReadFilePart(fileId, offset, count)).data
+    ): ByteArray =
+        TgJsRuntime.callBin(
+            "readFilePart",
+            buildJsonObject {
+                put("chatId", chatId)
+                put("messageId", messageId)
+                put("offset", offset)
+                put("limit", count)
+            }.toString(),
+        )
 
-    suspend fun downloadFileBlocking(fileId: Int): String? {
-        if (fileId <= 0) return null
-        val existing = runCatching { getFile(fileId) }.getOrNull()
-        existing?.local?.takeIf { it.isDownloadingCompleted && it.path.isNotEmpty() }?.let { return it.path }
-        val downloaded =
-            runCatching {
-                send(TdApi.DownloadFile(fileId, STREAM_DOWNLOAD_PRIORITY, 0L, 0L, true))
-            }.getOrNull() ?: return null
-        return downloaded.local.path.takeIf { it.isNotEmpty() }
+    /** Downloads a whole file (or its thumbnail) — used for artwork. */
+    suspend fun downloadFullFile(
+        chatId: Long,
+        messageId: Long,
+        thumb: Boolean,
+    ): ByteArray? =
+        runCatching {
+            TgJsRuntime.callBin(
+                "downloadFullFile",
+                buildJsonObject {
+                    put("chatId", chatId)
+                    put("messageId", messageId)
+                    put("thumb", thumb)
+                }.toString(),
+            )
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+    /** File size + DC for a track's document (used by the streaming cache). */
+    suspend fun fileSize(
+        chatId: Long,
+        messageId: Long,
+        thumb: Boolean = false,
+    ): Long? =
+        runCatching {
+            call(
+                "fileSize",
+                buildJsonObject {
+                    put("chatId", chatId)
+                    put("messageId", messageId)
+                    put("thumb", thumb)
+                }.toString(),
+            )
+        }.getOrNull()?.tgLong("fileSize")?.takeIf { it > 0 }
+
+    /**
+     * Downloads a chat photo (avatar) and returns a cached file path, mirroring
+     * the old downloadFileBlocking(fileId) behaviour for avatars.
+     */
+    suspend fun downloadChatPhotoFile(
+        chatId: Long,
+        big: Boolean = false,
+    ): String? {
+        val context = appContext ?: return null
+        return runCatching {
+            val bytes =
+                TgJsRuntime.callBin(
+                    "downloadChatPhoto",
+                    buildJsonObject {
+                        put("chatId", chatId)
+                        put("big", big)
+                    }.toString(),
+                )
+            if (bytes.isEmpty()) return@runCatching null
+            val dir = File(context.cacheDir, "telegram_avatars").apply { mkdirs() }
+            val file = File(dir, "$chatId-${if (big) "big" else "small"}.jpg")
+            file.writeBytes(bytes)
+            file.absolutePath
+        }.getOrNull()
     }
 
     fun cacheArtwork(
@@ -387,159 +563,27 @@ object TelegramClient {
         }.getOrNull()
     }
 
-    suspend fun <T : TdApi.Object> send(function: TdApi.Function<T>): T {
-        val currentClient =
-            client ?: throw IOException("Telegram client is not running")
-        return suspendCancellableCoroutine { continuation ->
-            currentClient.send(function) { result ->
-                when (result) {
-                    is TdApi.Error ->
-                        continuation.resumeWithException(
-                            TelegramApiException(result.code, result.message),
-                        )
+    // ---------------------------------------------------------------------------
+    // internals
+    // ---------------------------------------------------------------------------
 
-                    else -> {
-                        @Suppress("UNCHECKED_CAST")
-                        continuation.resume(result as T)
-                    }
-                }
-            }
+    internal fun cacheDirectory(): File? = appContext?.cacheDir
+
+    internal suspend fun call(
+        method: String,
+        params: String = "{}",
+        timeoutMs: Long = INTERACTIVE_CALL_TIMEOUT_MS,
+    ) = TgJsRuntime.call(method, params, timeoutMs)
+
+    internal suspend fun callBinary(method: String, params: String = "{}") = TgJsRuntime.callBin(method, params)
+
+    private suspend fun requireStarted() {
+        val context = appContext
+        if (!TgJsRuntime.isRunning && context != null) {
+            initialize(context)
         }
-    }
-
-    private fun onUpdate(update: TdApi.Object) {
-        when (update) {
-            is TdApi.UpdateAuthorizationState -> handleAuthorizationState(update.authorizationState)
-            is TdApi.UpdateNewChat -> chatCache[update.chat.id] = update.chat
-            is TdApi.UpdateChatTitle -> chatCache[update.chatId]?.title = update.title
-            is TdApi.UpdateChatPhoto -> chatCache[update.chatId]?.photo = update.photo
-
-            is TdApi.UpdateNewMessage -> TelegramBotClient.onNewMessage(update.message)
+        if (!TgJsRuntime.isRunning) {
+            throw IOException("Telegram client is not running")
         }
-    }
-
-    private fun handleAuthorizationState(state: TdApi.AuthorizationState) {
-        when (state) {
-            is TdApi.AuthorizationStateWaitTdlibParameters -> sendTdlibParameters()
-            is TdApi.AuthorizationStateWaitPhoneNumber -> _authState.value = TelegramAuthState.WaitPhoneNumber
-            is TdApi.AuthorizationStateWaitCode -> {
-                val codeInfo = state.codeInfo
-                _authState.value =
-                    TelegramAuthState.WaitCode(
-                        phoneNumber = codeInfo?.phoneNumber.orEmpty(),
-                        codeType = codeTypeOf(codeInfo?.type),
-                        canResend = codeInfo?.nextType != null,
-                        resendTimeoutSeconds = codeInfo?.timeout ?: 0,
-                    )
-            }
-
-            is TdApi.AuthorizationStateWaitPassword ->
-                _authState.value =
-                    TelegramAuthState.WaitPassword(state.passwordHint?.takeIf(String::isNotBlank))
-
-            is TdApi.AuthorizationStateReady -> _authState.value = TelegramAuthState.Ready
-            is TdApi.AuthorizationStateLoggingOut -> _authState.value = TelegramAuthState.LoggingOut
-            is TdApi.AuthorizationStateClosed -> {
-                synchronized(lock) { client = null }
-                chatCache.clear()
-                _authState.value = TelegramAuthState.Idle
-            }
-
-            else -> _authState.value = TelegramAuthState.Unsupported(state.javaClass.simpleName)
-        }
-    }
-
-    private fun codeTypeOf(type: TdApi.AuthenticationCodeType?): TelegramCodeType =
-        when (type) {
-            is TdApi.AuthenticationCodeTypeTelegramMessage -> TelegramCodeType.TELEGRAM_APP
-            is TdApi.AuthenticationCodeTypeSms -> TelegramCodeType.SMS
-            is TdApi.AuthenticationCodeTypeCall -> TelegramCodeType.CALL
-            else -> TelegramCodeType.OTHER
-        }
-
-    private fun sendTdlibParameters() {
-        val context = appContext ?: return
-        val apiId = BuildConfig.TELEGRAM_API_ID
-        val apiHash = BuildConfig.TELEGRAM_API_HASH
-        val baseDir = File(context.filesDir, "telegram")
-        val parameters =
-            TdApi.SetTdlibParameters(
-                false,
-                File(baseDir, "db").absolutePath,
-                File(baseDir, "files").absolutePath,
-                ByteArray(0),
-                true,
-                true,
-                true,
-                false,
-                apiId,
-                apiHash,
-                Locale.getDefault().language.ifBlank { "en" },
-                Build.MODEL ?: "Android",
-                Build.VERSION.RELEASE ?: "0",
-                BuildConfig.VERSION_NAME,
-            )
-        client?.send(parameters) { result ->
-            if (result is TdApi.Error) {
-                Timber.tag(TAG).e("SetTdlibParameters failed: %s", result.message)
-                _authState.value = TelegramAuthState.Unsupported("InvalidApiCredentials")
-            }
-        }
-    }
-
-    private suspend fun toChannel(chat: TdApi.Chat): TelegramChannel? {
-        val type = chat.type as? TdApi.ChatTypeSupergroup ?: return null
-        val supergroup = runCatching { chatSupergroup(type.supergroupId) }.getOrNull()
-        return TelegramChannel(
-            chatId = chat.id,
-            title = chat.title,
-            username = supergroup?.username,
-            memberCount = supergroup?.memberCount ?: 0,
-            isBroadcastChannel = type.isChannel,
-            photoMinithumbnail = chat.photo?.minithumbnail?.data,
-            photoFileId = chat.photo?.small?.id ?: 0,
-        )
-    }
-
-    private data class SupergroupInfo(
-        val username: String?,
-        val memberCount: Int,
-    )
-
-    private suspend fun chatSupergroup(supergroupId: Long): SupergroupInfo {
-        val supergroup = send(TdApi.GetSupergroup(supergroupId))
-        val username =
-            supergroup.usernames
-                ?.activeUsernames
-                ?.firstOrNull()
-                ?.takeIf(String::isNotBlank)
-        return SupergroupInfo(username = username, memberCount = supergroup.memberCount)
-    }
-
-    private fun extractUsername(query: String): String? {
-        val trimmed = query.trim()
-        val fromLink =
-            Regex("(?:https?://)?t(?:elegram)?\\.me/([A-Za-z0-9_]{3,})", RegexOption.IGNORE_CASE)
-                .find(trimmed)
-                ?.groupValues
-                ?.get(1)
-        if (fromLink != null) return fromLink
-        if (trimmed.startsWith("@")) {
-            return trimmed.removePrefix("@").takeIf { it.matches(Regex("[A-Za-z0-9_]{3,}")) }
-        }
-        return null
-    }
-
-    private fun extractInviteLink(query: String): String? {
-        val trimmed = query.trim()
-        val inviteRegex =
-            Regex(
-                "((?:https?://)?t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)[A-Za-z0-9_-]+)",
-                RegexOption.IGNORE_CASE,
-            )
-        val match = inviteRegex.find(trimmed) ?: return null
-        val link = match.groupValues[1]
-
-        return if (link.startsWith("http")) link else "https://$link"
     }
 }

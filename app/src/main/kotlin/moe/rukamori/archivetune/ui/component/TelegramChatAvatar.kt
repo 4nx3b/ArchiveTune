@@ -40,15 +40,15 @@ import java.io.File
 @Composable
 fun TelegramChatAvatar(
     photoMinithumbnail: ByteArray?,
-    photoFileId: Int,
+    photoChatId: Long,
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
 ) {
-    var fullPhotoPath by remember(photoFileId) { mutableStateOf<String?>(null) }
+    var fullPhotoPath by remember(photoChatId) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(photoFileId) {
-        if (photoFileId > 0) {
-            val path = runCatching { TelegramClient.downloadFileBlocking(photoFileId) }.getOrNull()
+    LaunchedEffect(photoChatId) {
+        if (photoChatId != 0L) {
+            val path = runCatching { TelegramClient.downloadChatPhotoFile(photoChatId) }.getOrNull()
             if (path != null && File(path).exists()) {
                 fullPhotoPath = path
             }
