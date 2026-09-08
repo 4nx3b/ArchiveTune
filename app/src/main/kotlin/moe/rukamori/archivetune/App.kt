@@ -163,8 +163,14 @@ class App :
     private fun initializeDiskBackedComponents() {
         runCatching {
             val config = com.downloader.PRDownloaderConfig.newBuilder()
-
-                .setReadTimeout(300_000)
+                // 90s between socket reads (was 300s): a healthy media CDN
+                // stream delivers bytes continuously, so 90 s of socket
+                // silence is a dead connection, not a slow one. The stall
+                // watchdog in PRDownloaderDataSource catches even the
+                // "connection alive but zero bytes" case at 90 s too —
+                // together they keep wedged googlevideo fetches from holding
+                // a download slot "in progress" for minutes on end.
+                .setReadTimeout(90_000)
                 .setConnectTimeout(15_000)
                 .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
                 .build()

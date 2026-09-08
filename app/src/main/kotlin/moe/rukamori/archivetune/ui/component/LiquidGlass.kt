@@ -94,7 +94,18 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
-internal const val ThrottledLayerBackdropDefaultIntervalMillis = 33L
+/**
+ * How often the real-time menu-glass recorder may re-record the app subtree
+ * while a glass popup is showing: 100 ms (~10 fps). The frost samples this
+ * layer through a 32 dp blur, which low-passes the image so heavily that a
+ * 10 fps refresh of moving content behind the popup is visually
+ * indistinguishable from 30 fps — while cutting the full-screen
+ * GraphicsLayer record (the dominant per-frame cost of the live popup, and
+ * it ran on every mini-player progress tick) by ~3x. Popup open/close, its
+ * own scroll and all its interactions are unaffected: only the *background
+ * sampling* rate changes.
+ */
+internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
 @Stable
 class ThrottledLayerBackdrop internal constructor(
