@@ -52,8 +52,11 @@ class TelegramLosslessDetectionTest {
             TelegramTrack(
                 chatId = -1L,
                 messageId = 1L,
-                fileId = 1,
-                fileUniqueId = "u",
+                fileUniqueId = "1:2",
+                docId = "1",
+                accessHash = "2",
+                fileReference = "",
+                dcId = 2,
                 title = "",
                 performer = null,
                 fileName = "01 - Intro.flac",
