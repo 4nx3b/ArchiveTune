@@ -157,12 +157,44 @@ internal fun TikTokSongPage(
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
 
+        // Video state is read before the backdrop layers so the page knows up
+        // front whether the music video is live and must float on a pitch-black
+        // backdrop instead of the animated mesh gradient.
+        val videoState = LocalVideoArtworkState.current
+        val videoShowing =
+            isCurrentPage &&
+                videoState != null &&
+                !videoState.hasPlaybackFailed &&
+                !lyricsOpen
+        val videoFullscreenHolder = LocalVideoFullscreenState.current
+        val videoRatio = videoState?.videoAspectRatio ?: TIKTOK_VIDEO_FALLBACK_RATIO
+
         val meshColors = rememberTikTokArtworkColors(artUrl)
         TikTokMeshBackdrop(
             palette = meshColors,
             trackKey = pageMetadata.id,
             reduceAnimation = LocalAnimationsDisabled.current,
         )
+
+        // Pitch-black backdrop while the music video is on screen: the letterbox
+        // area around the video must stay pure black, with none of the mesh
+        // gradient bleeding around the video's edges. Crossfades over 300ms —
+        // the same cadence as the square artwork's fade — so the video reveal
+        // stays smooth when the stream becomes ready.
+        val videoBackdropAlpha by animateFloatAsState(
+            targetValue = if (videoShowing) 1f else 0f,
+            animationSpec = tween(300),
+            label = "tiktokVideoBackdropAlpha",
+        )
+        if (videoBackdropAlpha > 0f) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = videoBackdropAlpha }
+                        .background(Color.Black),
+            )
+        }
 
         var canvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
         if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
@@ -192,17 +224,10 @@ internal fun TikTokSongPage(
         // reports its size) and centered, with RESIZE_MODE_FIT inside. A 16:9
         // video therefore letterboxes in the portrait feed instead of being
         // zoom-cropped by the previous full-bleed ZOOM geometry (which cropped a
-        // landscape video down to ~27% of its width). Same corner clip as the
-        // canvas, hidden while the inline lyrics pane is open, and the square
-        // artwork fades out over it exactly as it does over a playing canvas.
-        val videoState = LocalVideoArtworkState.current
-        val videoShowing =
-            isCurrentPage &&
-                videoState != null &&
-                !videoState.hasPlaybackFailed &&
-                !lyricsOpen
-        val videoFullscreenHolder = LocalVideoFullscreenState.current
-        val videoRatio = videoState?.videoAspectRatio ?: TIKTOK_VIDEO_FALLBACK_RATIO
+        // landscape video down to ~27% of its width). The surface carries NO
+        // corner clip — square edges over the pitch-black backdrop layer — stays
+        // hidden while the inline lyrics pane is open, and the square artwork
+        // fades out over it exactly as it does over a playing canvas.
         if (videoShowing) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -211,10 +236,7 @@ internal fun TikTokSongPage(
                 InlineVideoPlayer(
                     state = videoState,
                     showControls = false,
-                    modifier =
-                        Modifier
-                            .aspectRatio(videoRatio)
-                            .clip(RoundedCornerShape(TIKTOK_CANVAS_CORNER)),
+                    modifier = Modifier.aspectRatio(videoRatio),
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
                 )
             }
