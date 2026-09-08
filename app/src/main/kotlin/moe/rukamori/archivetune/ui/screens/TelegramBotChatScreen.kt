@@ -249,10 +249,10 @@ fun TelegramBotChatScreen(
                 ).show()
                 return@launch
             }
-            highestSeenMessageId = sent.id
+            highestSeenMessageId = sent
             collectAndApply(
                 chatId = activeBot.chatId,
-                afterMessageId = sent.id,
+                afterMessageId = sent,
                 sourceTitle = activeBot.title,
             )
             sending = false
