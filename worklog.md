@@ -1061,3 +1061,110 @@ Stage Summary:
   playback/PRDownloaderDataSource.kt, App.kt, ui/menu/PlayerMenu.kt,
   ui/component/LiquidGlass.kt, ui/player/VideoArtworkPlayer.kt.
 - Next: confirm the remaining CI check-runs go green on a1ca4ae75.
+
+---
+Task ID: 24
+Agent: main (Super Z)
+Task: ArchiveTune — swap the TDLib native library for mtcute (MTProto over a
+QuickJS bridge), the migration deferred from Task 20 item 4
+
+Work Log:
+- Researched the whole surface before writing code: read all 12 files of the
+  telegram/ package (~2.2k LOC), the app/build.gradle.kts TDLib wiring, and the
+  6 TdApi-importing call sites outside the package (bots screen, bot chat
+  screen, PlayerConnection format refiner).
+- Installed mtcute 0.32.1 + esbuild locally (npm works in the sandbox; gradle
+  builds stay forbidden/CI-only) and read its .d.ts surface: custom platform
+  injection (MtClientOptions.crypto/transport/platform are explicit), the
+  WebSocketTransport contract, IStorageDriver/ITelegramStorageProvider
+  repositories, ICryptoProvider (AES-CTR/IGE, SHA, HMAC, PBKDF2, gzip, PQ),
+  sendCode/signIn/checkPassword auth, searchMessages raw + DTO, downloadChunk
+  (precise, offset/limit, auto 1024-alignment), getMessages/resolveUser/
+  forwardMessagesById/getCallbackAnswer, client.onNewMessage emitter.
+- Verified quickjs-kt 1.0.14 (the app's pinned version) against the actual
+  Maven artifact via a class-file parser written for the task
+  (scripts/classdump.py): function(name, Function1) and asyncFunction(name,
+  suspend-Function2) extensions, Int8Array<->ByteArray mapping, suspend
+  evaluate with top-level await, memoryLimit/maxStackSize/close — all match.
+- Empirically confirmed Telegram's apiws endpoint REQUIRES the
+  "Sec-WebSocket-Protocol: binary" header (404 without it, OPEN with it); the
+  OkHttp bridge sets the header with a no-header fallback.
+- Built the host bundle: scripts/telegram-js/host/banner.js (QuickJS
+  environment shims: timers over the bridge, TgWebSocket over the bridge,
+  AbortController/AbortSignal.any polyfill, WHATWG TextEncoder/TextDecoder,
+  performance, console, event pump) + host/main.ts (mtcute wiring: native
+  BridgeCryptoProvider, write-through BridgeStorage, BridgeWebSocketTransport
+  to wss://<dc>.web.telegram.org/apiws, JSON RPC handlers for init/auth/
+  search/history/messages/bots/forward/press/fileSize/resetSession + binary
+  readFilePart/downloadFullFile/downloadChatPhoto, file-reference refresh on
+  stale locations, new_message events to Kotlin). Fixed an ASI hazard between
+  the banner and the esbuild IIFE (banner now terminates with "})();").
+- Node smoke suite (test/smoke.js) runs banner+bundle in a bare vm context
+  (no browser/Node globals — QuickJS simulation): 14/14 checks pass (shims,
+  AbortSignal semantics, UTF-8 correctness, transport URL, reconnection
+  strategy through the timer bridge, event pump, error envelopes, TGERR
+  binary errors, resetSession). Bundle: 1.26 MB asset
+  (app/src/main/assets/telegram/mtcute_host.js), committed so CI needs no
+  node.
+- Kotlin bridge: TgJsRuntime (QuickJS on a 32 MB-stack daemon thread, 256 MB
+  memory limit for 32-bit ABI safety, 25 bindings, event Channel + poll
+  binding, call/callBin with per-call timeouts, TGERR error mapping),
+  TgJsCrypto (javax.crypto AES-CTR/IGE streaming counter, SHA/HMAC/PBKDF2,
+  gzip/gunzip, SecureRandom, PQ factorization via BigInteger trial division +
+  Pollard rho), TgJsStorage (one file per (store,key) under
+  filesDir/telegram-js, SHA-256-hashed filenames, write-through for auth
+  keys), TgStrippedJpeg (byte-exact TDLib minithumbnail reconstruction; the
+  623-byte header extracted programmatically from td/telegram/PhotoSize.cpp).
+- Ported the feature layer onto a JSON protocol (TgJsProtocol parsers):
+  TelegramClient (same object shape + auth state machine; ensureStarted stays
+  sync for onClick callers, ensureStartedAwait added for coroutines; init
+  timeout treats a still-connecting transport as WaitPhoneNumber), the
+  TelegramStreamCache (spool-file cache reproducing TDLib
+  downloadOffset/downloadedPrefixSize: 512 KB prefetch chunks, re-target on
+  seek/rewind, LRU retention of 3, chunk appends validated under the spool
+  lock so a chunk racing a re-target is dropped instead of corrupting the
+  spool; lock never held across delays/network), TelegramDataSource (open/
+  read/close preserved, 40 s read timeout preserved), TelegramBotClient
+  (per-chat SharedFlow of a TDLib-free TelegramIncomingMessage; resolveBot
+  returns TelegramBotInfo; pressInlineButton via callback answer; forward via
+  forwardMessagesById), TelegramChannelSync (TelegramMessageFilter enum),
+  TelegramThumbnailFetcher (tgart://track/<chatId>/<messageId> model with
+  doc-thumb download + catalog fallback), TelegramMediaId v2 scheme
+  (telegram://track/v2/<chat>/<msg>/<uniqueFileId>) with v1 decode
+  compatibility so old playlist rows still resolve by chat+message.
+- UI touch-ups: TelegramChatAvatar (photoChatId-based full-res avatars via
+  downloadChatPhotoFile), TelegramBotsScreen + TelegramBotChatScreen
+  (resolveBot result type, artwork model), TelegramBrowseScreen,
+  TelegramLoginScreen (awaited start), PlayerConnection format refiner
+  (TelegramStreamCache.readyFilePath), TelegramBot model drops the TDLib-local
+  photoFileId.
+- Removed TDLib entirely: TdLibNativeLibrary.kt deleted, tdlibx dependency,
+  TDLIB_BUNDLED/TDLIB_NATIVE_BASE_URL buildConfig, extractTdLibNatives task +
+  orphaned imports, proguard keep rules, jitpack includeGroup filter.
+- Static verification: kotlin_balance_check.py OK on all 22 touched Kotlin
+  files; JS<->Kotlin binding-name contract cross-checked programmatically
+  (25/25 match, none missing/extra); unit tests updated for the v2 media id
+  (TelegramMediaIdTest covers round-trip, v1 decode, rejection cases);
+  TdApi/org.drinkless sweep clean outside doc comments.
+- Committed f9ae45e99 on dev, pushed. CI: `check` gate success in ~3 min;
+  APK matrix + PR #214 verification in flight at worklog-write time.
+
+Stage Summary:
+- TDLib is fully gone; the Telegram feature set (login with 2FA, channel
+  search/browse/sync, streaming playback with seeks, bot chats incl. inline
+  keyboards and forwarding, avatars and artwork) now runs on mtcute 0.32.1
+  inside the app's embedded QuickJS with native crypto.
+- APK footprint: the ~8-10 MB-per-ABI runtime-downloaded libtdjni.so is
+  replaced by a 1.26 MB asset shared by all ABIs; TDLib's runtime download
+  and digest machinery is deleted.
+- Sessions: TDLib SQLite sessions cannot migrate — signed-in users re-login
+  once (documented in the commit and file headers).
+- Rebuild path for the bundle: scripts/telegram-js (npm install; bash
+  build.sh; node test/smoke.js) — bundle committed so normal CI needs no JS
+  toolchain.
+- Key files: telegram/TgJsRuntime.kt, TgJsCrypto.kt, TgJsStorage.kt,
+  TgJsProtocol.kt, TelegramStreamCache.kt, TgStrippedJpeg.kt,
+  scripts/telegram-js/host/{banner.js,main.ts}, build.sh, test/smoke.js,
+  app/src/main/assets/telegram/mtcute_host.js
+- Next: confirm the remaining check-runs (APK matrix + PR #214 unit tests)
+  go green.
