@@ -45,6 +45,7 @@ object LosslessStreamResolver {
         album: String?,
         durationMs: Long?,
         formatId: Int,
+        directTrackId: String? = null,
     ): DirectStream? {
         val userInstances = parseMultiline(context, QobuzInstancesKey)
         val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }
@@ -84,6 +85,7 @@ object LosslessStreamResolver {
                         artists = artists,
                         album = album,
                         durationMs = durationMs,
+                        directTrackId = directTrackId,
                     ),
                     formatId = formatId,
                 )
@@ -200,6 +202,18 @@ object LosslessStreamResolver {
             addAll(configuredInstances)
             addAll(discoveredInstances)
         }.toList()
+        if (mergedInstances.isEmpty()) {
+            // The account path was disabled (accountFirst=false) or produced
+            // nothing, and no public/private instance is configured. Failing
+            // fast here keeps the resolver from throwing
+            // TidalAudioResolutionException("TIDAL playback has no configured
+            // instance") on every resolve — that surfaced as a noisy
+            // stack-trace warning in the download chain for each song.
+            Timber.tag("LosslessResolver").d(
+                "Tidal skip: no instances configured (account path disabled or exhausted)",
+            )
+            return null
+        }
         TidalAudioProvider.setInstances(mergedInstances)
 
         return runCatching {
@@ -237,10 +251,10 @@ object LosslessStreamResolver {
         }
     }
 
-    fun resolveQobuzBackup(mediaId: String): DirectStream? =
+    fun resolveQobuzBackup(videoId: String): DirectStream? =
         runCatching {
             runBlocking(Dispatchers.IO) {
-                QobuzBackupProvider.resolveStream(mediaId)?.let { resolved ->
+                QobuzBackupProvider.resolveStream(videoId)?.let { resolved ->
                     DirectStream(
                         uri = resolved.uri,
                         mimeType = resolved.mimeType,
@@ -257,7 +271,7 @@ object LosslessStreamResolver {
                 }
             }
         }.onFailure { error ->
-            Timber.tag("LosslessResolver").w(error, "Qobuz backup resolve failed for %s", mediaId)
+            Timber.tag("LosslessResolver").w(error, "Qobuz backup resolve failed for %s", videoId)
         }.getOrNull()
 
     fun resolveDeezer(

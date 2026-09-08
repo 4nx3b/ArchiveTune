@@ -626,7 +626,11 @@ fun SongMenu(
                                         false,
                                     )
                                 }
-                                downloadUtil.downloadCache.removeResource(song.id)
+                                // Clear ALL per-source cached spans (not just the plain
+                                // YouTube key) so stale bytes from a previous
+                                // download-source setting never leak into the new
+                                // download or the export-downloads page.
+                                downloadUtil.removeSongCacheEntries(song.id)
                                 val downloadRequest =
                                     DownloadRequest
                                         .Builder(song.id, song.id.toUri())
@@ -1100,7 +1104,10 @@ fun SongMenu(
                                                     )
                                                 }
 
-                                                downloadUtil.downloadCache.removeResource(song.id)
+                                                // Clear ALL per-source cached spans (not just the plain YouTube key) so
+                                                // stale bytes from a previous download-source setting never leak
+                                                // into the new download or the export-downloads page.
+                                                downloadUtil.removeSongCacheEntries(song.id)
                                                 val downloadRequest =
                                                     DownloadRequest
                                                         .Builder(song.id, song.id.toUri())

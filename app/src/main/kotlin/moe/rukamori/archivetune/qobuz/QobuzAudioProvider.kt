@@ -320,9 +320,17 @@ object QobuzAudioProvider {
             }
             streamCache.remove(cacheKey)
         }
-        failureCache[cacheKey]?.let { failedUntil ->
-            if (failedUntil > now) return null
-            failureCache.remove(cacheKey)
+        if (query.directTrackId == null) {
+            // A failed METADATA SEARCH must not block a later direct-track
+            // resolution for the same song: the search is flaky (rate limits,
+            // catalog hiccups) while the direct id resolves deterministically.
+            // Without this guard the 10-minute failure cache made downloads of
+            // songs the user had explicitly pinned to Qobuz silently fall back
+            // to YouTube.
+            failureCache[cacheKey]?.let { failedUntil ->
+                if (failedUntil > now) return null
+                failureCache.remove(cacheKey)
+            }
         }
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }

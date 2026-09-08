@@ -69,18 +69,47 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
+import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.dataStore
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+
+/**
+ * Every cache key a song's downloaded bytes can live under, ordered by the
+ * user's download-source priority (YOUTUBE_MUSIC maps to the plain mediaId
+ * key). The plain key is appended last as the final fallback so unknown
+ * future sources still resolve. This replaces the old hardcoded
+ * [qobuz:|tidal:|deezer:|plain] list, which made jiosaavn:/apple:/
+ * qobuz_backup: downloads invisible in this page AND unexportable.
+ */
+private fun downloadCandidateKeys(
+    songId: String,
+    order: List<DownloadSource>,
+): List<String> =
+    buildList {
+        for (source in order) {
+            when (source) {
+                DownloadSource.YOUTUBE_MUSIC -> add(songId)
+                DownloadSource.AUTO -> {}
+                else -> add("${source.name.lowercase(java.util.Locale.US)}:$songId")
+            }
+        }
+        add(songId)
+    }.distinct()
 
 private data class DownloadedSongRow(
     val songId: String,
@@ -109,6 +138,9 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     val selectedIds: SnapshotStateList<String> = remember { mutableStateListOf() }
+    var sourceOrder by remember {
+        mutableStateOf<List<DownloadSource>>(DownloadSourceConfig.DEFAULT_ORDER)
+    }
 
     val displayedSongs = remember(songs, searchQuery) {
         if (searchQuery.isBlank()) songs
@@ -124,6 +156,14 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         withContext(Dispatchers.IO) {
             val cache = downloadUtil.downloadCache
 
+            // The user's download-source priority decides which source's
+            // cached spans win when several exist for the same song.
+            val storedOrder = runCatching {
+                runBlocking { context.dataStore.data.first()[DownloadSourceOrderKey] }
+            }.getOrNull()
+            val order = DownloadSourceConfig.parseOrder(storedOrder)
+            sourceOrder = order
+
             val songIds =
                 cache.keys
                     .map { it.substringAfter(":") }
@@ -132,10 +172,9 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
             val rows =
                 songIds.mapNotNull { songId ->
 
-                    val hasSpans =
-                        listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId).any { key ->
-                            cache.getCachedSpans(key).isNotEmpty()
-                        }
+                    val hasSpans = downloadCandidateKeys(songId, order).any { key ->
+                        cache.getCachedSpans(key).isNotEmpty()
+                    }
                     if (!hasSpans) return@mapNotNull null
                     val songEntity = database.getSongByIdBlocking(songId)
                     val title =
@@ -188,7 +227,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             )
                         val tempDir = java.io.File(context.cacheDir, "export_tmp").apply { mkdirs() }
                         loop@ for (row in toExport) {
-                            val resolved = resolveSpansWithSource(cache, row.songId) ?: run { failed++; continue@loop }
+                            val resolved = resolveSpansWithSource(cache, row.songId, sourceOrder) ?: run { failed++; continue@loop }
                             val spans = resolved.spans
 
                             if (spans.isEmpty()) { failed++; continue@loop }
@@ -202,8 +241,12 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             }
 
                             val isYouTubeSource = resolved.sourceKey == null
-                            val exportExt =
-                                if (isYouTubeSource) "mp3" else detectedExt
+
+                            // Export with the extension the bytes actually have —
+                            // the old `if (isYouTubeSource) "mp3"` override
+                            // mislabeled m4a (itag 140) downloads as .mp3, which
+                            // jaudiotagger and most players then fail to open.
+                            val exportExt = detectedExt
                             val mime = extensionToMimeType(exportExt)
                             val safeTitle =
                                 row.title
@@ -294,7 +337,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     val playerCache = downloadUtil.playerCache
                     for (row in toDelete) {
                         var removed = false
-                        for (key in listOf("qobuz:${row.songId}", "tidal:${row.songId}", "deezer:${row.songId}", row.songId)) {
+                        for (key in downloadCandidateKeys(row.songId, sourceOrder)) {
                             runCatching { cache.removeResource(key) }.onSuccess { removed = true }
                             runCatching { playerCache.removeResource(key) }.onSuccess { removed = true }
                         }
@@ -707,8 +750,9 @@ private data class ResolvedSpansWithSource(
 private fun resolveSpansWithSource(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,
+    order: List<DownloadSource>,
 ): ResolvedSpansWithSource? {
-    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId)) {
+    for (key in downloadCandidateKeys(songId, order)) {
         val spans = cache.getCachedSpans(key)
         if (spans.isNotEmpty()) {
             val sourceKey = key.takeIf { it != songId }

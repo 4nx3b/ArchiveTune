@@ -1002,6 +1002,11 @@ fun PlayerMenu(
                                         }
 
                                         coroutineScope.launch {
+                                            // Clear stale per-source spans (including
+                                            // a previous YouTube webm fallback) so
+                                            // the new download always reflects the
+                                            // current source priority.
+                                            downloadUtil.removeSongCacheEntries(mediaMetadata.id)
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(mediaMetadata.id)
                                             }
