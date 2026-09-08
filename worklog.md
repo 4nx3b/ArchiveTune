@@ -1168,3 +1168,46 @@ Stage Summary:
   app/src/main/assets/telegram/mtcute_host.js
 - Next: confirm the remaining check-runs (APK matrix + PR #214 unit tests)
   go green.
+
+---
+Task ID: 24 (final)
+Agent: main (Super Z)
+Task: CI verification + PR update for the TDLib -> mtcute swap
+
+Work Log:
+- Commit f9ae45e99 (swap) + e74a67583 (worklog): `check` gate green, but the
+  release/nightly APK matrix failed with 20 Kotlin compile errors in the new
+  bridge files — all caught by static review afterwards:
+  1. quickjs-kt binding lambdas receive Array<Any?> (verified against the
+     FunctionBinding interface in the 1.0.14 artifact), not List — the arg
+     accessor extensions were retargeted.
+  2. Thread stack size is only settable through the (group, runnable, name,
+     stackSize) constructor — the field is not public.
+  3. AES-IGE: Byte xor Int operand mix; trimTo4: ByteArray has no + operator
+     (left-pad with copyInto).
+  4. tgObjArray: runCatching chain needed an explicit null fallback.
+  5. Leftover TgJsProtocol.*/objArray references and missing
+     JsonObject/jsonPrimitive imports in TelegramBotClient; a method reference
+     off the removed object in TelegramClient.
+  -> commit ea5144a10.
+- Commit ea5144a10: `check` green, universal/foss/armeabi nightlies green, but
+  `build` (debug + unit tests + lint) failed: (a) missing
+  kotlinx.serialization.json.intOrNull import in TgJsRuntime; (b) the bot chat
+  screen still read `.id` off sendTextMessage's result (the port returns the
+  message id Long directly); (c) the foss log also surfaced
+  TelegramLosslessDetectionTest still constructing TelegramTrack with the old
+  parameter set -> fixed in 0efd06e46.
+- Commit 0efd06e46: **all 12 check-runs green** — check, build (debug + unit
+  tests + lint), 7 nightly APK variants (gms universal/arm64/x86/x86_64/
+  armeabi, foss universal, tv universal), 2 release APKs, create-nightly.
+- Updated PR #214 title/body to describe the mtcute swap (script
+  scripts/update_pr214.py; the first inline attempt got its backticks eaten
+  by an unquoted heredoc, hence the script).
+
+Stage Summary:
+- TDLib -> mtcute swap is complete and CI-verified end to end on every
+  variant incl. the 32-bit armeabi build.
+- PR #214 updated; mergeable_state=clean.
+- Remaining known caveats (documented in the PR): TDLib-era sessions require
+  one re-login; old tgart:// artwork models lose the document-thumbnail
+  download path but keep the catalogue lookup.
