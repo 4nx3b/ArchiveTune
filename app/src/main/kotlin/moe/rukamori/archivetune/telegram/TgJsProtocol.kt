@@ -46,7 +46,7 @@ internal fun JsonObject.tgObj(key: String): JsonObject? = this[key]?.jsonObject
 internal fun JsonObject.tgObjArray(key: String): List<JsonObject> =
     runCatching {
         this[key]?.jsonArray?.mapNotNull { it.jsonObject }
-    }.getOrDefault(emptyList())
+    }.getOrNull()?.filterNotNull() ?: emptyList()
 
 internal fun parseTgObject(raw: String): JsonObject = tgJson.parseToJsonElement(raw).jsonObject
 

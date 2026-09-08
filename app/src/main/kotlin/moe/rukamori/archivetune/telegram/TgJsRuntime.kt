@@ -138,11 +138,11 @@ internal object TgJsRuntime {
 
             val executor =
                 Executors.newSingleThreadExecutor { runnable ->
-                    Thread(runnable, "tg-js-quickjs").apply {
+                    // mtcute + the TL schema parser use deeper JS stacks than the
+                    // JVM default; mirror the cipher engine's oversized stack.
+                    // (stackSize is only settable via this constructor)
+                    Thread(null, runnable, "tg-js-quickjs", 32L * 1024 * 1024).apply {
                         isDaemon = true
-                        // mtcute + the TL schema parser use deeper JS stacks than
-                        // the JVM default; mirror the cipher engine's big stack.
-                        stackSize = 32L * 1024 * 1024
                     }
                 }
             val dispatcher = executor.asCoroutineDispatcher()
@@ -511,7 +511,7 @@ internal object TgJsRuntime {
     // argument marshalling helpers
     // ---------------------------------------------------------------------------
 
-    private fun List<Any?>?.arg(index: Int): Any? = this?.getOrNull(index)
+    private fun Array<Any?>?.arg(index: Int): Any? = this?.getOrNull(index)
 
     private fun Any?.asLongCompat(): Long =
         when (this) {

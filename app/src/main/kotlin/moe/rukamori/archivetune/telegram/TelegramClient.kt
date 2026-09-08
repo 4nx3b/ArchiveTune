@@ -337,7 +337,7 @@ object TelegramClient {
 
     suspend fun getMe(): TelegramAccount {
         requireStarted()
-        val me = call("getMe").let(TgJsProtocol::parseAccount) ?: throw IOException("getMe failed")
+        val me = call("getMe").let(::parseTgAccount) ?: throw IOException("getMe failed")
         account = me
         return me
     }

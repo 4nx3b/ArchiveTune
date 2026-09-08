@@ -99,7 +99,7 @@ internal object TgJsCrypto {
             }
             val encrypted = cipher.doFinal(xored)
             for (i in 0 until 16) {
-                out[offset + i] = (encrypted[i] xor ivY[i].toInt()).toByte()
+                out[offset + i] = (encrypted[i].toInt() xor ivY[i].toInt()).toByte()
             }
             ivX = encrypted.copyOf()
             ivY = block.copyOf()
@@ -172,12 +172,12 @@ internal object TgJsCrypto {
         }
         if (factor == null || factor <= BigInteger.ZERO) {
             // extremely unlikely fallback — treat as 1 x pq
-            return 1.toBigIntegerBytes() to trimTo4(value)
+            return trimTo4(BigInteger.ONE) to trimTo4(value)
         }
         val other = value.divide(factor)
         val small = if (factor.compareTo(other) <= 0) factor else other
         val large = if (factor.compareTo(other) <= 0) other else factor
-        return small.toBigIntegerBytes() to large.toBigIntegerBytes()
+        return trimTo4(small) to trimTo4(large)
     }
 
     private fun trialDivide(value: BigInteger): BigInteger? {
@@ -215,15 +215,13 @@ internal object TgJsCrypto {
         n: BigInteger,
     ): BigInteger = x.multiply(x).add(c).mod(n)
 
-    private fun BigInteger.toBigIntegerBytes(): ByteArray = trimTo4(this)
-
     private fun trimTo4(value: BigInteger): ByteArray {
         val bytes = value.toByteArray() // may include a leading sign byte
         val unsigned = if (bytes.size > 4 && bytes[0] == 0.toByte()) bytes.copyOfRange(1, bytes.size) else bytes
         return if (unsigned.size >= 4) {
             unsigned.copyOfRange(unsigned.size - 4, unsigned.size)
         } else {
-            ByteArray(4) + unsigned
+            ByteArray(4).also { unsigned.copyInto(it, 4 - unsigned.size) }
         }
     }
 }
