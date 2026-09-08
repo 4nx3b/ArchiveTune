@@ -38,8 +38,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -174,6 +176,11 @@ internal fun TikTokSongPage(
         // mirrors the exact condition InlineVideoPlayer uses to show its loading
         // spinner, so hosts can keep other overlays from stacking on top of it.
         val videoLoading = videoState != null && isLoadingState(videoState)
+
+        // Tap-to-show video controls: a single tap on the video reveals the
+        // controls overlay (center play/pause + the quality/fullscreen pill) and
+        // a second tap hides it. Reset per song.
+        var videoControlsVisible by remember(pageMetadata.id) { mutableStateOf(false) }
 
         val meshColors = rememberTikTokArtworkColors(artUrl)
         TikTokMeshBackdrop(
@@ -313,7 +320,18 @@ internal fun TikTokSongPage(
                                                             haptics.performHapticFeedback(
                                                                 HapticFeedbackType.TextHandleMove,
                                                             )
-                                                            onTogglePlayPause()
+                                                            if (videoShowing) {
+                                                                // While the music video is on
+                                                                // screen a single tap reveals/
+                                                                // hides the video controls overlay
+                                                                // (play/pause + quality + fullscreen)
+                                                                // instead of toggling playback —
+                                                                // pause lives on the overlay's
+                                                                // center button now.
+                                                                videoControlsVisible = !videoControlsVisible
+                                                            } else {
+                                                                onTogglePlayPause()
+                                                            }
                                                         },
                                                         onDoubleTap = { tap ->
                                                             haptics.performHapticFeedback(
@@ -373,7 +391,12 @@ internal fun TikTokSongPage(
                                             // spinner alone communicates the busy state.
                                             // Once the video is ready, a user pause still
                                             // shows the icon over the video.
-                                            !videoLoading,
+                                            !videoLoading &&
+                                            // While the tap-to-show controls overlay is
+                                            // up, its center play/pause button already
+                                            // communicates the paused state — hide the big
+                                            // center play icon so the two never stack.
+                                            !(videoShowing && videoControlsVisible),
                                 )
 
                                 heartBursts.forEach { burst ->
@@ -440,13 +463,40 @@ internal fun TikTokSongPage(
         // anchor box with exactly the video's geometry — the same centering + aspect
         // ratio — so the pill tracks the letterboxed video, not the full screen. The
         // end clearance keeps the pill left of the TikTok action rail (48dp buttons +
-        // 10dp rail padding = 58dp from the screen edge, + 8dp gap).
-        if (videoShowing && !videoFullscreenHolder.isFullscreen) {
+        // 10dp rail padding = 58dp from the screen edge, + 8dp gap). The whole overlay
+        // only appears while the user has tapped the video once (videoControlsVisible);
+        // a second tap on the video hides it again.
+        if (videoShowing && !videoFullscreenHolder.isFullscreen && videoControlsVisible) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(modifier = Modifier.aspectRatio(videoRatio)) {
+                    // Center play/pause — hidden while the stream is still loading so
+                    // it never stacks on the video's loading spinner.
+                    if (!videoLoading) {
+                        IconButton(
+                            onClick = onTogglePlayPause,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .size(64.dp)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        CircleShape,
+                                    ),
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (isPlaying) R.drawable.solar_pause_linear else R.drawable.solar_play_linear,
+                                    ),
+                                contentDescription = stringResource(R.string.video_fs_play_pause),
+                                tint = Color.White,
+                                modifier = Modifier.size(44.dp),
+                            )
+                        }
+                    }
                     InlineVideoControlsPill(
                         modifier =
                             Modifier
