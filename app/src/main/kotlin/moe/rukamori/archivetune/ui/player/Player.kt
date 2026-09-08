@@ -1755,6 +1755,7 @@ fun BottomSheetPlayer(
                                 onPreferredHeightChange = { videoPreferredHeight = it },
                                 availableHeights = videoAvailableHeights,
                                 selectedHeight = videoSelectedHeight,
+                                controlsOnTap = true,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
@@ -2223,6 +2224,7 @@ fun BottomSheetPlayer(
                                 onPreferredHeightChange = { videoPreferredHeight = it },
                                 availableHeights = videoAvailableHeights,
                                 selectedHeight = videoSelectedHeight,
+                                controlsOnTap = true,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)

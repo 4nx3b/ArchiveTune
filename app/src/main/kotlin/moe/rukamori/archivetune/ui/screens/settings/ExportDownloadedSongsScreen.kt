@@ -405,8 +405,14 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             Modifier
                                 .fillMaxWidth()
                                 .windowInsetsPadding(
+                                    // Include the Bottom side so the selection bar
+                                    // (count + export/delete buttons) pads above the
+                                    // miniplayer and the gesture bar — previously the
+                                    // Horizontal-only inset let the miniplayer overlap
+                                    // and half-hide these controls.
                                     LocalPlayerAwareWindowInsets.current.only(
-                                        WindowInsetsSides.Horizontal,
+                                        WindowInsetsSides.Horizontal +
+                                            WindowInsetsSides.Bottom,
                                     ),
                                 ).padding(16.dp),
                     ) {

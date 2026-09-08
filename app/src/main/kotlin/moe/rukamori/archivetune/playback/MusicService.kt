@@ -7568,7 +7568,7 @@ class MusicService :
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
 
         if (playbackUrlCache[mediaId] != null) return
-        if (directStreamCache[mediaId]?.let { it.expiresAtMs > System.currentTimeMillis() } == true) return
+        if (hasFreshDirectStream(mediaId)) return
 
         if (isLowDataModeActive()) return
 
@@ -8272,7 +8272,7 @@ class MusicService :
             playbackUrlCache.remove(currentMediaId)
             contentLengthCache.remove(currentMediaId)
 
-            directStreamCache.remove(currentMediaId)
+            evictDirectStreamCache(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             failedUrl
                 ?.let(StreamClientUtils::resolveRequestProfile)
@@ -8357,7 +8357,7 @@ class MusicService :
         ) {
             val shouldResume = player.playWhenReady
             playbackUrlCache.remove(currentMediaId)
-            directStreamCache.remove(currentMediaId)
+            evictDirectStreamCache(currentMediaId)
             contentLengthCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             Timber.tag("MusicService").w(
@@ -8713,7 +8713,7 @@ class MusicService :
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
         scope.launch(Dispatchers.IO) {
 
-            directStreamCache.remove(mediaId)
+            evictDirectStreamCache(mediaId)
 
             runCatching {
                 val dummySpec = DataSpec.Builder().setUri(mediaId.toUri()).build()
@@ -8799,7 +8799,7 @@ class MusicService :
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
             tidalActiveMediaIds.remove(mediaId)
 
-            directStreamCache.remove(mediaId)
+            evictDirectStreamCache(mediaId)
 
             contentLengthCache.remove(mediaId)
             runCatching { playerCache.removeResource(mediaId) }
@@ -8906,38 +8906,53 @@ class MusicService :
         }.getOrNull()
 
         val now = System.currentTimeMillis()
-        val cached = directStreamCache[mediaId]
-        if (!isDirectPick && cached != null && cached.expiresAtMs > now) {
+        if (isDirectPick) {
+            // A direct pick (user chose a specific Qobuz track from the source
+            // search popup) always resolves fresh — drop any previously cached
+            // direct streams for this song first, mirroring the legacy behavior.
+            evictDirectStreamCache(mediaId)
+        } else {
+            // Per-source cache identities: every resolved direct stream is stored
+            // under its own source-scoped key ("<source>:<mediaId>"), so streams
+            // resolved from different providers coexist instead of evicting each
+            // other. Lookups walk the chain in the user's priority order (or the
+            // per-song override) and use the first fresh hit — reordering the
+            // download/source priority changes which cached stream is served
+            // without re-resolving or losing the other sources' cached streams.
             val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
-            val cacheHitsOverride =
-                if (override != null) {
-                    override == cached.stream.source
-                } else {
-                    cached.stream.source == sourceResolutionChain().firstOrNull()
+            val probeOrder =
+                when (override) {
+                    null -> sourceResolutionChain()
+                    AudioSourceType.YOUTUBE -> emptyList()
+                    else -> listOf(override)
                 }
-            if (cacheHitsOverride && !lowDataModeActive) {
-                Timber.tag("MusicService").d(
-                    "Multi-source cache HIT for %s: %s [%s]",
-                    mediaId,
-                    cached.stream.source.name,
-                    cached.stream.label,
-                )
-                tidalActiveMediaIds.add(mediaId)
-                audioNormalizationFactorCache[mediaId] = 1f
-                recordResolvedSource(mediaId, cached.stream.source)
-                val cacheKey = sourceCacheKey(cached.stream.source, mediaId)
-                cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
-                return dataSpec
-                    .buildUpon()
-                    .setUri(cached.stream.uri.toUri())
-                    .setKey(cacheKey)
-                    .build()
+            for (source in probeOrder) {
+                val cacheKey = sourceCacheKey(source, mediaId)
+                val cached = directStreamCache[cacheKey] ?: continue
+                if (cached.expiresAtMs <= now) {
+                    // Stale entry for this source — drop it so the resolver
+                    // refreshes it; other sources' entries stay untouched.
+                    directStreamCache.remove(cacheKey, cached)
+                    continue
+                }
+                if (!lowDataModeActive) {
+                    Timber.tag("MusicService").d(
+                        "Multi-source cache HIT for %s: %s [%s]",
+                        mediaId,
+                        source.name,
+                        cached.stream.label,
+                    )
+                    tidalActiveMediaIds.add(mediaId)
+                    audioNormalizationFactorCache[mediaId] = 1f
+                    recordResolvedSource(mediaId, source)
+                    cached.stream.contentLength?.takeIf { it > 0L }?.let { contentLengthCache[cacheKey] = it }
+                    return dataSpec
+                        .buildUpon()
+                        .setUri(cached.stream.uri.toUri())
+                        .setKey(cacheKey)
+                        .build()
+                }
             }
-
-            directStreamCache.remove(mediaId, cached)
-        } else if (cached != null) {
-
-            directStreamCache.remove(mediaId, cached)
         }
 
         val override =
@@ -9664,7 +9679,7 @@ class MusicService :
 
         persistDirectStreamFormat(mediaId, stream)
 
-        directStreamCache[mediaId] = CachedDirectStream(
+        directStreamCache[sourceCacheKey(stream.source, mediaId)] = CachedDirectStream(
             stream = stream,
             expiresAtMs = System.currentTimeMillis() + DIRECT_STREAM_CACHE_TTL_MS,
         )
@@ -9791,6 +9806,35 @@ class MusicService :
             AudioSourceType.QOBUZ -> "qobuz:$mediaId"
             else -> "${source.name.lowercase()}:$mediaId"
         }
+
+    /**
+     * Removes every per-source direct-stream cache entry for [mediaId]. The
+     * directStreamCache is keyed by source-scoped identities ("<source>:<mediaId>")
+     * so streams from different providers coexist; eviction therefore has to
+     * sweep all of them.
+     */
+    private fun evictDirectStreamCache(mediaId: String) {
+        AudioSourceType.entries.forEach { source ->
+            directStreamCache.remove(sourceCacheKey(source, mediaId))
+        }
+    }
+
+    /** True when ANY source still holds a fresh (unexpired) cached stream for [mediaId]. */
+    private fun hasFreshDirectStream(mediaId: String): Boolean {
+        val now = System.currentTimeMillis()
+        return AudioSourceType.entries.any { source ->
+            directStreamCache[sourceCacheKey(source, mediaId)]?.expiresAtMs?.let { it > now } == true
+        }
+    }
+
+    /**
+     * Candidate DataSpec cache keys for a song, in the user's audio-source
+     * priority order first (the source pinned by the current reorder wins when
+     * several providers have cached bytes for this song), with the legacy plain
+     * mediaId key (YouTube, the fallback) always probed last.
+     */
+    private fun cachedDataSpecCandidateKeys(mediaId: String): List<String> =
+        sourceResolutionChain().map { sourceCacheKey(it, mediaId) } + mediaId
 
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
@@ -10196,7 +10240,7 @@ class MusicService :
 
                 else -> {
 
-                    val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+                    val candidateKeys = cachedDataSpecCandidateKeys(mediaId)
                     val maxCachedLength =
                         candidateKeys.maxOfOrNull { key ->
                             runCatching {
@@ -10228,7 +10272,7 @@ class MusicService :
                 }
             }
 
-        val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+        val candidateKeys = cachedDataSpecCandidateKeys(mediaId)
         val matchingKey = candidateKeys.firstOrNull { key ->
             getContinuousCachedLengthForKey(
                 key = key,
@@ -10289,7 +10333,7 @@ class MusicService :
         val targetEnd = position.saturatingAdd(requestedLength)
         var cursor = position
 
-        val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+        val candidateKeys = cachedDataSpecCandidateKeys(mediaId)
         val playerCacheSpans =
             if (includePlayerCache) {
                 candidateKeys.flatMap { key ->

@@ -1263,6 +1263,7 @@ private fun AppleMusicSharpArtwork(
 
         if (showVideo) {
             InlineVideoPlayer(
+                controlsOnTap = true,
                 modifier = Modifier.matchParentSize(),
             )
         }

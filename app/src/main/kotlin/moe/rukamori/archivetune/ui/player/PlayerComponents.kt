@@ -2349,6 +2349,7 @@ private fun V9Artwork(
 
         if (showVideo) {
             InlineVideoPlayer(
+                controlsOnTap = true,
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -244,6 +244,14 @@ fun InlineVideoPlayer(
      * layer where the buttons stay tappable.
      */
     showControls: Boolean = true,
+    /**
+     * When true, a single tap on the video reveals the controls overlay — the
+     * quality/fullscreen pill PLUS a center play/pause button — and a second tap
+     * hides them again. When false (default) the pill is always visible, which
+     * preserves the legacy behavior for small surfaces whose parent rows own the
+     * tap events (e.g. thumbnail/miniplayer rows).
+     */
+    controlsOnTap: Boolean = false,
 ) {
     if (state == null) {
         onPlaybackFailed()
@@ -259,7 +267,25 @@ fun InlineVideoPlayer(
     val thumbnailUrl = mediaMetadata?.thumbnailUrl
 
     if (!isFullscreen) {
-        Box(modifier = modifier) {
+        var controlsVisible by remember { mutableStateOf(false) }
+        val fallbackPlayingFlow = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
+        val isPlaying by (playerConnection?.isPlaying ?: fallbackPlayingFlow)
+            .collectAsStateWithLifecycle()
+
+        Box(
+            modifier =
+                modifier.then(
+                    if (controlsOnTap) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { controlsVisible = !controlsVisible },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             VideoArtworkSurface(
                 state = state,
                 resizeMode = resizeMode,
@@ -281,9 +307,37 @@ fun InlineVideoPlayer(
                 }
             }
 
+            // Center play/pause revealed together with the pill while the controls
+            // are up. Hidden while the stream is loading so it never stacks on the
+            // video's loading spinner.
+            if (controlsOnTap && controlsVisible && !isLoadingState(state) && playerConnection != null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconButton(
+                        onClick = { playerConnection.player.togglePlayPause() },
+                        modifier =
+                            Modifier
+                                .size(64.dp)
+                                .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (isPlaying) R.drawable.solar_pause_linear else R.drawable.solar_play_linear,
+                                ),
+                            contentDescription = stringResource(R.string.video_fs_play_pause),
+                            tint = Color.White,
+                            modifier = Modifier.size(44.dp),
+                        )
+                    }
+                }
+            }
+
             // Controls overlay: quality picker + fullscreen button, grouped in a single
             // dark pill so the inline and fullscreen controls look consistent.
-            if (showControls) {
+            if (showControls && (!controlsOnTap || controlsVisible)) {
                 InlineVideoControlsPill(
                     preferredHeight = preferredHeight,
                     onPreferredHeightChange = onPreferredHeightChange,

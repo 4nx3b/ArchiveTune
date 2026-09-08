@@ -272,8 +272,12 @@ class DownloadUtil
                     }
                 }
 
-                for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
-                    val sourceKey = "$sourcePrefix$mediaId"
+                // Probe the per-source disk caches in the user's download-source
+                // PRIORITY order — the cached stream from the top-priority source
+                // (identified by its source-scoped cache key) wins.
+                for (source in downloadSourceOrder) {
+                    if (source == DownloadSource.YOUTUBE_MUSIC) continue
+                    val sourceKey = "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
                     val sourceExpected = expectedLength
                     if (sourceExpected > 0L) {
                         val cachedBytes = runCatching {
@@ -451,7 +455,21 @@ class DownloadUtil
                 runCatching { PoolAccountManager.refresh(appContext) }
             }
 
-            for (key in DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" } + mediaId) {
+            // Probe the per-source disk caches in the user's download-source
+            // PRIORITY order (each cached stream's identity is its source-scoped
+            // key "<source>:<mediaId>"), then the plain mediaId key (YouTube) —
+            // so the top-priority source's cached stream wins, matching the
+            // playback resolver's cache-identity behavior.
+            val priorityProbeKeys =
+                downloadSourceOrder
+                    .map { source ->
+                        if (source == DownloadSource.YOUTUBE_MUSIC) {
+                            mediaId
+                        } else {
+                            "${source.name.lowercase(java.util.Locale.US)}:$mediaId"
+                        }
+                    }.distinct() + mediaId
+            for (key in priorityProbeKeys) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
                     val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
