@@ -5,12 +5,11 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Plain models for the Telegram channel browser plus the lossless-format detection used to filter
- * channel content. Kept free of Android/mtcute imports so the detection logic is unit-testable.
+ * channel content. Kept free of Android/TDLib imports so the detection logic is unit-testable.
  *
- * Track addressing changed with the TDLib -> mtcute swap: TDLib-local file ids
- * are gone; a track now carries the server-stable unique file id
- * ("<docId>:<dcId>") plus the raw document coordinates (docId / accessHash /
- * fileReference / dcId) needed to build MTProto download locations.
+ * Track addressing: a track carries the server-stable unique file id
+ * ("<docId>:<dcId>") plus the raw chat/message coordinates; TDLib-local
+ * file ids are session-scoped and only used transiently for downloads.
  */
 
 package moe.rukamori.archivetune.telegram
@@ -24,9 +23,6 @@ data class TelegramChannel(
     val memberCount: Int,
     val isBroadcastChannel: Boolean,
     val photoMinithumbnail: ByteArray?,
-
-    // mtcute era: chat photos are resolved by chat id (inputPeerPhotoFileLocation)
-    val photoDownloadable: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean = other is TelegramChannel && other.chatId == chatId
 
@@ -36,11 +32,12 @@ data class TelegramChannel(
 data class TelegramTrack(
     val chatId: Long,
     val messageId: Long,
+
+    /** TDLib-local file id (session-scoped; used to drive downloads). */
+    val fileId: Int,
+
+    /** Server-stable unique file id ("<docId>:<dcId>"), persisted in media ids. */
     val fileUniqueId: String,
-    val docId: String,
-    val accessHash: String,
-    val fileReference: String,
-    val dcId: Int,
     val title: String,
     val performer: String?,
     val fileName: String,
@@ -50,6 +47,8 @@ data class TelegramTrack(
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
 
+    /** TDLib file id of the album-cover/document thumbnail. */
+    val thumbnailFileId: Int,
     val hasThumbnail: Boolean = false,
 ) {
     val mediaId: String

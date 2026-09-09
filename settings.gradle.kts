@@ -45,6 +45,7 @@ dependencyResolutionManagement {
                 includeGroup("com.github.therealbush")
                 includeGroup("com.github.TeamNewPipe")
 
+                includeGroup("com.github.tdlibx")
 
                 includeGroup("com.github.amitshekhariitbhu")
 

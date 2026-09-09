@@ -11,7 +11,7 @@
  *   1. a high-resolution catalogue cover looked up online by title/artist
  *      (TelegramCoverProvider),
  *   2. the album-cover thumbnail embedded in the Telegram document (downloaded
- *      from the mtcute host),
+ *      through TDLib),
  *   3. nothing (Coil shows the placeholder).
  * This keeps the player art crisp without eagerly downloading covers for the
  * whole queue.
@@ -40,7 +40,7 @@ private const val TELEGRAM_ART_TRACK_AUTHORITY = "track"
 
 /**
  * Artwork model for a Telegram track. Addressed by chat + message so the
- * document thumbnail can be fetched through the mtcute host on demand.
+ * document thumbnail can be fetched through TDLib on demand.
  */
 fun telegramArtworkModel(
     chatId: Long,
