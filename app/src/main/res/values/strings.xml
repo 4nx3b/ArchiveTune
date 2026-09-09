@@ -1620,6 +1620,8 @@
     <string name="telegram_password_step_description">Enter your Telegram two-step verification password.</string>
     <string name="telegram_login_success">Telegram connected</string>
     <string name="telegram_auth_unsupported">Unsupported login step: %1$s. Try signing in with the official Telegram app first.</string>
+    <string name="telegram_runtime_failed">Telegram engine failed to start: %1$s. Check your connection and try again.</string>
+    <string name="telegram_runtime_failed_unknown">unknown error</string>
     <string name="telegram_browse_channels">Browse channels</string>
     <string name="telegram_browse_channels_description">Search Telegram channels and stream their audio files</string>
     <string name="telegram_search_channels_hint">Channel name, @username or t.me link</string>

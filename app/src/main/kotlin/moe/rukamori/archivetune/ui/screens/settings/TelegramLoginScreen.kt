@@ -102,8 +102,15 @@ fun TelegramLoginScreen(navController: NavController) {
     LaunchedEffect(Unit) {
         callingCode = defaultCallingCode(context)
         if (!TelegramClient.ensureStartedAwait(context)) {
-            Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
-            navController.navigateUp()
+            val state = TelegramClient.authState.value
+            // runtime failures stay on-screen with their detail instead of
+            // bouncing the user back to settings
+            if (state !is TelegramAuthState.RuntimeFailed &&
+                state !is TelegramAuthState.Unsupported
+            ) {
+                Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
+                navController.navigateUp()
+            }
         }
     }
 
@@ -249,6 +256,15 @@ fun TelegramLoginScreen(navController: NavController) {
                         onPasswordChange = { password = it },
                         busy = busy,
                         onContinue = { submit { TelegramClient.submitPassword(password) } },
+                    )
+                }
+
+                state is TelegramAuthState.RuntimeFailed -> {
+                    val detail = state.detail ?: stringResource(R.string.telegram_runtime_failed_unknown)
+                    Text(
+                        text = stringResource(R.string.telegram_runtime_failed, detail),
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
                     )
                 }
 

@@ -11,24 +11,34 @@
  * storage (TgJsStorage) and a queued event pump.
  *
  * Protocol (see scripts/telegram-js/host/banner.js):
- *   Kotlin -> JS:  __tgApiCall(method, jsonParams) -> JSON (or __error envelope)
- *                  __tgApiCallBin(method, jsonParams) -> Int8Array
- *   JS -> Kotlin:  __tgPollEvent() -> [type, ...]  (socket frames + timers)
+ *   Kotlin -> JS:  __tgWaitRpc() -> [id, method, jsonParams, isBinary]
+ *                  (async binding; the JS main loop dispatches each request)
+ *   JS -> Kotlin:  __tgResolveRpc(id, jsonString)              (JSON results)
+ *                  __tgResolveRpcBin(id, err, Int8Array)        (binary results)
+ *                  __tgSignalReady()                            (startup ack)
+ *   events:         __tgPollEvent() -> [type, ...]  (socket frames + timers)
  *                  __tgOnClientEvent(type, json)    (new messages for bots)
  *
- * The runtime lives on a dedicated dispatcher thread with a large stack, the
- * same pattern the YouTube cipher engine uses (QuickJS runs deep JS stacks on
- * the native thread).
+ * The whole host runs inside ONE long-lived root evaluation ("the JS
+ * process"). That is a hard requirement of quickjs-kt 1.0.14: a root
+ * evaluate() keeps draining the JS job queue while it is in flight and waits
+ * for the async-binding jobs created in its session — the banner's event pump
+ * arms exactly such a never-settling job (__tgPollEvent), so a short-lived
+ * evaluate() would hang on it forever (that was the "RuntimeStartFailed"
+ * login hang). RPC calls therefore never evaluate anything themselves; they
+ * are queued through __tgWaitRpc and completed through __tgResolveRpc[Bin],
+ * and the always-in-flight root evaluation keeps timers, WebSocket frames
+ * and the event pump live between calls.
  */
 
 package moe.rukamori.archivetune.telegram
 
 import android.content.Context
 import com.dokar.quickjs.QuickJs
-import com.dokar.quickjs.QuickJsException
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.function
-import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -48,10 +58,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -64,6 +75,7 @@ import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 class TelegramJsException(message: String) : java.io.IOException(message)
 
@@ -72,8 +84,69 @@ internal object TgJsRuntime {
 
     private const val ASSET_PATH = "telegram/mtcute_host.js"
 
+    /** Bounds "bundle parsed + host signalled readiness" (sync JS phase only). */
     private const val STARTUP_TIMEOUT_MS = 60_000L
+
     private const val CALL_TIMEOUT_MS = 120_000L
+
+    private const val TGERR_MARKER = "TGERR:"
+
+    /** Prefix the JS main loop adds to JSON-path errors that are not envelopes. */
+    private const val BRIDGE_ERROR_PREFIX = "__bridge__"
+
+    /**
+     * Appended after the mtcute bundle inside the single root evaluation.
+     * Signals readiness synchronously, then forever takes RPC requests from
+     * the Kotlin bridge and dispatches each one as an independent promise
+     * chain, so a slow RPC never blocks the queue. Kept in sync with
+     * scripts/telegram-js/host/mainloop.js (that copy exists for the Node
+     * smoke test; check_mainloop_sync.js verifies they match).
+     */
+    private const val MAIN_LOOP_JS = ";(function () {\n" +
+        "  'use strict'\n" +
+        "  function rpcErrText(e) {\n" +
+        "    var msg = (e && (e.message || e.text)) || String(e)\n" +
+        "    return String(msg)\n" +
+        "  }\n" +
+        "  function dispatchRpc(req) {\n" +
+        "    var id = req[0]\n" +
+        "    var method = req[1]\n" +
+        "    var params = req[2]\n" +
+        "    if (req[3]) {\n" +
+        "      Promise.resolve()\n" +
+        "        .then(function () { return globalThis.__tgApiCallBin(method, params) })\n" +
+        "        .then(\n" +
+        "          function (bytes) { globalThis.__tgResolveRpcBin(id, null, bytes) },\n" +
+        "          function (e) { globalThis.__tgResolveRpcBin(id, rpcErrText(e), null) },\n" +
+        "        )\n" +
+        "    } else {\n" +
+        "      Promise.resolve()\n" +
+        "        .then(function () { return globalThis.__tgApiCall(method, params) })\n" +
+        "        .then(\n" +
+        "          function (json) { globalThis.__tgResolveRpc(id, json) },\n" +
+        "          function (e) { globalThis.__tgResolveRpc(id, '__bridge__' + rpcErrText(e)) },\n" +
+        "        )\n" +
+        "    }\n" +
+        "  }\n" +
+        "  globalThis.__tgSignalReady()\n" +
+        "  ;(async function () {\n" +
+        "    while (true) {\n" +
+        "      var req\n" +
+        "      try {\n" +
+        "        req = await globalThis.__tgWaitRpc()\n" +
+        "      } catch (e) {\n" +
+        "        try { globalThis.__tgLog(40, 'rpc', 'waitRpc failed: ' + rpcErrText(e)) } catch (ignored) {}\n" +
+        "        return\n" +
+        "      }\n" +
+        "      if (req == null) return\n" +
+        "      try {\n" +
+        "        dispatchRpc(req)\n" +
+        "      } catch (e) {\n" +
+        "        try { globalThis.__tgLog(40, 'rpc', 'dispatch failed: ' + rpcErrText(e)) } catch (ignored) {}\n" +
+        "      }\n" +
+        "    }\n" +
+        "  })()\n" +
+        "})();"
 
     /** Events produced by the Kotlin side, consumed by the JS event pump. */
     private val bridgeEvents = Channel<List<Any?>>(capacity = Channel.UNLIMITED)
@@ -95,11 +168,28 @@ internal object TgJsRuntime {
     private var appContext: Context? = null
 
     private var quickJs: QuickJs? = null
-    private var jsDispatcher: CoroutineDispatcher? = null
+
     private var jsScope: CoroutineScope? = null
 
+    private var loopJob: Job? = null
+
     private val startMutex = Mutex()
-    private val callMutex = Mutex()
+
+    /** Kotlin -> JS RPC queue; drained by the JS main loop (__tgWaitRpc). */
+    private var rpcRequests = Channel<RpcRequest>(capacity = Channel.UNLIMITED)
+
+    /** JS -> Kotlin completions, keyed by call id (__tgResolveRpc[Bin]). */
+    private val pendingCalls = ConcurrentHashMap<Long, CompletableDeferred<Any?>>()
+
+    private val nextCallId = AtomicLong(1)
+
+    /** "ready" once the JS host signalled readiness, "failed: …" on early death. */
+    private var hostReady = CompletableDeferred<String>()
+
+    /** Last start/loop failure reason, surfaced through the login error UI. */
+    @Volatile
+    var lastStartError: String? = null
+        private set
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -128,14 +218,29 @@ internal object TgJsRuntime {
     // lifecycle
     // ---------------------------------------------------------------------------
 
+    /**
+     * Boots the QuickJS host and waits (bounded) for the JS side to signal
+     * readiness. The mtcute bundle + the main-loop wrapper are evaluated as
+     * ONE long-lived root evaluation, which quickjs-kt keeps draining while
+     * it is in flight — that is what keeps the event pump, timers and
+     * WebSocket transport alive between RPCs.
+     */
     suspend fun start(context: Context): Boolean =
         startMutex.withLock {
             if (isRunning) return true
+
+            // a previous start may have left a half-alive instance in Failed
+            // state (thread + QuickJS still around) — tear it down first
+            closeInternal()
 
             val ctx = context.applicationContext
             appContext = ctx
             TgJsStorage.attach(ctx)
             _runtimeState.value = State.Starting
+            lastStartError = null
+            rpcRequests = Channel(capacity = Channel.UNLIMITED)
+            pendingCalls.clear()
+            hostReady = CompletableDeferred()
 
             val executor =
                 Executors.newSingleThreadExecutor { runnable ->
@@ -147,8 +252,8 @@ internal object TgJsRuntime {
                     }
                 }
             val dispatcher = executor.asCoroutineDispatcher()
-            jsDispatcher = dispatcher
-            jsScope = CoroutineScope(SupervisorJob() + dispatcher)
+            val scope = CoroutineScope(SupervisorJob() + dispatcher)
+            jsScope = scope
 
             try {
                 val instance = QuickJs.create(dispatcher)
@@ -157,18 +262,42 @@ internal object TgJsRuntime {
                 instance.memoryLimit = 256L * 1024 * 1024
                 instance.maxStackSize = 16L * 1024 * 1024
                 quickJs = instance
-                withContext(dispatcher) {
-                    registerBindings(instance)
-                    val source = ctx.assets.open(ASSET_PATH).use { it.readBytes().toString(Charsets.UTF_8) }
-                    withTimeout(STARTUP_TIMEOUT_MS) {
-                        instance.evaluate<String?>(source + "\n;undefined;")
+                val source =
+                    ctx.assets.open(ASSET_PATH).use { it.readBytes().toString(Charsets.UTF_8) }
+                withContext(dispatcher) { registerBindings(instance) }
+
+                loopJob =
+                    scope.launch {
+                        try {
+                            // Never returns on the happy path: the main loop's
+                            // __tgWaitRpc job and the pump's __tgPollEvent job
+                            // (both bound to this root session) stay active, so
+                            // quickjs-kt keeps this evaluation in flight and
+                            // keeps draining its job queue.
+                            instance.evaluate<String?>(source + "\n" + MAIN_LOOP_JS + "\n;undefined;")
+                            onLoopEnded("host root evaluation returned unexpectedly")
+                        } catch (e: CancellationException) {
+                            throw e // normal close()/restart() teardown
+                        } catch (e: Exception) {
+                            onLoopEnded("host evaluation failed: ${e.message ?: e.javaClass.simpleName}")
+                        }
                     }
+
+                val outcome = withTimeoutOrNull(STARTUP_TIMEOUT_MS) { hostReady.await() }
+                if (outcome == "ready") {
+                    _runtimeState.value = State.Running
+                    Timber.tag(TAG).i("mtcute host runtime started")
+                    true
+                } else {
+                    lastStartError = outcome ?: "host startup timed out after ${STARTUP_TIMEOUT_MS / 1000}s"
+                    Timber.tag(TAG).e("mtcute host failed to start: %s", lastStartError)
+                    closeInternal()
+                    _runtimeState.value = State.Failed
+                    false
                 }
-                _runtimeState.value = State.Running
-                Timber.tag(TAG).i("mtcute host runtime started")
-                true
             } catch (e: Exception) {
                 Timber.tag(TAG).e(e, "failed to start the mtcute host runtime")
+                lastStartError = e.message ?: e.javaClass.simpleName
                 closeInternal()
                 _runtimeState.value = State.Failed
                 false
@@ -190,13 +319,37 @@ internal object TgJsRuntime {
     private fun closeInternal() {
         jsScope?.cancel()
         jsScope = null
+        loopJob = null
         runCatching { quickJs?.close() }
         quickJs = null
+        failPendingCalls("runtime closed")
+        rpcRequests.close()
         sockets.values.forEach { runCatching { it.cancel() } }
         sockets.clear()
         timerJobs.values.forEach { it.cancel() }
         timerJobs.clear()
         TgJsCrypto.clear()
+    }
+
+    /** Called when the root evaluation ends on its own — it never should. */
+    private fun onLoopEnded(reason: String) {
+        if (hostReady.isActive) {
+            hostReady.complete("failed: $reason")
+        }
+        if (_runtimeState.value == State.Running) {
+            lastStartError = reason
+            _runtimeState.value = State.Failed
+            Timber.tag(TAG).e("mtcute host loop ended: %s", reason)
+            failPendingCalls(reason)
+        }
+    }
+
+    private fun failPendingCalls(reason: String) {
+        val pending = pendingCalls.values.toList()
+        pendingCalls.clear()
+        for (deferred in pending) {
+            deferred.completeExceptionally(TelegramJsException("mtcute host is not running ($reason)"))
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -336,6 +489,29 @@ internal object TgJsRuntime {
             }
             null
         }
+
+        // -- RPC bridge (Kotlin -> JS requests, JS -> Kotlin completions)
+        instance.function("__tgSignalReady") { _ ->
+            hostReady.complete("ready")
+            null
+        }
+        instance.asyncFunction("__tgWaitRpc") { _ ->
+            val request = rpcRequests.receive()
+            listOf(request.id, request.method, request.params, request.binary)
+        }
+        instance.function("__tgResolveRpc") { args ->
+            val id = args.arg(0).asLongCompat()
+            val payload = args.arg(1).asStringCompat()
+            pendingCalls.remove(id)?.complete(payload)
+            null
+        }
+        instance.function("__tgResolveRpcBin") { args ->
+            val id = args.arg(0).asLongCompat()
+            val error = args.arg(1).asStringCompat()
+            val bytes = args.arg(2).asByteArrayCompat()
+            pendingCalls.remove(id)?.complete(if (error.isEmpty()) bytes else error)
+            null
+        }
     }
 
     private fun logLine(level: Int, tag: String, message: String) {
@@ -434,7 +610,12 @@ internal object TgJsRuntime {
         params: String = "{}",
         timeoutMs: Long = CALL_TIMEOUT_MS,
     ): JsonObject {
-        val raw = evalCall(method, params, timeoutMs)
+        val raw =
+            invokeRpc(method, params, binary = false, timeoutMs) as? String
+                ?: throw TelegramJsException("Malformed host response for $method")
+        if (raw.startsWith(BRIDGE_ERROR_PREFIX)) {
+            throw TelegramApiException(0, raw.removePrefix(BRIDGE_ERROR_PREFIX).substringBefore('\n'))
+        }
         val parsed =
             try {
                 json.parseToJsonElement(raw).jsonObject
@@ -457,44 +638,41 @@ internal object TgJsRuntime {
         params: String = "{}",
         timeoutMs: Long = CALL_TIMEOUT_MS,
     ): ByteArray {
-        val instance = quickJs ?: throw TelegramJsException("mtcute host is not running")
-        val dispatcher = jsDispatcher ?: throw TelegramJsException("mtcute host is not running")
-        val code = "await __tgApiCallBin(${jsStringLiteral(method)},${jsStringLiteral(params)})"
-        return try {
-            withTimeout(timeoutMs) {
-                withContext(dispatcher) {
-                    callMutex.withLock {
-                        instance.evaluate<ByteArray>(code)
-                    }
-                }
-            }
-        } catch (e: QuickJsException) {
-            throw parseBinaryError(e)
+        when (val result = invokeRpc(method, params, binary = true, timeoutMs)) {
+            is ByteArray -> return result
+            is String -> throw binaryErrorFromMessage(result)
+            else -> throw TelegramJsException("Malformed binary host response for $method")
         }
     }
 
-    private suspend fun evalCall(
+    /**
+     * Enqueues one RPC for the JS main loop and awaits the completion the JS
+     * side reports through __tgResolveRpc[Bin]. Timed-out calls keep running
+     * JS-side (late resolutions for stale ids are dropped), so mtcute's own
+     * state machine always advances consistently.
+     */
+    private suspend fun invokeRpc(
         method: String,
         params: String,
+        binary: Boolean,
         timeoutMs: Long,
-    ): String {
-        val instance = quickJs ?: throw TelegramJsException("mtcute host is not running")
-        val dispatcher = jsDispatcher ?: throw TelegramJsException("mtcute host is not running")
-        val code = "await __tgApiCall(${jsStringLiteral(method)},${jsStringLiteral(params)})"
-        return withTimeout(timeoutMs) {
-            withContext(dispatcher) {
-                callMutex.withLock {
-                    instance.evaluate<String?>(code) ?: "{}"
-                }
-            }
+    ): Any? {
+        if (!isRunning) throw TelegramJsException("mtcute host is not running")
+        val id = nextCallId.getAndIncrement()
+        val deferred = CompletableDeferred<Any?>()
+        pendingCalls[id] = deferred
+        try {
+            rpcRequests.trySend(RpcRequest(id, method, params, binary))
+            return withTimeout(timeoutMs) { deferred.await() }
+        } finally {
+            pendingCalls.remove(id)
         }
     }
 
-    private fun parseBinaryError(e: QuickJsException): TelegramApiException {
-        val message = e.message ?: ""
-        val marker = message.indexOf("TGERR:")
+    private fun binaryErrorFromMessage(message: String): TelegramApiException {
+        val marker = message.indexOf(TGERR_MARKER)
         if (marker >= 0) {
-            val payload = message.substring(marker + "TGERR:".length).substringBefore('\n')
+            val payload = message.substring(marker + TGERR_MARKER.length).substringBefore('\n')
             return try {
                 val obj = json.parseToJsonElement(payload).jsonObject
                 TelegramApiException(
@@ -543,25 +721,10 @@ internal object TgJsRuntime {
 
     private fun Any?.asByteArrayCompat(): ByteArray = this as? ByteArray ?: ByteArray(0)
 
-    /** Valid JavaScript double-quoted string literal (same escaping as the cipher engine). */
-    private fun jsStringLiteral(s: String): String =
-        buildString(s.length + 2) {
-            append('"')
-            for (c in s) {
-                when (c) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else ->
-                        if (c.code < 0x20) {
-                            append("\\u%04x".format(c.code))
-                        } else {
-                            append(c)
-                        }
-                }
-            }
-            append('"')
-        }
+    private class RpcRequest(
+        val id: Long,
+        val method: String,
+        val params: String,
+        val binary: Boolean,
+    )
 }

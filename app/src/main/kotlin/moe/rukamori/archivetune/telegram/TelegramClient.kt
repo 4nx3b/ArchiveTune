@@ -66,6 +66,11 @@ sealed interface TelegramAuthState {
 
     data object LoggingOut : TelegramAuthState
 
+    /** The QuickJS/mtcute host itself failed to boot (not an auth problem). */
+    data class RuntimeFailed(
+        val detail: String?,
+    ) : TelegramAuthState
+
     data class Unsupported(
         val stateName: String,
     ) : TelegramAuthState
@@ -145,6 +150,7 @@ object TelegramClient {
         if (!hasApiCredentials) return false
         if (initialized || isReady) return true
         if (_authState.value is TelegramAuthState.Unsupported) return false
+        if (_authState.value is TelegramAuthState.RuntimeFailed) return false
         appContext = context.applicationContext
         scope.launch {
             runCatching { initialize(context) }
@@ -170,7 +176,8 @@ object TelegramClient {
             if (initialized && (TgJsRuntime.isRunning || isReady)) return true
 
             if (!TgJsRuntime.start(context)) {
-                _authState.value = TelegramAuthState.Unsupported("RuntimeStartFailed")
+                _authState.value =
+                    TelegramAuthState.RuntimeFailed(TgJsRuntime.lastStartError?.take(200))
                 return false
             }
             TelegramStreamCache.attach(context)
