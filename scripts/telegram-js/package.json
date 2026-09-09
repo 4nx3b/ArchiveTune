@@ -5,7 +5,7 @@
   "description": "Build environment for the mtcute (MTProto) host bundle embedded in ArchiveTune (app/src/main/assets/telegram/mtcute_host.js). Run build.sh to rebuild; run test/smoke.js to verify.",
   "scripts": {
     "build": "bash build.sh",
-    "test": "node test/smoke.js && node test/url_polyfill.js && node test/check_mainloop_sync.js",
+    "test": "node test/smoke.js && node test/url_polyfill.js && node test/ige_reference.js && node test/check_mainloop_sync.js",
     "test:real": "node test/real_network.js"
   },
   "dependencies": {
