@@ -1387,3 +1387,98 @@ Stage Summary:
   scripts/telegram-js/package.json (test wiring).
 - Next: on-device retest of phone -> OTP -> (2FA) login; TDLib-era
   sessions still need the one-time re-login documented in Task 24.
+
+---
+Task ID: 27
+Agent: main (Super Z)
+Task: User retested the 4b7be379f URL-polyfill build: "it's still the same" — Telegram OTP login still never sends / always times out. Find the real root cause and fix it.
+
+Work Log:
+- Confirmed CI was fully green for 41e85bcb1 (incl. the URL fix), so the
+  user's build contained 4b7be379f; the hang had to be a later failure.
+  Recreated a clean worktree at .worktrees/dev (detached at origin/dev).
+- npm install + build.sh in scripts/telegram-js; smoke 20/20, url_polyfill
+  27/27 passed. Re-ran test/real_network.js: still dies right after
+  req_DH_params — server answers resPQ, client sends the 344B
+  req_DH_params, server replies an 8B intermediate error frame (=4B int32)
+  plus a WS close with reason "404", mtcute logs "transport error 404" and
+  reconnects forever (Task 26 had blamed datacenter-IP throttling).
+- DECISIVE EXPERIMENT #1 (test/reference_crypto.mjs): ran mtcute with its
+  REFERENCE crypto (WebCryptoProvider + @mtcute/wasm, node `ws` transport)
+  from the same sandbox IP — the full MTProto 2.2 authorization completed
+  ("authorization successful"). The IP is NOT throttled; the 404 is
+  content-triggered by OUR crypto bridge contract.
+- Bisected each primitive in plain-realm (test/bisect_bridge.mjs:
+  factorize/ige/ctr/sha individually swapped into the reference provider):
+  every single one passed — the contract only fails as a whole inside the
+  vm+banner environment.
+- DECISIVE EXPERIMENT #2 (test/vm_wasm_bisect.mjs): the exact committed
+  banner+bundle inside a Node vm, but with the __tg* bridge backed by the
+  wasm reference — full authorization in ~2.7s on ONE connection. (First
+  run stalled because my harness i8() reused the ws Buffer's pool-backed
+  view and the banner dispatches data.buffer; matching real_network's
+  copy-on-convert i8() fixed it. Also confirmed along the way that the
+  obfuscation CTR IV is 16B and u8.alloc always returns zeroed pool
+  memory, so rsaPad's IGE IV is 32 zero bytes in both realms.)
+- FINAL BISECT (test/mix_bisect.mjs): node-mirror bridge with exactly ONE
+  function swapped to wasm. MIX=ige -> authorizes; MIX=sha1/sha256/none ->
+  still fail. THE BUG IS AES-IGE.
+- In-call comparison (mix_bisect mismatch logging) showed the node-mirror
+  IGE matches the wasm reference only for the FIRST 16-byte block, then
+  diverges — a classic chaining-state bug.
+- ROOT CAUSE (app/src/main/kotlin/.../TgJsCrypto.kt aesIge, mirrored 1:1
+  in real_network.js):
+  1) encrypt advanced ivX (c_{i-1}) to the bare ECB output E(p_i^c_{i-1})
+     instead of the emitted ciphertext block E(p_i^c_{i-1})^p_{i-1};
+  2) decrypt used the encrypt XOR pattern (block^ivX, D()^ivY) instead of
+     the mirror pattern (block^ivY, D()^ivX) and likewise wrong state
+     updates. With the rsaPad zero IV the first block coincidentally
+     matched, so every subsequent block of req_DH_params' encrypted_data
+     was garbage -> the server killed every connection with transport
+     error 404 -> mtcute reconnected forever -> 'init' never resolved in
+     Kotlin's 25s window and Send Code always hit the 45s
+     INTERACTIVE_CALL_TIMEOUT ("Timed out waiting for 45000 ms").
+  The Task-26 URL fix was necessary but not sufficient: without it the
+  connection crashed at open; with it, the IGE bug surfaced. The "IP
+  throttling" theory from Task 26 is disproven by experiment #1.
+- FIX: TgJsCrypto.aesIge rewritten to the spec
+  (encrypt c_i = E(p_i^c_{i-1})^p_{i-1}, decrypt p_i = D(c_i^p_{i-1})^c_{i-1},
+  state = full previous output/input blocks after the outer XOR, new
+  xor16 helper); aesCtrOpen now clamps the IV to 16B defensively (mirrors
+  the reference wasm). real_network.js's Node mirror updated identically.
+- NEW GUARD: test/ige_reference.js pins the IGE contract to
+  @mtcute/wasm's ige256Encrypt/Decrypt — 28/28 checks (random 1-21-block
+  vectors both directions, zero-32B-IV rsaPad shape, node-encrypt ->
+  wasm-decrypt and vice versa, multi-block tail equality). Wired into
+  `npm test` (package.json: smoke + url_polyfill + ige_reference +
+  check_mainloop_sync; test:real unchanged).
+- Verification: kotlin_balance_check OK on TgJsCrypto.kt; npm test exit 0;
+  real_network.js end-to-end TWICE against the real Telegram servers —
+  both complete the whole handshake (req_pq -> resPQ -> factorize ->
+  req_DH_params -> server_DH_params_ok 656B -> set_client_DH_params ->
+  dh_gen_ok 76B -> bind_persistent_temp_key -> RPC traffic) in ~3s on a
+  single connection, zero transport errors, and post-auth encrypted RPC
+  round-trips return the expected CONNECTION_API_ID_INVALID (apiId=0 in
+  the harness) — proving the IGE-encrypted message channel works in both
+  directions, not just the handshake.
+- Committed 9349519ae on dev through the .worktrees/dev clean worktree
+  and pushed; 'check' compile gate green, remaining APK builds polling.
+
+Stage Summary:
+- Root cause of "never sends / always timeout" OTP login: incorrect
+  AES-IGE chaining in TgJsCrypto (and its Node harness mirror) — only the
+  first block of every IGE buffer was correct; req_DH_params was
+  undecryptable, the server 404'd every connection, authorization looped
+  forever and the Kotlin RPCs timed out.
+- Fix: spec-correct IGE (both encrypt and decrypt state machines) +
+  16B-IV clamp on CTR; ige_reference.js regression test wired into npm
+  test; real_network.js harness now proves full end-to-end authorization
+  against production Telegram servers from the sandbox.
+- Key artifacts: app/src/main/kotlin/moe/rukamori/archivetune/telegram/
+  TgJsCrypto.kt (fix), scripts/telegram-js/test/{ige_reference.js,
+  real_network.js, reference_crypto.mjs, vm_wasm_bisect.mjs,
+  mix_bisect.mjs, bisect_bridge.mjs, wasm_ctr_unit.mjs} (guard + the
+  experiment harnesses that pin the bridge contract to the mtcute
+  reference; the .mjs ones remain local-only dev tools).
+- Next: user retests on-device phone -> OTP -> (2FA) login; TDLib swap
+  request stays deferred while mtcute now demonstrably authorizes.
