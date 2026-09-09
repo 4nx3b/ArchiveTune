@@ -17,6 +17,7 @@ import okhttp3.Request
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
+import java.lang.reflect.Modifier
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
@@ -42,6 +43,11 @@ object TdLibNativeLibrary {
 
     @Volatile
     private var loaded = false
+
+    /** Last load-blocking failure detail, surfaced through TdEngine.lastStartError. */
+    @Volatile
+    var lastLoadError: String? = null
+        private set
 
     private val client =
         OkHttpClient
@@ -71,22 +77,146 @@ object TdLibNativeLibrary {
         }
 
         val file = target(context)
-        if (!file.isFile) return false
+        if (!file.isFile) {
+            lastLoadError = "the downloaded library is missing"
+            return false
+        }
 
         if (!matchesDigest(file)) {
             Timber.tag(TAG).w("Cached %s failed its digest check; deleting", file.name)
             file.delete()
             cleanupStaleVersions(context)
+            lastLoadError = "the downloaded library failed its digest check"
             return false
         }
-        return runCatching {
-            System.load(file.absolutePath)
-            loaded = true
-            true
-        }.getOrElse {
-            Timber.tag(TAG).e(it, "Loading %s failed", file.absolutePath)
-            false
+
+        TdStartTrace.step(context, "digest-ok", "${file.length()} bytes")
+
+        // The tdlight library's JNI_OnLoad resolves its whole Java surface
+        // through JNI lookups (tl_jni_object.cpp: FindClass/GetFieldID/
+        // GetMethodID/RegisterNatives), and ANY miss calls env->FatalError —
+        // an uncatachable process abort DURING System.load, with no Java
+        // stack trace and no TDLib fatal note. Re-doing the identical
+        // lookups from Kotlin first turns that whole crash class into a
+        // readable start failure instead of a dead app.
+        preflightJniSurface()?.let { problem ->
+            lastLoadError = "JNI surface check failed: $problem"
+            Timber.tag(TAG).e("Refusing to load %s: %s", file.name, problem)
+            TdStartTrace.step(context, "preflight-failed", problem.take(160))
+            return false
         }
+
+        TdStartTrace.step(context, "load-begin", file.name)
+        val loadSucceeded =
+            runCatching {
+                System.load(file.absolutePath)
+                true
+            }.getOrElse { failure ->
+                Timber.tag(TAG).e(failure, "Loading %s failed", file.absolutePath)
+                lastLoadError =
+                    ("System.load failed: ${failure.javaClass.simpleName}: " +
+                        "${failure.message.orEmpty()}").take(300)
+                TdStartTrace.step(context, "load-failed", lastLoadError.orEmpty().take(160))
+                false
+            }
+        if (loadSucceeded) {
+            loaded = true
+            lastLoadError = null
+            TdStartTrace.step(context, "load-ok")
+        }
+        return loadSucceeded
+    }
+
+    /**
+     * Performs every Java lookup tdlight's JNI_OnLoad and early fetch code
+     * performs natively, from Kotlin. Returns null when the surface is
+     * intact (safe to System.load), or a compact description of the first
+     * problems found (must NOT load: the same lookup aborts the process
+     * through env->FatalError inside System.load).
+     */
+    private fun preflightJniSurface(): String? {
+        val problems = mutableListOf<String>()
+
+        fun lookupClass(name: String): Class<*> =
+            try {
+                Class.forName(name)
+            } catch (failure: Throwable) {
+                problems += "missing class $name (${failure.javaClass.simpleName})"
+                Void::class.java
+            }
+
+        fun lookupField(owner: Class<*>, name: String) {
+            try {
+                owner.getDeclaredField(name)
+            } catch (failure: Throwable) {
+                problems += "missing field ${owner.name}.$name"
+            }
+        }
+
+        fun lookupNative(owner: Class<*>, name: String, vararg params: Class<*>) {
+            try {
+                val method = owner.getDeclaredMethod(name, *params)
+                if (!Modifier.isNative(method.modifiers)) {
+                    problems += "${owner.name}.$name lost its native modifier"
+                }
+            } catch (failure: Throwable) {
+                problems += "missing method ${owner.name}.$name (${failure.javaClass.simpleName})"
+            }
+        }
+
+        // --- register_native (td_jni.cpp): version check + native methods ---
+        val tdApi = lookupClass("org.drinkless.tdlib.TdApi")
+        lookupField(tdApi, "GIT_COMMIT_HASH")
+        val client = lookupClass("org.drinkless.tdlib.Client")
+        val objectArray = lookupClass("[Lorg.drinkless.tdlib.TdApi\$Object;")
+        val functionClass = lookupClass("org.drinkless.tdlib.TdApi\$Function")
+        lookupNative(client, "createNativeClient")
+        lookupNative(
+            client,
+            "nativeClientSend",
+            Int::class.javaPrimitiveType!!,
+            Long::class.javaPrimitiveType!!,
+            functionClass,
+        )
+        lookupNative(
+            client,
+            "nativeClientReceive",
+            IntArray::class.java,
+            LongArray::class.java,
+            objectArray,
+            Double::class.javaPrimitiveType!!,
+        )
+        lookupNative(client, "nativeClientExecute", functionClass)
+        lookupNative(
+            client,
+            "nativeClientSetLogMessageHandler",
+            Int::class.javaPrimitiveType!!,
+            lookupClass("org.drinkless.tdlib.Client\$LogMessageHandler"),
+        )
+
+        // --- TdApi.Object / TdApi.Function native toString + toJsonString,
+        // and the getConstructor method ID init_vars caches. ---
+        val objectClass = lookupClass("org.drinkless.tdlib.TdApi\$Object")
+        lookupNative(objectClass, "toString")
+        lookupNative(objectClass, "toJsonString")
+        lookupNative(functionClass, "toString")
+        lookupNative(functionClass, "toJsonString")
+        runCatching { objectClass.getMethod("getConstructor") }
+            .onFailure { problems += "TdApi\$Object.getConstructor is missing" }
+        runCatching { functionClass.getMethod("getConstructor") }
+            .onFailure { problems += "TdApi\$Function.getConstructor is missing" }
+
+        // --- init_vars' array classes (FindClass of "[L...;"). ---
+        lookupClass("[Lorg.drinkless.tdlib.TdApi\$KeyboardButton;")
+        lookupClass("[Lorg.drinkless.tdlib.TdApi\$InlineKeyboardButton;")
+        lookupClass("[Lorg.drinkless.tdlib.TdApi\$PageBlockTableCell;")
+
+        // --- the first two RPCs the engine sends: their Java fields are
+        // fetched natively through GetFieldID (generated td_api_jni code). ---
+        lookupField(lookupClass("org.drinkless.tdlib.TdApi\$SetLogVerbosityLevel"), "newVerbosityLevel")
+        lookupField(lookupClass("org.drinkless.tdlib.TdApi\$GetOption"), "name")
+
+        return if (problems.isEmpty()) null else problems.take(4).joinToString("; ").take(300)
     }
 
     /**
@@ -105,15 +235,18 @@ object TdLibNativeLibrary {
             val abi = abi
             if (abi == null) {
                 Timber.tag(TAG).e("No supported ABI among %s", Build.SUPPORTED_ABIS.joinToString())
+                lastLoadError = "device ABI is not supported (${Build.SUPPORTED_ABIS.joinToString()})"
                 return@withContext false
             }
             val base = BuildConfig.TDLIB_NATIVE_BASE_URL.trim().trimEnd('/')
             if (base.isEmpty()) {
                 Timber.tag(TAG).e("This build has no TDLIB_NATIVE_BASE_URL to download from")
+                lastLoadError = "this build has no engine download URL"
                 return@withContext false
             }
 
             val url = "$base/libtdjni-$abi.so.gz"
+            TdStartTrace.step(context, "download-begin", "abi=$abi")
             val destination = target(context)
             destination.parentFile?.mkdirs()
             val partial = File(destination.absolutePath + ".part")
@@ -174,9 +307,11 @@ object TdLibNativeLibrary {
 
             if (!partial.renameTo(destination)) {
                 Timber.tag(TAG).e("Could not move the verified library into place")
+                lastLoadError = "could not move the verified library into place"
                 partial.delete()
                 return@withContext false
             }
+            TdStartTrace.step(context, "download-ok", "${destination.length()} bytes")
             cleanupStaleVersions(context)
             ensureLoaded(context)
         }

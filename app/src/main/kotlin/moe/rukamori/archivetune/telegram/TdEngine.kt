@@ -150,8 +150,11 @@ internal object TdEngine {
             if (started.get()) return true
 
             val appContext = context.applicationContext
+            TdStartTrace.step(appContext, "engine-start-begin")
             if (!TdLibNativeLibrary.ensureLoaded(appContext)) {
-                lastStartError = "TDLib native library is not available"
+                lastStartError =
+                    TdLibNativeLibrary.lastLoadError
+                        ?: "TDLib native library is not available"
                 return false
             }
 
@@ -159,7 +162,11 @@ internal object TdEngine {
             // uncatchable in Kotlin, and TDLib's fatal log line is the only
             // witness of why it died.
             runCatching { installFatalLogRecorder(appContext) }
-                .onFailure { Timber.tag(TAG).w(it, "Installing the TDLib log recorder failed") }
+                .onFailure {
+                    Timber.tag(TAG).w(it, "Installing the TDLib log recorder failed")
+                    TdStartTrace.step(appContext, "log-recorder-failed", it.javaClass.simpleName)
+                }
+            TdStartTrace.step(appContext, "log-recorder-ok")
 
             // First real JNI round-trip (verbosity + full registration): a
             // failure here means the downloaded library could not be bound
@@ -173,10 +180,13 @@ internal object TdEngine {
                         ("TDLib native interface failed to come up: " +
                             "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
                             .take(300)
+                    TdStartTrace.step(appContext, "verbosity-failed", lastStartError.orEmpty().take(160))
                     return false
                 }
+            TdStartTrace.step(appContext, "verbosity-ok")
 
             val handler = ChannelResultHandler(updateChannel)
+            TdStartTrace.step(appContext, "client-create-begin")
             val boot =
                 runCatching {
                     val client =
@@ -200,6 +210,7 @@ internal object TdEngine {
             flow = telegramFlow
             lastStartError = null
             started.set(true)
+            TdStartTrace.step(appContext, "client-create-ok")
 
             scope.launch {
                 runCatching { telegramFlow.collect { dispatch(it) } }
