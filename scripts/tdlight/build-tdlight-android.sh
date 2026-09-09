@@ -47,6 +47,15 @@ export PATH
 
 cd tdlight/example/android
 
+# tdlight's td_jni.cpp registers toJsonString JNI methods on
+# TdApi.Object/Function that live outside TD_JSON_JAVA, so the plain Java
+# interface needs the TL JSON serializer objects too — link the json
+# sources (TdJsonStatic -> tdjson_private) alongside TdStatic.
+sed -i \
+  's/target_link_libraries(tdjni PRIVATE Td::TdStatic)/target_link_libraries(tdjni PRIVATE Td::TdStatic Td::TdJsonStatic)/' \
+  CMakeLists.txt
+grep -n "target_link_libraries(tdjni" CMakeLists.txt
+
 # ---------------------------------------------------------------------------
 # OpenSSL (static) for every ABI — same invocation as tdlight's
 # example/android/build-openssl.sh, empty 5th argument = no-shared.
