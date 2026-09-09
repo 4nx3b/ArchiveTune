@@ -144,6 +144,7 @@ import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
 import moe.rukamori.archivetune.constants.MetadataSource
+import moe.rukamori.archivetune.constants.PreloadSongsCountKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
@@ -406,6 +407,9 @@ class MusicService :
     @Inject
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
+    @Inject
+    lateinit var sponsorBlockPlaybackController: moe.rukamori.archivetune.sponsorblock.SponsorBlockPlaybackController
+
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
     private var lastAudioFocusState = AudioManager.AUDIOFOCUS_NONE
@@ -663,6 +667,9 @@ class MusicService :
 
     private val crossfadeGeneration = AtomicLong(0)
     private var lyricsPreloadManager: LyricsPreloadManager? = null
+
+    /** Background job that resolves + caches upcoming songs (Preload songs setting). */
+    private var songPreloadJob: Job? = null
 
     private val _playerFlow = MutableStateFlow<Player?>(null)
     val playerFlow = _playerFlow.asStateFlow()
@@ -1252,6 +1259,7 @@ class MusicService :
                 }
         _playerFlow.value = player
         playerInitialized.value = true
+        sponsorBlockPlaybackController.attach(player, scope)
 
         artworkResolver =
             ArtworkResolver(
@@ -3144,6 +3152,11 @@ class MusicService :
 
             rebindAudioEffectSession(localPlayer.audioSessionId)
 
+            // The cast switch replaced the player object — rebind the
+            // SponsorBlock monitor to the new instance (attach detaches
+            // any previous player first).
+            sponsorBlockPlaybackController.attach(player, scope)
+
             val promotedItem = incomingPlayer.getMediaItemAt(targetIndex)
             currentMediaMetadata.value = promotedItem.metadata
             onMediaItemTransition(promotedItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
@@ -4205,6 +4218,7 @@ class MusicService :
                     if (player.shuffleModeEnabled) {
                         applyCurrentFirstShuffleOrder()
                     }
+                    updateSongPreload()
                 }
             } finally {
 
@@ -7428,6 +7442,10 @@ class MusicService :
             lyricsPreloadManager?.onSongChanged(currentIndex, queue)
         }
 
+        // Preload songs (playback setting): refresh the upcoming-window
+        // preload whenever the playing item moves.
+        updateSongPreload()
+
         val joined = togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
         if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest &&
             reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
@@ -8522,6 +8540,143 @@ class MusicService :
             }
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Preload songs (playback setting): resolve + cache the next N songs so
+    // they start without a network round-trip.
+    // -----------------------------------------------------------------------
+
+    /** 64 KiB write buffer for the preload fetches. */
+    private val preloadSongsBufferBytes = 64 * 1024
+
+    /** 5 MiB cache fragments, mirroring the download prewarm's parameters. */
+    private val preloadSongsFragmentBytes = 5L * 1024 * 1024
+
+    /**
+     * Refreshes the upcoming-song preload window. Cheap: re-reads the
+     * setting snapshot, cancels any in-flight preload and (when enabled and
+     * the player is active) starts a new sequential background pass over
+     * the next N queue items.
+     */
+    private fun updateSongPreload() {
+        songPreloadJob?.cancel()
+        songPreloadJob = null
+        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+            return
+        }
+        val preloadCount = dataStore.get(PreloadSongsCountKey, 0)
+        if (preloadCount <= 0) return
+        songPreloadJob =
+            ioScope.launch(SilentHandler) {
+                preloadUpcomingPlaybackStreams(preloadCount)
+            }
+    }
+
+    private suspend fun preloadUpcomingPlaybackStreams(count: Int) {
+        moe.rukamori.archivetune.App.startupReadiness.awaitReady()
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0) return
+        val upcoming = player.mediaItems.drop(currentIndex + 1).take(count)
+        for (item in upcoming) {
+            if (!isActive) return
+            runCatching { preloadPlaybackStream(item) }
+        }
+    }
+
+    /**
+     * Resolves one upcoming item's stream and fetches it fully into
+     * [playerCache] under the item's media id — exactly the key the
+     * playback [CacheDataSource] reads — so the track starts instantly.
+     * Skips anything that does not go through the resolver (local files,
+     * Telegram, direct URLs) or is already cached.
+     */
+    private suspend fun preloadPlaybackStream(item: MediaItem): Boolean =
+        withContext(Dispatchers.IO) {
+            val mediaId = item.mediaId.trim()
+            if (mediaId.isBlank()) return@withContext false
+            val localConfiguration = item.localConfiguration ?: return@withContext false
+            val uri = localConfiguration.uri
+            // Resolver-driven items use the bare media id as their URI; every
+            // other scheme (content/file/telegram/deezer/https) is served by
+            // its own data source and gains nothing from this preloader.
+            if (uri.scheme != null) return@withContext false
+
+            val cachedSpans = runCatching { playerCache.getCachedSpans(mediaId) }.getOrNull().orEmpty()
+            if (cachedSpans.isNotEmpty()) return@withContext true
+
+            val dataSpec =
+                DataSpec
+                    .Builder()
+                    .setUri(uri)
+                    .setKey(mediaId)
+                    .build()
+            val resolved =
+                runCatching {
+                    resolvePlaybackDataSpec(
+                        dataSpec = dataSpec,
+                        allowCacheShortCircuit = false,
+                    )
+                }.getOrNull() ?: return@withContext false
+            val resolvedUri = resolved.uri
+            val resolvedScheme = resolvedUri.scheme?.lowercase(Locale.US)
+            if (resolvedScheme != "http" && resolvedScheme != "https") return@withContext false
+
+            fetchFullStreamIntoPlayerCache(resolvedUri.toString(), mediaId)
+        }
+
+    /**
+     * Full-file fetch into [playerCache] with the same sink parameters the
+     * download prewarm uses. Partial fetches are kept: the playback cache
+     * data source tops up missing ranges live.
+     */
+    private suspend fun fetchFullStreamIntoPlayerCache(
+        url: String,
+        cacheKey: String,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val request =
+                Request
+                    .Builder()
+                    .url(url)
+                    .header("Accept-Encoding", "identity")
+                    .header("Connection", "keep-alive")
+                    .build()
+            runCatching {
+                mediaOkHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@runCatching false
+                    val contentLength = response.header("Content-Length")?.toLongOrNull() ?: -1L
+                    val dataSpec =
+                        DataSpec
+                            .Builder()
+                            .setUri(url)
+                            .setKey(cacheKey)
+                            .setPosition(0L)
+                            .setLength(if (contentLength > 0) contentLength else C.LENGTH_UNSET.toLong())
+                            .build()
+                    val cacheSink =
+                        CacheDataSink
+                            .Factory()
+                            .setCache(playerCache)
+                            .setBufferSize(preloadSongsBufferBytes)
+                            .setFragmentSize(preloadSongsFragmentBytes)
+                            .createDataSink()
+                    val buffer = ByteArray(preloadSongsBufferBytes)
+                    try {
+                        cacheSink.open(dataSpec)
+                        response.body?.byteStream()?.use { input ->
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                cacheSink.write(buffer, 0, read)
+                            }
+                        }
+                    } finally {
+                        runCatching { cacheSink.close() }
+                    }
+                    playerCache.getCachedSpans(cacheKey).isNotEmpty()
+                }
+            }.getOrDefault(false)
+        }
 
     private fun resolveMediaItemForCast(mediaItem: MediaItem): MediaItem {
         val localConfiguration = mediaItem.localConfiguration ?: return mediaItem
@@ -11142,6 +11297,7 @@ class MusicService :
 
     override fun onDestroy() {
         equalizerPlaybackController.detach(this)
+        sponsorBlockPlaybackController.detach()
         discordServiceStopping = true
         requestDiscordSync(
             reason = "service_destroy",
