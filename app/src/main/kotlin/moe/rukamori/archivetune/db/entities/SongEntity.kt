@@ -33,28 +33,25 @@ data class SongEntity(
     val title: String,
     @ColumnInfo(defaultValue = "0")
     val titleOverride: Boolean = false,
-    val duration: Int = -1, // in seconds
+    val duration: Int = -1,
     val thumbnailUrl: String? = null,
     val albumId: String? = null,
     val albumName: String? = null,
     @ColumnInfo(defaultValue = "0")
     val explicit: Boolean = false,
     val year: Int? = null,
-    val date: LocalDateTime? = null, // ID3 tag property
-    val dateModified: LocalDateTime? = null, // file property
+    val date: LocalDateTime? = null,
+    val dateModified: LocalDateTime? = null,
     val liked: Boolean = false,
     val likedDate: LocalDateTime? = null,
-    val totalPlayTime: Long = 0, // in milliseconds
+    val totalPlayTime: Long = 0,
     val inLibrary: LocalDateTime? = null,
     val dateDownload: LocalDateTime? = LocalDateTime.now(),
     @ColumnInfo(name = "isMusicVideo", defaultValue = "0")
     val isMusicVideo: Boolean = false,
     @ColumnInfo(name = "isLocal", defaultValue = "0")
     val isLocal: Boolean = false,
-    // Set when the user has chosen "Don't recommend this song again" from the song overflow
-    // menu. Recommendations / discovery feeds filter out songs where this is non-null, so
-    // the user can permanently banish a track from auto-generated radio/mixes regardless of
-    // artist. Mirrors ArtistEntity.blockedAt semantics. Cleared by re-tapping the menu item.
+
     val blockedAt: LocalDateTime? = null,
 ) {
     fun localToggleLike() =

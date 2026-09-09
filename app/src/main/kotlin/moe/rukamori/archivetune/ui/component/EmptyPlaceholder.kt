@@ -30,12 +30,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieLoop
 
 @Composable
 fun EmptyPlaceholder(
     @DrawableRes icon: Int,
     text: String,
     modifier: Modifier = Modifier,
+
+    lottieRes: Int? = null,
 ) {
     Box(
         contentAlignment = Alignment.Center,
@@ -56,12 +59,20 @@ fun EmptyPlaceholder(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)),
             ) {
-                Image(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    modifier = Modifier.size(48.dp),
-                )
+                if (lottieRes != null) {
+                    ArchiveTuneLottieLoop(
+                        rawRes = lottieRes,
+                        tintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp),
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(icon),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
             }
 
             Spacer(Modifier.height(20.dp))

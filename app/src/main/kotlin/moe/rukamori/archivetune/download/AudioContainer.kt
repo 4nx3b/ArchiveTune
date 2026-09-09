@@ -11,15 +11,6 @@
  */
 package moe.rukamori.archivetune.download
 
-/**
- * Identifies an audio container from its magic bytes.
- *
- * Exports used to hardcode `.mp3` / `audio/mpeg` for every file. That was wrong for most downloads —
- * YouTube audio is typically Opus or AAC in WebM/MP4, and lossless sources deliver FLAC — so exported
- * files carried an extension that contradicted their contents. Some players trust the extension and
- * fail outright; others silently mis-handle the file. Sniffing the header means the name always
- * matches the bytes.
- */
 enum class AudioContainer(
     val extension: String,
     val mimeType: String,
@@ -33,20 +24,9 @@ enum class AudioContainer(
     ;
 
     companion object {
-        /**
-         * Bytes to read for a probe. Comfortably covers every magic-byte check below.
-         *
-         * Deliberately not large enough to skip a full ID3v2 tag, which is usually several KB once
-         * cover art is embedded. That only costs us the rare ID3-prefixed-MP4 case, which falls back
-         * to MP3 — the correct answer for the overwhelmingly more common ID3-prefixed MP3.
-         */
+
         const val PROBE_BYTES = 64
 
-        /**
-         * Detects the container from [header], or null when it matches nothing known.
-         *
-         * Callers should fall back to whatever the metadata claimed rather than guessing.
-         */
         fun detect(header: ByteArray): AudioContainer? {
             if (header.size < 12) return null
 
@@ -61,29 +41,23 @@ enum class AudioContainer(
             return when {
                 matches(0, 'f', 'L', 'a', 'C') -> FLAC
                 matches(0, 'O', 'g', 'g', 'S') -> OGG
-                // RIFF....WAVE
+
                 matches(0, 'R', 'I', 'F', 'F') && matches(8, 'W', 'A', 'V', 'E') -> WAV
-                // Matroska/WebM EBML header: 1A 45 DF A3
+
                 header[0] == 0x1A.toByte() &&
                     header[1] == 0x45.toByte() &&
                     header[2] == 0xDF.toByte() &&
                     header[3] == 0xA3.toByte() -> WEBM
-                // MP4/M4A: the ftyp box starts at byte 4, after the size field.
+
                 matches(4, 'f', 't', 'y', 'p') -> MP4
-                // A leading ID3 tag can precede either MP3 frames or, rarely, an MP4 stream.
+
                 matches(0, 'I', 'D', '3') -> resolveAfterId3(header) ?: MP3
-                // Bare MPEG audio frame sync: 11 bits set.
+
                 header[0] == 0xFF.toByte() && (header[1].toInt() and 0xE0) == 0xE0 -> MP3
                 else -> null
             }
         }
 
-        /**
-         * Skips an ID3v2 tag to inspect what actually follows.
-         *
-         * The size is a 28-bit synchsafe integer: 7 bits per byte, high bit always clear, so the
-         * length can never contain a false frame-sync pattern.
-         */
         private fun resolveAfterId3(header: ByteArray): AudioContainer? {
             if (header.size < 10) return null
             val size =
@@ -101,7 +75,6 @@ enum class AudioContainer(
             return if (isFtyp) MP4 else null
         }
 
-        /** Maps a MIME type to a sensible extension when the bytes cannot be probed. */
         fun extensionForMime(mimeType: String?): String =
             when {
                 mimeType == null -> "m4a"

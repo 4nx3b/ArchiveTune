@@ -71,81 +71,46 @@ fun CreatePlaylistDialog(
         }
     }
 
-    when (val state = screenState) {
-        CreatePlaylistScreenState.Loading -> {
-            // Render with SUCCESS-IDENTICAL visuals (isLoading = false, i.e.
-            // enabled controls) — the Loading state now lives for at most one
-            // frame before ViewModel.open() publishes the optimistic Success
-            // state (see CreatePlaylistViewModel), and that frame must look
-            // exactly like what replaces it. Passing isLoading = true here
-            // used to dim the whole dialog (disabled text field, disabled
-            // switch, disabled OK) for a frame and then pop it back to
-            // enabled — the visible "popup flicker" the user reported
-            // (2026-09-03). Submission during this transient frame is safe:
-            // the optimistic state open() installs carries the same defaults.
-            CreatePlaylistDialogContent(
-                data =
-                    CreatePlaylistUiData(
-                        name = initialTextFieldValue.orEmpty(),
-                        allowSyncing = allowSyncing,
-                        isSignedIn = false,
-                        isSyncEnabled = false,
-                        syncRequested = false,
-                        isSubmitting = false,
-                    ),
-                isLoading = false,
-                errorMessageResId = null,
-                onNameChange = updateName,
-                onSyncRequestedChange = updateSyncRequested,
-                onSubmit = submit,
-                onDismiss = dismiss,
-            )
+    // Single stable composition: the dialog content must be ONE call whose
+    // parameters update with the state. Rendering a `when` over the state
+    // put each branch at a different composition slot, so every
+    // Loading -> Success transition disposed the old TextFieldDialog subtree
+    // and composed a brand-new one — recreating the platform dialog window
+    // mid-open, which read as the popup flickering.
+    val resolvedData: CreatePlaylistUiData =
+        when (val state = screenState) {
+            is CreatePlaylistScreenState.Success -> state.data
+            is CreatePlaylistScreenState.Error -> state.data
+            CreatePlaylistScreenState.Loading ->
+                CreatePlaylistUiData(
+                    name = initialTextFieldValue.orEmpty(),
+                    allowSyncing = allowSyncing,
+                    isSignedIn = false,
+                    isSyncEnabled = false,
+                    syncRequested = false,
+                    isSubmitting = false,
+                )
+            CreatePlaylistScreenState.Empty ->
+                CreatePlaylistUiData(
+                    name = "",
+                    allowSyncing = allowSyncing,
+                    isSignedIn = false,
+                    isSyncEnabled = false,
+                    syncRequested = false,
+                    isSubmitting = false,
+                )
         }
+    val resolvedErrorResId = (screenState as? CreatePlaylistScreenState.Error)?.messageResId
 
-        is CreatePlaylistScreenState.Success -> {
-            CreatePlaylistDialogContent(
-                data = state.data,
-                isLoading = false,
-                errorMessageResId = null,
-                onNameChange = updateName,
-                onSyncRequestedChange = updateSyncRequested,
-                onSubmit = submit,
-                onDismiss = dismiss,
-            )
-        }
-
-        CreatePlaylistScreenState.Empty -> {
-            CreatePlaylistDialogContent(
-                data =
-                    CreatePlaylistUiData(
-                        name = "",
-                        allowSyncing = allowSyncing,
-                        isSignedIn = false,
-                        isSyncEnabled = false,
-                        syncRequested = false,
-                        isSubmitting = false,
-                    ),
-                isLoading = false,
-                errorMessageResId = null,
-                onNameChange = updateName,
-                onSyncRequestedChange = updateSyncRequested,
-                onSubmit = submit,
-                onDismiss = dismiss,
-            )
-        }
-
-        is CreatePlaylistScreenState.Error -> {
-            CreatePlaylistDialogContent(
-                data = state.data,
-                isLoading = false,
-                errorMessageResId = state.messageResId,
-                onNameChange = updateName,
-                onSyncRequestedChange = updateSyncRequested,
-                onSubmit = submit,
-                onDismiss = dismiss,
-            )
-        }
-    }
+    CreatePlaylistDialogContent(
+        data = resolvedData,
+        isLoading = screenState is CreatePlaylistScreenState.Loading,
+        errorMessageResId = resolvedErrorResId,
+        onNameChange = updateName,
+        onSyncRequestedChange = updateSyncRequested,
+        onSubmit = submit,
+        onDismiss = dismiss,
+    )
 }
 
 @Composable

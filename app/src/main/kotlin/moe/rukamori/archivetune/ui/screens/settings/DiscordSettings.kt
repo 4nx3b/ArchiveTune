@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,7 +63,10 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.extractThemeColor
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ArtworkStorage
 import moe.rukamori.archivetune.utils.discordAlbumMusicUrl
@@ -91,7 +93,9 @@ private val DiscordLargeTextOptions = listOf("song", "artist", "album", "app", "
 @Composable
 fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val scrollBehavior = appBarScrollBehavior()
+
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val song by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -381,15 +385,11 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
     }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            LargeFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -441,11 +441,10 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 },
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -459,6 +458,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
         LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+        Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier =
                 Modifier
@@ -468,9 +468,10 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                     .then(positions.containerModifier())
                     .verticalScroll(scrollState)
+                    .hazeSource(headerHaze)
                     .padding(
                         top = innerPadding.calculateTopPadding() + 16.dp,
                         bottom = 32.dp,
@@ -739,7 +740,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 title = { Text(stringResource(R.string.logout_confirm_title)) },
                 text = { Text(stringResource(R.string.logout_confirm_message)) },
                 confirmButton = {
-                    KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                    KeepStatusBarHiddenInDialog()
                     TextButton(
                         onClick = {
                             coroutineScope.launch {
@@ -768,6 +769,12 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 },
             )
+        }
+
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
         }
     }
 }
@@ -1224,7 +1231,7 @@ fun EditablePreference(
         AlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = {
                     onValueChange(if (text.isBlank()) "" else text)
                     showDialog = false

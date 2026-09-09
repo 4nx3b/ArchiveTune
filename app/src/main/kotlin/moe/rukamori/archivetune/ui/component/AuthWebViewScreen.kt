@@ -54,15 +54,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 
-/**
- * Renders [factory]'s WebView inside the shared Spotify-style sign-in sheet.
- *
- * @param title bold heading at the top of the sheet.
- * @param subtitle one-line hint under the title explaining what the user should do.
- * @param onRelease optional teardown, invoked when the AndroidView leaves composition.
- * @param factory builds the WebView. The returned instance is tracked automatically for in-page
- *   back navigation, so callers no longer need their own reference for that.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthWebViewScreen(
@@ -75,7 +66,6 @@ fun AuthWebViewScreen(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Real state, so assigning from the factory recomposes and enables the BackHandler below.
     var webView by remember { mutableStateOf<WebView?>(null) }
 
     ModalBottomSheet(
@@ -85,7 +75,7 @@ fun AuthWebViewScreen(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier
@@ -120,8 +110,6 @@ fun AuthWebViewScreen(
         }
     }
 
-    // Enabled purely on presence: canGoBack() is polled at press time because it changes during
-    // in-page navigation without recomposing.
     BackHandler(enabled = webView != null) {
         val view = webView
         if (view != null && view.canGoBack()) {

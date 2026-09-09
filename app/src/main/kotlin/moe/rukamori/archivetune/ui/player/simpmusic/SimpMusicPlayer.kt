@@ -43,6 +43,8 @@
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.activity.compose.BackHandler
+import moe.rukamori.archivetune.ui.utils.smoothFadingEdge
+import androidx.compose.ui.graphics.luminance
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialog
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -135,8 +137,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.extensions.metadata
@@ -156,37 +159,34 @@ import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import java.util.Locale
 
-/** The dark ground the palette gradient fades into — SimpMusic's own backdrop colour. */
 private val Backdrop = Color(0xFF121212)
 
-/** The artist card's panel, the one card SimpMusic keeps off the palette. */
 private val CardPanel = Color(0xFF212121)
 
-/** A YouTube video id: 11 chars of the URL-safe alphabet. Nothing else resolves in getMediaInfo. */
 private val YOUTUBE_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
-/** SimpMusic's accent, the tint its shuffle and repeat take when active. */
+private const val MAX_SURFACE_LUMINANCE = 0.10f
+
+private fun Color.asSurface(): Color {
+    var c = this
+    var steps = 0
+    while (c.luminance() > MAX_SURFACE_LUMINANCE && steps++ < 16) {
+        c = lerp(c, Backdrop, 0.2f)
+    }
+    return c
+}
+
 private val Seed = Color(0xFF8ECAE6)
 
-/** Lyrics inside the 300dp card, not on a full screen — the renderers' own default is far too big. */
 private const val CARD_LYRICS_SIZE_SP = 16f
 
-/** Side gutter for everything below the artwork, and for the cards. */
 private val Gutter = 20.dp
 
-/**
- * Floor for the gap above and below the artwork. SimpMusic's `minimumPaddingDp`: when the screen is
- * too short for the computed gap, the artwork shrinks into this rather than the controls sliding off.
- */
 private val MinGap = 30.dp
 
-/**
- * The SimpMusic style. Parameters mirror the other self-contained styles so Player.kt dispatches
- * every style the same way.
- */
 @Composable
 fun SimpMusicPlayerContent(
     mediaMetadata: MediaMetadata,
@@ -218,13 +218,10 @@ fun SimpMusicPlayerContent(
             mediaMetadata.thumbnailUrl?.highRes()
         }
     val palette = rememberMeshPalette(artUrl)
-    val startColor = palette.colors.getOrNull(0) ?: Backdrop
-    val endColor = palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)
 
-    // The two lower cards are YouTube facts about the track, and only a YouTube id can produce
-    // them. Gated on the id SHAPE rather than fired blindly: a Tidal, Qobuz, Spotify or local id
-    // can never resolve here, so without this every skip on those sources spent a network
-    // round-trip to be told so. Each card still hides itself when the lookup returns nothing.
+    val startColor = (palette.colors.getOrNull(0) ?: Backdrop).asSurface()
+    val endColor = (palette.colors.getOrNull(1) ?: lerp(startColor, Backdrop, 0.6f)).asSurface()
+
     var mediaInfo by remember(mediaMetadata.id) { mutableStateOf<MediaInfo?>(null) }
     LaunchedEffect(mediaMetadata.id) {
         if (!YOUTUBE_ID.matches(mediaMetadata.id)) return@LaunchedEffect
@@ -232,8 +229,7 @@ fun SimpMusicPlayerContent(
     }
 
     val scrollState = rememberScrollState()
-    // Latched, not a live predicate: once the reader has gone below the fold, keep the card's
-    // contents mounted rather than tearing the renderer down every time they scroll back up.
+
     var hasScrolled by remember { mutableStateOf(false) }
     LaunchedEffect(scrollState) {
         snapshotFlow { scrollState.value > 0 }.first { it }
@@ -242,30 +238,18 @@ fun SimpMusicPlayerContent(
     var queueOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = queueOpen) { queueOpen = false }
 
-    // SimpMusic's own fullscreen lyrics page (its FullscreenLyricsSheet) — opened by the
-    // lyrics card's "Show" affordance (user request 2026-09-05: the SimpMusic style used to
-    // open the app's shared LyricsScreen instead of SimpMusic's lyrics page). Back closes
-    // it before the queue / the player sheet.
     var lyricsFullscreenOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(mediaMetadata.id) { lyricsFullscreenOpen = false }
     BackHandler(enabled = lyricsFullscreenOpen) { lyricsFullscreenOpen = false }
 
-    // Measured, not guessed — see the file header. Held in dp so the gap survives a rotation.
-    // Only the two rows whose height depends on their CONTENT are measured; the artwork is derived
-    // from what is left, which is what keeps this from being a layout feedback loop.
     var topBarHeight by remember { mutableStateOf(0.dp) }
     var infoHeight by remember { mutableStateOf(0.dp) }
 
-    // The whole style renders in SimpMusic's own Poppins Medium typography — the same
-    // metrics its ui/theme/Typo.kt defines. Colors stay the ambient theme's.
     MaterialTheme(typography = SimpMusicTypography) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        // The viewport, captured OUTSIDE the scrolling Column: inside it the height constraint is
-        // Infinity, so this is the only place the screen height can be read.
+
         val screenHeight = maxHeight
-        // A square as wide as the gutters allow — unless the screen is too SHORT for that square
-        // plus the two rows and their minimum gaps, in which case the square gives way rather than
-        // the controls sliding off the bottom. SimpMusic sizes the artwork on width alone and
-        // clips the controls on a short screen; there is no reason to reproduce that.
+
         val artworkSide =
             (maxWidth - Gutter * 2)
                 .coerceAtMost(screenHeight - topBarHeight - infoHeight - MinGap * 2)
@@ -281,12 +265,10 @@ fun SimpMusicPlayerContent(
                     .fillMaxSize()
                     .background(Backdrop)
                     .simpMusicHeroWash(startColor, endColor, screenHeightPx)
-                    // Gated on the sheet being expanded, so a drag on the collapsed mini-player is
-                    // never eaten by this. Up-drags at the top still reach the sheet through the
-                    // nested-scroll connection the caller attached.
+
                     .verticalScroll(scrollState, enabled = state.isExpanded),
         ) {
-            // ── HERO: exactly one screen ─────────────────────────────────────────────────────
+
             Box(modifier = Modifier.fillMaxWidth().height(screenHeight)) {
                 SimpMusicArtworkPager(
                     queueWindows = queueWindows,
@@ -302,16 +284,11 @@ fun SimpMusicPlayerContent(
                     Spacer(Modifier.height(topBarHeight))
                     Spacer(Modifier.height(gap))
 
-                    // Reserves the artwork's space without drawing it — the pager behind owns the
-                    // pixels. A Spacer takes no pointer input, so swipes fall through to the pager.
                     Spacer(Modifier.fillMaxWidth().height(artworkSide))
 
-                    // The current lyric line lives INSIDE the lower gap rather than adding height
-                    // of its own, so the controls below never move when a line arrives or leaves.
                     SimpMusicLyricLine(
                         playerConnection = playerConnection,
-                        // Collapsed, this composable stays composed but nothing it draws is on
-                        // screen, so the poll below is pure background cost. `active` stops it.
+
                         active = isPlaying && state.isExpanded,
                         modifier = Modifier.fillMaxWidth().height(gap),
                     )
@@ -384,17 +361,11 @@ fun SimpMusicPlayerContent(
                 )
             }
 
-            // ── BELOW THE FOLD ───────────────────────────────────────────────────────────────
             Column(modifier = Modifier.padding(horizontal = Gutter)) {
                 SimpMusicLyricsCard(
                     playerConnection = playerConnection,
                     containerColor = startColor,
-                    // The card's frame is composed from the start so the page has something to
-                    // scroll to; the RENDERER inside it only mounts once the user actually scrolls.
-                    // Both renderers drive their own frame clock — LyricsEnhanced polls at 16ms on
-                    // a word-synced track — and `verticalScroll` composes every child regardless of
-                    // visibility, so without this a karaoke loop ran permanently, from the moment
-                    // the player opened, for a card nobody had scrolled to.
+
                     renderLyrics = hasScrolled,
                     onShowLyrics = { lyricsFullscreenOpen = true },
                     modifier = Modifier.padding(top = 10.dp),
@@ -415,9 +386,6 @@ fun SimpMusicPlayerContent(
             }
         }
 
-        // Sticky compact header, once the hero's controls have scrolled away.
-        // Appears once the hero's controls have gone, so the toolbar is what replaces them rather
-        // than something that overlaps them. Derived from the hero's own height, not a magic number.
         val toolbarVisible by remember(screenHeightPx) {
             derivedStateOf { scrollState.value > screenHeightPx * 0.6f }
         }
@@ -435,9 +403,7 @@ fun SimpMusicPlayerContent(
         }
 
         if (queueOpen) {
-            // SimpMusic's own queue sheet (its ModalBottomSheet.kt QueueBottomSheet):
-            // full-height dark surface, NOW PLAYING header over the playlist name, a
-            // current-song row, then the queue list with a per-item move/remove menu.
+
             SimpMusicQueueSheet(
                 playerConnection = playerConnection,
                 navController = navController,
@@ -446,30 +412,20 @@ fun SimpMusicPlayerContent(
         }
 
         if (lyricsFullscreenOpen) {
-            // SimpMusic's fullscreen lyrics page: the wandering gradient, the AM-style header,
-            // the Classic renderer full-screen, and the 4-second auto-hiding control block.
+
             SimpMusicFullscreenLyricsSheet(
                 mediaMetadata = mediaMetadata,
                 playerConnection = playerConnection,
                 navController = navController,
                 bottomSheetPageState = bottomSheetPageState,
-                playerBottomSheetState = state,
                 color = startColor,
                 onDismiss = { lyricsFullscreenOpen = false },
             )
         }
     }
-    } // close the SimpMusicTypography MaterialTheme scope
+    }
 }
 
-/**
- * The diagonal palette gradient over the first screen height only, fading into [Backdrop].
- *
- * `drawBehind` rather than two `background()` calls: a background brush stretches over the whole
- * scrollable content, which for a page several screens tall means the gradient never actually
- * finishes — it just keeps going as you scroll. Painting a fixed [screenHeightPx]-tall rect pins it
- * to the hero, which is the only place it belongs.
- */
 private fun Modifier.simpMusicHeroWash(
     start: Color,
     end: Color,
@@ -486,9 +442,7 @@ private fun Modifier.simpMusicHeroWash(
                 ),
             size = area,
         )
-        // Held opaque from 95% down so the hero meets the cards below with no seam. A stop on
-        // the diagonal brush above could not do this: it would arrive in one corner only and
-        // leave a visible diagonal edge across the width.
+
         drawRect(
             brush =
                 Brush.verticalGradient(
@@ -502,8 +456,6 @@ private fun Modifier.simpMusicHeroWash(
         )
     }
 
-/** Collapse chevron, "NOW PLAYING" over the playlist name, and the overflow menu — SimpMusic's
- *  CenterAlignedTopAppBar title block, on its own icons. */
 @Composable
 private fun SimpMusicTopBar(
     playlistName: String,
@@ -535,8 +487,7 @@ private fun SimpMusicTopBar(
                 color = Color.White,
                 maxLines = 1,
             )
-            // SimpMusic marquee-scrolls the playlist name under the header; a plain ellipsis
-            // is the closest a one-line non-scrolling title gets when the name is short.
+
             Text(
                 text = playlistName,
                 style = MaterialTheme.typography.labelMedium,
@@ -563,12 +514,6 @@ private fun SimpMusicTopBar(
     }
 }
 
-/**
- * The artwork, one page per queue entry, sitting at [topInset] down a full-screen-tall pager.
- *
- * A settled page takes over playback; a page abandoned mid-drag does not — the same rule the TikTok
- * style uses, and for the same reason: the gesture must never touch the engine until it resolves.
- */
 @Composable
 private fun SimpMusicArtworkPager(
     queueWindows: List<Timeline.Window>,
@@ -590,9 +535,6 @@ private fun SimpMusicArtworkPager(
     val liveIndex = rememberUpdatedState(currentWindowIndex)
     val liveQueue = rememberUpdatedState(queueWindows)
 
-    // Feed → engine. Keyed only on the pager so the collector is never restarted: a restarted
-    // snapshotFlow re-emits the settled page immediately, which on an engine-driven advance is the
-    // page just left, and seeking back to it fights the transition.
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
@@ -609,8 +551,6 @@ private fun SimpMusicArtworkPager(
             }
     }
 
-    // Engine → feed. A pending feed-initiated seek holds this off until the engine confirms it,
-    // so a half-updated index never snaps the pager off the page the user chose.
     LaunchedEffect(currentWindowIndex, queueWindows.size) {
         val pending = pendingSeek
         if (pending != null) {
@@ -636,12 +576,6 @@ private fun SimpMusicArtworkPager(
     }
 }
 
-/**
- * One [side]-square sleeve, placed at [topInset] so it lands on the space the hero reserved.
- *
- * SimpMusic's exact artwork frame: a 3dp-elevation shadow with an 8dp rounded shape and a
- * palette-tinted spot color, the image inset 3dp inside it so the shadow reads as a card edge.
- */
 @Composable
 private fun SimpMusicArtwork(
     metadata: MediaMetadata,
@@ -649,8 +583,7 @@ private fun SimpMusicArtwork(
     side: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-    // The shadow's spot colour leans on the sleeve's own palette so the card edge reads
-    // as part of the artwork (SimpMusic does the same with its extracted dominant).
+
     val sleevePalette = rememberMeshPalette(metadata.thumbnailUrl?.highRes())
     val spotColor = sleevePalette.colors.firstOrNull() ?: Color.Black
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -681,11 +614,6 @@ private fun SimpMusicArtwork(
     }
 }
 
-/**
- * The line being sung, centred in the gap under the sleeve. Empty when there is nothing synced —
- * [rememberInlineLyricLines] is the shared "which formats count as synced" decision, so this line
- * appears in exactly the cases the other styles' inline lyrics do.
- */
 @Composable
 private fun SimpMusicLyricLine(
     playerConnection: PlayerConnection,
@@ -695,9 +623,6 @@ private fun SimpMusicLyricLine(
     val lines = rememberInlineLyricLines(playerConnection)
     var line by remember(lines) { mutableStateOf("") }
 
-    // Polled rather than derived from a recomposing position: a line changes a few times a minute,
-    // so a 200ms tick is already far finer than it needs while costing almost nothing. Stops
-    // entirely when there is nothing to show, or when nothing is watching.
     LaunchedEffect(lines, active) {
         if (lines.isEmpty() || !active) {
             line = ""
@@ -730,12 +655,6 @@ private fun SimpMusicLyricLine(
     }
 }
 
-/**
- * Title and artist on the left; add-to-playlist and like on the right.
- *
- * SimpMusic's own row, button for button: AddCircleOutline then a 32dp heart. The overflow menu is
- * NOT here — it lives in the top bar, which is where SimpMusic keeps it.
- */
 @Composable
 private fun SimpMusicTrackInfoRow(
     mediaMetadata: MediaMetadata,
@@ -841,9 +760,7 @@ private fun SimpMusicProgressRow(
                         SliderDefaults.colors().copy(
                             thumbColor = trackColor,
                             activeTrackColor = trackColor,
-                            // SimpMusic leaves this transparent and paints the buffered bar
-                            // behind instead; a flat grey is the same picture without a second
-                            // progress source to keep in step with the playhead.
+
                             inactiveTrackColor = Color.White.copy(alpha = 0.3f),
                         ),
                     thumbTrackGapSize = 0.dp,
@@ -869,8 +786,7 @@ private fun SimpMusicProgressRow(
                 color = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.weight(1f),
             )
-            // SimpMusic keeps this middle slot for its "Crossfading" shimmer. ArchiveTune knows
-            // what it is actually streaming, so the slot carries that instead of sitting empty.
+
             LosslessOrStats(isLoading = isLoading, format = currentFormat)
             Text(
                 text = if (hasDuration) clockTime(duration) else "",
@@ -883,20 +799,11 @@ private fun SimpMusicProgressRow(
     }
 }
 
-/** `mm:ss`, zero-padded, the way SimpMusic's formatDuration writes it. */
 private fun clockTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0L)
     return String.format(Locale.getDefault(), "%02d:%02d", total / 60, total % 60)
 }
 
-/**
- * Shuffle, previous, play/pause, next, repeat — SimpMusic's PlayerControlLayout.
- *
- * The sizes are theirs, not approximations: a 96dp row, each control centred in its own weighted
- * cell, 32dp for shuffle and repeat, 42dp for the skips, and 72dp for the play button — which is a
- * FILLED DISC glyph (PlayCircle), not a bare triangle with a circle drawn round it. The active
- * tint is SimpMusic's seed blue.
- */
 @Composable
 private fun SimpMusicTransportRow(
     isPlaying: Boolean,
@@ -982,11 +889,6 @@ private fun SimpMusicTransportRow(
     }
 }
 
-/**
- * One transport control: a circular ripple [cell] wide holding an [icon]-wide glyph, centred in its
- * own weighted slot. A plain IconButton cannot express this — it forces a 48dp touch target and its
- * own icon size, which is what made the row's spacing wrong.
- */
 @Composable
 private fun RowScope.SimpMusicControl(
     cell: androidx.compose.ui.unit.Dp,
@@ -1016,10 +918,6 @@ private fun RowScope.SimpMusicControl(
     }
 }
 
-/**
- * SimpMusic's row under the transport: track details on the left, add-to-queue and the queue on
- * the right. Three 24dp glyphs in a 32dp row, which is what that style has there.
- */
 @Composable
 private fun SimpMusicActionRow(
     mediaMetadata: MediaMetadata,
@@ -1063,16 +961,6 @@ private fun SimpMusicActionIcon(
     }
 }
 
-/**
- * The lyrics card: a header row (label, share, "Show"), the lyrics, and a footer crediting the
- * sync type and provider. The first version had the label and nothing else — the share button, the
- * "Show" affordance and the "Line Synced / Lyrics provided by …" footer were all missing, which is
- * most of what tells you where the lyrics came from.
- *
- * Which renderer sits inside is the SimpMusic-lyrics setting. Either way it is scaled DOWN for the
- * card: both renderers size themselves for a full screen, and at that size four words fill the
- * 300dp box.
- */
 @Composable
 private fun SimpMusicLyricsCard(
     playerConnection: PlayerConnection,
@@ -1082,14 +970,9 @@ private fun SimpMusicLyricsCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    // Default flipped to true (2026-09-05, user report: "the lyrics page is still the one from
-    // my app"): out of the box the SimpMusic style now previews SimpMusic's own Classic
-    // renderer in the card, as upstream does — the setting still switches it to Enhanced.
-    val (simpMusicLyrics) = rememberPreference(SimpMusicLyricsKey, defaultValue = true)
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
     val lyricsPositionProvider = remember { { null as Long? } }
 
-    // A renderer with nothing to render still fills its 300dp box, so without this the card was a
-    // blank panel on every track with no lyrics — and it pushed the two real cards down behind it.
     val lyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyricsText = lyricsEntity?.lyrics
     val hasLyrics = lyricsText?.isNotBlank() == true && lyricsText != LYRICS_NOT_FOUND
@@ -1143,11 +1026,18 @@ private fun SimpMusicLyricsCard(
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+
+                        .smoothFadingEdge(vertical = 36.dp),
+            ) {
                 if (!renderLyrics) {
                     // Deliberately empty, and deliberately still 300dp: the height is what keeps
                     // the page scrollable so `renderLyrics` can ever become true.
-                } else if (simpMusicLyrics) {
+                } else if (lyricsMode == LyricsMode.SIMPMUSIC) {
                     SimpMusicLyrics(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
@@ -1155,6 +1045,9 @@ private fun SimpMusicLyricsCard(
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
+                    // Every other mode renders as Enhanced here on purpose: the card is a 300dp
+                    // preview, and the karaoke sweep the other renderers are built around needs a
+                    // full screen to read as anything but flicker.
                     LyricsEnhanced(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
@@ -1186,7 +1079,6 @@ private fun SimpMusicLyricsCard(
     }
 }
 
-/** Artist photo, name and subscriber count. Hidden when the track has no YouTube author. */
 @Composable
 private fun SimpMusicArtistCard(
     info: MediaInfo?,
@@ -1210,7 +1102,7 @@ private fun SimpMusicArtistCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    // Artist photos are often bright at the top, which swallowed the label.
+
                     Box(
                         modifier =
                             Modifier
@@ -1249,7 +1141,6 @@ private fun SimpMusicArtistCard(
     }
 }
 
-/** Publish date, view count, likes and the description. Hidden when none of it resolved. */
 @Composable
 private fun SimpMusicInfoCard(
     info: MediaInfo?,
@@ -1309,7 +1200,6 @@ private fun SimpMusicInfoCard(
     }
 }
 
-/** Compact header that sticks to the top once the hero's controls have scrolled away. */
 @Composable
 private fun SimpMusicStickyToolbar(
     mediaMetadata: MediaMetadata,
@@ -1375,5 +1265,4 @@ private fun SimpMusicStickyToolbar(
     }
 }
 
-/** `%,d` without pulling a formatter in — the counts here are plain integers. */
 private fun groupDigits(value: Int): String = String.format(Locale.getDefault(), "%,d", value)

@@ -142,10 +142,7 @@ class StorageSettingsViewModel
         observeStorageFolders: ObserveStorageFoldersUseCase,
         private val setStorageFolder: SetStorageFolderUseCase,
         private val clearStorageCache: ClearStorageCacheUseCase,
-        // Lyrics are not stored on disk under cacheDir/ (unlike songs/images/canvas);
-        // they live in an in-memory LruCache (LyricsHelper) + the Room `lyrics` table.
-        // We mirror ContentSettingsViewModel.clearLyricsCache() so the Storage screen
-        // can offer the same one-tap "Clear lyrics cache" action the Lyrics screen has.
+
         private val lyricsHelper: LyricsHelper,
         private val database: MusicDatabase,
     ) : ViewModel() {
@@ -246,11 +243,6 @@ class StorageSettingsViewModel
             clearCache(StorageCacheKind.CANVAS, showFeedback)
         }
 
-        /**
-         * Evict the in-memory lyrics LruCache (LyricsHelper.cache + singleLyricsCache)
-         * and wipe the persistent Room `lyrics` table. No progress dialog — this is
-         * a fast in-process operation, unlike the disk-based cache clears above.
-         */
         fun clearLyricsCache() {
             viewModelScope.launch(Dispatchers.IO) {
                 lyricsHelper.clearCache()

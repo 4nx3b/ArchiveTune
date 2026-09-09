@@ -22,15 +22,7 @@ data class LyricsRomanizationPreferences(
     val romanizeChinese: Boolean,
     val romanizeHindi: Boolean,
     val romanizeOther: Boolean,
-    /**
-     * True when an AI provider is supplying romanisation instead (see [AiLyricsRomanization]).
-     *
-     * This is the single gate that turns the built-in engines off, and it lives here rather than at
-     * each call site because every one of them — the three renderers' romanisation effects, the
-     * `showPhonetic` render flags, `providedRomanizedTextForEntry`, `shouldRomanizeLyricsLine` — is
-     * already written in terms of [isEnabled]. Running both engines would mix Hepburn from Kuromoji
-     * with whatever scheme the model chose inside a single song.
-     */
+
     val aiHandled: Boolean = false,
 ) {
     val isEnabled: Boolean
@@ -38,7 +30,6 @@ data class LyricsRomanizationPreferences(
             !aiHandled &&
                 (romanizeJapanese || romanizeKorean || romanizeChinese || romanizeHindi || romanizeOther)
 
-    /** True when romanisation should be rendered at all, whichever engine produced it. */
     val showsRomanization: Boolean
         get() = aiHandled || isEnabled
 }
@@ -54,9 +45,7 @@ object LyricsUtils {
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
     private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
-    // Matches the leading timestamp prefix of any LRC/QRC/YRC line. Used by
-    // `hasTranslation()` to detect duplicate prefixes (which indicate the
-    // translator appended a translated line under the same timestamp).
+
     private val SyncedLinePrefixRegex = Regex("""^(\s*(?:\[[^\]]+])+)(\s*)(.*?)(\s*)$""")
     private val TTML_SPAN_REGEX =
         Regex(
@@ -86,7 +75,7 @@ object LyricsUtils {
 
     private val KANA_ROMAJI_MAP: Map<String, String> =
         mapOf(
-            // Digraphs (Yōon - combinations like kya, sho)
+
             "キャ" to "kya",
             "キュ" to "kyu",
             "キョ" to "kyo",
@@ -116,14 +105,14 @@ object LyricsUtils {
             "ジョ" to "jo",
             "ヂャ" to "ja",
             "ヂュ" to "ju",
-            "ヂョ" to "jo", // ヂ variants, also commonly 'ja', 'ju', 'jo'
+            "ヂョ" to "jo",
             "ビャ" to "bya",
             "ビュ" to "byu",
             "ビョ" to "byo",
             "ピャ" to "pya",
             "ピュ" to "pyu",
             "ピョ" to "pyo",
-            // Basic Katakana Characters
+
             "ア" to "a",
             "イ" to "i",
             "ウ" to "u",
@@ -168,9 +157,9 @@ object LyricsUtils {
             "レ" to "re",
             "ロ" to "ro",
             "ワ" to "wa",
-            "ヲ" to "o", // ヲ is pronounced 'o'
+            "ヲ" to "o",
             "ン" to "n",
-            // Dakuten (voiced consonants)
+
             "ガ" to "ga",
             "ギ" to "gi",
             "グ" to "gu",
@@ -185,19 +174,19 @@ object LyricsUtils {
             "ヂ" to "ji",
             "ヅ" to "zu",
             "デ" to "de",
-            "ド" to "do", // ヂ and ヅ are often 'ji' and 'zu'
-            // Handakuten (p-sounds for 'h' group) / Dakuten for 'h' group
+            "ド" to "do",
+
             "バ" to "ba",
             "ビ" to "bi",
             "ブ" to "bu",
             "ベ" to "be",
-            "ボ" to "bo", // Dakuten for ハ행 (ha-row)
+            "ボ" to "bo",
             "パ" to "pa",
             "ピ" to "pi",
             "プ" to "pu",
             "ペ" to "pe",
-            "ポ" to "po", // Handakuten for ハ행 (ha-row)
-            // Chōonpu (long vowel mark) - removed as per original logic
+            "ポ" to "po",
+
             "ー" to "",
         )
 
@@ -407,32 +396,6 @@ object LyricsUtils {
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
     }
 
-    /**
-     * Returns true when [lyrics] contains at least one actual translation entry
-     * produced by [moe.rukamori.archivetune.ai.AiLyricsTranslator].
-     *
-     * The translator marks the lyrics' source as `AI_TRANSLATION` regardless of
-     * whether the AI returned anything useful — if every line came back identical
-     * to the source (a common failure mode for CJK lyrics that were previously
-     * mangled by the span-joining bug in `AiLyricsDocument.readTtmlLineText`),
-     * the rebuild produces no `<translation>` element / no duplicate-timestamp
-     * LRC lines, but the row is still stored with `source = AI_TRANSLATION`.
-     *
-     * Without this check, the auto-translate LaunchedEffect in LyricsScreen.kt
-     * and AppleMusicPlayer.kt would skip those songs forever (the
-     * `source == AI_TRANSLATION` guard returns early), so the user would never
-     * get a translation even after the underlying bug is fixed. By allowing a
-     * retry when `hasTranslation()` is false, previously no-op'd translations
-     * get a chance to re-run with the corrected parser.
-     *
-     * Detection rules:
-     *  - TTML: look for `<translation ... data-archivetune="translation"` (the
-     *    marker `TtmlLyricsDocument.rebuild` writes).
-     *  - LRC / QRC / plain: look for any timestamp prefix that appears more
-     *    than once — translators append translated lines under the same prefix
-     *    as the original, so a duplicate prefix means at least one translation
-     *    was added.
-     */
     fun hasTranslation(lyrics: String): Boolean {
         if (lyrics.isBlank()) return false
         if (isTtml(lyrics)) {
@@ -448,21 +411,6 @@ object LyricsUtils {
         return false
     }
 
-    /**
-     * True when [dominantCode] — a value from [detectDominantLanguageCode] — names a language the
-     * user put in an exclusion set ("Don't auto translate these languages" / "Don't romanise these
-     * languages").
-     *
-     * Shared by the translation and romanisation gates so the two can never disagree about what an
-     * exclusion means, and so the code-space mismatch below is fixed once rather than twice.
-     *
-     * The mismatch: [detectDominantLanguageCode] reports a *script*, while the picker lists
-     * *languages* out of `assets/translator_languages.json`, and the two do not line up one-to-one.
-     * Han is the case that actually bites — the detector can only ever say `"CHINESE"`, but the
-     * picker offers `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and no plain `CHINESE`, so
-     * ticking either of them did nothing whatsoever. [EXCLUSION_ALIASES] accepts any picker code in
-     * the family instead.
-     */
     fun matchesExcludedLanguage(
         dominantCode: String,
         excludedLanguageCodes: Set<String>,
@@ -475,22 +423,9 @@ object LyricsUtils {
         return EXCLUSION_ALIASES[dominant]?.any { it in normalized } == true
     }
 
-    /**
-     * Picker codes that should satisfy an exclusion for a detected script that has no exact code of
-     * its own. See [matchesExcludedLanguage].
-     */
     private val EXCLUSION_ALIASES: Map<String, List<String>> =
         mapOf("CHINESE" to listOf("CHINESE_SIMPLIFIED", "CHINESE_TRADITIONAL"))
 
-    /**
-     * True when [lyrics] should be sent for automatic AI translation into [targetLanguage].
-     *
-     * [excludedLanguageCodes] has no default, deliberately. It used to default to `emptySet()`, and
-     * both live callers — the standalone lyrics screen and the Apple Music player's inline lyrics —
-     * simply left the argument off, so "Don't auto translate these languages" was written by the
-     * settings dialog and then never actually consulted: picking Hindi changed nothing. Making the
-     * parameter required turns that omission into a compile error rather than a silent no-op.
-     */
     fun shouldAutoTranslate(
         lyrics: String,
         targetLanguage: String,
@@ -498,41 +433,20 @@ object LyricsUtils {
     ): Boolean {
         if (lyrics.isBlank()) return false
         val dominant = detectDominantLanguageCode(lyrics)
-        // If the lyrics' dominant language is in the user's "Don't auto translate these languages"
-        // exclusion set, skip translation even when auto-translate is on.
+
         if (dominant != null && matchesExcludedLanguage(dominant, excludedLanguageCodes)) {
             return false
         }
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
-        // Automatic translation is intentionally script-based. Latin-script lyrics,
-        // including transliterated Hindi or extended-Latin spelling, must remain
-        // untouched: their language cannot be inferred reliably from characters.
-        // Users can still translate them explicitly from the lyrics menu.
+
         return lyrics.asSequence().any { char ->
             char.isLetter() && UnicodeScript.of(char.code) !in allowedScripts
         }
     }
 
-
-    /**
-     * Returns the uppercase language code (e.g. "JAPANESE", "KOREAN", "CHINESE", "HINDI",
-     * "ARABIC", "RUSSIAN", "THAI", "HEBREW", "GREEK", "ARMENIAN", "GEORGIAN") that best
-     * describes the dominant non-Latin script in [lyrics], or `null` if the lyrics are
-     * predominantly Latin (so no exclusion can match).
-     *
-     * These name *scripts*, not languages, and they very nearly — but not quite — line up with
-     * `TranslatorLang.code` in `assets/translator_languages.json`. "CHINESE" is the exception: the
-     * asset has `CHINESE_SIMPLIFIED` and `CHINESE_TRADITIONAL` and nothing plain. Compare through
-     * [matchesExcludedLanguage] rather than against an exclusion set directly, or Han lyrics will
-     * silently never match.
-     *
-     * The mapping is also deliberately coarse — every Devanagari script reports "HINDI", every
-     * Cyrillic one "RUSSIAN", every Arabic one "ARABIC" — so excluding Hindi also excludes Marathi
-     * and Nepali, and ticking "Marathi", "Ukrainian" or "Urdu" can never match anything.
-     */
     fun detectDominantLanguageCode(lyrics: String): String? {
         if (lyrics.isBlank()) return null
-        // Tally non-Latin scripts found in the lyrics. Latin/Common/Inherited are ignored.
+
         val scriptCounts = HashMap<UnicodeScript, Int>()
         for (char in lyrics) {
             if (!char.isLetter()) continue
@@ -672,16 +586,7 @@ object LyricsUtils {
                     TTML_END_ATTRIBUTE_REGEX.containsMatchIn(match.value)
             }
         }
-        // Enhanced LRC: lines like "[00:01.234]<00:01.500>Hello <00:01.700>world"
-        // where each word has its own <mm:ss.xxx> inline timestamp. This format is
-        // produced by YouLyPlus's v2/lyrics/get fallback endpoint (when v1/ttml/get
-        // is unavailable) and by some other providers. Without this check, those
-        // word-synced lyrics would be misclassified as plain line-synced LRC and
-        // the "Prioritize Word Synced Lyrics" feature would skip them.
-        //
-        // We require BOTH a line-level [mm:ss.xxx] tag AND an inline <mm:ss.xxx>
-        // word timestamp on the same line, so that plain text containing angle
-        // brackets (e.g. "<3") doesn't false-positive.
+
         return normalized.lineSequence().any { line ->
             LINE_REGEX.containsMatchIn(line) &&
                 (ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
@@ -987,8 +892,6 @@ object LyricsUtils {
     ): Int {
         if (lines.isEmpty()) return -1
 
-        // Find the last line whose start time is <= position (no lead). This is the
-        // "candidate current line" — we then decide whether to advance to the next line.
         val exactTarget = position
         var low = 0
         var high = lines.lastIndex
@@ -1005,18 +908,12 @@ object LyricsUtils {
         }
         val currentIdx = high.coerceIn(0, lines.lastIndex)
 
-        // If there's no next line, the current line is the answer.
         val nextIdx = currentIdx + 1
         if (nextIdx > lines.lastIndex) return currentIdx
 
         val currentLine = lines[currentIdx]
         val nextLine = lines[nextIdx]
 
-        // Fix for "next line becomes active while the previous line is still being sung" —
-        // when the current line has an explicit durationMs (TTML), do not advance to the next
-        // line until we're past the current line's end. The previous behaviour unconditionally
-        // applied `leadMs` and could highlight N+1 up to 300ms before N finished singing,
-        // which was jarring on lines with tight tail gaps.
         if (currentLine.durationMs > 0L) {
             val currentLineEndMs = currentLine.time + currentLine.durationMs
             if (position < currentLineEndMs) {
@@ -1024,15 +921,6 @@ object LyricsUtils {
             }
         }
 
-        // For line-synced LRC (no durationMs), the previous behaviour applied a flat 300ms lead
-        // regardless of how big the gap to the next line was. That made the next line highlight
-        // 300ms early even when there was a long instrumental break — and when the actual singing
-        // of the next line was still slightly delayed by the singer, the highlight felt premature.
-        //
-        // We now only apply the lead when lines are back-to-back (gap between line starts <= 2s).
-        // For longer gaps (slow ballads, instrumental interludes), we transition exactly at the
-        // next line's start time — no read-ahead. This preserves smooth transitions on rapid
-        // lyrics while avoiding the premature highlight on long-gap tracks.
         val gapBetweenLineStartsMs = nextLine.time - currentLine.time
         val effectiveLeadMs = if (gapBetweenLineStartsMs > 2_000L) 0L else leadMs
 
@@ -1043,39 +931,12 @@ object LyricsUtils {
         }
     }
 
-    /**
-     * Returns true when [entry] has real, per-word timing information that should drive
-     * word-by-word (karaoke) animation. Returns false when the [LyricsEntry.words] list
-     * is missing, empty, or contains only fake/synthetic timing patterns — namely:
-     *
-     *   - All word start times identical (line start sprayed onto every word).
-     *   - All word end times identical (line end sprayed onto every word).
-     *   - All word durations <= 0 (zero-duration spans).
-     *   - Word start times that perfectly match an even linear distribution across the
-     *     line (the classic "provider computed timing by dividing line duration by N"
-     *     pattern) AND word durations are also near-identical (low stddev relative to
-     *     mean). Real human singing has timing variation; mathematically-perfect even
-     *     distribution with identical word durations is the signature of a fake.
-     *
-     * This catches the case where providers like Better Lyrics / YouLyPlus / similar
-     * emit TTML with a `<span>` per word but the spans inherit the line's begin/end with
-     * no actual per-word offsets — which previously made Lyrics.kt animate each word
-     * in lockstep even though the lyric wasn't truly word-synced.
-     *
-     * Single-word lines (e.g. "Yeah", "Oh", "Hey") are accepted as long as the one
-     * span has a real, positive duration. The multi-word heuristics below are
-     * degenerate for N=1, so we short-circuit before reaching them. This matches the
-     * original app's behaviour where short interjections still animate per-letter.
-     */
     fun hasTrueWordSync(entry: LyricsEntry): Boolean {
         val raw = entry.words ?: return false
         val words = raw.filter { it.text.isNotBlank() }
         if (words.isEmpty()) return false
         if (words.size == 1) {
-            // Single-word line: still counts as word-synced when the one span has a
-            // real, positive duration. The all-starts-identical / all-ends-identical
-            // / even-distribution heuristics below are meaningless for N=1, so just
-            // verify the word actually spans a non-zero interval.
+
             val only = words.first()
             return (only.endTime - only.startTime) > 0.0
         }
@@ -1083,33 +944,26 @@ object LyricsUtils {
         val startTimes = words.map { it.startTime }
         val endTimes = words.map { it.endTime }
 
-        // All start times identical → no per-word timing.
         if (startTimes.distinct().size == 1) return false
-        // All end times identical → no per-word timing.
+
         if (endTimes.distinct().size == 1) return false
 
         val durations = words.map { (it.endTime - it.startTime).coerceAtLeast(0.0) }
-        // All durations zero → no real word spans.
+
         if (durations.all { it <= 0.0 }) return false
 
         val lineStart = startTimes.min()
         val lineEnd = endTimes.max()
         val lineDuration = lineEnd - lineStart
 
-        // Detect perfectly even linear distribution of start times across the line.
-        // This is what providers produce when they fake word sync by computing
-        //   word[i].start = lineStart + i * (lineEnd - lineStart) / (N - 1)
-        // We tolerate up to 50ms deviation per word; real word sync deviates more.
         if (lineDuration > 0.0 && words.size > 2) {
-            val tolerance = 0.05 // 50ms
+            val tolerance = 0.05
             val isEvenlyDistributed = startTimes.indices.all { i ->
                 val expected = lineStart + (lineDuration * i / (words.size - 1))
                 kotlin.math.abs(startTimes[i] - expected) < tolerance
             }
             if (isEvenlyDistributed) {
-                // Even distribution could still be real singing that happens to be very
-                // regular. Require word durations to also have meaningful variation —
-                // fake providers typically give every word the same duration too.
+
                 val positiveDurations = durations.filter { it > 0.0 }
                 if (positiveDurations.size >= 3) {
                     val avg = positiveDurations.average()
@@ -1117,8 +971,7 @@ object LyricsUtils {
                         val variance = positiveDurations.map { (it - avg) * (it - avg) }.average()
                         val stddev = kotlin.math.sqrt(variance)
                         if (stddev / avg < 0.1) {
-                            // Durations are essentially identical AND start times are perfectly
-                            // evenly spaced — this is almost certainly synthetic timing.
+
                             return false
                         }
                     }
@@ -1129,16 +982,6 @@ object LyricsUtils {
         return true
     }
 
-    /**
-     * Converts any Hiragana characters in [text] to their Katakana equivalents.
-     * Hiragana and Katakana share the same Unicode ordering — every Hiragana codepoint
-     * has a Katakana counterpart at offset 0x60 (e.g. あ U+3042 → ア U+30A2). This lets
-     * the existing Katakana-only [KANA_ROMAJI_MAP] handle both scripts after a single
-     * cheap pre-pass.
-     *
-     * Characters outside the Hiragana block (Katakana, Kanji, Latin, punctuation, etc.)
-     * are passed through unchanged.
-     */
     private fun hiraganaToKatakana(text: String): String {
         if (text.isEmpty()) return text
         val sb = StringBuilder(text.length)
@@ -1154,25 +997,6 @@ object LyricsUtils {
         return sb.toString()
     }
 
-    /**
-     * Romanizes Japanese text using Kuromoji Tokenizer and the optimized katakanaToRomaji function.
-     * Runs on Dispatchers.Default for CPU-intensive work.
-     *
-     * Pipeline:
-     *   1. Tokenize the input with Kuromoji (kanji + kana boundaries, readings).
-     *   2. For each token, pick the reading if Kuromoji provides one (usually Katakana);
-     *      otherwise fall back to the surface form (which may contain Hiragana).
-     *   3. Convert any Hiragana in the reading to Katakana via [hiraganaToKatakana] —
-     *      this is the critical fix. Previously, Hiragana characters in the surface form
-     *      passed through [katakanaToRomaji] unchanged because [KANA_ROMAJI_MAP] only
-     *      contains Katakana keys, so lyrics like "くさはねぇ" stayed as "くさはねぇ"
-     *      instead of becoming "kusahane-".
-     *   4. Run [katakanaToRomaji] on the normalized Katakana string. Sokuon (ッ) and
-     *      chōonpu (ー) are handled inside that function.
-     *   5. Pass the next token's Katakana-normalized reading as `nextKatakana` so
-     *      sokuon at a token boundary can still geminate the next token's initial
-     *      consonant.
-     */
     suspend fun romanizeJapanese(text: String): String =
         withContext(Dispatchers.Default) {
             val tokenizer = JapaneseLanguagePackManager.tokenizerOrNull() ?: return@withContext text
@@ -1186,11 +1010,9 @@ object LyricsUtils {
                         } else {
                             token.reading
                         }
-                    // Normalize Hiragana → Katakana so KANA_ROMAJI_MAP can handle both.
+
                     val katakanaReading = hiraganaToKatakana(currentReading)
 
-                    // Pass the next token's reading for sokuon handling at token boundaries.
-                    // Also normalized to Katakana for consistency.
                     val nextTokenReading =
                         if (index + 1 < tokens.size) {
                             val nextReading =
@@ -1205,34 +1027,6 @@ object LyricsUtils {
             romanizedTokens.joinToString(" ")
         }
 
-    /**
-     * Converts a Katakana string to Romaji using the pre-defined [KANA_ROMAJI_MAP].
-     *
-     * Handles three classes of characters specially beyond the map lookup:
-     *
-     *   1. Yōon (拗音) — 2-character sequences like "キャ" (kya). These are matched
-     *      BEFORE single-character lookups so the small y-vowel (ャ/ュ/ョ) combines
-     *      with the preceding consonant instead of being treated as a standalone
-     *      (and unmapped) character.
-     *
-     *   2. Sokuon (ッ) — gemination marker. Doubles the consonant of the NEXT
-     *      character. The next character is looked up WITHIN the current string
-     *      first (`katakana[i + 1]`); only if sokuon appears at the end of the
-     *      string do we fall back to the first character of [nextKatakana] (the
-     *      next token's reading). This fixes the previous bug where sokuon
-     *      mid-token (e.g. "がっこう" → "gakkou") was silently dropped because
-     *      the code only inspected the next TOKEN, not the next CHARACTER.
-     *
-     *   3. Chōonpu (ー) — long vowel mark. Extends the previous vowel instead of
-     *      being dropped (the old map entry `"ー" to ""` lost the long-vowel
-     *      information, turning "カー" (kaa) into "ka").
-     *
-     * @param katakana The Katakana string to convert. Hiragana should be
-     *     pre-converted with [hiraganaToKatakana]; any remaining non-Katakana
-     *     characters are passed through as-is.
-     * @param nextKatakana Optional: the next token's Katakana reading, used only
-     *     for sokuon-at-end-of-token gemination. Most tokens don't need this.
-     */
     fun katakanaToRomaji(
         katakana: String?,
         nextKatakana: String? = null,
@@ -1244,7 +1038,7 @@ object LyricsUtils {
         val n = katakana.length
         while (i < n) {
             var consumed = false
-            // Prioritize 2-character sequences from the map (e.g., "キャ" before "キ")
+
             if (i + 1 < n) {
                 val twoCharCandidate = katakana.substring(i, i + 2)
                 val mappedTwoChar = KANA_ROMAJI_MAP[twoCharCandidate]
@@ -1255,10 +1049,6 @@ object LyricsUtils {
                 }
             }
 
-            // Handle sokuon (ッ) — gemination. Doubles the consonant of the next
-            // character. Look INSIDE the current string first; only fall back to
-            // the next token's first character when sokuon is at the end of the
-            // current string (rare; usually a tokenizer artifact).
             if (!consumed && katakana[i] == 'ッ') {
                 val nextCharInSameString = katakana.getOrNull(i + 1)
                 val nextCharToDouble = nextCharInSameString ?: nextKatakana?.getOrNull(0)
@@ -1266,26 +1056,16 @@ object LyricsUtils {
                     val nextCharRomaji =
                         KANA_ROMAJI_MAP[nextCharToDouble.toString()]
                             ?: nextCharToDouble.toString()
-                    // Take the first letter (the consonant to geminate) and double it.
-                    // For vowel-initial kana (あ, い, う, え, お) the first letter is the
-                    // vowel itself — geminating a vowel is unusual but renders as the
-                    // vowel doubled (e.g. っあ → "aa"), which matches common romaji
-                    // conventions for emphatic speech.
+
                     val firstLetter = nextCharRomaji.firstOrNull()?.lowercase()?.trim()
                     if (firstLetter != null && firstLetter.isNotEmpty()) {
                         romajiBuilder.append(firstLetter)
                     }
                 }
-                i += 1 // Consume the 'ッ'
+                i += 1
                 consumed = true
             }
 
-            // Handle chōonpu (ー) — long vowel mark. Extends the previous vowel
-            // instead of being silently dropped. Maps to the same vowel as the last
-            // emitted character (e.g. "カ" + "ー" → "ka" + "a" = "kaa"). If there's
-            // no previous vowel (start of string, or previous char was a consonant),
-            // we emit nothing — same as the old `"ー" to ""` map entry, but without
-            // losing information when a vowel IS present.
             if (!consumed && katakana[i] == 'ー') {
                 val lastChar = romajiBuilder.lastOrNull()
                 val extension = when (lastChar) {
@@ -1302,13 +1082,13 @@ object LyricsUtils {
             }
 
             if (!consumed) {
-                // If no 2-character sequence matched, try 1-character
+
                 val oneCharCandidate = katakana[i].toString()
                 val mappedOneChar = KANA_ROMAJI_MAP[oneCharCandidate]
                 if (mappedOneChar != null) {
                     romajiBuilder.append(mappedOneChar)
                 } else {
-                    // If the character is not in Katakana map, append it as is.
+
                     romajiBuilder.append(oneCharCandidate)
                 }
                 i += 1
@@ -1368,24 +1148,6 @@ object LyricsUtils {
             romajaBuilder.toString()
         }
 
-    // region Hindi (Devanagari) romanization
-    //
-    // A hand-written Devanagari→Latin mapper that produces intuitive, pronounceable
-    // romanization for Hindi lyrics (e.g. "नमस्ते" → "namaste", "आदित्य" → "aaditya",
-    // "क्षमा" → "kshama"). This replaces the previous ICU "Any-Latin; Latin-ASCII" path
-    // which produced ISO-15919 with diacritics (e.g. "namastē") and then stripped them
-    // (e.g. "namaste" — but lost length distinctions and palatal/retroflex contrasts).
-    //
-    // The mapper handles:
-    //   - Independent vowels (अ, आ, इ, …) and their vowel signs (matras: ा, ि, ी, …)
-    //   - Consonants with inherent "a" (क → "ka"), suppressed by virama (क् → "k")
-    //   - Conjunct consonants (क + ् + ष → "ksh")
-    //   - Anusvara (ं) → "n" before vowels/semivowels, "m" before labials, otherwise "n"
-    //   - Visarga (ः) → "h"
-    //   - Candrabindu (ँ) → "n" (nasalization marker, simplified)
-    //   - Common special conjuncts: ज्ञ → "gyan", त्र → "tra", श्र → "shra", क्ष → "ksha"
-    //   - Devanagari numerals (०-९) → 0-9
-    //   - Danda (।) → "."
     private val DEVANAGARI_INDEPENDENT_VOWELS =
         mapOf(
             'अ' to "a", 'आ' to "aa", 'इ' to "i", 'ई' to "ii", 'उ' to "u", 'ऊ' to "uu",
@@ -1410,23 +1172,18 @@ object LyricsUtils {
             'य' to "y", 'र' to "r", 'ल' to "l", 'व' to "v",
             'श' to "sh", 'ष' to "sh", 'स' to "s", 'ह' to "h",
             'ळ' to "l",
-            // Note: common conjuncts (क्ष, ज्ञ, त्र, श्र) are NOT single Unicode
-            // codepoints — they're consonant + virama + consonant sequences, so they
-            // can't be map keys here. They are handled naturally by the main loop's
-            // consonant + virama + consonant flow, which produces the same result
-            // (e.g. क + ् + ष → "k" + "" + "sh" + "a" = "ksha").
+
         )
 
-    // Approximations for less-common letters / chillu characters (Malayalam-in-Devanagari etc.)
     private val DEVANAGARI_OTHER =
         mapOf(
             'ॐ' to "om",
             '।' to ".", '॥' to "..",
-            'ऽ' to "'",  // avagraha
-            'ं' to "n",  // anusvara (default; refined by context below)
-            'ः' to "h",  // visarga
-            'ँ' to "n",  // candrabindu (nasalization, simplified)
-            '्' to "",   // virama (halant) — suppresses inherent "a"; handled by loop
+            'ऽ' to "'",
+            'ं' to "n",
+            'ः' to "h",
+            'ँ' to "n",
+            '्' to "",
         )
 
     private val DEVANAGARI_NUMERALS =
@@ -1445,16 +1202,12 @@ object LyricsUtils {
             while (i < n) {
                 val ch = text[i]
 
-                // Devanagari numerals
                 if (DEVANAGARI_NUMERALS[ch] != null) {
                     sb.append(DEVANAGARI_NUMERALS[ch])
                     i++
                     continue
                 }
 
-                // Anusvara (ं) — context-sensitive:
-                //   before labials (प फ ब भ म) → "m"
-                //   otherwise → "n"
                 if (ch == 'ं') {
                     val next = text.getOrNull(i + 1)
                     sb.append(if (next != null && next in LABIALS) "m" else "n")
@@ -1462,31 +1215,23 @@ object LyricsUtils {
                     continue
                 }
 
-                // Candrabindu (ँ) — nasalization marker, simplified to "n"
                 if (ch == 'ँ') {
                     sb.append("n")
                     i++
                     continue
                 }
 
-                // Visarga (ः)
                 if (ch == 'ः') {
                     sb.append("h")
                     i++
                     continue
                 }
 
-                // Virama (्) — suppresses inherent "a" of preceding consonant.
-                // The preceding consonant was already emitted WITHOUT inherent "a"
-                // (see consonant branch below), so we just skip the virama here.
                 if (ch == '्') {
                     i++
                     continue
                 }
 
-                // Matras (vowel signs) — replace the inherent "a" of the preceding
-                // consonant. The preceding consonant was emitted WITHOUT "a" in
-                // anticipation (see consonant branch below).
                 val matra = DEVANAGARI_MATRAS[ch]
                 if (matra != null) {
                     sb.append(matra)
@@ -1494,7 +1239,6 @@ object LyricsUtils {
                     continue
                 }
 
-                // Independent vowels
                 val independentVowel = DEVANAGARI_INDEPENDENT_VOWELS[ch]
                 if (independentVowel != null) {
                     sb.append(independentVowel)
@@ -1502,10 +1246,6 @@ object LyricsUtils {
                     continue
                 }
 
-                // Consonants — look ahead to decide whether to emit inherent "a":
-                //   - If next char is a matra, virama, anusvara, visarga, or
-                //     candrabindu, emit just the consonant base (no "a").
-                //   - Otherwise emit consonant + "a" (inherent vowel).
                 val consonant = DEVANAGARI_CONSONANTS[ch]
                 if (consonant != null) {
                     val next = text.getOrNull(i + 1)
@@ -1525,7 +1265,6 @@ object LyricsUtils {
                     continue
                 }
 
-                // Other Devanagari signs (ॐ, ।, ॥, ऽ)
                 val other = DEVANAGARI_OTHER[ch]
                 if (other != null) {
                     sb.append(other)
@@ -1533,51 +1272,25 @@ object LyricsUtils {
                     continue
                 }
 
-                // Non-Devanagari character — pass through as-is (spaces, punctuation,
-                // Latin letters, etc.)
                 sb.append(ch)
                 i++
             }
             sb.toString()
         }
-    // endregion
 
-    /**
-     * Checks if the given text contains any Japanese characters (Hiragana, Katakana, or common Kanji).
-     * This function is generally efficient due to '.any' and early exit.
-     * No major performance bottlenecks expected here for typical inputs.
-     */
     fun isJapanese(text: String): Boolean =
         text.any { char ->
-            (char in '\u3040'..'\u309F') || // Hiragana
-                (char in '\u30A0'..'\u30FF') || // Katakana
-                // CJK Unified Ideographs (covers most common Kanji)
-                // Note: This range also includes many Chinese Hanzi.
-                // Differentiating Japanese Kanji from Chinese Hanzi solely based on Unicode
-                // ranges is challenging as they share many characters.
-                // For more accurate Japanese detection, one might need to analyze
-                // the presence of Hiragana/Katakana alongside Kanji.
+            (char in '\u3040'..'\u309F') ||
+                (char in '\u30A0'..'\u30FF') ||
+
                 (char in '\u4E00'..'\u9FFF')
         }
 
-    /**
-     * Checks if the given text contains any Korean characters (Hangul Syllables, Jamo, etc.).
-     */
     fun isKorean(text: String): Boolean =
         text.any { char ->
-            (char in '\uAC00'..'\uD7A3') // Hangul Syllables
+            (char in '\uAC00'..'\uD7A3')
         }
 
-    /**
-     * Checks if the given text contains any Chinese characters (common Hanzi).
-     * This function is generally efficient due to '.any' and early exit.
-     * To improve accuracy in distinguishing between Chinese and Japanese (which shares Kanji),
-     * this function now checks if the text *predominantly* consists of CJK Unified Ideographs
-     * and *lacks* significant amounts of Hiragana or Katakana.
-     *
-     * A simple threshold is used here. More sophisticated methods (e.g., frequency analysis,
-     * dictionaries, or machine learning models) would be needed for higher accuracy.
-     */
     fun isChinese(text: String): Boolean {
         if (text.isEmpty()) return false
 
@@ -1616,14 +1329,6 @@ object LyricsUtils {
         }
     }
 
-    /**
-     * True when [text] contains any script a romanisation could apply to, regardless of which engines
-     * the user has enabled.
-     *
-     * [shouldRomanizeLyricsLine] answers "should the built-in romanisers touch this line", which is
-     * the wrong question for the AI path: that one has a single on/off switch and no per-language
-     * engine toggles, but still must not spend a request on lyrics that are already Latin script.
-     */
     fun hasRomanizableScript(text: String): Boolean {
         if (text.isBlank()) return false
         return looksJapanese(text) ||
@@ -1741,58 +1446,22 @@ object LyricsUtils {
         return normalizeRomanizedText(word, romanized)
     }
 
-    /**
-     * Romanizes a list of words from a single line using ONE tokenization pass for Japanese.
-     *
-     * This is the critical performance fix for Japanese word-synced (TTML) lyrics.
-     * Previously, [romanizeLyricsWordWithLineContext] was called once per word, and each
-     * call ran Kuromoji's full Viterbi morphological analysis (trie traversal + lattice
-     * search over the entire IPADIC dictionary) on a single isolated word. For a typical
-     * 40-line song with 6 words per line, that's **240 tokenize calls** — each with
-     * non-trivial per-call overhead (dictionary loading is cached, but the Viterbi search
-     * is O(text × trie depth) per call).
-     *
-     * This function tokenizes the FULL LINE once (40 calls instead of 240 — a **6x
-     * reduction** in tokenize calls), then maps each token back to the original word
-     * boundaries by character position. Words that span multiple tokens get their
-     * romaji concatenated.
-     *
-     * Tokenizing the full line also gives **better romanization quality**: Kuromoji's
-     * morphological analyzer sees full context, so compounds like "日本語" tokenize as
-     * one token in context but may split into "日本" + "語" when isolated. The per-line
-     * path produces more accurate readings.
-     *
-     * For non-Japanese text, falls back to [romanizeLyricsWordWithLineContext] per word
-     * (character-by-character romanization for Korean/Hindi/Chinese is already cheap —
-     * no tokenizer involved).
-     */
     suspend fun romanizeWordsForLine(
         words: List<String>,
         lineText: String,
         preferences: LyricsRomanizationPreferences,
     ): List<String?> {
         if (words.isEmpty()) return emptyList()
-        // Japanese: single-pass line tokenization (Nx faster than per-word).
+
         if (preferences.romanizeJapanese && looksJapanese(lineText)) {
             return romanizeJapaneseWordsForLine(words, lineText)
         }
-        // Other languages: per-word is cheap (character-by-character), keep as-is.
+
         return words.map { word ->
             romanizeLyricsWordWithLineContext(word, lineText, preferences)
         }
     }
 
-    /**
-     * Japanese-specific per-line tokenization. See [romanizeWordsForLine] for the
-     * rationale.
-     *
-     * Token-to-word mapping uses character positions: Kuromoji's [Token.getPosition]
-     * returns the character offset of each token in the input line. We find each word's
-     * start offset in the line (via [String.indexOf] with a running scan cursor to handle
-     * repeated words), then collect all tokens whose `[start, end)` range overlaps with
-     * the word's `[wordStart, wordEnd)` range. The romaji of overlapping tokens is
-     * concatenated to form the word's phonetic.
-     */
     private suspend fun romanizeJapaneseWordsForLine(
         words: List<String>,
         lineText: String,
@@ -1804,9 +1473,6 @@ object LyricsUtils {
         val tokens = tokenizer.tokenize(lineText)
         if (tokens.isEmpty()) return@withContext words.map { null }
 
-        // Pre-compute each token's [start, end) range and its romaji.
-        // The next token's reading is kept for sokuon-at-boundary gemination
-        // (same logic as romanizeJapanese, just vectorized).
         val tokenCount = tokens.size
         val tokenStarts = IntArray(tokenCount)
         val tokenEnds = IntArray(tokenCount)
@@ -1836,27 +1502,22 @@ object LyricsUtils {
             tokenRomaji.add(katakanaToRomaji(katakanaReading, nextTokenReading))
         }
 
-        // Walk through words and tokens in parallel (both are in text order).
-        // This is O(words + tokens) — no nested loops.
         val result = ArrayList<String?>(words.size)
         var scanOffset = 0
         var tokenIdx = 0
         for (word in words) {
             val wordStart = lineText.indexOf(word, startIndex = scanOffset)
             if (wordStart < 0) {
-                // Word not found in line text (malformed TTML or whitespace mismatch).
-                // Skip — the word will have no phonetic, which is a graceful degradation.
+
                 result.add(null)
                 continue
             }
             val wordEnd = wordStart + word.length
 
-            // Advance tokenIdx past tokens that end before this word starts.
             while (tokenIdx < tokenCount && tokenEnds[tokenIdx] <= wordStart) {
                 tokenIdx++
             }
 
-            // Collect all tokens that overlap [wordStart, wordEnd).
             val romajiBuilder = StringBuilder()
             var tIdx = tokenIdx
             while (tIdx < tokenCount && tokenStarts[tIdx] < wordEnd) {
@@ -1892,8 +1553,7 @@ object LyricsUtils {
     }
 
     private fun looksJapanese(text: String): Boolean {
-        // Fast path: kana (Hiragana/Katakana) or iteration marks always indicate
-        // Japanese. This matches the previous behavior.
+
         if (
             text.any {
                 hasScript(it, UnicodeScript.HIRAGANA) ||
@@ -1905,12 +1565,7 @@ object LyricsUtils {
         ) {
             return true
         }
-        // Kanji-only text: ambiguous between Japanese and Chinese. Treat it as
-        // Japanese ONLY when the Kuromoji language pack is installed — otherwise
-        // `romanizeJapanese` would silently return the original text unchanged
-        // (a no-op), and the user would see no romanization at all. When the
-        // pack isn't installed, fall through so the Chinese ICU path can attempt
-        // romanization instead.
+
         val hasKanji = text.any { it in '\u4E00'..'\u9FFF' }
         return hasKanji && JapaneseLanguagePackManager.tokenizerOrNull() != null
     }

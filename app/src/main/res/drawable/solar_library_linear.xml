@@ -3,7 +3,7 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Library/playlist with multiple tracks -->
+
     <path
         android:pathData="M19.562 7a2.132 2.132 0 0 0 -2.1 -2.5H6.538a2.132 2.132 0 0 0 -2.1 2.5M17.5 4.5c0.028 -0.26 0.043 -0.389 0.043 -0.496a2 2 0 0 0 -1.787 -1.993C15.65 2 15.52 2 15.26 2H8.74c-0.26 0 -0.391 0 -0.497 0.011a2 2 0 0 0 -1.787 1.993c0 0.107 0.014 0.237 0.043 0.496"
         android:fillColor="#00000000"

@@ -17,12 +17,12 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 
 /**
  * The current song's lyrics parsed into timed lines, or an empty list when there are none or
- * they are unsynced.
+ * they are unsynced — the pane needs timings, so plain-text lyrics do not qualify.
  *
- * Shared by player styles that render lyrics of their own (SimpMusic's lyrics surface), so the
- * "which lyric formats count as synced" decision is made once rather than per style. The
- * BitChord-style pane that used to replace the artwork on the classic player was removed
- * together with its "Show lyrics on player" setting (2026-09-05 user request).
+ * All that is left of the inline lyrics pane that used to replace the artwork on the player. The
+ * pane is gone — lyrics live on the lyrics page now, not inside the player's own controls — but the
+ * "which lyric formats count as synced" decision it made is still wanted, by the SimpMusic style's
+ * one-line strip and by anything else that needs timed lines.
  */
 @Composable
 fun rememberInlineLyricLines(playerConnection: PlayerConnection): List<LyricsEntry> {

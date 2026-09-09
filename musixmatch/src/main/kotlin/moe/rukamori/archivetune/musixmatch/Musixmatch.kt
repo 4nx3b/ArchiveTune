@@ -32,31 +32,6 @@ import moe.rukamori.archivetune.musixmatch.models.SubtitleLine
 import moe.rukamori.archivetune.musixmatch.models.TokenResponse
 import java.util.Locale
 
-/**
- * Native Musixmatch provider ported from Spicetify's lyrics-plus `ProviderMusixmatch.js`.
- *
- * Endpoint flow:
- *  1. `token.get` — fetches a runtime `user_token`. Never hardcoded.
- *  2. `macro.subtitles.get` — single call returning matcher.track.get + track.lyrics.get +
- *     track.subtitles.get. We use this to find the commontrack_id, instrumental flag, and
- *     has_richsync flag in one round-trip.
- *  3. `track.richsync.get` — fetched only when macro reports `has_richsync == 1` and the
- *     track is not instrumental. Returns word-level timing that we convert to TTML.
- *
- * Output priorities:
- *  1. Word-synced TTML from richsync
- *  2. Line-synced LRC from subtitle_body
- *  3. Plain text from lyrics_body
- *  4. Failure
- *
- * OkHttp is used because Musixmatch requires auth-like token handling. The current
- * implementation refreshes tokens manually to keep the provider explicit and testable,
- * but OkHttp also allows future migration to an Authenticator/interceptor based flow
- * if we need automatic 401 handling.
- *
- * Token refresh is concurrency-safe via a Mutex with double-check, so parallel lyrics
- * requests that all hit an invalid-token error trigger only one refresh.
- */
 object Musixmatch {
     private const val BASE_URL = "https://apic-appmobile.musixmatch.com/ws/1.1/"
     private const val APP_ID = "mac-ios-v2.0"
@@ -107,8 +82,7 @@ object Musixmatch {
             if (lyrics != null) {
                 Result.success(lyrics)
             } else {
-                // One retry after a forced token refresh — covers the case where the cached token
-                // was invalidated server-side between requests.
+
                 val refreshed = refreshTokenAfterInvalid(token)
                 val retry = fetchLyricsWithToken(cleanTitle, cleanArtist, album, duration, refreshed)
                 if (retry != null) {
@@ -155,9 +129,6 @@ object Musixmatch {
             return
         }
 
-        // Cooperative cancellation between the richsync / subtitle / plain-lyrics
-        // branches — mirrors the pattern used by LrcLib.getAllLyrics so a cancelled
-        // fetch aborts promptly at branch boundaries, not just at suspend points.
         currentCoroutineContext().ensureActive()
 
         if (hasRichSync) {

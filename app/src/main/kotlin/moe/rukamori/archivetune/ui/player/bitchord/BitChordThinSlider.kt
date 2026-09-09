@@ -5,20 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Bitchord player style — scrubber.
- *
- * Ported verbatim from BitChord (https://github.com/kushagrasinghx/BitChord),
- * app/src/main/java/com/music/bitchord/ui/player/ThinSlider.kt (package renamed).
- * The `mixing` / `transitionWindow` parameters (BitChord's Automix planner
- * markers) are retained with their exact drawing code; ArchiveTune has no
- * equivalent planner, so callers pass the defaults and the extra drawing paths
- * stay dormant.
- *
- * Belongs exclusively to the Bitchord player style; not shared with any other
- * player style, per the self-containment rule for player styles (2026-09-01).
- */
-
 package moe.rukamori.archivetune.ui.player.bitchord
 
 import androidx.compose.animation.AnimatedVisibility
@@ -56,35 +42,21 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Apple Music's scrubber: a hairline capsule with no thumb knob, which
- * thickens under your finger and settles back when you let go. Material's
- * Slider can't be shaped like this — it always draws a thumb and a tall
- * track — so this is drawn directly.
- */
 @Composable
 fun ThinSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     onValueChangeFinished: (() -> Unit)? = null,
-    /**
-     * Sends a sheen travelling along the played portion for as long as it is
-     * true. Reserved for a transition that genuinely mixed — see BitChord's
-     * smartMixInProgress. Dormant in ArchiveTune (no Automix planner).
-     */
+
     mixing: Boolean = false,
-    /**
-     * Span of the track, as fractions of its duration, that the next Automix
-     * transition is planned to occupy. Drawn as a brighter stretch of the
-     * unplayed bar so the mix is visible before it arrives. Dormant here.
-     */
+
     transitionWindow: ClosedFloatingPointRange<Float>? = null,
     idleHeight: Dp = 7.dp,
     activeHeight: Dp = 12.dp,
     activeColor: Color = Color.White.copy(alpha = 0.92f),
     inactiveColor: Color = Color.White.copy(alpha = 0.26f),
-    /** Halfway between the two track colours: visible against unplayed, invisible under played. */
+
     markerColor: Color = Color.White.copy(alpha = 0.5f),
 ) {
     var dragging by remember { mutableStateOf(false) }
@@ -100,11 +72,9 @@ fun ThinSlider(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Generous invisible touch target — the visible bar is only ~7dp.
+
             .height(activeHeight + 22.dp)
-            // One gesture loop for both taps and drags. Two separate detectors
-            // — a drag one plus a tap one — meant taps never landed: the drag
-            // detector took the pointer and a tap has no drag to report.
+
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -137,10 +107,7 @@ fun ThinSlider(
         ) {
             val radius = CornerRadius(size.height / 2f)
             drawRoundRect(color = inactiveColor, cornerRadius = radius)
-            // Between the two track colours, and drawn *under* the played fill:
-            // once the playhead reaches the window the transition is no longer
-            // upcoming, and the ordinary progress colour taking it over is what
-            // says so.
+
             transitionWindow?.let { window ->
                 val from = size.width * window.start.coerceIn(0f, 1f)
                 val to = size.width * window.endInclusive.coerceIn(0f, 1f)
@@ -162,12 +129,7 @@ fun ThinSlider(
                 )
             }
         }
-        // Composed only while mixing, rather than drawn conditionally inside the
-        // Canvas above: an infinite transition keeps requesting frames for as
-        // long as it exists, so the cheap way to stop it costing anything is for
-        // it not to exist. AnimatedVisibility keeps it alive through the exit
-        // fade, so the sheen dies away with the transition instead of vanishing
-        // on the frame the mix ends.
+
         AnimatedVisibility(
             visible = mixing,
             enter = fadeIn(tween(durationMillis = 420)),
@@ -178,23 +140,6 @@ fun ThinSlider(
     }
 }
 
-/**
- * A single soft highlight travelling the length of the bar, over and over,
- * while two tracks are being mixed.
- *
- * Drawn as a moving gradient rather than an opacity pulse because a pulse reads
- * as "loading" — the thing every shimmer in every app means — and this is the
- * opposite claim: not that the app is waiting, but that it is doing something.
- * Motion along the bar also points the same way the music is going.
- *
- * Sweeps the **whole** bar rather than the played portion, which the first
- * version did and which made it invisible twice over. A transition happens in
- * the opening seconds of the incoming track, so the played portion is then a
- * few percent of the width — a highlight travelling across that is a flicker at
- * the far left. And the played portion is already white at 0.92 alpha, so white
- * at 0.55 over it resolves to 0.96: the same hue, four percent brighter. The
- * unplayed track sits at 0.26, and that is where a white band actually reads.
- */
 @Composable
 private fun MixSheen(height: Dp) {
     val transition = rememberInfiniteTransition(label = "mixSheen")
@@ -202,8 +147,7 @@ private fun MixSheen(height: Dp) {
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            // Long enough to read as a sweep rather than a flicker, and slow
-            // enough not to compete with the music for attention.
+
             animation = tween(durationMillis = 500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
@@ -215,8 +159,7 @@ private fun MixSheen(height: Dp) {
             .height(height),
     ) {
         val band = size.width * BAND_FRACTION
-        // Travels from fully off the left edge to fully off the right, so the
-        // highlight enters and leaves rather than materialising mid-bar.
+
         val centre = -band + (size.width + band * 2f) * phase
         drawRoundRect(
             brush = Brush.linearGradient(
@@ -233,5 +176,4 @@ private fun MixSheen(height: Dp) {
     }
 }
 
-/** Width of the travelling highlight, as a fraction of the whole bar. */
 private const val BAND_FRACTION = 0.7f

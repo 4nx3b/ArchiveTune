@@ -20,27 +20,8 @@ import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/**
- * Resolves playable Deezer streams for a track, mirroring the shape of
- * [moe.rukamori.archivetune.qobuz.QobuzAudioProvider] so the two are interchangeable at the call
- * site.
- *
- * Deezer differs from Tidal/Qobuz in two ways that shape this file:
- *  - There is no community restream tier. Every resolve runs against Deezer's own gateway using a
- *    pooled `arl` cookie, so accounts are the only backend and [PoolAccountManager] is the only
- *    source of them.
- *  - The CDN never returns plain audio. Resolved URLs are wrapped in a `deezer://` URI so
- *    [DeezerDecryptingDataSource] can undo the Blowfish chunk encryption in flight; handing the raw
- *    CDN URL to Media3 would play noise.
- *
- * All calls run blocking network I/O and must not be made from the main thread.
- */
 object DeezerAudioProvider {
-    /**
-     * Catalogue metadata for a track, with no playable stream attached. Returned by [lookup] and kept
-     * separate from [Resolved] because callers that only enrich stored metadata (artwork, album name,
-     * ISRC) must not have to satisfy the streaming contract.
-     */
+
     data class Metadata(
         val trackId: String,
         val title: String,
@@ -59,7 +40,6 @@ object DeezerAudioProvider {
     private const val STREAM_CACHE_MS = 30 * 60 * 1000L
     private const val FAILURE_CACHE_MS = 10 * 60 * 1000L
 
-    /** Deezer expires stream URLs well before this, but sessions are reused across resolves. */
     private const val SESSION_TTL_MS = 45 * 60 * 1000L
 
     private const val GATEWAY = "https://www.deezer.com/ajax/gw-light.php"
@@ -75,7 +55,6 @@ object DeezerAudioProvider {
     const val FORMAT_MP3_320 = "MP3_320"
     const val FORMAT_MP3_128 = "MP3_128"
 
-    /** Deezer's tiers, best first. Ordering matters: a resolve offers the requested tier and all below. */
     private val FORMAT_TIERS = listOf(FORMAT_FLAC, FORMAT_MP3_320, FORMAT_MP3_128)
 
     private val client =
@@ -86,18 +65,9 @@ object DeezerAudioProvider {
             .callTimeout(15, TimeUnit.SECONDS)
             .build()
 
-    /**
-     * A manually captured ARL, set by the Deezer login screen and mirrored from DataStore on startup.
-     * Held here rather than in [PoolAccountManager] because that cache is replaced wholesale on every
-     * pool refresh and is gated behind `isEnabled`, either of which would drop a user's own account.
-     */
     @Volatile
     private var manualAccount: PoolAccountManager.DeezerPoolAccount? = null
 
-    /**
-     * Registers (or clears, on null/blank) the manually signed-in account. Cheap and idempotent, so
-     * call sites can push the current value without tracking whether it changed.
-     */
     fun setManualArl(
         arl: String?,
         premium: Boolean = false,
@@ -107,28 +77,19 @@ object DeezerAudioProvider {
             if (trimmed.isNullOrEmpty()) {
                 null
             } else {
-                // masterSecret stays null: only the pool serves an override, and DeezerCrypto falls
-                // back to the salt the app ships with. id null = a manual account, never reported.
+
                 PoolAccountManager.DeezerPoolAccount(id = null, arl = trimmed, premium = premium)
             }
         val previous = manualAccount
         manualAccount = next
-        // Sessions are keyed by ARL, so a changed or removed credential must not keep serving from a
-        // session established under the old one.
+
         if (previous != null && previous.arl != next?.arl) {
             sessions.remove(previous.arl)
         }
     }
 
-    /** True when at least one credential (manual or pooled) is available. Cheap: no network. */
     fun hasAccounts(): Boolean = manualAccount != null || PoolAccountManager.deezerAccounts().isNotEmpty()
 
-    /**
-     * What credentials exist right now, split by origin. Exists so diagnostics and settings copy can
-     * tell a user with their own ARL apart from one relying on the shared pool — reading
-     * [PoolAccountManager.deezerAccounts] directly gets that wrong and reports "no Deezer accounts"
-     * to somebody who just signed in successfully.
-     */
     data class AccountAvailability(
         val manual: Boolean,
         val manualPremium: Boolean,
@@ -138,7 +99,6 @@ object DeezerAudioProvider {
         val total: Int get() = pooled + if (manual) 1 else 0
     }
 
-    /** Cheap snapshot of [AccountAvailability]; no network. */
     fun accountAvailability(): AccountAvailability {
         val manual = manualAccount
         val pooled = PoolAccountManager.deezerAccounts().filter { it.arl != manual?.arl }
@@ -150,43 +110,25 @@ object DeezerAudioProvider {
         )
     }
 
-    /**
-     * Verifies the credential that [resolve] would reach for first, so a diagnostic can report
-     * whether the ARL is actually still good rather than just that one is stored. Blocking network
-     * I/O; returns null when there is no credential or the gateway rejects it.
-     */
     fun verifyPreferredAccount(): AccountInfo? = accounts().firstOrNull()?.let { verifyArl(it.arl) }
 
-    /**
-     * Every usable credential, manual first so a user's own (likely paid) account is tried before
-     * shared pool entries.
-     */
     private fun accounts(): List<PoolAccountManager.DeezerPoolAccount> {
         val pooled = PoolAccountManager.deezerAccounts()
         val manual = manualAccount ?: return pooled
-        // Drop a pooled duplicate so one bad credential cannot be attempted twice per resolve.
+
         return listOf(manual) + pooled.filter { it.arl != manual.arl }
     }
 
-    /** What a manual sign-in learns about the account behind an ARL. */
     data class AccountInfo(
         val name: String,
         val lossless: Boolean,
     )
 
-    /**
-     * Checks an ARL against the gateway and reports the account behind it, or null when the cookie is
-     * not a usable credential. Runs blocking network I/O.
-     *
-     * The login screen needs this because Deezer hands out an `arl` cookie to anonymous visitors too:
-     * without verifying, a user who closed the page before signing in would be told they were signed
-     * in and then get silence on every track.
-     */
     fun verifyArl(arl: String): AccountInfo? =
         runCatching {
             val json = gateway(arl.trim(), apiToken = "", method = "deezer.getUserData", payload = null)
             val user = json.optJSONObject("results")?.optJSONObject("USER") ?: return@runCatching null
-            // An anonymous or expired ARL still returns HTTP 200, just with USER_ID 0.
+
             if (user.optLong("USER_ID", 0L) == 0L) return@runCatching null
             val options = user.optJSONObject("OPTIONS")
             val name =
@@ -204,7 +146,6 @@ object DeezerAudioProvider {
         }.onFailure { Timber.tag(TAG).w(it, "ARL verification failed") }
             .getOrNull()
 
-    /** An authenticated gateway session derived from one pooled ARL. */
     private data class Session(
         val arl: String,
         val apiToken: String,
@@ -214,16 +155,6 @@ object DeezerAudioProvider {
         val establishedAt: Long,
     )
 
-    /**
-     * A resolved Deezer stream, in this provider's own shape rather than the playback layer's
-     * `DirectStream`.
-     *
-     * Keeping the provider free of playback types lets it be built and tested before Deezer is wired
-     * into the source-resolution chain; the playback layer adapts this into a `DirectStream`. The
-     * `matched*` fields are the catalog metadata of the hit that was chosen, and the playback layer
-     * needs them to re-check the pick against its own `TitleMatch` gate — a stream with no matched
-     * title is rejected there, so these are not optional extras.
-     */
     data class Resolved(
         val uri: String,
         val mimeType: String,
@@ -248,12 +179,10 @@ object DeezerAudioProvider {
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
     private val failureCache = ConcurrentHashMap<String, Long>()
 
-    /** Track id of the most recent successful resolve, used by settings screens as a health probe. */
     @Volatile
     var lastResolvedTrackId: String? = null
         private set
 
-    /** Mirrors the Tidal/Qobuz query shape so callers can switch providers without reshaping input. */
     data class Query(
         val mediaId: String,
         val title: String,
@@ -266,10 +195,8 @@ object DeezerAudioProvider {
         listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase())
             .joinToString("|")
 
-    /** True when at least one Deezer account is available, manual or pooled. */
     fun hasBackends(): Boolean = accounts().isNotEmpty()
 
-    /** Drops the cached stream for [query] at [format], forcing the next resolve to refetch. */
     fun invalidate(
         query: Query,
         format: String,
@@ -279,17 +206,6 @@ object DeezerAudioProvider {
         failureCache.remove(key)
     }
 
-    /**
-     * Resolves a playable stream for [query] at [format] (`FLAC`, `MP3_320` or `MP3_128` — see
-     * `DeezerAudioQuality.toFormatName()`), degrading to the next tier down when the account's plan
-     * does not cover the requested one.
-     *
-     * Takes the format as a plain string rather than the preference enum so this stays independent of
-     * the settings layer, matching how `QobuzAudioProvider` takes a bare `formatId`.
-     *
-     * Returns null when no pooled account can serve the track. The returned [Resolved] carries a
-     * `deezer://` URI rather than the CDN URL, because the bytes still need decrypting.
-     */
     fun resolve(
         query: Query,
         format: String,
@@ -311,10 +227,6 @@ object DeezerAudioProvider {
             failureCache.remove(cacheKey)
         }
 
-        // Accounts with a paid plan come first so a FLAC request has the best chance of being served
-        // at full quality. An account whose plan cannot cover the requested tier is NOT skipped: it
-        // degrades to the highest tier it does have, so a pool of free accounts still plays the track
-        // instead of the whole source going silent.
         val ordered = accounts.sortedByDescending { it.premium }
         for (account in ordered) {
             val session =
@@ -333,7 +245,7 @@ object DeezerAudioProvider {
                     .onFailure { Timber.tag(TAG).w(it, "get_url failed for track %s", trackId) }
                     .getOrNull()
             if (media == null) {
-                // The session may have gone stale mid-resolve; drop it so the next attempt re-auths.
+
                 sessions.remove(account.arl)
                 continue
             }
@@ -343,11 +255,10 @@ object DeezerAudioProvider {
                 Resolved(
                     uri = DeezerCrypto.buildUri(media.url, trackId, session.masterSecret),
                     mimeType = if (media.flac) MIME_FLAC else MIME_MPEG,
-                    // MP3 is mpeg-layer-3, not AAC; naming it "mp4a" would mislead the extractor.
+
                     codecs = if (media.flac) "flac" else "mp3",
                     contentLength = media.contentLength,
-                    // Report the tier actually served, not the one requested, so the player does not
-                    // claim FLAC for a track that degraded to MP3.
+
                     label =
                         when (media.format.uppercase()) {
                             FORMAT_FLAC -> "Deezer FLAC"
@@ -359,8 +270,7 @@ object DeezerAudioProvider {
                     matchedArtist = match.artists.firstOrNull(),
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
-                    // Deezer's gateway does not report either, and FLAC here is always CD-quality, so
-                    // report the known 16/44.1 for FLAC and leave MP3 to the consumer's tier heuristic.
+
                     sampleRate = if (media.flac) 44_100 else null,
                     bitDepth = if (media.flac) 16 else null,
                 )
@@ -372,11 +282,6 @@ object DeezerAudioProvider {
         return null
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Session
-    // ---------------------------------------------------------------------------------------------
-
-    /** Returns a live session for [account], reusing a cached one until it ages out. */
     private fun session(account: PoolAccountManager.DeezerPoolAccount): Session {
         val now = System.currentTimeMillis()
         sessions[account.arl]?.let { if (now - it.establishedAt < SESSION_TTL_MS) return it }
@@ -384,10 +289,9 @@ object DeezerAudioProvider {
         val json = gateway(account.arl, apiToken = "", method = "deezer.getUserData", payload = null)
         val results = json.optJSONObject("results")
         val user = requireNotNull(results?.optJSONObject("USER")) { "no USER in session payload" }
-        // An invalid or expired ARL still returns HTTP 200 with USER_ID 0, so this is the real check.
+
         if (user.optLong("USER_ID", 0L) == 0L) {
-            // Playback just learned the pooled credential is dead; tell the pool so it stops being
-            // leased to other users before the next server-side sweep. Fire-and-forget.
+
             PoolAccountManager.report("deezer", "account", account.id, "dead")
             throw IllegalStateException("ARL rejected by gateway")
         }
@@ -402,9 +306,7 @@ object DeezerAudioProvider {
         val lossless =
             options.optBoolean("web_lossless", false) ||
                 options.optBoolean("mobile_lossless", false)
-        // A pool entry flagged premium but without lossless entitlement would make the pool lease it
-        // first for FLAC requests everywhere; the truth is the opposite. Tell the pool once per
-        // session so its ordering stops preferring this account. Fire-and-forget.
+
         if (account.premium && !lossless) {
             PoolAccountManager.report("deezer", "account", account.id, "not_premium")
         }
@@ -414,9 +316,7 @@ object DeezerAudioProvider {
                 arl = account.arl,
                 apiToken = apiToken,
                 licenseToken = licenseToken,
-                // Entitlement lives in flat OPTIONS booleans. Check both the web and mobile flags: a
-                // plan can carry lossless on one surface only, and either is enough for us to ask for
-                // FLAC. The pool's own `premium` hint only orders attempts; this is the real gate.
+
                 lossless = lossless,
                 masterSecret = account.masterSecret,
                 establishedAt = now,
@@ -455,11 +355,6 @@ object DeezerAudioProvider {
         }
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Search
-    // ---------------------------------------------------------------------------------------------
-
-    /** Finds the Deezer track id that best matches [query], or null when nothing scores high enough. */
     private fun matchTrack(
         session: Session,
         query: Query,
@@ -489,7 +384,7 @@ object DeezerAudioProvider {
                     title = obj.optString("SNG_TITLE"),
                     artists = listOfNotNull(obj.optString("ART_NAME").takeIf { it.isNotBlank() }),
                     album = obj.optString("ALB_TITLE").takeIf { it.isNotBlank() },
-                    // Deezer reports duration in whole seconds.
+
                     durationMs = obj.optLong("DURATION", 0L).takeIf { it > 0L }?.times(1000L),
                 )
             }
@@ -509,24 +404,14 @@ object DeezerAudioProvider {
         return best
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Stream URL
-    // ---------------------------------------------------------------------------------------------
-
     private class Media(
         val url: String,
         val flac: Boolean,
-        /** The tier the gateway served, which may be lower than the one requested. */
+
         val format: String,
         val contentLength: Long?,
     )
 
-    /**
-     * Exchanges a track id for a CDN URL via the media endpoint.
-     *
-     * Deezer needs the track's per-format `TRACK_TOKEN` (not the numeric id) here, so this makes a
-     * second gateway call to fetch it before asking for the URL.
-     */
     private fun requestUrl(
         session: Session,
         trackId: String,
@@ -542,10 +427,6 @@ object DeezerAudioProvider {
         val trackToken = trackJson.optJSONObject("results")?.optString("TRACK_TOKEN").orEmpty()
         if (trackToken.isBlank()) return null
 
-        // Offer the requested tier and everything below it in one request, so a track with no lossless
-        // master (or an account without the entitlement) still plays at the best available quality
-        // instead of failing the resolve. FLAC is dropped when the plan does not cover it, otherwise
-        // the gateway would answer with an empty media list.
         val requested = if (format == FORMAT_FLAC && !session.lossless) FORMAT_MP3_320 else format
         val formats = FORMAT_TIERS.dropWhile { it != requested }.ifEmpty { listOf(FORMAT_MP3_320, FORMAT_MP3_128) }
         val formatArray = JSONArray()
@@ -583,14 +464,10 @@ object DeezerAudioProvider {
         val media = first.optJSONArray("media")?.optJSONObject(0) ?: return null
         val source = media.optJSONArray("sources")?.optJSONObject(0) ?: return null
         val url = source.optString("url").takeIf { it.isNotBlank() } ?: return null
-        // The tier the gateway actually served, which may be lower than the one requested.
+
         val servedFormat = media.optString("format")
         val flac = servedFormat.equals(FORMAT_FLAC, ignoreCase = true)
 
-        // song.getData carries a per-format size (FILESIZE_FLAC, FILESIZE_MP3_320, ...). The encrypted
-        // stream is byte-for-byte the same length as the decrypted one because BF_CBC_STRIPE adds no
-        // padding, so this size is valid for the decrypted output and saves a HEAD probe. Null is fine:
-        // DirectStream treats an unknown length as "ask the CDN".
         val sizeField = "FILESIZE_${servedFormat.uppercase()}"
         val results = trackJson.optJSONObject("results")
         val contentLength =
@@ -602,14 +479,6 @@ object DeezerAudioProvider {
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaTypeOrNull()
 
-    /**
-     * Searches Deezer's public catalogue for [query] and returns the best-matching track's metadata.
-     * Returns null when no match is found or the Deezer API is unreachable.
-     *
-     * Unlike [resolve] this hits Deezer's public API and needs no account, so it returns catalogue
-     * metadata only and never a playable URL. Used for artwork and album-name fallback on downloaded
-     * songs, where a missing field is worth a cheap unauthenticated lookup but silence is not.
-     */
     suspend fun lookup(query: Query): Metadata? =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
@@ -662,15 +531,6 @@ object DeezerAudioProvider {
             }.getOrNull()
         }
 
-    /**
-     * Free-text catalogue search, returning up to [limit] hits in Deezer's own relevance order.
-     *
-     * Separate from [lookup] because the two answer different questions: [lookup] is "which single
-     * track is this song?" and applies a match-score threshold, while this is "what does the user's
-     * typing find?" and must not filter anything out. Also unauthenticated, so the player's "Play
-     * from" picker can list Deezer rows before any ARL exists — the picker only needs title/artist to
-     * pin the per-song source override, not a playable URL.
-     */
     suspend fun searchCandidates(
         term: String,
         limit: Int = SEARCH_LIMIT,
@@ -767,15 +627,6 @@ object DeezerAudioProvider {
         return if (union == 0.0) 0.0 else inter / union
     }
 
-    // ---------------------------------------------------------------------------------------------
-    // Lyrics
-    // ---------------------------------------------------------------------------------------------
-
-    /**
-     * Fetches Deezer lyrics for a track via the gateway `song.getLyrics` method, using an available
-     * account session. Returns the time-synced LRC when present, falling back to plain text.
-     * Returns failure when no account, no match, or no lyrics are available.
-     */
     suspend fun getLyrics(
         title: String,
         artist: String,

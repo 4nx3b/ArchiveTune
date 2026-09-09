@@ -11,7 +11,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
 import android.webkit.WebView
@@ -42,7 +41,6 @@ const val DEEZER_LOGIN_ROUTE = "settings/deezer/login"
 
 private const val LOGIN_URL = "https://www.deezer.com/login"
 
-/** Cookies are read for this origin; the `arl` cookie is scoped to `.deezer.com`. */
 private const val COOKIE_ORIGIN = "https://www.deezer.com"
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -51,18 +49,12 @@ fun DeezerLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // The cookie appears while the page is still navigating, so onPageFinished can fire several more
-    // times with it present. Without this guard each one would kick off its own verification.
     val handled = remember { AtomicBoolean(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * Pulls `arl` out of the cookie jar. Read through [CookieManager] rather than `document.cookie`
-     * because the cookie is HttpOnly and therefore invisible to JavaScript.
-     */
     fun readArl(): String? =
         CookieManager
             .getInstance()
@@ -75,12 +67,10 @@ fun DeezerLoginScreen(navController: NavController) {
 
     fun finishLogin(arl: String) {
         scope.launch {
-            // Verify before saving: Deezer also issues an `arl` to anonymous visitors, so its mere
-            // presence does not mean anyone signed in.
+
             val info = withContext(Dispatchers.IO) { DeezerAudioProvider.verifyArl(arl) }
             if (info == null) {
-                // Not signed in yet (or the cookie is stale) — let the user keep going rather than
-                // closing the screen on them.
+
                 handled.set(false)
                 return@launch
             }
@@ -88,11 +78,10 @@ fun DeezerLoginScreen(navController: NavController) {
                 prefs[DeezerArlKey] = arl
                 prefs[DeezerAccountNameKey] = info.name
                 prefs[DeezerAccountPremiumKey] = info.lossless
-                // Signing in is an explicit opt-in to the source, which defaults off; leaving it off
-                // would make a successful login look like it did nothing.
+
                 prefs[DeezerEnabledKey] = true
             }
-            // Push it immediately so playback works without waiting for the App-level collector.
+
             DeezerAudioProvider.setManualArl(arl, info.lossless)
             toast(context.getString(R.string.deezer_login_success, info.name))
             navController.navigateUp()
@@ -111,9 +100,7 @@ fun DeezerLoginScreen(navController: NavController) {
                             view: WebView,
                             url: String?,
                         ) {
-                            // Checked on every completed navigation rather than on a single redirect
-                            // URL: Deezer has no post-login redirect we control, and the cookie can
-                            // land on any of several pages depending on how the account signs in.
+
                             val arl = readArl() ?: return
                             if (!handled.compareAndSet(false, true)) return
                             finishLogin(arl)
@@ -126,8 +113,7 @@ fun DeezerLoginScreen(navController: NavController) {
                     builtInZoomControls = true
                     displayZoomControls = false
                 }
-                // Clearing cookies first means an already-signed-in browser session cannot hand back
-                // a stale ARL for an account the user is trying to switch away from.
+
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)

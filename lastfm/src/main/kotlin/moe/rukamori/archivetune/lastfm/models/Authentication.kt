@@ -15,9 +15,9 @@ data class Authentication(
 ) {
     @Serializable
     data class Session(
-        val name: String, // Username
-        val key: String, // Session Key
-        val subscriber: Int, // Last.fm Pro?
+        val name: String,
+        val key: String,
+        val subscriber: Int,
     )
 }
 

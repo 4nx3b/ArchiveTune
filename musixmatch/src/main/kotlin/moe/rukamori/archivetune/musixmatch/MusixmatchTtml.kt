@@ -8,25 +8,8 @@
 package moe.rukamori.archivetune.musixmatch
 
 import moe.rukamori.archivetune.musixmatch.models.RichSyncLine
-import moe.rukamori.archivetune.musixmatch.models.RichSyncWord
 import java.util.Locale
 
-/**
- * Converts Musixmatch richsync lines into a TTML document that ArchiveTune's
- * existing TTMLParser understands. Each line becomes a `<p begin end>` and each
- * word inside becomes a `<span begin end>`.
- *
- * All times are stored as Double seconds, then formatted as `<n.nnn>s` using
- * Locale.US to avoid locale-dependent decimal separators. The regression from
- * Spicetify PR #2254 (negative word duration when next-word offset was kept in
- * seconds while current was in ms) is avoided by computing word end as
- * `lineStart + nextWord.offset` (both in seconds) and falling back to `lineEnd`
- * for the last word.
- *
- * Spacing tokens (words whose text is just whitespace) are preserved as
- * `<span>` so the round-trip through TTMLParser stays lossless — the parser
- * already trims empty words when building the word list.
- */
 internal object MusixmatchTtml {
     private const val XML_HEADER = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 
@@ -89,11 +72,7 @@ internal object MusixmatchTtml {
             builder.append("\" end=\"")
             builder.append(formatTime(safeEnd))
             builder.append("\">")
-            // Musixmatch word `c` may already include a trailing space (e.g. "I ", "love ").
-            // We preserve it verbatim because the downstream TTMLParser trims each span's
-            // text and only re-inserts a space when it sees a whitespace TEXT_NODE between
-            // adjacent spans. Emitting that separator here keeps words from rendering
-            // glued together ("Ilove" → "I love").
+
             builder.append(escapeXml(word.text))
             builder.append("</span>")
             if (i < filtered.lastIndex) {

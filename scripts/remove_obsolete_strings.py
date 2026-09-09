@@ -34,8 +34,6 @@ OBSOLETE_NAMES = {
     "paxsenix_check_endpoints",
 }
 
-# Pattern: <string name="NAME">CONTENT</string> on a single line, or
-# multi-line with newline between > and </string>.
 pattern = re.compile(
     r'    <string name="(' + "|".join(re.escape(n) for n in OBSOLETE_NAMES) + r')">'
     r'(?:[^<]|<[^/])*</string>\n?',

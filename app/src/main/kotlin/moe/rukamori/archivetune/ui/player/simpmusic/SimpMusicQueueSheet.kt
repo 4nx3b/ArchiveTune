@@ -60,7 +60,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -84,16 +83,10 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.utils.highRes
 
-/** SimpMusic's dark sheet surface (its rememberSurfaceDarkColors().container tone). */
 private val SheetSurface = Color(0xFF202020)
 
-/** SimpMusic's dark-surface body text (its 0xC4-style white-over-dark subtitle tone). */
 private val SheetSubtitle = Color(0xFFA8A8A8)
 
-/**
- * The queue sheet itself. [onDismiss] fires on the collapse icon, the scrim, or
- * the system back gesture (the sheet's own hide animation runs first).
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SimpMusicQueueSheet(
@@ -113,7 +106,6 @@ internal fun SimpMusicQueueSheet(
         }
     val currentEntry = entries.getOrNull(currentWindowIndex)?.first
 
-    // The per-item menu: SimpMusic's QueueItemBottomSheet actions.
     var menuIndex by remember { mutableStateOf<Int?>(null) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -145,8 +137,7 @@ internal fun SimpMusicQueueSheet(
                         .fillMaxSize()
                         .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
             ) {
-                // Header — SimpMusic's CenterAlignedTopAppBar: collapse icon, NOW PLAYING,
-                // playlist name marquee, and a 32dp spacer standing in for its empty actions slot.
+
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -222,7 +213,7 @@ internal fun SimpMusicQueueSheet(
                             onMore = { menuIndex = index },
                         )
                     }
-                    // SimpMusic's EndOfPage footer — a short breathing space under the list.
+
                     item { Spacer(Modifier.height(40.dp)) }
                 }
             }
@@ -242,7 +233,6 @@ internal fun SimpMusicQueueSheet(
     }
 }
 
-/** One SongFullWidthItems row: 48dp artwork, titleSmall title, bodySmall artist, more button. */
 @Composable
 private fun SimpMusicQueueRow(
     metadata: MediaMetadata,
@@ -261,7 +251,7 @@ private fun SimpMusicQueueRow(
         Spacer(Modifier.width(8.dp))
         Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
             if (isPlaying) {
-                // SimpMusic shows a Lottie equalizer here; the playing dot marks the same slot.
+
                 Box(
                     modifier =
                         Modifier
@@ -327,10 +317,6 @@ private fun SimpMusicQueueRow(
     }
 }
 
-/**
- * SimpMusic's QueueItemBottomSheet: a compact sheet whose rows are Move up, Move
- * down and Remove, each an icon plus label, gated on whether the move exists.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimpMusicQueueItemMenu(

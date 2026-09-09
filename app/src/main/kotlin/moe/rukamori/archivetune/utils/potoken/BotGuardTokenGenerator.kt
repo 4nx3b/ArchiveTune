@@ -42,30 +42,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * Generates cryptographically valid PoTokens by running YouTube's BotGuard
- * challenge inside a headless [WebView].
- *
- * ## Lifecycle
- *
- * 1. [initialize] — called once from `Application.onCreate()` with the app context.
- * 2. [preWarm] — optional, boots the WebView at startup to avoid first-call delay.
- * 3. [mintToken] — suspend function, called per video. Reuses the engine until
- *    it expires (~50 min) or the session changes.
- * 4. [onAppBackgrounded] — releases the WebView to free ~50 MB of memory.
- *
- * ## Optimizations
- *
- * - **Suspend API** — [mintToken] is a suspend function, never blocks the calling thread.
- * - **Pre-warm** — [preWarm] bootstraps the engine at app startup so the first
- *   real mint is instant.
- * - **Player token cache** — Caches per-video tokens (LRU, max 200) to avoid
- *   redundant mints when the same video is played multiple times.
- * - **Session token reuse** — The session token is minted once per engine and
- *   reused for all videos until the engine expires or the session changes.
- * - **Background cleanup** — [onAppBackgrounded] releases the WebView to free memory.
- *   The engine is recreated on the next [mintToken] call.
- */
 object BotGuardTokenGenerator {
     private const val TAG = "BotGuardTokenGen"
     private const val CREATE_URL = "https://www.youtube.com/api/jnn/v1/Create"
@@ -76,13 +52,10 @@ object BotGuardTokenGenerator {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.3"
     private const val JS_BRIDGE = "BotGuardBridge"
 
-    /** Timeout for first call (cold start: WebView boot + BotGuard bootstrap). */
     private const val COLD_START_TIMEOUT_MS = 45_000L
 
-    /** Timeout for subsequent calls (warm: just mint a token). */
     private const val WARM_TIMEOUT_MS = 5_000L
 
-    /** Maximum number of cached player tokens. */
     private const val PLAYER_TOKEN_CACHE_SIZE = 200
 
     private val httpClient =
@@ -91,7 +64,6 @@ object BotGuardTokenGenerator {
             .callTimeout(20, TimeUnit.SECONDS)
             .build()
 
-    // ── state ────────────────────────────────────────────────────────
     private var appContext: Context? = null
     private var permanentlyBroken = false
 
@@ -101,31 +73,16 @@ object BotGuardTokenGenerator {
     private var cachedSessionToken: String? = null
     private var engineReady = false
 
-    /**
-     * LRU cache for per-video player tokens.
-     * Key: videoId, Value: token string.
-     * Avoids redundant mints when the same video is played multiple times.
-     */
     private val playerTokenCache: LinkedHashMap<String, String> =
         object : LinkedHashMap<String, String>(0, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean = size > PLAYER_TOKEN_CACHE_SIZE
         }
 
-    // ── public API ───────────────────────────────────────────────────
-
-    /** Call once from `Application.onCreate()`. */
     fun initialize(context: Context) {
         appContext = context.applicationContext
         Timber.tag(TAG).d("Initialized")
     }
 
-    /**
-     * Pre-warm the BotGuard engine at app startup.
-     * This bootstraps the WebView and generates the session token so that
-     * the first real [mintToken] call is instant.
-     *
-     * Safe to call from a background coroutine. No-op if already warmed.
-     */
     suspend fun preWarm(sessionId: String) {
         val ctx = appContext ?: return
         if (permanentlyBroken) return
@@ -145,18 +102,6 @@ object BotGuardTokenGenerator {
         }
     }
 
-    /**
-     * Mint a PoToken pair for the given [videoId] and [sessionId].
-     *
-     * Returns `null` when:
-     * - [initialize] was never called
-     * - The system has no usable WebView
-     * - BotGuard bootstrap timed out
-     * - The WebView is permanently broken
-     *
-     * This is a **suspend function** — never blocks the calling thread.
-     * Call from a coroutine context (e.g. `Dispatchers.IO`).
-     */
     suspend fun mintToken(
         videoId: String,
         sessionId: String,
@@ -216,11 +161,6 @@ object BotGuardTokenGenerator {
         }
     }
 
-    /**
-     * Release the WebView to free memory (~50 MB).
-     * Call from `onTrimMemory(TRIM_MEMORY_UI_HIDDEN)` or similar.
-     * The engine is recreated on the next [mintToken] call.
-     */
     suspend fun onAppBackgrounded() {
         mutex.withLock {
             if (engine != null) {
@@ -230,28 +170,18 @@ object BotGuardTokenGenerator {
         }
     }
 
-    /**
-     * Invalidate the player token cache for a specific video.
-     * Useful when the user's auth state changes.
-     */
     suspend fun invalidatePlayerToken(videoId: String) {
         mutex.withLock {
             playerTokenCache.remove(videoId)
         }
     }
 
-    /**
-     * Invalidate all cached tokens.
-     * Call when the user logs out or auth state changes.
-     */
     suspend fun invalidateAll() {
         mutex.withLock {
             playerTokenCache.clear()
             destroyEngineLocked()
         }
     }
-
-    // ── internal ─────────────────────────────────────────────────────
 
     private suspend fun ensureEngineReady(
         ctx: Context,
@@ -366,8 +296,6 @@ object BotGuardTokenGenerator {
         cachedSessionToken = null
         engineReady = false
     }
-
-    // ── WebView wrapper ──────────────────────────────────────────────
 
     private class BotGuardEngine private constructor(
         private val webView: WebView,

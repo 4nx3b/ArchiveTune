@@ -19,10 +19,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.aicontentfilter.FilterAiContentUseCase
 import moe.rukamori.archivetune.aicontentfilter.LoadAiContentFilterPolicyUseCase
@@ -69,7 +71,7 @@ import moe.rukamori.archivetune.utils.SavedAccount
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.toPlaybackAuthState
@@ -105,7 +107,22 @@ data class AccountChannelUiModel(
     val isSelected: Boolean,
 )
 
-private data class HomeLocalContent(
+internal class HomeRequestGate {
+    private val lock = Any()
+    private var generation = 0L
+
+    fun current(): Long = synchronized(lock) { generation }
+
+    fun next(): Long = synchronized(lock) { ++generation }
+
+    fun commit(request: Long, publish: () -> Unit): Boolean = synchronized(lock) {
+        if (request != generation) return@synchronized false
+        publish()
+        true
+    }
+}
+
+internal data class HomeLocalContent(
     val quickPicks: List<Song>,
     val speedDialItems: List<LocalItem>,
     val forgottenFavorites: List<Song>,
@@ -114,12 +131,6 @@ private data class HomeLocalContent(
     val heroPicks: List<Song>,
 )
 
-/**
- * Intermediate bundle used to stage the first 5 nullable home-content flows
- * before combining with `heroPicks`. Kotlin's `combine()` only natively
- * supports up to 5 flows, so we split the 6-way combine into two stages
- * to keep type inference working.
- */
 private data class HomeLocalContentStage(
     val quickPicks: List<Song>?,
     val speedDialItems: List<LocalItem>,
@@ -128,7 +139,7 @@ private data class HomeLocalContentStage(
     val recentlyPlayed: List<Song>?,
 )
 
-private data class HomeRemoteContent(
+internal data class HomeRemoteContent(
     val homePage: HomePage?,
     val remoteQuickPicks: HomePage.Section?,
     val similarRecommendations: List<SimilarRecommendation>,
@@ -137,31 +148,12 @@ private data class HomeRemoteContent(
     val accountImageUrl: String?,
 )
 
-private data class HomeContent(
+internal data class HomeContent(
     val local: HomeLocalContent,
     val remote: HomeRemoteContent,
     val selectedChip: HomePage.Chip?,
 ) {
-    /**
-     * `true` when there is at least one section [HomeContent] the composable
-     * will actually render on screen.
-     *
-     * IMPORTANT: this must stay in sync with the `if (...) item { ... }`
-     * guards in [HomeScreen.HomeContent]. The home composable renders:
-     *   - heroPicks (always, when non-empty)
-     *   - category chips (full mode only)
-     *   - remote/local quick picks (full mode only)
-     *   - recentlyPlayed (size > 1)
-     *   - speedDialItems (full mode only)
-     *   - keepListening
-     *   - accountPlaylists (full mode only)
-     *   - forgottenFavorites (full mode only)
-     *   - similarRecommendations (full mode only)
-     *   - ALL homePage.sections (full mode) or only "Live performance" (minimal mode)
-     *
-     * If you add a new section to the composable, mirror its visibility guard
-     * here. If you remove one, drop it from here too.
-     */
+
     val hasContent: Boolean
         get() =
             local.heroPicks.isNotEmpty() ||
@@ -169,14 +161,14 @@ private data class HomeContent(
                 local.speedDialItems.isNotEmpty() ||
                 local.forgottenFavorites.isNotEmpty() ||
                 local.keepListening.isNotEmpty() ||
-                (local.recentlyPlayed?.size ?: 0) > 1 ||
+                local.recentlyPlayed.size > 1 ||
                 remote.remoteQuickPicks?.items?.isNotEmpty() == true ||
                 remote.similarRecommendations.isNotEmpty() ||
                 remote.accountPlaylists.isNotEmpty() ||
                 remote.homePage?.sections?.isNotEmpty() == true
 }
 
-private data class HomeStateInputs(
+internal data class HomeStateInputs(
     val content: HomeContent,
     val preferences: HomePresentationPreferences,
     val isLoading: Boolean,
@@ -188,7 +180,8 @@ private data class HomeStateInputs(
         isLoadingMore: Boolean,
     ): HomeScreenState {
         if (!content.hasContent) {
-            if (loadError != null && isInitialLoadComplete) {
+            if (!isInitialLoadComplete) return HomeScreenState.Loading
+            if (loadError != null) {
                 return HomeScreenState.Error(loadError)
             }
             if (isLoading || !isInitialLoadComplete) {
@@ -255,9 +248,6 @@ class HomeViewModel
         private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
         private val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
 
-        // IDs of items the user has hidden from the "Keep Listening" section.
-        // Combined with keepListening to produce a filtered flow that excludes
-        // hidden items. The user can hide items via the long-press menu.
         private val hiddenHomeItems =
             context.dataStore.data
                 .map { it[HiddenHomeItemsKey] ?: emptySet() }
@@ -275,18 +265,9 @@ class HomeViewModel
                     id !in hidden
                 }
             }
-        // Three random songs from `quickPicks`, re-shuffled on every refresh.
-        // Drives the "Jump back in" hero so the home page surfaces fresh
-        // listening-preference-based picks each time the user opens the app
-        // or pulls to refresh, instead of always showing the last-played 3.
+
         private val heroPicks = MutableStateFlow<List<Song>>(emptyList())
-        // Stable view of `heroPicks` that only emits when the SET of song IDs
-        // actually changes — not when the same 3 picks are re-ordered by a
-        // re-shuffle. `refreshHeroPicks` runs on every quickPicks update, which
-        // in LAST_LISTEN mode fires on every track skip. Without this de-dup,
-        // each skip re-emitted a new List<Song> reference (same songs, new
-        // order), `combine` propagated it, and HomeContent recomposed + re-issued
-        // 3 Coil AsyncImage requests for artwork that hadn't actually changed.
+
         private val stableHeroPicks =
             heroPicks
                 .distinctUntilChanged { old, new ->
@@ -301,11 +282,6 @@ class HomeViewModel
         private val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
         private val previousHomePage = MutableStateFlow<HomePage?>(null)
         private val previousRemoteQuickPicks = MutableStateFlow<HomePage.Section?>(null)
-
-        private val _allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
-        val allLocalItems: StateFlow<List<LocalItem>> = _allLocalItems.asStateFlow()
-        private val _allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
-        val allYtItems: StateFlow<List<YTItem>> = _allYtItems.asStateFlow()
 
         private val _accountName = MutableStateFlow("")
         val accountName: StateFlow<String> = _accountName.asStateFlow()
@@ -411,6 +387,26 @@ class HomeViewModel
 
         private var wasLoggedIn = false
         private var chipLoadJob: Job? = null
+        private var recommendationJob: Job? = null
+        private var loadMoreJob: Job? = null
+        private val remoteRequests = HomeRequestGate()
+        private val reloadRequests = MutableStateFlow(0L to false)
+
+        private fun requestReload(manual: Boolean = false, clearAccount: Boolean = false) {
+            val generation = remoteRequests.next()
+            if (clearAccount) remoteRequests.commit(generation) {
+                homePage.value = null
+                remoteQuickPicks.value = null
+                similarRecommendations.value = null
+                previousHomePage.value = null
+                previousRemoteQuickPicks.value = null
+                selectedChip.value = null
+                clearAccountData()
+            }
+            reloadRequests.update { current ->
+                if (generation > current.first) generation to manual else current
+            }
+        }
 
         private fun filterHomeChips(chips: List<HomePage.Chip>?): List<HomePage.Chip>? =
             chips?.filterNot {
@@ -449,30 +445,16 @@ class HomeViewModel
         private fun Flow<List<Song>>.distinctUntilSongIdsChanged(): Flow<List<Song>> =
             distinctUntilChanged { old, new -> old.hasSameSongIdsAs(new) }
 
-        private fun updateAllLocalItems() {
-            _allLocalItems.value =
-                (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty() + recentlyPlayed.value.orEmpty())
-                    .filter { it is Song || it is Album }
-        }
-
         private suspend fun quickPicksWithFallback(primary: List<Song>): List<Song> {
             val primaryPicks = primary.toQuickPickSample()
             if (primaryPicks.isNotEmpty()) return primaryPicks
 
-            // Each fallback is individually guarded: a transient DB error (cold
-            // start, WAL checkpoint, migration) in one fallback must not kill the
-            // collector that drives the "Jump back in" hero (user report
-            // 2026-09-04: "sometimes the jump back in carousel doesn't load and
-            // I've to manually refresh the page to see it" — a throw here used
-            // to escape observeQuickPicks' .catch block itself, leaving the
-            // hero empty until a manual refresh).
             val recentPicks =
                 runCatching { database.recentSongs(limit = 60).first().toQuickPickSample() }
                     .getOrDefault(emptyList())
             if (recentPicks.isNotEmpty()) return recentPicks
 
-            return runCatching { database.allSongs().first().toQuickPickSample() }
-                .getOrDefault(emptyList())
+            return database.quickPickCandidates(limit = 60).toQuickPickSample()
         }
 
         private fun lastListenQuickPicksFlow(): Flow<List<Song>> =
@@ -500,12 +482,7 @@ class HomeViewModel
 
         private fun observeQuickPicks() {
             viewModelScope.launch(Dispatchers.IO) {
-                // The collector must survive ANY transient failure — it is the
-                // only reactive source of the "Jump back in" hero picks. A
-                // dead collector meant the hero stayed empty until the user
-                // manually pulled to refresh (user report 2026-09-04). A small
-                // capped retry loop relaunches the whole pipeline; each retry
-                // re-reads current DB state so it converges without the user.
+
                 var attempts = 0
                 while (true) {
                     try {
@@ -531,16 +508,13 @@ class HomeViewModel
                                 attempts = 0
                                 quickPicks.value = picks
                                 refreshHeroPicks(picks.orEmpty())
-                                updateAllLocalItems()
                             }
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (t: Throwable) {
                         attempts++
                         reportException(t)
-                        // Best-effort recovery so the hero has SOMETHING to show
-                        // while the retry is pending; quickPicksWithFallback is
-                        // internally guarded so this cannot throw.
+
                         runCatching {
                             quickPicks.value = quickPicksWithFallback(emptyList())
                             refreshHeroPicks(quickPicks.value.orEmpty())
@@ -572,21 +546,13 @@ class HomeViewModel
                 }
             quickPicks.value = picks
             refreshHeroPicks(picks.orEmpty())
-            updateAllLocalItems()
         }
 
-        /**
-         * Re-shuffles the hero picks from the current quickPicks pool. Called on every
-         * quickPicks update and on every manual refresh so the "Jump back in" hero at
-         * the top of the home page surfaces fresh listening-preference-based songs
-         * each visit, instead of always showing the last-played three.
-         *
-         * If quickPicks is empty, falls back to recentlyPlayed so the hero still shows
-         * something on a fresh install where the user has listening history but no
-         * quickPicks computation yet.
-         */
         private fun refreshHeroPicks(pool: List<Song>) {
-            val source = if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
+            val source =
+                (
+                    if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
+                ).filterNot { song -> song.song.isMusicVideo }
             heroPicks.value =
                 if (source.isEmpty()) {
                     emptyList()
@@ -596,7 +562,7 @@ class HomeViewModel
         }
 
         private suspend fun loadSpeedDialItems() {
-            val pins = parseSpeedDialPins(context.dataStore.get(SpeedDialSongIdsKey, ""))
+            val pins = parseSpeedDialPins(context.dataStore.getAsync(SpeedDialSongIdsKey, ""))
             if (pins.isEmpty()) {
                 speedDialItems.value = emptyList()
                 return
@@ -607,9 +573,9 @@ class HomeViewModel
             val playlistIds = pins.filter { it.type == SpeedDialPinType.PLAYLIST }.map { it.id }
 
             val songsById = database.getSongsByIds(songIds).associateBy { it.id }
-            val albumsById = albumIds.mapNotNull { id -> database.album(id).first() }.associateBy { it.id }
-            val artistsById = artistIds.mapNotNull { id -> database.artist(id).first() }.associateBy { it.id }
-            val playlistsById = playlistIds.mapNotNull { id -> database.getPlaylistById(id) }.associateBy { it.id }
+            val albumsById = database.albumsByRowId(albumIds).first().associateBy { it.id }
+            val artistsById = database.getArtistsByIds(artistIds).associateBy { it.id }
+            val playlistsById = database.getPlaylistsByIds(playlistIds).associateBy { it.id }
 
             speedDialItems.value =
                 pins
@@ -631,22 +597,33 @@ class HomeViewModel
                     }
         }
 
-        private suspend fun load() {
-            if (isLoading.value) return
+        private fun kotlinx.coroutines.CoroutineScope.launchHomeSection(block: suspend () -> Unit) = launch {
+            try {
+                block()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                reportException(error)
+                loadError.value = R.string.error_unknown
+            }
+        }
+
+        private suspend fun load(generation: Long) {
             isLoading.value = true
             loadError.value = null
 
             try {
+                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
                 val aiContentFilterPolicy = loadAiContentFilterPolicy()
                 supervisorScope {
-                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                    val hideVideo = context.dataStore.get(HideVideoKey, false)
+                    val hideExplicit = context.dataStore.getAsync(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.getAsync(HideVideoKey, false)
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
                     val blockedSongIds = database.getBlockedSongIds().toSet()
                     val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
-                    launch { loadSpeedDialItems() }
-                    launch {
+                    launchHomeSection { loadSpeedDialItems() }
+                    launchHomeSection {
                         forgottenFavorites.value =
                             database
                                 .forgottenFavorites()
@@ -657,65 +634,25 @@ class HomeViewModel
                                 .take(20)
                     }
 
-                    launch {
+                    launchHomeSection {
                         // Recently played — chronological recents, used by the
                         // "Recently Played" square-card row. Filter out blocked
                         // artists and cap at 30 so the row has enough to draw
                         // from without over-fetching. (The "Jump back in" hero
                         // at the top of the home page now uses `heroPicks` —
                         // random songs from listening preference — instead of
-                        // the top 3 of this list.) Also re-seeds the hero when
-                        // it is still empty — the quickPicks observer can lose
-                        // the race against this launch on a cold start, and
-                        // without this re-check the hero could stay empty until
-                        // a manual refresh (user report 2026-09-04).
-                        val recent =
+                        // the top 3 of this list.)
+                        recentlyPlayed.value =
                             database
                                 .recentSongs(limit = 30)
                                 .first()
                                 .filter { song -> song.artists.none { it.blockedAt != null } }
                                 .distinctBy { it.id }
                                 .take(30)
-                        recentlyPlayed.value = recent
-                        if (heroPicks.value.isEmpty() && quickPicks.value.isNullOrEmpty()) {
-                            refreshHeroPicks(recent)
-                        }
+                        if (quickPicks.value.isNullOrEmpty()) refreshHeroPicks(recentlyPlayed.value.orEmpty())
                     }
 
-                    launch {
-                        // Initial hero picks — re-shuffled from the current
-                        // quickPicks pool (or recentlyPlayed fallback). On
-                        // subsequent manual refreshes, refresh() re-shuffles
-                        // again so the hero rotates fresh picks each visit.
-                        //
-                        // The old 100ms-delay race meant a slow cold start
-                        // (DataStore read + Room queries still in flight) fell
-                        // through to an EMPTY hero with nothing left to recover
-                        // it (user report 2026-09-04: "sometimes the jump back
-                        // in carousel doesn't load and I've to manually refresh
-                        // the page to see it"). Instead we now actively AWAIT the
-                        // first useful pool — quickPicks first (bounded wait so
-                        // a stuck pipeline can't hang the load), then
-                        // recentlyPlayed — and only then fall back to a direct
-                        // DB query as the last resort.
-                        val awaitedPool =
-                            withTimeoutOrNull(2_000L) {
-                                quickPicks.filter { !it.isNullOrEmpty() }.first()
-                            } ?: withTimeoutOrNull(2_000L) {
-                                recentlyPlayed.filter { !it.isNullOrEmpty() }.first()
-                            }
-                        val source =
-                            when {
-                                !awaitedPool.isNullOrEmpty() -> awaitedPool
-                                else ->
-                                    runCatching {
-                                        database.recentSongs(limit = 20).first()
-                                    }.getOrDefault(emptyList())
-                            }
-                        refreshHeroPicks(source)
-                    }
-
-                    launch {
+                    launchHomeSection {
                         val keepListeningSongs =
                             database
                                 .mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
@@ -743,10 +680,11 @@ class HomeViewModel
                         keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
                     }
 
-                    launch {
+                    launchHomeSection {
                         YouTube
                             .home()
                             .onSuccess { page ->
+                                currentCoroutineContext().ensureActive()
                                 val filteredPage =
                                     page.copy(
                                         chips = filterHomeChips(page.chips),
@@ -766,43 +704,47 @@ class HomeViewModel
                                             },
                                     )
                                 val (pageWithoutQuickPicks, quickPicksSection) = filteredPage.extractQuickPicks()
-                                remoteQuickPicks.value = quickPicksSection
-                                homePage.value = pageWithoutQuickPicks
+                                currentCoroutineContext().ensureActive()
+                                remoteRequests.commit(generation) {
+                                    remoteQuickPicks.value = quickPicksSection
+                                    homePage.value = pageWithoutQuickPicks
+                                }
                             }.onFailure {
+                                currentCoroutineContext().ensureActive()
+                                if (it is CancellationException) throw it
                                 reportException(it)
-                                loadError.value = R.string.error_unknown
+                                remoteRequests.commit(generation) { loadError.value = R.string.error_unknown }
                             }
                     }
                 }
 
-                updateAllLocalItems()
-
-                viewModelScope.launch(Dispatchers.IO) {
-                    loadSimilarRecommendations()
+                recommendationJob = viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        loadSimilarRecommendations()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        reportException(error)
+                    }
                 }
 
-                _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
-                    remoteQuickPicks.value?.items.orEmpty() +
-                    homePage.value
-                        ?.sections
-                        ?.flatMap { it.items }
-                        .orEmpty()
-
-                isInitialLoadComplete.value = true
+                currentCoroutineContext().ensureActive()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 reportException(e)
                 loadError.value = R.string.error_unknown
             } finally {
-                isInitialLoadComplete.value = true
+                if (kotlinx.coroutines.currentCoroutineContext()[Job]?.isActive == true) {
+                    isInitialLoadComplete.value = true
+                }
                 isLoading.value = false
             }
         }
 
         private suspend fun loadSimilarRecommendations() {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideo = context.dataStore.get(HideVideoKey, false)
+            val hideExplicit = context.dataStore.getAsync(HideExplicitKey, false)
+            val hideVideo = context.dataStore.getAsync(HideVideoKey, false)
             val blockedArtistIds = database.getBlockedArtistIds().toSet()
             val blockedSongIds = database.getBlockedSongIds().toSet()
             val aiContentFilterPolicy = loadAiContentFilterPolicy()
@@ -875,14 +817,8 @@ class HomeViewModel
                         )
                     }
 
+            currentCoroutineContext().ensureActive()
             similarRecommendations.value = (artistRecommendations + songRecommendations).shuffled()
-
-            _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
-                remoteQuickPicks.value?.items.orEmpty() +
-                homePage.value
-                    ?.sections
-                    ?.flatMap { it.items }
-                    .orEmpty()
         }
 
         private fun clearAccountData() {
@@ -892,23 +828,8 @@ class HomeViewModel
             _accountChannelsState.value = AccountChannelsState.Empty
         }
 
-        private fun prepareYouTubeAccount(cookie: String): Boolean =
-            try {
-                YouTube.cookie = cookie
-                true
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to set YouTube cookie")
-                false
-            }
-
         private suspend fun refreshAccountIdentity() {
-            // Seed from the identity persisted at login before touching the network. accountInfo()
-            // is a live call, and this used to start by blanking the name and avatar and blank them
-            // again on failure — so any failed refresh made the app report that no account was
-            // connected even though the session was intact. That is what picking a YouTube Music
-            // region looked like: the picker restarts the process, the first identity fetch after
-            // the restart races the region/proxy restore in App.initializeDeferredAsync(), and a
-            // single failure left the top bar signed out until the next successful fetch.
+
             context.dataStore.data.first().let { prefs ->
                 prefs[AccountNameKey]?.takeIf { it.isNotBlank() }?.let { _accountName.value = it }
                 prefs[AccountImageUrlKey]?.takeIf { it.isNotBlank() }?.let { _accountImageUrl.value = it }
@@ -919,6 +840,7 @@ class HomeViewModel
                 YouTube
                     .accountInfo()
                     .onSuccess { info ->
+                        currentCoroutineContext().ensureActive()
                         _accountName.value = info.name
                         _accountImageUrl.value = info.thumbnailUrl
                         context.dataStore.edit { preferences ->
@@ -926,13 +848,14 @@ class HomeViewModel
                             info.thumbnailUrl?.let { preferences[AccountImageUrlKey] = it }
                         }
                     }.onFailure { error ->
-                        // A failed refresh is not a logout: keep whatever was seeded above.
+
                         Timber.w(error, "Failed to fetch account info")
                     }
 
                 YouTube
                     .accountChannels()
                     .onSuccess { channels ->
+                        currentCoroutineContext().ensureActive()
                         _accountChannelsState.value = channels
                             .map { it.toUiModel() }
                             .takeIf { it.size > 1 }
@@ -969,6 +892,7 @@ class HomeViewModel
                     .library("FEmusic_liked_playlists")
                     .completed()
                     .onSuccess {
+                        currentCoroutineContext().ensureActive()
                         val lists =
                             it.items.filterIsInstance<PlaylistItem>().filterNot { playlist ->
                                 playlist.id == "SE"
@@ -986,13 +910,12 @@ class HomeViewModel
         }
 
         private fun loadMoreYouTubeItems(continuation: String?) {
-            if (continuation == null || isLoadingMore.value) return
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideo = context.dataStore.get(HideVideoKey, false)
-
-            viewModelScope.launch(Dispatchers.IO) {
-                isLoadingMore.value = true
+            if (continuation == null || !isLoadingMore.compareAndSet(false, true)) return
+            val generation = remoteRequests.current()
+            loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
+                    val hideExplicit = context.dataStore.getAsync(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.getAsync(HideVideoKey, false)
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
                     val blockedSongIds = database.getBlockedSongIds().toSet()
                     val aiContentFilterPolicy = loadAiContentFilterPolicy()
@@ -1017,8 +940,17 @@ class HomeViewModel
                                 },
                         )
                     val (pageWithoutQuickPicks, quickPicksSection) = mergedPage.extractQuickPicks()
-                    quickPicksSection?.let { remoteQuickPicks.value = it }
-                    homePage.value = pageWithoutQuickPicks
+                    currentCoroutineContext().ensureActive()
+                    remoteRequests.commit(generation) {
+                        if (homePage.value?.continuation == continuation) {
+                            quickPicksSection?.let { remoteQuickPicks.value = it }
+                            homePage.value = pageWithoutQuickPicks
+                        }
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    reportException(error)
                 } finally {
                     isLoadingMore.value = false
                 }
@@ -1026,6 +958,8 @@ class HomeViewModel
         }
 
         private fun toggleChip(chip: HomePage.Chip?) {
+            val generation = remoteRequests.next()
+            loadMoreJob?.cancel()
             chipLoadJob?.cancel()
             if (chip == null || chip == selectedChip.value && previousHomePage.value != null) {
                 homePage.value = previousHomePage.value
@@ -1043,8 +977,8 @@ class HomeViewModel
 
             chipLoadJob =
                 viewModelScope.launch(Dispatchers.IO) {
-                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                    val hideVideo = context.dataStore.get(HideVideoKey, false)
+                    val hideExplicit = context.dataStore.getAsync(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.getAsync(HideVideoKey, false)
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
                     val blockedSongIds = database.getBlockedSongIds().toSet()
                     val aiContentFilterPolicy = loadAiContentFilterPolicy()
@@ -1068,9 +1002,12 @@ class HomeViewModel
                                 },
                         )
                     val (pageWithoutQuickPicks, quickPicksSection) = filteredPage.extractQuickPicks()
-                    remoteQuickPicks.value = quickPicksSection
-                    homePage.value = pageWithoutQuickPicks
-                    selectedChip.value = chip
+                    currentCoroutineContext().ensureActive()
+                    remoteRequests.commit(generation) {
+                        remoteQuickPicks.value = quickPicksSection
+                        homePage.value = pageWithoutQuickPicks
+                        selectedChip.value = chip
+                    }
                 }
         }
 
@@ -1083,41 +1020,8 @@ class HomeViewModel
         }
 
         private fun refresh() {
-            if (isRefreshing.value) return
-            viewModelScope.launch(Dispatchers.IO) {
-                isRefreshing.value = true
-                try {
-                    supervisorScope {
-                        launch { load() }
-                        launch { refreshQuickPicks() }
-                        // Re-shuffle hero picks on every manual pull-to-refresh so the
-                        // "Jump back in" hero at the top of the home page surfaces fresh
-                        // listening-preference-based songs each visit. Uses the current
-                        // quickPicks pool (or recentlyPlayed fallback) so it works even
-                        // before refreshQuickPicks() finishes.
-                        launch {
-                            val pool = quickPicks.value.orEmpty()
-                            val source = if (pool.isNotEmpty()) {
-                                pool
-                            } else {
-                                recentlyPlayed.value.orEmpty()
-                            }
-                            // Tiny delay so quickPicks refresh can race ahead and
-                            // populate the pool first if it's faster than this launch.
-                            kotlinx.coroutines.delay(50L)
-                            val finalPool = quickPicks.value.orEmpty()
-                            val finalSource = if (finalPool.isNotEmpty()) finalPool else source
-                            refreshHeroPicks(finalSource)
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    reportException(e)
-                } finally {
-                    isRefreshing.value = false
-                }
-            }
+            if (!isRefreshing.compareAndSet(false, true)) return
+            requestReload(manual = true)
         }
 
         fun switchToAccount(
@@ -1131,6 +1035,8 @@ class HomeViewModel
                     if (forceSyncOnSwitch && account.ytmSync && authState.hasLoginCookie) {
                         syncUtils.performFullSync(authoritative = true)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "Error switching account")
                     reportException(e)
@@ -1163,12 +1069,9 @@ class HomeViewModel
                             .toPlaybackAuthState()
                     YouTube.authState = authState
 
-                    supervisorScope {
-                        launch { refreshAccountIdentity() }
-                        launch { refreshAccountPlaylistsInternal() }
-                    }
-
-                    if (forceSyncOnSwitch && context.dataStore.get(YtmSyncKey, true) && authState.hasLoginCookie) {
+                    // The account observer reacts to DataSyncId and owns identity,
+                    // playlists and Home reloads for channel changes too.
+                    if (forceSyncOnSwitch && context.dataStore.getAsync(YtmSyncKey, true) && authState.hasLoginCookie) {
                         syncUtils.performFullSync(authoritative = true)
                     }
                 } catch (e: CancellationException) {
@@ -1185,31 +1088,38 @@ class HomeViewModel
             observeQuickPicks()
 
             viewModelScope.launch(Dispatchers.IO) {
-                load()
+                reloadRequests.collectLatest { (generation, manual) ->
+                    recommendationJob?.cancelAndJoin()
+                    chipLoadJob?.cancelAndJoin()
+                    loadMoreJob?.cancelAndJoin()
+                    isRefreshing.value = manual
+                    try {
+                        kotlinx.coroutines.coroutineScope {
+                            remoteRequests.commit(generation) {
+                                selectedChip.value = null
+                                previousHomePage.value = null
+                                previousRemoteQuickPicks.value = null
+                            }
+                            if (manual) launch { refreshQuickPicks() }
+                            load(generation)
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        reportException(error)
+                    } finally {
+                        isRefreshing.value = false
+                    }
+                }
             }
 
-            // Re-fetch the home feed whenever the YT Music region (or content country/language)
-            // changes. This is what makes the "YouTube Music region" setting in Internet
-            // Settings actually take effect on the home screen: when the user picks a country,
-            // InternetSettings writes YouTubeMusicRegionKey to the DataStore AND mutates
-            // YouTube.locale.gl in-memory — we observe the preference here and trigger a
-            // fresh YouTube.home() call. Without this, the user would have to manually
-            // pull-to-refresh after changing the region.
-            //
-            // We observe ContentCountryKey and ContentLanguageKey too, since those also
-            // mutate YouTube.locale (via App.kt's initializeDeferredAsync) and therefore
-            // affect what the home feed returns.
-            //
-            // drop(1) so we don't re-fetch on initial subscription (the load() above
-            // already covers the cold-start case).
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
                     .map { Triple(it[YouTubeMusicRegionKey], it[ContentCountryKey], it[ContentLanguageKey]) }
                     .distinctUntilChanged()
                     .drop(1)
                     .collectLatest {
-                        isLoading.filter { loading -> !loading }.first()
-                        load()
+                        requestReload()
                     }
             }
 
@@ -1217,15 +1127,10 @@ class HomeViewModel
                 aiContentFilterSettings
                     .drop(1)
                     .collectLatest {
-                        isLoading.filter { loading -> !loading }.first()
-                        load()
+                        requestReload()
                     }
             }
 
-            // Re-filter the feed as soon as the user hits "Don't recommend this song again"
-            // (or undoes it). The blocked set is applied while each section is built, so
-            // without this the song the user just dismissed stayed on screen until the next
-            // manual pull-to-refresh — which read as the action not working at all.
             viewModelScope.launch(Dispatchers.IO) {
                 database
                     .blockedSongIds()
@@ -1233,8 +1138,7 @@ class HomeViewModel
                     .distinctUntilChanged()
                     .drop(1)
                     .collectLatest {
-                        isLoading.filter { loading -> !loading }.first()
-                        load()
+                        requestReload()
                     }
             }
 
@@ -1248,43 +1152,34 @@ class HomeViewModel
             }
 
             viewModelScope.launch(Dispatchers.IO) {
-                kotlinx.coroutines.delay(3000)
-
-                syncUtils.cleanupDuplicatePlaylists()
-            }
-
-            viewModelScope.launch(Dispatchers.IO) {
+                moe.rukamori.archivetune.App.startupReadiness.awaitReady()
+                var previousAccount: Pair<String?, String?>? = null
                 context.dataStore.data
-                    .map { it[InnerTubeCookieKey] }
+                    .map { it[InnerTubeCookieKey] to it[DataSyncIdKey] }
                     .distinctUntilChanged()
-                    .collect { cookie ->
+                    .collectLatest { account ->
+                        val cookie = account.first
+                        YouTube.authState = context.dataStore.data.first().toPlaybackAuthState()
+                        currentCoroutineContext().ensureActive()
+                        if (previousAccount != null && previousAccount != account) {
+                            requestReload(clearAccount = true)
+                        }
+                        previousAccount = account
                         try {
                             val isLoggedIn = hasYouTubeLoginCookie(cookie)
                             val loginTransition = isLoggedIn && !wasLoggedIn
                             wasLoggedIn = isLoggedIn
 
                             if (isLoggedIn && cookie != null && cookie.isNotEmpty()) {
-                                if (!prepareYouTubeAccount(cookie)) {
-                                    clearAccountData()
-                                    return@collect
-                                }
-
                                 supervisorScope {
-                                    kotlinx.coroutines.delay(100)
                                     launch { refreshAccountIdentity() }
                                     launch { refreshAccountPlaylistsInternal() }
                                 }
 
-                                if (loginTransition) {
-                                    launch {
-                                        try {
-                                            if (context.dataStore.get(YtmSyncKey, true)) {
-                                                syncUtils.performFullSync()
-                                            }
-                                        } catch (e: Exception) {
-                                            Timber.e(e, "Error during login-triggered sync")
-                                            reportException(e)
-                                        }
+                                if (loginTransition && context.dataStore.getAsync(YtmSyncKey, true)) {
+                                    screenState.first { it !is HomeScreenState.Loading }
+                                    moe.rukamori.archivetune.App.startupReadiness.runOptional {
+                                        syncUtils.performFullSync()
                                     }
                                 }
                             } else {

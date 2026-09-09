@@ -140,8 +140,6 @@ fun NavGraphBuilder.navigationBuilder(
             return@composable
         }
 
-        // The YouTube home always renders through this fork's HomeScreen; the alternative
-        // Rukamori layout and its style picker were removed (2026-09-04).
         HomeScreen(
             navController,
             headerScrollConnection = homeScrollConnection,
@@ -168,15 +166,7 @@ fun NavGraphBuilder.navigationBuilder(
     composable("history") {
         HistoryScreen(navController)
     }
-    // Per user request (2026-08-29): Spotify and Playlists were previously
-    // sub-tabs of the Library HorizontalPager. The pager slide animation
-    // felt different from the standard app-wide slide-in-from-right page
-    // transition, and the asymmetry (Playlists opens faster than Spotify
-    // because of pager position) read as "still following the old category
-    // pill logic". Moving both out of the pager into their own NavHost
-    // routes makes them ordinary pages — they use the same default
-    // slide-in-from-right transition as every other page (history, albums,
-    // playlist detail, etc.) and the speed feels consistent.
+
     composable("library_playlists") {
         LibraryPlaylistsScreen(navController)
     }
@@ -184,14 +174,7 @@ fun NavGraphBuilder.navigationBuilder(
         LibrarySpotifyPlaylistsScreen(navController)
     }
     composable("library_artists") {
-        LibraryArtistsScreen(
-            navController = navController,
-            onDeselect = {
-                if (!navController.popBackStack()) {
-                    navController.navigate("library") { launchSingleTop = true }
-                }
-            },
-        )
+        LibraryArtistsScreen(navController)
     }
     composable("stats") {
         StatsScreen(navController)
@@ -730,7 +713,7 @@ fun NavGraphBuilder.navigationBuilder(
             startUrl = backStackEntry.arguments?.getString(LOGIN_URL_ARGUMENT)?.let(Uri::decode),
         )
     }
-    // The other half of YouTube sign-in: no WebView, no cookie — a code typed at google.com/device.
+
     composable(YOUTUBE_OAUTH_ROUTE) {
         YouTubeOAuthLoginScreen(navController)
     }

@@ -10,14 +10,6 @@ package moe.rukamori.archivetune.ui.theme
 import androidx.compose.ui.graphics.Color
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 
-/**
- * Shared player palette cache keyed by the actual artwork identity (mediaId + provider +
- * artwork identity + background mode + theme). A changed artwork URL under the same mediaId
- * therefore produces a fresh entry instead of reusing a palette extracted from another image.
- *
- * Only successful extractions are stored; failures are never cached so a temporary network
- * problem cannot permanently poison the palette.
- */
 object PlayerPaletteCache {
     private const val MAX_ENTRIES = 48
 

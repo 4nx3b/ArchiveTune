@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,10 +53,7 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -199,17 +195,6 @@ internal fun PlayerTitleText(
             }
         }
 
-    // Fade lives on the BOX (the line's viewport), not the Text. The Text scrolls
-    // with basicMarquee inside the Box; the DstIn gradient masks at the Box's
-    // fixed edges (size.width = viewport width) so the fade stays put while the
-    // text moves underneath — same technique as fadingEdge on the playlist
-    // screen. Applying it to the Text node would mask at the full scroll width
-    // instead and leave the visible edge hard-clipped (the "boxy" look).
-    // Fade shows ONLY while the line is actually scrolling: basicMarquee measures
-    // its child with unbounded width, so hasVisualOverflow never fires — compare
-    // the laid-out text width against the box (viewport) width instead. The
-    // marquee scrolls iff the text is wider than the viewport, so this is
-    // exactly "fade while scrolling", nothing else.
     val titleLayout = remember { mutableStateOf<TextLayoutResult?>(null) }
     val titleViewportWidth = remember { mutableStateOf(0) }
     val shouldFade =
@@ -244,31 +229,16 @@ internal fun PlayerTextBackdrop(
     edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // Plain passthrough: the viewport fade is applied PER LINE (title and artist
-    // each get their own [marqueeEdgeFade], only while that line marquees) —
-    // never as a wrapper-level gradient over both lines.
+
     Box(modifier = modifier) {
         content()
     }
 }
 
-/**
- * Viewport edge fade: gradient at the BOX's fixed edges (the visible text box),
- * not the scrolling Text content. The Box is the viewport; the Text inside
- * scrolls with basicMarquee. Delegates to the shared [fadingEdge] utility (the
- * same fade the playlist screen uses) so every marquee line masks identically:
- * DstIn gradient inside an offscreen layer — softens the hard clip so long
- * scrolling titles don't get the boxy look.
- */
 internal fun Modifier.viewportEdgeFade(
     width: Dp = 24.dp,
 ): Modifier = fadingEdge(horizontal = width)
 
-/**
- * Legacy: edge fade on Text node. Kept for call sites not yet migrated to
- * viewportEdgeFade. Behavior is now identical to viewportEdgeFade (fixed at
- * the node's edges). New code should use viewportEdgeFade on the Box viewport.
- */
 @Composable
 internal fun Modifier.marqueeEdgeFade(
     layoutState: State<TextLayoutResult?>,
@@ -294,7 +264,7 @@ fun PlayerTitleSection(
             navController = navController,
             state = state,
         )
-    // Keep the text rows in one bounded container so marquee measurement has a stable width.
+
     PlayerTextBackdrop(
         textColor = textBackgroundColor,
         modifier = Modifier.fillMaxWidth(),
@@ -492,7 +462,6 @@ fun PlayerTopActions(
                     }
                 }
 
-                // More menu button - cinematic glass card
                 Surface(
                     onClick = {
                         menuState.show {
@@ -798,7 +767,7 @@ fun PlayerPlaybackControls(
                                         android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
                                     )
                                 }
-                                // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+
                                 if (!shuffleModeEnabled) {
                                     playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
                                 }
@@ -1123,11 +1092,6 @@ fun PlayerPlaybackControls(
     }
 }
 
-/**
- * Wrapper composable that combines all player control components.
- * This replaces the large inline controlsContent lambda in BottomSheetPlayer
- * to reduce JIT compilation overhead.
- */
 @Composable
 fun PlayerControlsContent(
     mediaMetadata: MediaMetadata,
@@ -1442,397 +1406,6 @@ fun V8PlayerControlsContent(
                     onVolumeChange = onVolumeChange,
                 )
             }
-        }
-    }
-}
-@Composable
-private fun V8PortraitContent(
-    mediaMetadata: MediaMetadata,
-    subtitle: String,
-    artists: List<MediaMetadata.Artist>,
-    artworkUrl: String?,
-    canvasPrimaryUrl: String?,
-    canvasFallbackUrl: String?,
-    playbackState: Int,
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    canSkipPrevious: Boolean,
-    canSkipNext: Boolean,
-    currentSongLiked: Boolean,
-    sliderPosition: Long?,
-    position: Long,
-    duration: Long,
-    volume: Float,
-    showVolumeBar: Boolean,
-    currentFormat: FormatEntity?,
-    foreground: Color,
-    secondaryForeground: Color,
-    onMenuClick: () -> Unit,
-    onToggleLike: () -> Unit,
-    onPreviousClick: () -> Unit,
-    onNextClick: () -> Unit,
-    onPlayPauseClick: () -> Unit,
-    onSliderValueChange: (Long) -> Unit,
-    onSliderValueChangeFinished: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
-    onTitleClick: () -> Unit,
-    onArtistClick: (artistId: String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val contentPadding = if (maxWidth < 380.dp) 22.dp else 24.dp
-        val compactHeight = maxHeight < 760.dp
-        val veryCompactHeight = maxHeight < 680.dp
-        val headerTop = if (compactHeight) 6.dp else 14.dp
-        val headerToArtwork =
-            when {
-                veryCompactHeight -> 10.dp
-                compactHeight -> 14.dp
-                else -> 28.dp
-            }
-        val artworkToMetadata =
-            when {
-                veryCompactHeight -> 12.dp
-                compactHeight -> 16.dp
-                else -> 28.dp
-            }
-        val controlsGap = if (compactHeight) 10.dp else 18.dp
-        val progressToTransportGap = if (compactHeight) 8.dp else 18.dp
-        val transportToVolumeGap = if (compactHeight) 8.dp else 18.dp
-        val bottomGap = if (compactHeight) 8.dp else 16.dp
-        val volumeControlsHeight =
-            if (showVolumeBar) {
-                transportToVolumeGap + 30.dp
-            } else {
-                0.dp
-            }
-        val reservedControlsHeight =
-            headerTop +
-                56.dp +
-                headerToArtwork +
-                artworkToMetadata +
-                58.dp +
-                controlsGap +
-                62.dp +
-                progressToTransportGap +
-                72.dp +
-                volumeControlsHeight +
-                bottomGap
-        val maxArtworkSize =
-            (maxWidth - contentPadding * 2)
-                .coerceAtMost(if (compactHeight) 360.dp else 420.dp)
-        val artworkSize =
-            maxArtworkSize
-                .coerceAtMost(maxHeight - reservedControlsHeight)
-                // Never let the artwork collapse to nothing: if it clamps to 0
-                // the metadata/transport cluster below it rides up to the top of
-                // the player (slack spacer above the artwork can't absorb the
-                // deficit). A minimum keeps the controls seated at the bottom.
-                .coerceAtLeast(96.dp)
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = contentPadding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(headerTop))
-
-            V8Header(
-                title = stringResource(R.string.now_playing),
-                subtitle = subtitle,
-                foreground = foreground,
-                secondaryForeground = secondaryForeground,
-            )
-
-            Spacer(Modifier.height(headerToArtwork))
-            Spacer(Modifier.weight(1f))
-
-            V8Artwork(
-                artworkUrl = artworkUrl,
-                canvasPrimaryUrl = canvasPrimaryUrl,
-                canvasFallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying,
-                size = artworkSize,
-                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                isMusicVideo = mediaMetadata.isMusicVideo,
-            )
-
-            Spacer(Modifier.height(artworkToMetadata))
-
-            V8MetadataActions(
-                title = mediaMetadata.title,
-                explicit = mediaMetadata.explicit,
-                artists = artists,
-                liked = currentSongLiked,
-                foreground = foreground,
-                onMenuClick = onMenuClick,
-                onToggleLike = onToggleLike,
-                onTitleClick = onTitleClick,
-                onArtistClick = onArtistClick,
-            )
-
-            Spacer(Modifier.height(controlsGap))
-
-            V8PlaybackProgress(
-                sliderPosition = sliderPosition,
-                position = position,
-                duration = duration,
-                currentFormat = currentFormat,
-                foreground = foreground,
-                onSliderValueChange = onSliderValueChange,
-                onSliderValueChangeFinished = onSliderValueChangeFinished,
-            )
-
-            Spacer(Modifier.height(progressToTransportGap))
-
-            V8TransportControls(
-                playbackState = playbackState,
-                isPlaying = isPlaying,
-                isLoading = isLoading,
-                canSkipPrevious = canSkipPrevious,
-                canSkipNext = canSkipNext,
-                foreground = foreground,
-                onPreviousClick = onPreviousClick,
-                onPlayPauseClick = onPlayPauseClick,
-                onNextClick = onNextClick,
-            )
-
-            if (showVolumeBar) {
-                Spacer(Modifier.height(transportToVolumeGap))
-
-                V8VolumeControls(
-                    volume = volume,
-                    foreground = foreground,
-                    secondaryForeground = secondaryForeground,
-                    onVolumeChange = onVolumeChange,
-                )
-            }
-
-            Spacer(Modifier.height(bottomGap))
-        }
-    }
-}
-
-@Composable
-private fun V8LandscapeContent(
-    mediaMetadata: MediaMetadata,
-    subtitle: String,
-    artists: List<MediaMetadata.Artist>,
-    artworkUrl: String?,
-    canvasPrimaryUrl: String?,
-    canvasFallbackUrl: String?,
-    playbackState: Int,
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    canSkipPrevious: Boolean,
-    canSkipNext: Boolean,
-    currentSongLiked: Boolean,
-    sliderPosition: Long?,
-    position: Long,
-    duration: Long,
-    volume: Float,
-    showVolumeBar: Boolean,
-    currentFormat: FormatEntity?,
-    foreground: Color,
-    secondaryForeground: Color,
-    onMenuClick: () -> Unit,
-    onToggleLike: () -> Unit,
-    onPreviousClick: () -> Unit,
-    onNextClick: () -> Unit,
-    onPlayPauseClick: () -> Unit,
-    onSliderValueChange: (Long) -> Unit,
-    onSliderValueChangeFinished: () -> Unit,
-    onVolumeChange: (Float) -> Unit,
-    onTitleClick: () -> Unit,
-    onArtistClick: (artistId: String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val horizontalPadding = 36.dp
-        val contentGap = 36.dp
-        val artworkSize =
-            (maxHeight - 48.dp)
-                .coerceAtMost((maxWidth - horizontalPadding * 2 - contentGap) * 0.44f)
-                .coerceAtLeast(0.dp)
-
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = horizontalPadding, vertical = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(contentGap),
-        ) {
-            V8Artwork(
-                artworkUrl = artworkUrl,
-                canvasPrimaryUrl = canvasPrimaryUrl,
-                canvasFallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying,
-                size = artworkSize,
-                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                isMusicVideo = mediaMetadata.isMusicVideo,
-            )
-
-            Column(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .heightIn(min = 320.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                V8Header(
-                    title = stringResource(R.string.now_playing),
-                    subtitle = subtitle,
-                    foreground = foreground,
-                    secondaryForeground = secondaryForeground,
-                )
-
-                Spacer(Modifier.height(22.dp))
-
-                V8MetadataActions(
-                    title = mediaMetadata.title,
-                    explicit = mediaMetadata.explicit,
-                    artists = artists,
-                    liked = currentSongLiked,
-                    foreground = foreground,
-                    onMenuClick = onMenuClick,
-                    onToggleLike = onToggleLike,
-                    onTitleClick = onTitleClick,
-                    onArtistClick = onArtistClick,
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                V8PlaybackProgress(
-                    sliderPosition = sliderPosition,
-                    position = position,
-                    duration = duration,
-                    currentFormat = currentFormat,
-                    foreground = foreground,
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                V8TransportControls(
-                    playbackState = playbackState,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    foreground = foreground,
-                    onPreviousClick = onPreviousClick,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onNextClick = onNextClick,
-                )
-
-                if (showVolumeBar) {
-                    Spacer(Modifier.height(18.dp))
-
-                    V8VolumeControls(
-                        volume = volume,
-                        foreground = foreground,
-                        secondaryForeground = secondaryForeground,
-                        onVolumeChange = onVolumeChange,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun V8Header(
-    title: String,
-    subtitle: String,
-    foreground: Color,
-    secondaryForeground: Color,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = foreground,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.titleMedium,
-            color = secondaryForeground,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .basicMarquee(),
-        )
-    }
-}
-
-@Composable
-private fun V8Artwork(
-    artworkUrl: String?,
-    canvasPrimaryUrl: String?,
-    canvasFallbackUrl: String?,
-    isPlaying: Boolean,
-    size: androidx.compose.ui.unit.Dp,
-    videoId: String? = null,
-    isMusicVideo: Boolean = false,
-) {
-    val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
-    val playerConnection = LocalPlayerConnection.current
-    val videoArtworkState = LocalVideoArtworkState.current
-    val showVideo =
-        videoArtworkState != null &&
-            !videoArtworkState.hasPlaybackFailed &&
-            isMusicVideo &&
-            !videoId.isNullOrBlank() &&
-            playerConnection != null
-    Box(
-        modifier =
-            Modifier
-                .aspectRatio(1f)
-                .size(size)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (showVideo) Color.Black else Color.White.copy(alpha = 0.08f)),
-    ) {
-        if (!showVideo) {
-            AsyncImage(
-                model = artworkRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        if (!showVideo &&
-            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
-        ) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        if (showVideo) {
-            InlineVideoPlayer(
-                modifier = Modifier.fillMaxSize(),
-            )
         }
     }
 }
@@ -2776,6 +2349,7 @@ private fun V9Artwork(
 
         if (showVideo) {
             InlineVideoPlayer(
+                controlsOnTap = true,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -3072,14 +2646,7 @@ fun PlayerBackground(
     Box(modifier = Modifier.fillMaxSize()) {
         when (playerBackground) {
             PlayerBackgroundStyle.BLUR -> {
-                // ViviMusic-faithful blur: Haze source + Haze effect with
-                // tint = Color.Black.copy(alpha = 0.30f), blurRadius = 80.dp,
-                // noiseFactor = 0.15. Ported verbatim from vivi-music Player.kt
-                // to replace the previous dark palette-gradient overlay approach
-                // (alpha 0.78-0.82) which was desaturating the album art into a
-                // muddy grey. The Haze approach preserves the artwork's actual
-                // colours at full saturation, darkened only by a uniform 30%
-                // black tint for text legibility.
+
                 val context = LocalContext.current
                 val backgroundHazeState = remember { HazeState() }
                 AnimatedContent(
@@ -3091,7 +2658,7 @@ fun PlayerBackground(
                 ) { thumbnailUrl ->
                     if (thumbnailUrl != null) {
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // 1. The source component displaying the unblurred image
+
                             AsyncImage(
                                 model =
                                     ImageRequest
@@ -3107,7 +2674,7 @@ fun PlayerBackground(
                                         .fillMaxSize()
                                         .hazeSource(state = backgroundHazeState),
                             )
-                            // 2. The overlay component rendering the Haze blur effect
+
                             Box(
                                 modifier =
                                     Modifier
@@ -3140,15 +2707,15 @@ fun PlayerBackground(
                             val gradientColorStops =
                                 if (colors.size >= 3) {
                                     arrayOf(
-                                        0.0f to colors[0].copy(alpha = 0.92f), // Top: primary vibrant color
-                                        0.5f to colors[1].copy(alpha = 0.75f), // Middle: darker variant
-                                        1.0f to colors[2].copy(alpha = 0.65f), // Bottom: black-ish
+                                        0.0f to colors[0].copy(alpha = 0.92f),
+                                        0.5f to colors[1].copy(alpha = 0.75f),
+                                        1.0f to colors[2].copy(alpha = 0.65f),
                                     )
                                 } else {
                                     arrayOf(
-                                        0.0f to colors[0].copy(alpha = 0.9f), // Top: primary color
-                                        0.6f to colors[0].copy(alpha = 0.55f), // Middle: faded variant
-                                        1.0f to Color.Black.copy(alpha = 0.7f), // Bottom: black
+                                        0.0f to colors[0].copy(alpha = 0.9f),
+                                        0.6f to colors[0].copy(alpha = 0.55f),
+                                        1.0f to Color.Black.copy(alpha = 0.7f),
                                     )
                                 }
                             Box(
@@ -3157,7 +2724,7 @@ fun PlayerBackground(
                                         .fillMaxSize()
                                         .background(Brush.verticalGradient(colorStops = gradientColorStops)),
                             )
-                            // Keep a gentle dark overlay to ensure text contrast on bright artwork
+
                             Box(
                                 modifier =
                                     Modifier
@@ -3316,10 +2883,8 @@ fun PlayerBackground(
                                         val width = size.width
                                         val height = size.height
 
-                                        // Use a dark base, but the gradients will cover most of it
                                         val baseColor = Color(0xFF050505)
 
-                                        // Extract up to 6 colors
                                         val color1 = colors.getOrElse(0) { Color.DarkGray }
                                         val color2 = colors.getOrElse(1) { color1 }
                                         val color3 = colors.getOrElse(2) { color2 }
@@ -3327,7 +2892,6 @@ fun PlayerBackground(
                                         val color5 = colors.getOrElse(4) { color2 }
                                         val color6 = colors.getOrElse(5) { color3 }
 
-                                        // Top-Left Large Glow (Primary)
                                         val brush1 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3340,7 +2904,6 @@ fun PlayerBackground(
                                                 radius = width * 1.2f,
                                             )
 
-                                        // Bottom-Right Large Glow (Secondary)
                                         val brush2 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3353,7 +2916,6 @@ fun PlayerBackground(
                                                 radius = width * 1.1f,
                                             )
 
-                                        // Top-Right Glow (Tertiary)
                                         val brush3 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3366,7 +2928,6 @@ fun PlayerBackground(
                                                 radius = width * 1.0f,
                                             )
 
-                                        // Bottom-Left (Quaternary)
                                         val brush4 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3379,7 +2940,6 @@ fun PlayerBackground(
                                                 radius = width * 1.0f,
                                             )
 
-                                        // Top-Center (Quinary)
                                         val brush5 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3392,7 +2952,6 @@ fun PlayerBackground(
                                                 radius = width * 0.9f,
                                             )
 
-                                        // Bottom-Center (Senary)
                                         val brush6 =
                                             Brush.radialGradient(
                                                 colors =
@@ -3431,14 +2990,6 @@ fun PlayerBackground(
                     if (colors.isNotEmpty()) {
                         val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
 
-                        // Deferred draw-phase read: keep this as a State<Float> (no `by`) and
-                        // only touch .value inside drawWithCache below. Reading it here via
-                        // `by` would re-run this entire composable (including the enclosing
-                        // AnimatedContent) on every animation frame for as long as this
-                        // background style is visible -- the exact anti-pattern already fixed
-                        // for the moving-blur drift in AppleMusicPlayer.kt. Deferring it keeps
-                        // the 20s glow rotation from stealing frame budget from anything else
-                        // on screen (e.g. word-synced lyrics).
                         val progressState =
                             infiniteTransition.animateFloat(
                                 initialValue = 0f,
@@ -3483,15 +3034,13 @@ fun PlayerBackground(
                                             progress: Float,
                                             speed: Float = 1f,
                                         ): Float {
-                                            // speed MUST be an integer to ensure seamless looping when progress wraps from 1f to 0f.
+
                                             val v = kotlin.math.sin(2f * kotlin.math.PI.toFloat() * (progress * speed + phase)).toFloat()
                                             return min + (max - min) * ((v + 1f) * 0.5f)
                                         }
 
                                         onDrawBehind {
-                                            // Read .value here, in the draw phase, so this whole
-                                            // block re-runs on every animation tick without
-                                            // forcing the composable above to recompose.
+
                                             val progress = progressState.value
 
                                             val color1 = rotatedColorAt(0, progress)
@@ -3577,7 +3126,7 @@ fun PlayerBackground(
             }
 
             else -> {
-                // DEFAULT or other modes - no background
+
             }
         }
     }

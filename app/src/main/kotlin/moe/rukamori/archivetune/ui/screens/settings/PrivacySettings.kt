@@ -9,7 +9,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -73,7 +72,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
+fun PrivacySettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val database = LocalDatabase.current
     val context = LocalContext.current
     val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
@@ -182,9 +184,6 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -236,7 +235,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -335,8 +334,6 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                // "Open supported links" moved here from the main settings page (Task 10).
-                // Android 12+ only — same gate the original pill had.
                 if (isAndroid12OrLater) {
                     item {
                         PreferenceEntry(
@@ -368,9 +365,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

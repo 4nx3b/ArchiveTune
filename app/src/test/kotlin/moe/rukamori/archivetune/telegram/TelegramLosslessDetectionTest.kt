@@ -53,7 +53,7 @@ class TelegramLosslessDetectionTest {
                 chatId = -1L,
                 messageId = 1L,
                 fileId = 1,
-                fileUniqueId = "u",
+                fileUniqueId = "1:2",
                 title = "",
                 performer = null,
                 fileName = "01 - Intro.flac",
@@ -62,6 +62,7 @@ class TelegramLosslessDetectionTest {
                 sizeBytes = 1L,
                 dateSeconds = 0,
                 albumCoverMinithumbnail = null,
+                thumbnailFileId = 0,
             )
         assertTrue(track.isLossless)
         assertTrue(track.displayTitle == "01 - Intro")

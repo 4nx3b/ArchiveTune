@@ -95,7 +95,7 @@ private fun buildTypography(fontFamily: FontFamily) =
                 fontWeight = FontWeight.Normal,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
-                letterSpacing = 0.5.sp, // M3 uses 0.5, M2 used 0.15
+                letterSpacing = 0.5.sp,
             ),
         bodyMedium =
             TextStyle(

@@ -702,15 +702,6 @@ object ThemePalettes {
             neutral = Color(0xFFFF5F1F),
         )
 
-    val Cyberpunk =
-        ThemePalette(
-            id = "cyberpunk",
-            nameResId = R.string.palette_cyberpunk,
-            primary = Color(0xFFFF00FF),
-            secondary = Color(0xFFFF00FF),
-            tertiary = Color(0xFFFF00FF),
-            neutral = Color(0xFFFF00FF),
-        )
 
     val Synthwave =
         ThemePalette(
@@ -802,25 +793,7 @@ object ThemePalettes {
             neutral = Color(0xFF00FF7F),
         )
 
-    val Candy =
-        ThemePalette(
-            id = "candy",
-            nameResId = R.string.palette_candy,
-            primary = Color(0xFFFF69B4),
-            secondary = Color(0xFFFF69B4),
-            tertiary = Color(0xFFFF69B4),
-            neutral = Color(0xFFFF69B4),
-        )
 
-    val Rainbow =
-        ThemePalette(
-            id = "rainbow",
-            nameResId = R.string.palette_rainbow,
-            primary = Color(0xFFFF0000),
-            secondary = Color(0xFFFF0000),
-            tertiary = Color(0xFFFF0000),
-            neutral = Color(0xFFFF0000),
-        )
 
     val allPalettes: List<ThemePalette> =
         listOf(
@@ -880,7 +853,6 @@ object ThemePalettes {
             NeonPink,
             NeonBlue,
             NeonOrange,
-            Cyberpunk,
             Synthwave,
             Ocean,
             Forest,
@@ -890,13 +862,29 @@ object ThemePalettes {
             Summer,
             Twilight,
             Aurora,
-            Candy,
-            Rainbow,
+        )
+
+    /**
+     * Palettes that were removed for being pixel-identical to another entry, mapped to the one
+     * that stayed.
+     *
+     * Cyberpunk was Magenta Pop, Candy was Hot Pink and Rainbow was YouTube Red — same colour in
+     * all four roles, so the picker showed the same dot twice and picking either gave the same
+     * theme. The selection is stored by id, so without this a user sitting on one of the three
+     * would silently drop back to the default theme on the next launch.
+     */
+    private val RetiredPaletteIds =
+        mapOf(
+            "cyberpunk" to "magenta_pop",
+            "candy" to "hot_pink",
+            "rainbow" to "youtube_red",
         )
 
     fun findByPrimaryColor(colorHex: String): ThemePalette? = allPalettes.find { it.primary.toHexString() == colorHex }
 
-    fun findById(id: String): ThemePalette? = allPalettes.find { it.id == id }
+    fun findById(id: String): ThemePalette? =
+        allPalettes.find { it.id == id }
+            ?: RetiredPaletteIds[id]?.let { survivor -> allPalettes.find { it.id == survivor } }
 
     fun getRandomPalette(): ThemePalette = allPalettes.random()
 
@@ -1193,7 +1181,7 @@ fun ThemeCreatorScreen(navController: NavController) {
         AlertDialog(
             onDismissRequest = { showImportErrorDialog = false },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = { showImportErrorDialog = false }, shapes = ButtonDefaults.shapes()) {
                     Text(text = stringResource(android.R.string.ok))
                 }
@@ -1510,7 +1498,7 @@ private fun SelectableMiniPalette(
                             .offset(24.dp, 24.dp),
                     color = palette.secondary,
                 ) {}
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = isSelected,
                     modifier =
                         Modifier

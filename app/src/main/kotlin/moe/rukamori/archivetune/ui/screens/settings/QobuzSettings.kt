@@ -105,13 +105,6 @@ import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.Box
 
-/**
- * Process-lived cache of the last on-demand health-check results so that the checked status (and
- * measured ping) survives leaving and returning to the screen. It is intentionally NOT persisted to
- * disk — it is cleared only when the process dies or the user runs another check (which overwrites
- * the entries) or removes/reset the instance/token. Snapshot state maps so Compose recomposes when
- * a check updates them.
- */
 private object QobuzHealthUiCache {
     val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
     val instanceLatency = mutableStateMapOf<String, Long>()
@@ -130,7 +123,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val probeTrack by rememberPreference(QobuzLastProbeTrackKey, "")
 
-    // Instances stored as a newline-separated string. No bundled defaults: blank == disabled.
     val (storedInstances, onStoredInstancesChange) = rememberPreference(QobuzInstancesKey, "")
     val effectiveInstances =
         remember(storedInstances) {
@@ -144,8 +136,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         onStoredInstancesChange(list.distinct().joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested) and last measured latency (ms). Backed by a
-    // process-lived cache so a completed check persists when navigating away and back.
     val healthStatus = QobuzHealthUiCache.instanceHealth
     val healthLatency = QobuzHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
@@ -153,14 +143,13 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
     var showBulkDialog by remember { mutableStateOf(false) }
     var detailInstance by remember { mutableStateOf<String?>(null) }
 
-    // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
     val tokens = remember(storedTokens) { QobuzToken.listFromJson(storedTokens) }
     fun persistTokens(list: List<QobuzToken>) {
         val deduped = list.distinctBy { it.token }
         onStoredTokensChange(QobuzToken.listToJson(deduped))
     }
-    // token id -> health status + last measured ping (ms), process-lived so it survives navigation.
+
     val tokenHealth = QobuzHealthUiCache.tokenHealth
     val tokenLatency = QobuzHealthUiCache.tokenLatency
     var testingTokens by remember { mutableStateOf(false) }
@@ -168,7 +157,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
     var detailToken by remember { mutableStateOf<QobuzToken?>(null) }
     var showTokenManagement by remember { mutableStateOf(false) }
     var showInstanceManagement by remember { mutableStateOf(false) }
-    // Token id whose "deprecated" info popup is open (preview-only / no premium explanation).
+
     var previewInfoTokenId by remember { mutableStateOf<String?>(null) }
 
     fun toast(message: String) {
@@ -188,8 +177,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 context.getString(R.string.tidal_instance_unreachable)
         }
 
-    // Manual, on-demand probe of every configured instance (reachability AND full-vs-preview),
-    // done inline via the provider (no separate health manager). Runs one instance at a time.
     fun runInstanceTest() {
         if (testingInstances) return
         testingInstances = true
@@ -242,7 +229,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Removes every instance whose last scan matched [statuses], returning the count removed.
     fun removeInstancesWithStatus(statuses: Set<TidalAudioProvider.InstanceHealth>): Int {
         val doomed = effectiveInstances.filter { healthStatus[it] in statuses }
         if (doomed.isEmpty()) {
@@ -267,7 +253,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         copyToClipboard(context, "Qobuz instances", online)
     }
 
-    // "Deprecated" explanation popup: why a reachable token is limited (preview-only / no premium).
     previewInfoTokenId?.let {
         DefaultDialog(
             onDismiss = { previewInfoTokenId = null },
@@ -290,15 +275,13 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Token detail dialog — manually entered credentials are shown in full and editable.
     detailToken?.let { token ->
         var editLabel by remember(token) { mutableStateOf(token.label) }
         var editUserId by remember(token) { mutableStateOf(token.userId) }
         var editToken by remember(token) { mutableStateOf(token.token) }
         var editAppId by remember(token) { mutableStateOf(token.appId) }
         var editAppSecret by remember(token) { mutableStateOf(token.appSecret) }
-        // Reset per token: opening another token's details must not inherit the last one's
-        // revealed state and expose a secret the user never asked to see.
+
         var revealToken by remember(token) { mutableStateOf(false) }
         var revealAppId by remember(token) { mutableStateOf(false) }
         var revealAppSecret by remember(token) { mutableStateOf(false) }
@@ -382,11 +365,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
-                // The three secrets are masked by default with a per-field reveal, the same
-                // treatment the Apple Music token sheet already gives its tokens. They used to
-                // render in plaintext monospace, so opening a token's details put a working Qobuz
-                // credential on screen — visible to anyone glancing over, and to any screenshot or
-                // screen recording. Revealing is still one tap when you need to check a paste.
+
                 SecretField(
                     value = editToken,
                     onValueChange = { editToken = it },
@@ -425,13 +404,12 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         }
     }
 
-    // Instance detail popup — same style as the lyrics search result dialog.
     detailInstance?.let { instance ->
         Dialog(
             onDismissRequest = { detailInstance = null },
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
@@ -561,9 +539,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -619,7 +594,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -745,8 +720,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                                 TidalAudioProvider.InstanceHealth.UNREACHABLE -> Color(0xFF9E9E9E)
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
-                        // Same "online — Xms / deprecated — Xms / not reachable" wording as the
-                        // instance rows; "deprecated" gets an info icon explaining preview-only.
+
                         val statusLabel =
                             if (status != null) {
                                 labelFor(status, tokenLatency[token.id])
@@ -871,7 +845,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 effectiveInstances.forEach { instance ->
                     item(visible = showInstanceManagement) {
                         val status = healthStatus[instance]
-                        // online = light blue, deprecated/preview-only = purple, failed = grey.
+
                         val statusColor =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
@@ -981,9 +955,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -992,12 +964,6 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 }
 }
 
-/**
- * A credential field: masked by default, monospace when revealed so a pasted token can actually be
- * proof-read. Local to this screen — Tidal and Apple Music each have their own equivalent today,
- * and pulling a shared component out of three callers is worth doing only once they have stopped
- * diverging (Apple's also validates shape, Tidal's carries a different label set).
- */
 @Composable
 private fun SecretField(
     value: String,
@@ -1014,8 +980,7 @@ private fun SecretField(
         visualTransformation =
             if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
-            // Material3's IconButton, spelled out: this file imports ui.component.IconButton,
-            // which takes a required onLongClick and would not fit here.
+
             androidx.compose.material3.IconButton(onClick = onToggleReveal) {
                 Icon(
                     imageVector =

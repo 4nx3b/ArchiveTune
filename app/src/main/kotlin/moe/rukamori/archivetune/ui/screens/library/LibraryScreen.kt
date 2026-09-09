@@ -22,12 +22,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -97,19 +94,10 @@ fun LibraryScreen(navController: NavController) {
     val activeSelectedTagIds = if (showTagsInLibrary) selectedTagIds else emptySet()
     val libraryFilters =
         remember(showSpotifyPlaylists) {
-            // Per user request (2026-08-29): Spotify and Playlists are no
-            // longer sub-tabs of the Library HorizontalPager — they are
-            // separate NavHost routes (library_spotify_playlists and
-            // library_playlists) that use the standard app-wide slide-in-
-            // from-right transition. The pager now only hosts the LIBRARY
-            // overview + Songs / Artists / Albums sub-tabs. The
-            // showSpotifyPlaylists flag still gates whether the "Spotify"
-            // category row appears on the Library overview (LibraryMixScreen),
-            // but it no longer affects the pager's filter list.
+
             listOf(
                 LibraryFilter.LIBRARY,
                 LibraryFilter.SONGS,
-                LibraryFilter.ARTISTS,
                 LibraryFilter.ALBUMS,
             )
         }
@@ -120,25 +108,6 @@ fun LibraryScreen(navController: NavController) {
         )
     }
 
-    // Per user request (2026-08-28): "If I'm on playlist or any other page
-    // and I go back I go back directly to home page. it should be in
-    // sequential order".
-    //
-    // The bug: `rememberPagerState` (and the surrounding LibraryScreen
-    // composition) loses its `currentPage` when the user navigates away
-    // from Library (e.g. tapping a playlist → local_playlist/{id}). When
-    // the user presses back to return to Library, the entire Library
-    // composition is rebuilt from scratch — `rememberPagerState` creates
-    // a fresh state with `initialPage = libraryFilters.indexOf(defaultFilter)`
-    // (the user's *saved* default filter, not the tab they were on). The
-    // user lands on the default-tab root view, which reads as "I went
-    // back to Home" because the Library root looks similar to the Home
-    // screen.
-    //
-    // The fix: persist the last-selected page index in
-    // `rememberSaveable` so it survives the Library composition leaving
-    // and re-entering. On re-entry, `initialPage` is restored from the
-    // saved value, so the user lands back on the tab they were on.
     val defaultPage = remember(defaultFilter, libraryFilters) {
         libraryFilters.indexOf(defaultFilter).takeIf { it >= 0 } ?: 0
     }
@@ -147,43 +116,13 @@ fun LibraryScreen(navController: NavController) {
         rememberPagerState(
             initialPage = lastSelectedPage,
         ) { libraryFilters.size }
-    // Track the user's tab selection so it persists across navigation
-    // away-and-back. The LaunchedEffect below still syncs the page to
-    // `defaultFilter` when the user changes their default filter in
-    // settings (which would change `defaultFilter`), but it no longer
-    // overwrites the user's last-selected tab on every Library re-entry.
+
     LaunchedEffect(pagerState.currentPage) {
         if (pagerState.currentPage != lastSelectedPage) {
             lastSelectedPage = pagerState.currentPage
         }
     }
 
-    // ── Back gesture handling for Library sub-tabs ─────────────────────────
-    // Per user report (2026-08-28): "when I'm in the library or Spotify page
-    // and I use the back navigation gesture i return to home page instead i
-    // should be on the library main page where it displays recently added
-    // and artist and other things".
-    //
-    // The Library tab hosts sub-screens via HorizontalPager: LIBRARY
-    // (LibraryMixScreen — Recently Added + Artists + Albums rows),
-    // PLAYLISTS, SPOTIFY, SONGS, ARTISTS, ALBUMS. The user can swipe
-    // between them or click category rows in LibraryMixScreen. When the
-    // user is on a non-LIBRARY sub-tab and presses the back gesture, the
-    // system back fires the NavController's default pop behavior — which
-    // exits the Library tab entirely and lands on Home (the start
-    // destination).
-    //
-    // Fix: install a BackHandler that intercepts the back gesture when
-    // the user is NOT on the LIBRARY sub-tab. On back, scroll the pager
-    // to the LIBRARY page instead of letting the back gesture pop the
-    // NavController. The user stays inside the Library tab and lands on
-    // the main "Recently Added / Artists / Albums" view, which is the
-    // page they explicitly want to be on.
-    //
-    // When the user is already on the LIBRARY sub-tab, the BackHandler is
-    // NOT installed (the predicate returns false) so the system back
-    // proceeds normally — letting the user exit the app or land on Home
-    // via the standard NavController behavior.
     val coroutineScope = rememberCoroutineScope()
     BackHandler(enabled = pagerState.currentPage != 0) {
         coroutineScope.launch {
@@ -191,14 +130,6 @@ fun LibraryScreen(navController: NavController) {
         }
     }
 
-    // ── Library-tab home redesign (2026-09-04) ──
-    // "Implement the same home page ui and behaviour for... library tab main
-    // page too": the root Box is now the haze source for the SAME BitChord
-    // progressive top-fade blur the Home/Search bars render (via
-    // LocalLibraryHazeState), and the Muzo atmospheric backdrop the Home
-    // feed floats on replaces the old tonal gradient wash — the two tabs
-    // read as one design language. (The Settings main page keeps its plain
-    // background per the user's instruction; Library does not.)
     val libraryHazeState = LocalLibraryHazeState.current
     Box(
         modifier =
@@ -215,16 +146,7 @@ fun LibraryScreen(navController: NavController) {
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // Only Top + Horizontal insets were applied here before; the
-                    // Top inset is deliberately dropped now — the pinned top bar
-                    // must sit OVER the content so every pager page scrolls under
-                    // it into the progressive blur (the Home behaviour). Each
-                    // page's LazyColumn carries the bar-zone clearance as
-                    // contentPadding instead, so items scroll THROUGH the bar
-                    // zone rather than starting below it. The bottom inset (nav
-                    // bar height + mini player height + safe inset) still goes to
-                    // each sub-screen's LazyColumn contentPadding so the last
-                    // items keep their clearance above the floating bars.
+
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
@@ -232,38 +154,6 @@ fun LibraryScreen(navController: NavController) {
                     ),
         ) {
             val coroutineScope = rememberCoroutineScope()
-
-            // ── Tab sync removed ──────────────────────────────────────────────
-            // Previously a `LaunchedEffect(defaultFilter, libraryFilters)` here
-            // forced `pagerState.scrollToPage(defaultPage)` on every Library
-            // re-entry — which overwrote the user's last-selected tab when
-            // they navigated away to a sub-page (e.g. local_playlist) and
-            // came back. That read as "I go back directly to home page"
-            // because the default tab is LIBRARY, whose root layout looks
-            // similar to the Home screen.
-            //
-            // The saveable `lastSelectedPage` above now drives both the
-            // initial page and persists across composition exits, so the
-            // user lands back on the tab they were on. We still honour
-            // `defaultFilter` changes (e.g. user changes their default
-            // library chip in settings) by reading it once into
-            // `defaultPage` and feeding it as the `initialPage` of
-            // `rememberPagerState`; changes to `defaultFilter` while the
-            // Library screen is alive are NOT applied automatically
-            // (consistent with the user's request to preserve their
-            // last-selected tab).
-
-            // ── Category pills removed ──────────────────────────────────────────
-            // The Library/Playlists/Spotify/Songs/Artists/Albums segmented-control
-            // row that lived here was removed per user request (2026-08-28). The
-            // underlying HorizontalPager is preserved so sub-screens remain
-            // reachable via the LibraryMixScreen category rows (Playlists,
-            // Artists, Favorites, Downloads, History, Spotify) and their
-            // `onTabSelected` callbacks.
-            //
-            // The Spotify tab is now reachable from the new "Spotify" row
-            // in the redesigned LibraryMixScreen (visible only when
-            // `showSpotifyPlaylists` is on).
 
             Box(
                 modifier =
@@ -303,27 +193,8 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
 
-                    // LibraryFilter.PLAYLISTS and LibraryFilter.SPOTIFY
-                    // cases were removed per user request (2026-08-29):
-                    // Spotify and Playlists are now separate NavHost routes
-                    // (library_spotify_playlists / library_playlists),
-                    // reachable via navController.navigate(...) from
-                    // LibraryMixScreen's category rows. They no longer
-                    // render as paged children of the Library pager.
-
                     LibraryFilter.SONGS -> {
                         LibrarySongsScreen(
-                            navController = navController,
-                            onDeselect = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                        )
-                    }
-
-                    LibraryFilter.ARTISTS -> {
-                        LibraryArtistsScreen(
                             navController = navController,
                             onDeselect = {
                                 coroutineScope.launch {
@@ -344,29 +215,6 @@ fun LibraryScreen(navController: NavController) {
                         )
                     }
 
-                    // LibraryFilter.PLAYLISTS and LibraryFilter.SPOTIFY
-                    // cases were removed per user request (2026-08-29):
-                    // Spotify and Playlists are now separate NavHost routes
-                    // (library_spotify_playlists / library_playlists),
-                    // reachable via navController.navigate(...) from
-                    // LibraryMixScreen's category rows. They no longer
-                    // render as paged children of the Library pager.
-                    //
-                    // The `else ->` branch is required for exhaustiveness
-                    // because the LibraryFilter enum still declares
-                    // PLAYLISTS and SPOTIFY values (they're no longer
-                    // added to [libraryFilters] but the enum entries
-                    // themselves remain defined for backward-compat with
-                    // the ChipSortTypeKey preference — a user may have
-                    // previously set their default Library sub-tab to
-                    // Spotify or Playlists, and `rememberEnumPreference`
-                    // would still deserialize to those values; the
-                    // `libraryFilters.indexOf(targetFilter).takeIf { it
-                    // >= 0 } ?: 0` lookup in `onTabSelected` falls back
-                    // to page 0 in that case). The else branch is a
-                    // safety net — if somehow a PLAYLISTS or SPOTIFY
-                    // value ends up in the pager, it renders the LIBRARY
-                    // page (page 0) instead of crashing.
                     else -> {
                         LibraryMixScreen(
                             navController = navController,

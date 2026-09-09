@@ -12,7 +12,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
@@ -51,8 +50,6 @@ const val TIDAL_LOGIN_ROUTE = "settings/tidal/login"
 
 private const val WEB_PLAYER_URL = "https://listen.tidal.com"
 
-// Injected into the web player to forward the live "Authorization: Bearer <token>" header (used on
-// requests to the Tidal API) back to the app. Hooks both fetch() and XMLHttpRequest, once.
 private val BEARER_HOOK_JS =
     """
     javascript:(function(){
@@ -73,17 +70,16 @@ private val BEARER_HOOK_JS =
 @Composable
 fun TidalLoginScreen(navController: NavController) {
     val context = LocalContext.current
-    // Scope for the async token exchanges; cancelled automatically when the screen leaves composition.
+
     val scope = rememberCoroutineScope()
     val pkce = remember { TidalAccountManager.buildPkceChallenge() }
-    // Guards against handling the redirect / captured token more than once.
+
     val handled = remember { AtomicBoolean(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
-    // Persists a successful session, resolves subscription tier, then closes the screen.
     fun finishLogin(
         token: TidalAccountManager.TokenResult,
         flow: String,
@@ -125,13 +121,11 @@ fun TidalLoginScreen(navController: NavController) {
         }
     }
 
-    // Switches the WebView to the web-player capture fallback when PKCE cannot complete.
     fun switchToCapture(view: WebView) {
         toast(context.getString(R.string.tidal_login_webplayer_fallback))
         view.loadUrl(WEB_PLAYER_URL)
     }
 
-    // Handles the PKCE redirect. Returns true if the URL was the redirect and was consumed.
     fun handleRedirect(
         view: WebView,
         url: String?,
@@ -142,7 +136,7 @@ fun TidalLoginScreen(navController: NavController) {
         val code = uri?.getQueryParameter("code")
         val error = uri?.getQueryParameter("error")
         if (code.isNullOrBlank()) {
-            // No code (user cancelled or Tidal returned an error) → fall back to capture.
+
             handled.set(false)
             android.util.Log.w("TidalLogin", "PKCE redirect without code (error=$error)")
             switchToCapture(view)
@@ -156,7 +150,7 @@ fun TidalLoginScreen(navController: NavController) {
             if (token != null) {
                 finishLogin(token, TidalAccountManager.FLOW_PKCE)
             } else {
-                // Exchange failed → try the web-player Bearer capture instead of failing outright.
+
                 handled.set(false)
                 switchToCapture(view)
             }
@@ -190,7 +184,7 @@ fun TidalLoginScreen(navController: NavController) {
                             view: WebView,
                             url: String?,
                         ) {
-                            // Only the web-player fallback needs the header hook injected.
+
                             if (url?.contains("tidal.com", ignoreCase = true) == true &&
                                 url.contains("listen", ignoreCase = true)
                             ) {

@@ -63,7 +63,7 @@ fun ProfileMenuDialog(
             dismissOnClickOutside = true,
         ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         val scrimInteraction = remember { MutableInteractionSource() }
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -93,14 +93,13 @@ fun ProfileMenuDialog(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    // Top row: account header (left) + dismiss button (right).
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        // Account header — leading avatar + name/subtitle, takes
-                        // available space, leaves room for the dismiss button.
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -153,7 +152,6 @@ fun ProfileMenuDialog(
                             }
                         }
 
-                        // Dismiss button (X) — compact 32dp circle.
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -175,8 +173,6 @@ fun ProfileMenuDialog(
                         Spacer(Modifier.height(8.dp))
                     }
 
-                    // Menu items — each rendered as a pill (rounded container)
-                    // styled like the rounded "song pills" on the history page.
                     items.forEach { item ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,

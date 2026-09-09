@@ -33,6 +33,8 @@ import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.applemusic.AppleMusicCatalog
+import moe.rukamori.archivetune.applemusic.AppleMusicSearchItem
 import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import moe.rukamori.archivetune.spotify.SpotifySearchItem
 import moe.rukamori.archivetune.spotify.toSearchItems
@@ -62,6 +64,21 @@ class OnlineSearchSuggestionViewModel
                         if (query.isEmpty()) {
                             database.searchHistory().map { history ->
                                 SearchSuggestionViewState(history = history)
+                            }
+                        } else if (provider == SearchProvider.APPLE_MUSIC) {
+                            val appleMusicItems =
+                                try {
+                                    AppleMusicCatalog.searchTrackSuggestions(query, limit = 8)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Throwable) {
+                                    emptyList()
+                                }
+                            database.searchHistory(query).map { history ->
+                                SearchSuggestionViewState(
+                                    history = history.take(3),
+                                    appleMusicItems = appleMusicItems,
+                                )
                             }
                         } else if (provider == SearchProvider.SPOTIFY) {
                             val spotifyItems =
@@ -136,6 +153,7 @@ class OnlineSearchSuggestionViewModel
 data class SearchSuggestionViewState(
     val history: List<SearchHistory> = emptyList(),
     val spotifyItems: List<SpotifySearchItem> = emptyList(),
+    val appleMusicItems: List<AppleMusicSearchItem> = emptyList(),
     val suggestions: List<String> = emptyList(),
     val items: List<YTItem> = emptyList(),
 )

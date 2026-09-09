@@ -75,7 +75,7 @@ class CrossfadePolicyTest {
                 unsetIndex = -1,
             ),
         )
-        // repeat-all wraps around: next of last track is 0
+
         assertEquals(
             0,
             CrossfadePolicy.resolveTargetIndex(
@@ -90,13 +90,13 @@ class CrossfadePolicyTest {
 
     @Test
     fun targetResolutionRejectsInvalidTargets() {
-        // queue end (no next)
+
         assertNull(CrossfadePolicy.resolveTargetIndex(false, 9, -1, 10, -1))
-        // same-index non-repeat transition
+
         assertNull(CrossfadePolicy.resolveTargetIndex(false, 2, 2, 10, -1))
-        // out of range
+
         assertNull(CrossfadePolicy.resolveTargetIndex(false, 2, 10, 10, -1))
-        // empty queue
+
         assertNull(CrossfadePolicy.resolveTargetIndex(true, 0, 0, 0, -1))
     }
 
@@ -106,19 +106,19 @@ class CrossfadePolicyTest {
             5_000L,
             CrossfadePolicy.effectiveDurationMs(5_000L, 200_000L, 150L, 500L, -1L)!!,
         )
-        // requested longer than the track allows: clamped to track end minus guard
+
         assertEquals(
             9_850L,
             CrossfadePolicy.effectiveDurationMs(20_000L, 10_000L, 150L, 500L, -1L)!!,
         )
-        // tiny requested duration clamps up to the minimum
+
         assertEquals(
             500L,
             CrossfadePolicy.effectiveDurationMs(100L, 200_000L, 150L, 500L, -1L)!!,
         )
-        // unknown duration: no crossfade
+
         assertNull(CrossfadePolicy.effectiveDurationMs(5_000L, -1L, 150L, 500L, -1L))
-        // track too short for even the minimum: no crossfade
+
         assertNull(CrossfadePolicy.effectiveDurationMs(5_000L, 600L, 150L, 500L, -1L))
     }
 
@@ -150,15 +150,14 @@ class CrossfadePolicyTest {
             previous: Long,
         ) = CrossfadePolicy.AudioAdvancementSnapshot(ready, playing, error, position, previous)
 
-        // advancing
         assertTrue(CrossfadePolicy.hasAudioAdvanced(snapshot(true, true, false, 1_250L, 1_100L)))
-        // same position: not yet audible
+
         assertFalse(CrossfadePolicy.hasAudioAdvanced(snapshot(true, true, false, 1_100L, 1_100L)))
-        // STATE_READY + isPlaying alone prove nothing without position movement
+
         assertFalse(CrossfadePolicy.hasAudioAdvanced(snapshot(true, true, false, 0L, 0L)))
-        // paused: no advancement
+
         assertFalse(CrossfadePolicy.hasAudioAdvanced(snapshot(true, false, false, 1_250L, 1_100L)))
-        // error: never valid
+
         assertFalse(CrossfadePolicy.hasAudioAdvanced(snapshot(true, true, true, 1_250L, 1_100L)))
     }
 
@@ -179,16 +178,15 @@ class CrossfadePolicyTest {
             unsetIndex = -1,
         )
 
-        // normal automatic crossfade completion: promote
         assertTrue(CrossfadePolicy.mayPromote(snapshot(true, 3)))
-        // stale operation (cancelled by manual next/prev/seek/pause/stop): never promote
+
         assertFalse(CrossfadePolicy.mayPromote(snapshot(false, 3)))
-        // incoming player error: keep the outgoing player authoritative
+
         assertFalse(CrossfadePolicy.mayPromote(snapshot(true, 3, error = true)))
-        // incoming idle/ended (e.g. readiness timeout): refuse the destructive handoff
+
         assertFalse(CrossfadePolicy.mayPromote(snapshot(true, 3, idle = true)))
         assertFalse(CrossfadePolicy.mayPromote(snapshot(true, 3, ended = true)))
-        // target vanished from the queue (queue replacement): refuse
+
         assertFalse(CrossfadePolicy.mayPromote(snapshot(true, -1)))
     }
 }

@@ -113,10 +113,6 @@ internal sealed class TogetherPublicEvent {
     data object Disconnected : TogetherPublicEvent()
 }
 
-/**
- * WebSocket client for the public Listen Together servers (vivi protocol, JSON only).
- * Binary frames are rejected: the server would be speaking protobuf, which we do not support.
- */
 internal class TogetherPublicClient(
     private val externalScope: CoroutineScope,
     private val serverUrl: String,
@@ -458,11 +454,11 @@ internal class TogetherPublicClient(
             }
 
             TogetherPublicMessageTypes.PONG -> {
-                // Keep-alive acknowledged; nothing to do.
+
             }
 
             else -> {
-                // Unknown message types are ignored for forward compatibility.
+
             }
         }
     }

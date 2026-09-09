@@ -25,37 +25,9 @@ import timber.log.Timber
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-/**
- * YouTube sign-in over the OAuth2 **device-code** flow, as an alternative to the WebView cookie
- * path in [YouTubeLoginRepository].
- *
- * Why this exists alongside the WebView: the WebView flow captures a cookie plus visitorData,
- * dataSyncId and a PoToken by scraping the page, which breaks whenever the sign-in page changes.
- * The device flow is a documented OAuth grant — the user types a short code on google.com/device —
- * and yields a refreshable Bearer token instead.
- *
- * **Scope of the token, which is narrower than it looks.** These credentials are the YouTube VR
- * (Oculus) client's, so the token authenticates as client id 28. A Bearer from this flow and a
- * WEB_REMIX cookie do NOT return the same thing from the same InnerTube endpoint: the VR client
- * gets VR-shaped player responses, and browse/search come back reduced or differently shaped. So
- * this token is only ever used for `/player` on ANDROID_VR — `supportsOAuth2Authentication` is set
- * on that one client and nothing else — while browse, search and metadata keep using WEB_REMIX.
- * Wiring the Bearer into everything is the obvious next step and is the wrong one.
- *
- * This flow needs no microG — it is plain HTTPS against Google's OAuth endpoints, and works on a
- * device with no Google software at all. A sign-in through microG's account authenticator was tried
- * alongside it and removed: on any device that also has real Play Services, Play Services owns the
- * `com.google` account type and refuses to mint a first-party-scope token for an app that is not a
- * registered OAuth client, and the microG forks that coexist with it would not serve an unpatched
- * caller either. It never worked on a real device, so it is gone rather than left as a route that
- * fails differently on every phone.
- */
 object YouTubeOAuthRepository {
     private const val TAG = "YouTubeOAuth"
 
-    // The public YouTube VR (Oculus) OAuth client. Public by construction — a device-flow client
-    // cannot keep a secret on the device — and the same pair every open-source YouTube client uses.
-    // If Google rotates it this path stops working and the WebView login remains the fallback.
     private const val CLIENT_ID = "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com"
     private const val CLIENT_SECRET = "SboVhoG9s0rNafixCSGGKXAT"
     private const val SCOPE = "https://www.googleapis.com/auth/youtube"
@@ -65,7 +37,6 @@ object YouTubeOAuthRepository {
     private const val TOKEN_URL = "https://www.youtube.com/o/oauth2/token"
     private const val REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
-    /** Refresh this far before actual expiry, so a request never races the deadline. */
     private const val REFRESH_SKEW_MS = 5 * 60 * 1000L
 
     private val client =
@@ -76,7 +47,6 @@ object YouTubeOAuthRepository {
             .callTimeout(20, TimeUnit.SECONDS)
             .build()
 
-    /** What the user has to be shown: type [userCode] at [verificationUrl]. */
     data class DeviceCode(
         val deviceCode: String,
         val userCode: String,
@@ -103,7 +73,6 @@ object YouTubeOAuthRepository {
             null
         }
 
-    /** Step 1: ask Google for a device/user code pair. Null when the request fails. */
     suspend fun requestDeviceCode(): DeviceCode? =
         withContext(Dispatchers.IO) {
             val form =
@@ -128,11 +97,6 @@ object YouTubeOAuthRepository {
             )
         }
 
-    /**
-     * Step 2: poll until the user finishes (or the code expires). Honours the server's `interval`
-     * rather than a fixed delay — polling faster earns `slow_down` and then a hard failure.
-     * Persists both tokens on success.
-     */
     suspend fun pollForToken(context: Context, code: DeviceCode): PollResult =
         withContext(Dispatchers.IO) {
             val deadline = System.currentTimeMillis() + code.expiresInSeconds * 1000L
@@ -160,9 +124,9 @@ object YouTubeOAuthRepository {
                         )
                         return@withContext PollResult.Success(access)
                     }
-                    // The user has not finished yet; keep waiting.
+
                     "authorization_pending" -> Unit
-                    // Explicitly asked to back off. Ignoring this escalates to access_denied.
+
                     "slow_down" -> interval += 5_000L
                     else -> return@withContext PollResult.Failed(error)
                 }
@@ -170,12 +134,6 @@ object YouTubeOAuthRepository {
             PollResult.Failed("expired")
         }
 
-    /**
-     * Returns a valid access token, refreshing when it is near expiry. Null when no session exists
-     * or the refresh was rejected — a rejected refresh means the grant was revoked (password
-     * change, sign-out, or the 6-month idle expiry), so the stored session is cleared rather than
-     * left to fail on every request.
-     */
     suspend fun validAccessToken(context: Context): String? =
         withContext(Dispatchers.IO) {
             val prefs = context.dataStore.data
@@ -205,7 +163,7 @@ object YouTubeOAuthRepository {
             persist(
                 context = context,
                 accessToken = access,
-                // Google usually omits a new refresh token here; keep the existing one.
+
                 refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() },
                 expiresInSeconds = json.optInt("expires_in", 3600),
             )
@@ -225,7 +183,6 @@ object YouTubeOAuthRepository {
         }
     }
 
-    /** Signs out: revokes the grant server-side (best effort) and drops the local session. */
     suspend fun signOut(context: Context) {
         withContext(Dispatchers.IO) {
             val refresh = context.dataStore.get(InnerTubeOAuthRefreshTokenKey, "")
@@ -244,7 +201,6 @@ object YouTubeOAuthRepository {
         }
     }
 
-    /** True when a device-flow session exists at all (regardless of access-token freshness). */
     fun isSignedIn(context: Context): Boolean =
         context.dataStore.get(InnerTubeOAuthRefreshTokenKey, "").isNotBlank()
 }

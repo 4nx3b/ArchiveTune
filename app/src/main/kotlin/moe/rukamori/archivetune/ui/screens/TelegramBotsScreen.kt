@@ -74,14 +74,12 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
-import org.drinkless.tdlib.TdApi
 import java.util.UUID
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 const val TELEGRAM_BOTS_ROUTE = "telegram/bots"
 const val TELEGRAM_BOT_CHAT_ROUTE_BASE = "telegram/bot"
 
-/** Routes a single bot chat screen — `telegram/bot/<botId>`. */
 fun telegramBotChatRoute(botId: String) = "$TELEGRAM_BOT_CHAT_ROUTE_BASE/$botId"
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,24 +128,21 @@ fun TelegramBotsScreen(navController: NavController) {
         }
         adding = true
         coroutineScope.launch {
-            val chat = TelegramBotClient.resolveBot(username)
+            val botInfo = TelegramBotClient.resolveBot(username)
             adding = false
-            if (chat == null) {
+            if (botInfo == null) {
                 Toast.makeText(context, R.string.telegram_bots_resolve_failed, Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val title = runCatching {
-                val type = chat.type as TdApi.ChatTypePrivate
-                TelegramClient.send(TdApi.GetUser(type.userId)).firstName
-            }.getOrNull()?.takeIf { it.isNotBlank() } ?: "@$username"
+            val title = botInfo.firstName.takeIf { it.isNotBlank() } ?: "@$username"
+            val photo = TelegramBotClient.resolveBotPhoto(username)
             val bot = TelegramBot(
                 id = UUID.randomUUID().toString(),
                 username = username,
-                chatId = chat.id,
+                chatId = botInfo.chatId,
                 title = title,
                 addedAtMs = System.currentTimeMillis(),
-                photoMinithumbnail = chat.photo?.minithumbnail?.data,
-                photoFileId = chat.photo?.small?.id ?: 0,
+                photoMinithumbnail = photo,
             )
             persistBots(botsState + bot)
             newBotInput = ""
@@ -163,7 +158,7 @@ fun TelegramBotsScreen(navController: NavController) {
                 Text(stringResource(R.string.telegram_bots_remove_confirm, removing.username))
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(onClick = {
                     persistBots(botsState.filter { it.id != removing.id })
                     pendingRemove = null
@@ -232,12 +227,6 @@ fun TelegramBotsScreen(navController: NavController) {
                 )
             }
 
-            // Bot list / empty state. Each branch takes the full remaining vertical space via
-            // Modifier.weight(1f) so the "Auto-forward to my channel" pill below sits at a STABLE
-            // position regardless of whether the list is empty or contains bots — this is what the
-            // user asked for ("when I find a bot the auto forward pill shifts down automatically.
-            // it shouldn't"). Without weight(1f) on the empty branch, the empty-state Box would
-            // collapse to its content height and the pill would jump down when a bot is added.
             if (!isReady) {
                 Box(
                     Modifier.fillMaxWidth().weight(1f).padding(24.dp),
@@ -292,7 +281,7 @@ private fun BotRow(
     ) {
         TelegramChatAvatar(
             photoMinithumbnail = bot.photoMinithumbnail,
-            photoFileId = bot.photoFileId,
+            photoChatId = bot.chatId,
         )
 
         Spacer(Modifier.width(12.dp))

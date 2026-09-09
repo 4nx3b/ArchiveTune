@@ -59,8 +59,6 @@ import androidx.media3.common.C
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
@@ -183,10 +181,6 @@ fun AodPlayerScreen(
     val textHorizontalAlignment = textAlignment.toHorizontalAlignment()
     val textAlign = textAlignment.toTextAlign()
 
-    // Parse lyrics once per lyrics-text change. We don't render the full lyrics tree here (that
-    // would defeat the "always-on, dim, low-power" point of AOD) — we only surface the single
-    // line that matches the current playback position. Falls through to a tiny placeholder when
-    // the lyrics aren't synced or haven't loaded yet.
     val parsedLines: List<LyricsEntry> =
         remember(lyricsText) {
             if (lyricsText.isNullOrBlank()) return@remember emptyList()
@@ -202,8 +196,7 @@ fun AodPlayerScreen(
             currentLyricLine = null
             return@LaunchedEffect
         }
-        // Reuse the same lead-aware line finder that the main lyrics screen uses so the
-        // AOD line highlight transitions in lockstep with the full lyrics view.
+
         val idx = findCurrentLineIndex(parsedLines, position, leadMs = 0L)
         val entry = parsedLines.getOrNull(idx)
         currentLyricLine = entry?.text?.takeIf { it.isNotBlank() }
@@ -395,10 +388,7 @@ private fun AodSliderSection(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (sliderStyle == SliderStyle.Standard) {
-            // Standard style keeps the original AOD slider colors (with the
-            // dimmed disabled states tuned for the AOD dark surface). The
-            // StyledPlaybackSlider uses PlayerSliderColors which assumes a
-            // light-themed surface and would look wrong on AOD.
+
             Slider(
                 value = sliderValue,
                 onValueChange = { onSeek(it.toLong()) },

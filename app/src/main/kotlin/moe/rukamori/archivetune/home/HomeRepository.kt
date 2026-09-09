@@ -49,11 +49,6 @@ class HomeRepository
                 .map { preferences -> preferences[DisableBlurKey] != true }
                 .distinctUntilChanged()
 
-        /**
-         * When `true`, the Home feed collapses to a focused subset
-         * (hero + Recently Played + Keep Listening + Live Performances).
-         * See [MinimalHomeModeKey] for the full description.
-         */
         val minimalHomeMode: Flow<Boolean> =
             context.dataStore.data
                 .map { preferences -> preferences[MinimalHomeModeKey] ?: false }

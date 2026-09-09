@@ -65,7 +65,7 @@ class PlayerColorExtractorTest {
 
     @Test
     fun darkSaturatedBlueIsNotGreyscale() {
-        // Mostly dark blue with some black: dark does NOT mean greyscale.
+
         val swatches =
             listOf(
                 swatch(0xFF0A2050.toInt(), 78),
@@ -108,9 +108,9 @@ class PlayerColorExtractorTest {
     fun pastelArtworkRetainsItsColours() {
         val swatches =
             listOf(
-                swatch(0xFFF4CFE0.toInt(), 45), // pastel pink
-                swatch(0xFFCFE8DC.toInt(), 35), // pastel mint
-                swatch(0xFFE8E2F4.toInt(), 20), // pastel lavender
+                swatch(0xFFF4CFE0.toInt(), 45),
+                swatch(0xFFCFE8DC.toInt(), 35),
+                swatch(0xFFE8E2F4.toInt(), 20),
             )
         val stats = PlayerColorExtractor.computeGreyscaleStats(swatches)
         assertFalse(PlayerColorExtractor.isGreyscale(stats))
@@ -128,7 +128,7 @@ class PlayerColorExtractorTest {
         val swatches =
             listOf(
                 swatch(0xFFFFFFFF.toInt(), 85),
-                swatch(0xFFE65100.toInt(), 15), // saturated orange "text"
+                swatch(0xFFE65100.toInt(), 15),
             )
         val stats = PlayerColorExtractor.computeGreyscaleStats(swatches)
         assertFalse(PlayerColorExtractor.isGreyscale(stats))
@@ -163,11 +163,9 @@ class PlayerColorExtractorTest {
                 swatch(0xFF1133CC.toInt(), 45),
             )
         val colors = PlayerColorExtractor.extractGradientColors(swatches, FALLBACK)
-        // A pure two-hue cover yields at least the source colours plus related derived stops;
-        // the similarity guard prevents padding with near-identical swatches.
+
         assertTrue("expected at least 4 gradient stops, got ${colors.size}", colors.size >= 4)
-        // No invented hues: every stop must be near a source hue or a blend between the two
-        // source hues (the red→blue band), never an unrelated green/orange/purple-opposite.
+
         colors.forEach { color ->
             val hue = hueOf(color)
             val nearRed = hueDistance(hue, 0f) < 40f
@@ -182,7 +180,7 @@ class PlayerColorExtractorTest {
 
     @Test
     fun greyscaleStatsUsePopulationWeighting() {
-        // A tiny colourful speck (5%) on a grey cover: still greyscale overall.
+
         val speckStats =
             PlayerColorExtractor.computeGreyscaleStats(
                 listOf(
@@ -192,7 +190,6 @@ class PlayerColorExtractorTest {
             )
         assertTrue(PlayerColorExtractor.isGreyscale(speckStats))
 
-        // The same colours with inverted populations: colourful.
         val colourfulStats =
             PlayerColorExtractor.computeGreyscaleStats(
                 listOf(

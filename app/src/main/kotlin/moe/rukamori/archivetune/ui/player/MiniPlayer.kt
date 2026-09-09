@@ -76,7 +76,6 @@ import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.isLowEndDevice
-import kotlin.math.roundToInt
 
 @Composable
 fun MiniPlayer(
@@ -86,17 +85,9 @@ fun MiniPlayer(
     pureBlack: Boolean,
     isPairedWithNavigation: Boolean = false,
 ) {
-    // Read the per-screen "docked" flag. When a playlist-style screen has
-    // scrolled past its hero header, it sets LocalMiniPlayerDocked = true
-    // via a CompositionLocalProvider in its own subtree. The MiniPlayer
-    // then visually shrinks and slides to the bottom-start corner, sitting
-    // to the right of the floating Home dock button — matching the
-    // SimpMusic behavior the user requested. When the user scrolls back up
-    // to the hero, the flag flips back to false and the MiniPlayer springs
-    // back to its full-width form.
+
     val docked = LocalMiniPlayerDocked.current
-    // Animate scale + translationX for a smooth spring transition between
-    // full-width and docked forms.
+
     val dockedAnim by animateFloatAsState(
         targetValue = if (docked) 1f else 0f,
         animationSpec = spring(
@@ -110,20 +101,8 @@ fun MiniPlayer(
     val translationYPx = with(density) { 10.dp.toPx() }
     val dockedModifier =
         if (dockedAnim > 0.001f) {
-            // Scale down to ~50% so the mini player reads as a small
-            // docked icon rather than a full-width bar, and translate
-            // left so its left edge lines up to the right of the Home
-            // dock button (which sits at start=16dp, width=48dp). The
-            // translation is in pixels; we use density to convert from
-            // dp so the math is resolution-independent.
-            //
-            // Slight downward nudge so the scaled-down pill sits at
-            // the same vertical center as the Home dock button
-            // instead of the original MiniPlayer's center (the
-            // BottomSheet reserves 70dp at the bottom; the Home dock
-            // is 48dp tall + 12dp bottom padding, so its center is
-            // ~10dp below the MiniPlayer's center).
-            val scale = 1f - 0.5f * dockedAnim // 1.0 -> 0.5
+
+            val scale = 1f - 0.5f * dockedAnim
             modifier
                 .graphicsLayer {
                     scaleX = scale
@@ -162,14 +141,13 @@ private fun NewMiniPlayer(
         defaultValue = MiniPlayerBackgroundStyle.THEME,
     )
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-    // Keep the previous valid palette while the next artwork loads; replace only on success.
+
     var gradientColors by remember {
         mutableStateOf<List<Color>>(emptyList())
     }
     var hasValidPalette by remember { mutableStateOf(false) }
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    // Only the artwork-derived styles need palette extraction; THEME, FROSTED and
-    // LIQUID_GLASS don't.
+
     val shouldUseArtworkBackground =
         miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GLOW
@@ -250,7 +228,6 @@ private fun NewMiniPlayer(
                 null
             }
 
-        // On failure/cancellation keep the previous valid palette; never force a grey fallback.
         if (extractedColors != null) {
             val stillCurrent =
                 mediaMetadata?.id == currentMetadata.id &&
@@ -291,10 +268,7 @@ private fun NewMiniPlayer(
             useArtworkBackground =
                 effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
                     effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW,
-            // Liquid Glass mode samples app PAGE CONTENT (not artwork), so
-            // the surface renders bright in light mode — white content would
-            // be nearly invisible (user report 2026-09-03). It needs the
-            // theme-aware glass ink instead of the artwork-white set.
+
             useLiquidGlass = effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
@@ -327,12 +301,7 @@ private fun NewMiniPlayer(
                 Modifier
                     .fillMaxWidth()
                     .height(MiniPlayerHeight)
-                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(offsetX.roundToInt(), 0) }`
-                    // ran in the LAYOUT phase on every drag frame of the mini player's
-                    // horizontal-swipe gesture and invalidated the Box's children for
-                    // re-layout each frame. Folding the translation into `graphicsLayer`
-                    // moves the transform to the DRAW phase — the layout pass stays cached
-                    // while the user swipes. No visual change.
+
                     .graphicsLayer {
                         translationX = offsetX
                     }
@@ -359,9 +328,7 @@ private fun rememberMiniPlayerContentColors(
     useLiquidGlass: Boolean = false,
 ): MiniPlayerContentColors {
     val colorScheme = MaterialTheme.colorScheme
-    // Theme-aware ink for the Liquid Glass mini player: near-black in light
-    // mode (the glass samples bright page content), Color.White in dark
-    // mode (unchanged). See [liquidGlassContentColor].
+
     val glassInk = liquidGlassContentColor()
     return remember(
         useArtworkBackground,
@@ -395,11 +362,7 @@ private fun rememberMiniPlayerContentColors(
                 togetherContent = Color.White,
             )
         } else if (useLiquidGlass) {
-            // Liquid Glass variant: same structure as the artwork set but
-            // driven by the theme-aware glass ink. Dark mode resolves to the
-            // exact same values as the artwork set (glassInk == White there,
-            // and the play-button container/icon pair stays White/Black), so
-            // the dark-mode Liquid Glass look is byte-for-byte unchanged.
+
             MiniPlayerContentColors(
                 title = glassInk,
                 secondary = glassInk.copy(alpha = 0.72f),
@@ -408,10 +371,7 @@ private fun rememberMiniPlayerContentColors(
                 artworkContainer = glassInk.copy(alpha = 0.14f),
                 artworkBorder = glassInk.copy(alpha = 0.22f),
                 primaryButtonContainer = glassInk.copy(alpha = 0.92f),
-                // Icon inside the play-button container: inverted from the
-                // container so it stays visible in both themes (white
-                // container / black icon in dark mode, dark container /
-                // white icon in light mode).
+
                 primaryButtonIcon = if (glassInk == Color.White) Color.Black else Color.White,
                 secondaryButtonContainer = Color.Black.copy(alpha = 0.22f),
                 buttonIcon = glassInk,
@@ -439,8 +399,6 @@ private fun rememberMiniPlayerContentColors(
     }
 }
 
-// Frosted mini-player backdrop: blur radius in raw px (RenderEffect works in pixels) and the
-// bounded fraction of blurred content shown over the opaque base — same recipe as the nav bar.
 private const val FrostedMiniPlayerBlurRadiusPx = 60f
 private const val FrostedMiniPlayerOverlayAlpha = 0.30f
 
@@ -450,10 +408,7 @@ private fun MiniPlayerBackground(
     palette: MiniPlayerBackgroundPalette?,
     modifier: Modifier = Modifier,
 ) {
-    // Frosted blur on the mini player relies on RenderEffect (API 31+). On pre-S the CPU-blurred
-    // bitmap fallback produced visible glitches on older devices, so FROSTED is forcibly
-    // downgraded to THEME. The Settings screen surfaces a "not supported on Android versions
-    // below 12" warning under the mini player background selector when running on pre-S.
+
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
         MiniPlayerBackgroundStyle.THEME
@@ -495,13 +450,7 @@ private fun MiniPlayerBackground(
             if (backdrop == null) {
                 Box(modifier = modifier.background(baseColor))
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                // Pre-S: CPU-blurred bitmap fallback. The bitmap is the small slice under the
-                // mini player (not the full screen), captured and blurred every ~80 ms — fast
-                // enough for smooth frosted tracking without tanking pre-S hardware. The blurred
-                // slice is already aligned to the mini player's top-left, so we draw at (0, 0).
-                // Per audit (2026-08-30): hoisted to State holders so the
-                // onGloballyPositioned lambda can be memoized on the holder
-                // (stable across recompositions).
+
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val miniPlayerSizeState = remember { mutableStateOf(IntSize.Zero) }
                 val positionInRoot by positionInRootState
@@ -517,9 +466,7 @@ private fun MiniPlayerBackground(
                     modifier =
                         modifier
                             .onGloballyPositioned(
-                                // Per audit (2026-08-30): memoize the lambda so the
-                                // OnGloballyPositionedElement.equals() returns true
-                                // across recompositions.
+
                                 remember(positionInRootState, miniPlayerSizeState) {
                                     { coordinates ->
                                         positionInRootState.value = coordinates.positionInRoot()
@@ -544,8 +491,7 @@ private fun MiniPlayerBackground(
                     }
                 }
             } else {
-                // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
-                // lambda memoization.
+
                 val positionInRootState = remember { mutableStateOf(Offset.Zero) }
                 val positionInRoot by positionInRootState
                 Box(
@@ -584,12 +530,7 @@ private fun MiniPlayerBackground(
 
         MiniPlayerBackgroundStyle.GRADIENT -> {
             val colors = requireNotNull(palette)
-            // Per audit (2026-08-30): hoist the Brush.verticalGradient + Color
-            // constants out of the .background() call into `remember(colors)`.
-            // Previously, every recomposition of MiniPlayer (which is on screen
-            // 100% of the time during playback) allocated a new ShaderBrush +
-            // 3 × Color.copy(alpha=...) values + a Color.Black.copy(alpha=...).
-            // The brush is now allocated ONCE per `colors` tuple change.
+
             val gradientBrush = remember(colors) {
                 Brush.verticalGradient(
                     colorStops =

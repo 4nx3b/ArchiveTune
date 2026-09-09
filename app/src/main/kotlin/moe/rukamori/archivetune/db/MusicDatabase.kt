@@ -172,64 +172,58 @@ abstract class InternalDatabase : RoomDatabase() {
                     .map { from -> UniversalMigration(context, from, CURRENT_VERSION) }
                     .toTypedArray()
 
-            fun build(): InternalDatabase =
-                Room
-                    .databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
-                    .addMigrations(
-                        MIGRATION_1_2,
-                        *universalMigrations,
-                    ).addCallback(DatabaseCallback())
-                    .fallbackToDestructiveMigration()
-                    .fallbackToDestructiveMigrationOnDowngrade()
-                    .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
-                    .setTransactionExecutor(
-                        java.util.concurrent.Executors
-                            .newFixedThreadPool(4),
-                    ).setQueryExecutor(
-                        java.util.concurrent.Executors
-                            .newFixedThreadPool(4),
-                    ).build()
+            val queryExecutor = java.util.concurrent.Executors.newFixedThreadPool(4)
+            val transactionExecutor = java.util.concurrent.Executors.newFixedThreadPool(4)
 
-            fun shouldResetDb(t: Throwable): Boolean {
-                val msg = (t.message ?: "").lowercase()
-                return msg.contains("room cannot verify the data integrity") ||
-                    msg.contains("forgot to update the version number") ||
-                    msg.contains("migration didn't properly handle") ||
-                    msg.contains("room openhelper verification failed")
-            }
-
-            var db = build()
-            try {
-                db.openHelper.writableDatabase
-            } catch (t: Throwable) {
-                if (!shouldResetDb(t)) throw t
-                Log.e(TAG, "Database open failed, attempting schema repair", t)
-                runCatching { db.close() }
-
-                val repaired =
-                    runCatching { SchemaTools.repairDatabaseFile(context = context, name = DB_NAME) }
-                        .onFailure { Log.e(TAG, "Schema repair failed, recreating database", it) }
-                        .isSuccess
-
-                db = build()
-                runCatching { db.openHelper.writableDatabase }.getOrElse { openError ->
-                    Log.e(TAG, "Database still failed to open after schema repair=$repaired, recreating database", openError)
-                    runCatching { db.close() }
-                    runCatching { context.deleteDatabase(DB_NAME) }
-                    db = build()
-                    db.openHelper.writableDatabase
+            val helperFactory = FrameworkSQLiteOpenHelperFactory()
+            val db = Room
+                .databaseBuilder(context, InternalDatabase::class.java, DB_NAME)
+                .addMigrations(MIGRATION_1_2, *universalMigrations)
+                .addCallback(DatabaseCallback(queryExecutor))
+                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigrationOnDowngrade()
+                .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
+                .setTransactionExecutor(transactionExecutor)
+                .setQueryExecutor(queryExecutor)
+                .openHelperFactory { configuration ->
+                    RecoveringOpenHelper(
+                        create = { helperFactory.create(configuration) },
+                        shouldRecover = { error ->
+                            val message = error.message.orEmpty().lowercase()
+                            message.contains("room cannot verify the data integrity") ||
+                                message.contains("forgot to update the version number") ||
+                                message.contains("migration didn't properly handle") ||
+                                message.contains("room openhelper verification failed")
+                        },
+                        repair = { error ->
+                            Log.e(TAG, "Database open failed, attempting schema repair", error)
+                            runCatching { SchemaTools.repairDatabaseFile(context, DB_NAME) }
+                                .onFailure { Log.e(TAG, "Schema repair failed", it) }
+                        },
+                        reset = { error ->
+                            Log.e(TAG, "Database still failed after schema repair, recreating database", error)
+                            runCatching { context.deleteDatabase(DB_NAME) }
+                        },
+                        open = { helper, writable ->
+                            moe.rukamori.archivetune.utils.traceStartup("ArchiveTune.databaseOpen") {
+                                if (writable) helper.writableDatabase else helper.readableDatabase
+                            }
+                        },
+                    )
                 }
-            }
+                .build()
 
+            // Room opens on its query/transaction executor, not while Hilt builds
+            // the activity graph. The helper keeps the same repair-before-reset policy.
             return MusicDatabase(delegate = db)
         }
     }
 }
 
-private class DatabaseCallback : RoomDatabase.Callback() {
+private class DatabaseCallback(private val executor: Executor) : RoomDatabase.Callback() {
     override fun onOpen(db: SupportSQLiteDatabase) {
         super.onOpen(db)
-        java.util.concurrent.Executors.newSingleThreadExecutor().execute {
+        executor.execute {
             try {
                 db.query("PRAGMA busy_timeout = 60000").close()
                 db.query("PRAGMA cache_size = -16000").close()
@@ -254,8 +248,8 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                     SELECT p1.id FROM playlist p1
                     WHERE p1.browseId IS NOT NULL
                     AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
+                        SELECT 1 FROM playlist p2
+                        WHERE p2.browseId = p1.browseId
                         AND p2.id != p1.id
                         AND (
                             (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
@@ -277,8 +271,8 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                     SELECT p1.id FROM playlist p1
                     WHERE p1.browseId IS NOT NULL
                     AND EXISTS (
-                        SELECT 1 FROM playlist p2 
-                        WHERE p2.browseId = p1.browseId 
+                        SELECT 1 FROM playlist p2
+                        WHERE p2.browseId = p1.browseId
                         AND p2.id != p1.id
                         AND (
                             (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = p2.id) >
@@ -307,14 +301,6 @@ private class DatabaseCallback : RoomDatabase.Callback() {
     }
 }
 
-// =============================================================================
-// UNIVERSAL MIGRATION - Handles schema upgrade to current version
-// =============================================================================
-
-/**
- * Universal migration that properly handles schema changes for any source version.
- * Recreates tables with correct schema when needed to fix default value issues.
- */
 private class UniversalMigration(
     private val context: Context,
     startVersion: Int,
@@ -600,10 +586,6 @@ private object SchemaTools {
     )
 }
 
-// =============================================================================
-// LEGACY MIGRATION v1 -> v2 (Major schema rewrite, must be kept)
-// =============================================================================
-
 private val MIGRATION_1_2 =
     object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -677,7 +659,6 @@ private val MIGRATION_1_2 =
                 }
             }
 
-            // Drop old tables and create new schema
             db.execSQL("DROP TABLE IF EXISTS song")
             db.execSQL("DROP TABLE IF EXISTS artist")
             db.execSQL("DROP TABLE IF EXISTS playlist")
@@ -723,7 +704,6 @@ private val MIGRATION_1_2 =
             db.execSQL("CREATE VIEW `sorted_song_artist_map` AS SELECT * FROM song_artist_map ORDER BY position")
             db.execSQL("CREATE VIEW `playlist_song_map_preview` AS SELECT * FROM playlist_song_map WHERE position <= 3 ORDER BY position")
 
-            // Insert data
             artists.forEach {
                 db.insert(
                     "artist",
@@ -785,10 +765,6 @@ private val MIGRATION_1_2 =
             }
         }
     }
-
-// =============================================================================
-// AUTO MIGRATION SPECS (Required by Room's AutoMigration annotations)
-// =============================================================================
 
 @DeleteColumn.Entries(
     DeleteColumn(tableName = "song", columnName = "isTrash"),

@@ -101,6 +101,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -140,7 +141,6 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
-import kotlin.math.roundToInt
 
 const val ActiveBoxAlpha = 0.6f
 
@@ -902,21 +902,7 @@ fun LibraryPinnedCollectionTile(
     subtitle: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    // Performance (user request 2026-08-30): hoist the Brush.linearGradient out
-    // of the per-composition `Modifier.background(...)` call. The previous code
-    // re-built the Brush + 3 Color.copy instances on every recomposition of
-    // this tile — which fires on every LazyColumn scroll, every selection-mode
-    // toggle, every theme change. `Modifier.background(Brush.linearGradient(...))`
-    // re-installs the modifier element on every Brush instance change →
-    // `update + invalidateDraw` cascade.
-    //
-    // Now the brush is built once per (accentColor, surfaceContainerHigh,
-    // surfaceContainerLow) tuple — typically stable for the lifetime of a
-    // tile. We hold the three inputs in stable locals and key the remember
-    // on them, so a theme change still rebuilds the brush but a scroll does
-    // not. The actual painting still happens via `Modifier.background`
-    // (cheap; the background modifier's `equals` returns true across
-    // recompositions when the Brush reference is stable).
+
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHigh
     val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
     val pinnedGradientBrush =
@@ -931,17 +917,6 @@ fun LibraryPinnedCollectionTile(
             )
         }
 
-    // Per user request (2026-08-28): "the liked songs in Spotify playlists
-    // looks a bit faded. Fix it and make it compact." The previous tile
-    // had a 76% opacity surface behind the icon (which muted the accent
-    // colour), generous 14dp outer + 16dp inner padding, and 16dp
-    // inter-element spacing — visually airy but read as washed-out next
-    // to the dense Spotify playlist list items below it. Tightened:
-    //   - Icon backdrop: opaque surface (1.0 alpha) so the accent colour
-    //     reads at full saturation.
-    //   - Outer padding: 14dp -> 10dp.
-    //   - Inter-element spacing: 16dp -> 8dp.
-    //   - Icon inner padding: 12dp -> 8dp.
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -1014,15 +989,7 @@ fun LibraryPlaylistFeatureCard(
     val context = LocalContext.current
     val primaryThumbnailUrl = playlist.thumbnails.getOrNull(0)
     var extractedGlowColor by remember(primaryThumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp on
-    // the glow color. The animation was rebuilding `Modifier.shadow(ambientColor = glowColor.copy(alpha = ...),
-    // spotColor = glowColor.copy(alpha = ...))` every frame for 400ms after each thumbnail
-    // color extraction — `Modifier.shadow`'s `equals()` returns false every frame, causing
-    // `update + invalidateDraw` cascade for every visible Spotlight card on screen.
-    // The 400ms ramp is barely perceptible on a thumbnail-card glow shadow; a snap is
-    // visually equivalent (the color extraction happens asynchronously, so the glow appears
-    // only after the thumbnail is already visible). Now we just snap to the extracted color.
-    // Same fix applied below for LibraryAlbumSpotlightCard and LibraryArtistSpotlightCard.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(primaryThumbnailUrl) {
         if (primaryThumbnailUrl == null) return@LaunchedEffect
@@ -1127,8 +1094,7 @@ fun LibraryAlbumSpotlightCard(
         )
     val context = LocalContext.current
     var extractedGlowColor by remember(album.album.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
-    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(album.album.thumbnailUrl) {
         val url = album.album.thumbnailUrl ?: return@LaunchedEffect
@@ -1239,8 +1205,7 @@ fun LibraryArtistSpotlightCard(
 ) {
     val context = LocalContext.current
     var extractedGlowColor by remember(artist.artist.thumbnailUrl) { mutableStateOf(Color.Transparent) }
-    // Performance (user request 2026-08-30): drop the 400ms `animateColorAsState` ramp.
-    // See the comment on LibraryPlaylistFeatureCard (above) for the full rationale.
+
     val glowColor = extractedGlowColor
     LaunchedEffect(artist.artist.thumbnailUrl) {
         val url = artist.artist.thumbnailUrl ?: return@LaunchedEffect
@@ -1330,10 +1295,7 @@ fun MediaMetadataListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     shouldLoadImage: Boolean = true,
-    // Forwarded to ListItem so callers that already paint their own row
-    // background (e.g. AppleMusicQueueSheet's glassy pill) can suppress the
-    // default secondaryContainer highlight that would otherwise stack on
-    // top and produce a bright, glitchy double-background.
+
     showActiveContainer: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
     textColorOverride: Color? = null,
@@ -1436,14 +1398,7 @@ fun YouTubeListItem(
                 },
             badges = badges,
             thumbnailContent = {
-                // Video (landscape-source) thumbnails keep their REAL breadth
-                // and width (user request 2026-09-04: "The thumbnails should
-                // have their actual breadth and width without any borders")
-                // instead of being cropped into the square row frame — a
-                // landscape source renders a 16:9 row thumbnail exactly like
-                // the YouTube Music app's video rows; square sources stay
-                // square. The frame matches the image, so ContentScale fills
-                // it perfectly — no letterbox bands, no crop.
+
                 val rowRatio =
                     item.thumbnailSourceRatio
                         ?.takeIf { it >= 4f / 3f }
@@ -1526,6 +1481,11 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    // When false, the thumbnail's play overlays (song OverlayPlayButton +
+    // album AlbumPlayButton) are suppressed — used by selection-mode grids
+    // (e.g. NewReleaseScreen's edit mode) where the play affordance would
+    // fight the selection checkbox and mislead as a playable control.
+    showPlayOverlay: Boolean = true,
 ) {
     val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
     val resolvedThumbnailRatio = thumbnailRatio ?: item.preferredThumbnailRatio(cropThumbnailToSquare)
@@ -1575,33 +1535,35 @@ fun YouTubeGridItem(
                 sourceAspectRatio = item.thumbnailSourceRatio,
             )
 
-            if (item is SongItem && !isActive) {
+            if (item is SongItem && !isActive && showPlayOverlay) {
                 OverlayPlayButton(
                     visible = true,
                 )
             }
 
-            AlbumPlayButton(
-                visible = item is AlbumItem && !isActive,
-                onClick = {
-                    coroutineScope?.launch(Dispatchers.IO) {
-                        var albumWithSongs = database.albumWithSongs(item.id).first()
-                        if (albumWithSongs?.songs.isNullOrEmpty()) {
-                            YouTube
-                                .album(item.id)
-                                .onSuccess { albumPage ->
-                                    database.transaction { insert(albumPage) }
-                                    albumWithSongs = database.albumWithSongs(item.id).first()
-                                }.onFailure { reportException(it) }
-                        }
-                        albumWithSongs?.let {
-                            withContext(Dispatchers.Main) {
-                                playerConnection.playQueue(LocalAlbumRadio(it))
+            if (showPlayOverlay) {
+                AlbumPlayButton(
+                    visible = item is AlbumItem && !isActive,
+                    onClick = {
+                        coroutineScope?.launch(Dispatchers.IO) {
+                            var albumWithSongs = database.albumWithSongs(item.id).first()
+                            if (albumWithSongs?.songs.isNullOrEmpty()) {
+                                YouTube
+                                    .album(item.id)
+                                    .onSuccess { albumPage ->
+                                        database.transaction { insert(albumPage) }
+                                        albumWithSongs = database.albumWithSongs(item.id).first()
+                                    }.onFailure { reportException(it) }
+                            }
+                            albumWithSongs?.let {
+                                withContext(Dispatchers.Main) {
+                                    playerConnection.playQueue(LocalAlbumRadio(it))
+                                }
                             }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
         thumbnailRatio = resolvedThumbnailRatio,
         fillMaxWidth = fillMaxWidth,
@@ -1736,12 +1698,7 @@ fun ItemThumbnail(
         val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
         val isSquareFrame = kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
         val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && isSquareFrame
-        // YouTube video thumbnails are 16:9 while the frame here is square; with
-        // ContentScale.Fit they letterbox, leaving the empty bands the user
-        // reported as "white empty borders of the music videos" (2026-09-04).
-        // Crop fills the square instead — a no-op for the square artwork songs
-        // and albums use, and local/non-YouTube artwork keeps Fit so the
-        // user's own images are never cut off.
+
         val resolvedContentScale =
             contentScale
                 ?: if (shouldApplySquareCrop || (isYouTubeThumb && isSquareFrame)) ContentScale.Crop else ContentScale.Fit
@@ -2251,10 +2208,7 @@ fun SwipeToSongBox(
         Box(
             modifier =
                 Modifier
-                    // Per audit (2026-08-30): `Modifier.offset { IntOffset(...) }` ran
-                    // in the LAYOUT phase on every swipe-dismiss drag frame. Folding
-                    // into `graphicsLayer` moves the transform to the DRAW phase; the
-                    // layout pass stays cached while the user swipes the row out.
+
                     .graphicsLayer {
                         translationX = offset.value
                     }
@@ -2265,7 +2219,6 @@ fun SwipeToSongBox(
     }
 }
 
-// Helper to animate reset of swipe offset
 private fun reset(
     offset: MutableState<Float>,
     scope: CoroutineScope,
@@ -2279,7 +2232,6 @@ private fun reset(
     }
 }
 
-// Data holder for swipe visuals
 data class Quadruple<A, B, C, D>(
     val first: A,
     val second: B,
@@ -2320,14 +2272,44 @@ private object Icon {
     ) {
         when (state) {
             STATE_COMPLETED -> {
-                Icon(
-                    painter = painterResource(R.drawable.offline),
-                    contentDescription = null,
-                    modifier =
-                        Modifier
-                            .size(18.dp)
-                            .padding(end = 2.dp),
-                )
+
+                var burstTrigger by remember { mutableStateOf<Any?>(null) }
+                var lastSeenState by remember { mutableStateOf<Int?>(null) }
+                LaunchedEffect(state) {
+                    if (state == STATE_COMPLETED &&
+                        lastSeenState != null &&
+                        lastSeenState != STATE_COMPLETED
+                    ) {
+                        burstTrigger = System.nanoTime()
+                    }
+                    lastSeenState = state
+                }
+                LaunchedEffect(burstTrigger) {
+                    if (burstTrigger != null) {
+                        delay(800)
+                        burstTrigger = null
+                    }
+                }
+                if (burstTrigger != null) {
+                    moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottieAnimation(
+                        rawRes = moe.rukamori.archivetune.ui.lottie.ArchiveTuneLottie.DownloadCompleteRes,
+                        trigger = burstTrigger,
+                        tintColor = MaterialTheme.colorScheme.primary,
+                        modifier =
+                            Modifier
+                                .size(20.dp)
+                                .padding(end = 0.dp),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.offline),
+                        contentDescription = null,
+                        modifier =
+                            Modifier
+                                .size(18.dp)
+                                .padding(end = 2.dp),
+                    )
+                }
             }
 
             STATE_QUEUED, STATE_DOWNLOADING -> {
@@ -2356,7 +2338,7 @@ private object Icon {
                 }
             }
 
-            else -> { /* no icon */ }
+            else -> {  }
         }
     }
 

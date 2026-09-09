@@ -41,7 +41,6 @@ object AppleMusicVirtualStream {
             "Chrome/145.0.0.0 Safari/537.36"
     private const val DEFAULT_TIMESCALE = 44100L
 
-    /** A CENC key id is always exactly 16 bytes; anything else cannot be a KID. */
     const val KID_BYTES = 16
 
     private data class Box(
@@ -56,13 +55,11 @@ object AppleMusicVirtualStream {
         val durationsSec: List<Double>,
     )
 
-    /** Result of [build]: the virtual stream bytes plus the raw DRM URI (Apple's `uri` field). */
     class Built(
         val bytes: ByteArray,
         val drmUri: String,
     )
 
-    /** Fetch the playlist, then the fMP4, and assemble the virtual progressive stream. */
     fun build(
         client: OkHttpClient,
         playlistUrl: String,
@@ -80,7 +77,6 @@ object AppleMusicVirtualStream {
         return Built(bytes = virtual, drmUri = parsed.drmUri)
     }
 
-    /** Fetches just the playlist and extracts the raw EXT-X-KEY URI (Apple license `uri` field). */
     fun drmUri(
         client: OkHttpClient,
         playlistUrl: String,
@@ -140,7 +136,6 @@ object AppleMusicVirtualStream {
         val drmUri: String,
     )
 
-    /** Playlist → absolute mp4 URL + per-fragment durations (seconds, from #EXTINF). */
     private fun parsePlaylist(
         playlistUrl: String,
         text: String,
@@ -153,8 +148,7 @@ object AppleMusicVirtualStream {
             when {
                 line.startsWith("#EXT-X-MAP") && mediaName == null ->
                     Regex("URI=\"([^\"]+)\"").find(line)?.let { mediaName = it.groupValues[1] }
-                // The EXT-X-KEY URI is a data: URI carrying the key id. The RAW URI string is
-                // what Apple's license endpoint expects as the `uri` field of the exchange.
+
                 line.startsWith("#EXT-X-KEY") && drmUri == null ->
                     Regex("URI=\"([^\"]+)\"").find(line)?.let { drmUri = it.groupValues[1] }
                 line.startsWith("#EXTINF") ->
@@ -172,7 +166,6 @@ object AppleMusicVirtualStream {
         return ParsedFile(mediaUrl, durations, drmUri ?: throw IOException("playlist has no EXT-X-KEY"))
     }
 
-    /** Parse box layout + inject `pssh` (into moov) and `sidx` (after moov). */
     private fun buildVirtualStream(
         mp4: ByteArray,
         playlist: ParsedFile,
@@ -206,14 +199,6 @@ object AppleMusicVirtualStream {
             if (mp4[p].toInt() == 1) readU64(mp4, p + 4) else readU32(mp4, p + 4).toLong()
         } ?: 0L
 
-        // A Widevine challenge is only valid when the pssh carries the real 16-byte tenc KID.
-        // Fabricating an all-zero KID (the previous `?: ByteArray(16)` fallback) still produced a
-        // structurally valid, playable file — Apple's licence server simply refused to issue a
-        // usable key, so every track decoded to SILENCE with no error logged anywhere. Fail loudly
-        // instead: resolveAppleStream catches this and falls through to the next source, and the
-        // reason lands in the log rather than being inaudible.
-        //
-        // Ported from vossgraves/ArchiveTune (claude/pool-lease-kotlin-plan-1rcjuz, 4cacd27b1).
         val kid =
             kidHex
                 ?.let { hexToBytes(it) }
@@ -225,9 +210,6 @@ object AppleMusicVirtualStream {
         val pssh = buildWidevinePssh(kid)
         val sidx = buildSidx(pairs, playlist.durationsSec, timescale, baseTime)
 
-        // Virtual layout: [before moov][patched moov hdr][pssh][moov children][sidx][rest].
-        // The patched header REPLACES the original 8-byte header — copying the header twice
-        // shifts everything after moov by 8 bytes and corrupts the box layout.
         val beforeMoov = moov.offset
         val moovChildrenAt = moov.offset + moov.headerSize
         val afterMoov = moov.offset + moov.size
@@ -256,7 +238,6 @@ object AppleMusicVirtualStream {
         return out
     }
 
-    /** Depth-limited recursive box search inside [root]'s children. */
     private fun findBox(
         buf: ByteArray,
         root: Box,
@@ -286,18 +267,12 @@ object AppleMusicVirtualStream {
             0xA3.toByte(), 0xC8.toByte(), 0x27.toByte(), 0xDC.toByte(),
             0xD5.toByte(), 0x1D.toByte(), 0x21.toByte(), 0xED.toByte(),
         )
-        // The pssh DATA must be a WidevinePsshData protobuf carrying the key id — an empty or
-        // wrong-length payload produces a license challenge Apple's server refuses (playback with
-        // no sound). Mirrors gamdl's reconstruct_pssh:
-        //   field 1 (algorithm) = 1 (AES-CTR): tag 0x08, value 0x01
-        //   field 2 (key_ids)   = 16 bytes:    tag 0x12, len 0x10, <kid>
-        // The length is written as a single-byte varint, which is only correct for a 16-byte KID —
-        // hence the caller's size check, restated here so this stays true if it ever moves.
+
         require(kid.size == KID_BYTES) { "Widevine KID must be $KID_BYTES bytes, got ${kid.size}" }
         val data = ByteArray(4 + kid.size)
         data[0] = 0x08
-        data[1] = 0x01 // algorithm = AESCTR
-        data[2] = 0x12 // field 2 (key_ids), wire type 2
+        data[1] = 0x01
+        data[2] = 0x12
         data[3] = kid.size.toByte()
         System.arraycopy(kid, 0, data, 4, kid.size)
         val size = 8 + 4 + 16 + 4 + data.size
@@ -307,7 +282,7 @@ object AppleMusicVirtualStream {
         out[5] = 's'.code.toByte()
         out[6] = 's'.code.toByte()
         out[7] = 'h'.code.toByte()
-        // version 0 + flags 0 stay zero
+
         System.arraycopy(systemId, 0, out, 12, 16)
         writeU32(out, 28, data.size)
         System.arraycopy(data, 0, out, 32, data.size)
@@ -321,9 +296,7 @@ object AppleMusicVirtualStream {
         baseTime: Long,
     ): ByteArray {
         val count = fragments.size
-        // version 1: 64-bit earliest_presentation_time + first_offset — Apple's tfdt carries
-        // large absolute base media decode times that do NOT fit in 32 bits (a v0 sidx with a
-        // coerced value breaks ExoPlayer's timeline math, e.g. a "-15d" duration display).
+
         val size = 40 + 12 * count
         val out = ByteArray(size)
         writeU32(out, 0, size)
@@ -331,12 +304,12 @@ object AppleMusicVirtualStream {
         out[5] = 'i'.code.toByte()
         out[6] = 'd'.code.toByte()
         out[7] = 'x'.code.toByte()
-        out[8] = 1 // version 1
-        writeU32(out, 12, 1) // reference_ID
+        out[8] = 1
+        writeU32(out, 12, 1)
         writeU32(out, 16, timescale.coerceIn(1, Int.MAX_VALUE.toLong()).toInt())
         writeU64(out, 20, baseTime.coerceAtLeast(0))
-        writeU64(out, 28, 0) // first_offset: sidx ends where the first moof begins
-        // bytes 36..37 reserved(0); 38..39 reference_count
+        writeU64(out, 28, 0)
+
         writeU16(out, 38, count)
         var off = 40
         for ((index, pair) in fragments.withIndex()) {
@@ -344,12 +317,7 @@ object AppleMusicVirtualStream {
             val referencedSize = moof.size + mdat.size
             val durationSec = durationsSec.getOrNull(index) ?: 0.0
             val duration = (durationSec * timescale).toLong().coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
-            // Reference entry layout (3 words — matching ExoPlayer's FragmentedMp4Extractor.parseSidx):
-            //   word 1: reference_type(1)=0 | referenced_size(31)
-            //   word 2: subsegment_duration  ← the fragment's length in timescale ticks
-            //   word 3: starts_with_SAP(1)=1 | SAP_type(3)=1 | SAP_delta_time(28)=0
-            // Writing the SAP flags into word 2 (and never writing word 3) made every fragment
-            // appear 0x90000000 ticks long (~15 days) — the "-15d duration" bug.
+
             writeU32(out, off, referencedSize and 0x7FFFFFFF)
             writeU32(out, off + 4, duration)
             writeU32(out, off + 8, (1 shl 31) or (1 shl 28))

@@ -48,7 +48,7 @@ fun StarDialog(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier =

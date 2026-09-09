@@ -90,6 +90,7 @@ fun TelegramLoginScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
 
     val authState by TelegramClient.authState.collectAsStateWithLifecycle()
+    val nativeDownloadProgress by TelegramClient.nativeDownloadProgress.collectAsStateWithLifecycle()
 
     var callingCode by rememberSaveable { mutableStateOf("") }
     var nationalNumber by rememberSaveable { mutableStateOf("") }
@@ -101,9 +102,16 @@ fun TelegramLoginScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         callingCode = defaultCallingCode(context)
-        if (!TelegramClient.ensureStarted(context)) {
-            Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
-            navController.navigateUp()
+        if (!TelegramClient.ensureStartedAwait(context)) {
+            val state = TelegramClient.authState.value
+            // runtime failures stay on-screen with their detail instead of
+            // bouncing the user back to settings
+            if (state !is TelegramAuthState.RuntimeFailed &&
+                state !is TelegramAuthState.Unsupported
+            ) {
+                Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
+                navController.navigateUp()
+            }
         }
     }
 
@@ -114,7 +122,7 @@ fun TelegramLoginScreen(navController: NavController) {
                 Toast.makeText(context, R.string.telegram_login_success, Toast.LENGTH_SHORT).show()
                 navController.navigateUp()
             }
-            // A fresh code was sent (initial or after resend/edit) — leave the edit-phone override.
+
             is TelegramAuthState.WaitCode -> editingPhone = false
             else -> Unit
         }
@@ -207,6 +215,10 @@ fun TelegramLoginScreen(navController: NavController) {
             }
 
             when {
+                nativeDownloadProgress != null -> {
+                    EngineDownloadCard(progress = nativeDownloadProgress)
+                }
+
                 state is TelegramAuthState.Idle || state is TelegramAuthState.Connecting -> {
                     ConnectingCard()
                 }
@@ -249,6 +261,15 @@ fun TelegramLoginScreen(navController: NavController) {
                         onPasswordChange = { password = it },
                         busy = busy,
                         onContinue = { submit { TelegramClient.submitPassword(password) } },
+                    )
+                }
+
+                state is TelegramAuthState.RuntimeFailed -> {
+                    val detail = state.detail ?: stringResource(R.string.telegram_runtime_failed_unknown)
+                    Text(
+                        text = stringResource(R.string.telegram_runtime_failed, detail),
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
                     )
                 }
 
@@ -443,7 +464,7 @@ private fun CodeStep(
     onEditPhone: () -> Unit,
     onResend: () -> Unit,
 ) {
-    // Countdown until a resend is accepted; reset whenever TDLib reports a new WaitCode.
+
     var secondsLeft by remember(state) { mutableIntStateOf(if (state.canResend) state.resendTimeoutSeconds else 0) }
     LaunchedEffect(state) {
         while (secondsLeft > 0) {
@@ -549,6 +570,26 @@ private fun ConnectingCard() {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
         Text(stringResource(R.string.telegram_connecting))
+    }
+}
+
+@Composable
+private fun EngineDownloadCard(progress: Float?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.telegram_engine_downloading),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress = { progress?.takeIf { it >= 0f } ?: 0f },
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = Color.Transparent,
+        )
     }
 }
 

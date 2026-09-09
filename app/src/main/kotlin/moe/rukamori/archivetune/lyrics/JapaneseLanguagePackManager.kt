@@ -41,7 +41,6 @@ sealed interface JapaneseLanguagePackState {
     ) : JapaneseLanguagePackState
 }
 
-/** Owns the optional, integrity-checked Kuromoji IPADIC language pack. */
 object JapaneseLanguagePackManager {
     private const val PACK_DIRECTORY = "language_packs"
     private const val PACK_FILE = "kuromoji-ipadic-0.9.0.jar"

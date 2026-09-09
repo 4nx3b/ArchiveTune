@@ -18,7 +18,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,35 +56,18 @@ private data class NetworkBannerVisuals(
     val contentColor: Color,
 )
 
-/**
- * Compact pill-shaped popup that surfaces network state changes.
- *
- * Replaces the previous full-width red "No internet connection" banner.
- * Auto-dismisses after a few seconds (controlled by the use case). Includes
- * an inline dismiss button so the user can dismiss the popup manually.
- *
- * States:
- *  - Offline: amber pill labelled "Offline mode" with cloud-off icon
- *  - BackOnline: green pill labelled "Back online" with cloud-done icon
- *  - Hidden: not rendered
- */
 @Composable
 fun NetworkStatusBanner(
     state: NetworkBannerUiState,
     modifier: Modifier = Modifier,
 ) {
     var lastVisibleState by remember { mutableStateOf<NetworkBannerUiState>(NetworkBannerUiState.Offline) }
-    // Track user-initiated dismissal so a tap on the X immediately hides the
-    // popup. Reset whenever the underlying state changes (so the next network
-    // event will surface the popup again).
+
     var userDismissed by remember { mutableStateOf(false) }
 
     if (state != NetworkBannerUiState.Hidden) {
         lastVisibleState = state
-        // If the state has changed since the user dismissed, allow it to show
-        // again. Using `state` here means a new Offline→BackOnline transition
-        // will re-display the back-online popup even if the user dismissed
-        // the offline one.
+
         LaunchedEffect(state) { userDismissed = false }
     }
 
@@ -126,7 +108,7 @@ fun NetworkStatusBanner(
         label = "networkStatusBanner",
     ) {
         Surface(
-            // Pill shape — rounded full corners, compact height.
+
             shape = RoundedCornerShape(percent = 50),
             color = visuals.containerColor,
             contentColor = visuals.contentColor,
@@ -155,7 +137,7 @@ fun NetworkStatusBanner(
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Spacer(modifier = Modifier.width(2.dp))
-                // Compact dismiss (X) button inside the pill.
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier

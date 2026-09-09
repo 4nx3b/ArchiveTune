@@ -39,9 +39,7 @@ fun Preferences.toPlaybackAuthState(): PlaybackAuthState =
         poTokenGvs = this[PoTokenGvsKey],
         poTokenPlayer = this[PoTokenPlayerKey],
         webClientPoTokenEnabled = this[WebClientPoTokenEnabledKey] ?: false,
-        // Only the access token goes to core; the refresh token stays app-side (see
-        // YouTubeOAuthRepository). An expired token is passed down as null rather than as a value
-        // that would 401 on every request — core has no way to refresh it.
+
         oauthToken =
             this[InnerTubeOAuthTokenKey]?.takeIf {
                 (this[InnerTubeOAuthExpiresAtKey] ?: 0L) > System.currentTimeMillis()
@@ -56,9 +54,7 @@ fun MutablePreferences.clearPlaybackAuthSession(clearAccountIdentity: Boolean = 
     remove(PoTokenGvsKey)
     remove(PoTokenPlayerKey)
     remove(PoTokenSourceUrlKey)
-    // The OAuth session is a second way to be signed in, so signing out has to drop it too —
-    // otherwise "log out" leaves a working Bearer behind and playback stays authenticated.
-    // Revoking it server-side is YouTubeOAuthRepository.signOut(); this only clears local state.
+
     remove(InnerTubeOAuthTokenKey)
     remove(InnerTubeOAuthRefreshTokenKey)
     remove(InnerTubeOAuthExpiresAtKey)

@@ -5,27 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * TikTok player style — the action rail.
- *
- * The vertical stack of circular actions riding the right edge of the media,
- * in TikTok's order: the artist's avatar (with the small follow button the
- * app's existing subscribe feature backs), like, comment (here: lyrics),
- * bookmark (here: add to playlist), share, more. Every action
- * operates on THIS page's song — the feed's pages are real queue entries, so
- * the rail acts straight on the same Room rows, download manager and menus
- * the rest of the app uses.
- *
- * While the inline lyrics pane owns the page, EVERY rail action — profile,
- * like, the lyrics toggle, bookmark, share, the overflow more — fades out
- * and the rail leaves the page to the lyrics (user reports 2026-09-02:
- * "when I open lyrics the like button, share, profile, overflow icon etc
- * only should hide", then "the lyrics icon should disable too"). The
- * pane's own controls live in the caption row instead: a close (X) chip
- * and the horizontal-dots overflow button right of the queue chip (see
- * TikTokSongInfo) — the reference's inline caption actions.
- */
-
 package moe.rukamori.archivetune.ui.player.tiktok
 
 import android.content.Intent
@@ -103,24 +82,8 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import java.util.concurrent.ConcurrentHashMap
 
-/** TikTok's brand red, the same one the reference feed uses for its active heart. */
 internal val TIKTOK_RED = Color(0xFFFE2C55)
 
-/**
- * In-process per-song like-count cache backing the rail heart's count label
- * (user request 2026-09-03: "show the number of likes below the like icon",
- * TikTok-style).
- *
- * - Values are fetched at most once per session per song via the lightweight
- *   RYD votes endpoint ([YouTube.getLikeCount] — a single GET, no `next`
- *   call), so swiping through the feed costs at most one cheap request per
- *   NEW song.
- * - A sentinel of `-1` marks "fetched but no data" so songs RYD doesn't know
- *   about are not re-fetched on every recomposition of their feed page.
- * - Only hard network FAILURES are left uncached, so a later recomposition
- *   can retry.
- * - Local media ids never hit the network.
- */
 private object TikTokLikeCountCache {
     private const val NO_DATA = -1
     private val cache = ConcurrentHashMap<String, Int>()
@@ -140,10 +103,6 @@ private object TikTokLikeCountCache {
     private fun Int.toLabel(): String = formatCompactCount(this.toLong())
 }
 
-/**
- * The rail's fade for the lyrics-open hide: quick and unadorned, the
- * reference's vocabulary for things that leave.
- */
 private const val TIKTOK_RAIL_FADE_MS = 180
 
 @Composable
@@ -165,14 +124,10 @@ internal fun TikTokRail(
     val haptics = LocalHapticFeedback.current
     val database = LocalDatabase.current
 
-    // This page's song row — liked state and format come from the same Room
-    // row the rest of the app reads; there is no separate feed-side state.
     val librarySong by database.song(pageMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
     val isLocal = librarySong?.song?.isLocal == true
 
-    // The page's one like action, shared with the artwork's double-tap —
-    // see rememberTikTokLikeAction below.
     val likeAction =
         rememberTikTokLikeAction(
             pageMetadata = pageMetadata,
@@ -180,10 +135,6 @@ internal fun TikTokRail(
             playerConnection = playerConnection,
         )
 
-    // The song's like count for the TikTok-style label under the rail heart
-    // (user request 2026-09-03). produceState keeps its value across key
-    // changes, so reset FIRST — the previous page's count must never flash
-    // when the feed settles on a new page.
     val likeCountLabel by produceState<String?>(initialValue = null, pageMetadata.id) {
         value = null
         value = TikTokLikeCountCache.likeCountLabelOf(pageMetadata.id)
@@ -196,14 +147,7 @@ internal fun TikTokRail(
                 .padding(end = 10.dp)
                 .padding(vertical = 6.dp),
     ) {
-        // ── The artist's avatar (TikTok's profile picture) ──
-        // Tap opens the artist page (the app's real destination, the player
-        // collapsing first exactly like other in-player links); the small
-        // badge on its rim is the app's existing subscribe feature. Sized
-        // at ~1.3x the rail icons — the reference's avatar:icon ratio — not
-        // the oversized 1.7x it used to be. Fades out while the lyrics pane
-        // is open ("profile ... should hide"), spacer and all, so no orphan
-        // gap survives it.
+
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -219,12 +163,6 @@ internal fun TikTokRail(
             }
         }
 
-        // ── Like ──
-        // The heart acts on THIS page's song, not on whatever is playing —
-        // the shared action walks the same Room + sync path the song menu
-        // uses, and pops its glyph whenever the row flips to liked, whether
-        // that came from this button or a double-tap on the media. Hides
-        // with the rest of the song actions while the lyrics pane is open.
         val liked = librarySong?.song?.liked == true
         AnimatedVisibility(
             visible = !lyricsActive,
@@ -241,14 +179,6 @@ internal fun TikTokRail(
             )
         }
 
-        // ── Lyrics (TikTok's comment bubble) ──
-        // Toggles the Apple Music inline lyrics pane in place of the
-        // artwork; the red accent while open is the rail's own active colour
-        // (the same one the liked heart uses). Hides with every other rail
-        // action while the pane is open (user request 2026-09-02: "when I
-        // click on lyrics icon the lyrics icon should disable too") — the
-        // pane closes from the caption row's X instead, and reopens from
-        // this bubble the moment the pane is closed.
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -264,9 +194,6 @@ internal fun TikTokRail(
             }
         }
 
-        // ── Add to playlist (TikTok's bookmark) ──
-        // Hides with the other song actions while the lyrics pane is open
-        // ("... etc only should hide").
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -281,15 +208,6 @@ internal fun TikTokRail(
             }
         }
 
-        // ── Download ──
-        // Removed from the rail per user request (2026-09-02: "remove the
-        // download icon"). The song menu — the rail's more button, the queue
-        // sheet, the library — still carries the full download/remove action
-        // for whoever needs it.
-
-        // ── Share ──
-        // Hides with the other song actions while the lyrics pane is open
-        // ("share ... only should hide").
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -316,19 +234,6 @@ internal fun TikTokRail(
             }
         }
 
-        // ── More ──
-        // While the inline lyrics pane owns the page, this opens the LYRICS
-        // overflow menu — the same anchored, frosted-blur popup the Apple
-        // Music style shows from its own lyrics view, opening from the
-        // top-right below the top navigation (user reports 2026-09-02: "the
-        // exact same popup for lyrics overflow menu from Apple music style;
-        // also it opens on the downside. Fix it") — instead of the song menu.
-        // The pane's provider, offset and song are hoisted to the player
-        // level, which also renders the popup. Hides with the other song
-        // actions while the pane is open ("overflow icon ... should hide");
-        // the lyrics overflow stays reachable through the pane's own row of
-        // actions below the lyrics (the Apple Music pane's built-in
-        // overflow), and the song menu the moment the pane closes.
         AnimatedVisibility(
             visible = !lyricsActive,
             enter = fadeIn(tween(TIKTOK_RAIL_FADE_MS)),
@@ -359,13 +264,6 @@ internal fun TikTokRail(
     }
 }
 
-/**
- * The artist's avatar at the top of the rail, TikTok-style: a circular photo
- * with a light rim, and the small follow badge at its lower-right corner.
- * The badge is backed by the app's existing subscribe feature — the same
- * ArtistEntity toggle (and YouTube channel subscription) the artist page
- * uses; the avatar itself opens the artist page.
- */
 @Composable
 private fun TikTokArtistAvatar(
     pageMetadata: MediaMetadata,
@@ -378,11 +276,9 @@ private fun TikTokArtistAvatar(
 
     val artist = remember(pageMetadata.id) { pageMetadata.artists.firstOrNull() }
     val artistId = artist?.id
-    // The artist's own photo when the metadata carries one, else the song
-    // artwork — a feed page should never show an empty circle.
+
     val avatarUrl = artist?.thumbnailUrl ?: pageMetadata.thumbnailUrl
 
-    // Subscribe state from the same Room row the artist page reads.
     val artistFlow =
         remember(artistId, database) {
             if (artistId != null) {
@@ -421,9 +317,6 @@ private fun TikTokArtistAvatar(
                     .shadow(elevation = 4.dp, shape = CircleShape, clip = false),
         )
 
-        // The follow badge — only while NOT subscribed, like the reference's
-        // red "+" that disappears once the follow lands. Tapping it subscribes
-        // through the artist page's own toggle (Room + YouTube channel).
         if (!isSubscribed) {
             val subscribeLabel = stringResource(R.string.subscribe)
             Box(
@@ -456,8 +349,7 @@ private fun TikTokArtistAvatar(
                             }
                         },
             ) {
-                // The white plus, drawn rather than tinted so the badge reads
-                // as one solid TikTok-red dot.
+
                 Canvas(modifier = Modifier.size(9.dp)) {
                     val stroke = 1.6.dp.toPx()
                     val half = stroke / 2f
@@ -481,16 +373,6 @@ private fun TikTokArtistAvatar(
     }
 }
 
-/**
- * The page's one like action — shared by the rail's heart (a plain toggle)
- * and the artwork's double-tap (like-only: a double-tap never unlikes, the
- * reference's rule). It acts on THIS page's song, not on whatever happens to
- * be playing: when the row exists the toggle is the same per-song one the
- * song menu uses (Room update + sync); a song that isn't in the library yet
- * falls back to the service's current-song toggle (which also handles
- * inserting it) when this page is the playing one, and to register-then-like
- * otherwise.
- */
 @Composable
 internal fun rememberTikTokLikeAction(
     pageMetadata: MediaMetadata,
@@ -500,16 +382,14 @@ internal fun rememberTikTokLikeAction(
     val database = LocalDatabase.current
     val syncUtils = LocalSyncUtils.current
     val scope = rememberCoroutineScope()
-    // Observes the same Room row the rail renders from; the delegated read
-    // inside the remembered lambda stays live, so the like-only guard sees
-    // the freshest row at call time without an extra query per tap.
+
     val librarySong by database.song(pageMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
     return remember(database, syncUtils, scope, pageMetadata, isCurrentPage, playerConnection) {
         { likeOnly: Boolean ->
             val row = librarySong?.song
             when {
-                // Already liked and this is a double-tap: stay liked.
+
                 likeOnly && row?.liked == true -> Unit
 
                 row != null -> {
@@ -534,18 +414,6 @@ internal fun rememberTikTokLikeAction(
     }
 }
 
-/**
- * The rail's heart, with the reference's like pop: the glyph springs in
- * from a small scale whenever the song flips to liked — whether that came
- * from this button or a double-tap on the media, since both land in the
- * same Room row this reads — and settles with a small shrink when unliked.
- *
- * Below the glyph rides the song's like count (user request 2026-09-03:
- * TikTok-style engagement label under the icon), compactly formatted via
- * [formatCompactCount] — at most 3 digits plus a K/M/B suffix (600K,
- * 21M, 2B). While the count is loading (or unavailable — local songs / RYD
- * misses) no label is shown; it fades and slides in once it arrives.
- */
 @Composable
 private fun TikTokLikeRailButton(
     liked: Boolean,
@@ -554,8 +422,7 @@ private fun TikTokLikeRailButton(
 ) {
     val likeLabel = stringResource(R.string.action_like)
     val scale = remember { Animatable(1f) }
-    // Seeded with the row's current state so (re)composing an already-liked
-    // page never replays the pop — only a live false -> true transition does.
+
     var wasLiked by remember { mutableStateOf(liked) }
     LaunchedEffect(liked) {
         if (liked && !wasLiked) {
@@ -601,9 +468,7 @@ private fun TikTokLikeRailButton(
                     tint = if (liked) TIKTOK_RED else Color.White,
                 )
             }
-            // The count label under the heart. AnimatedVisibility removes it
-            // from layout while null, so the rail's rhythm is identical for
-            // songs whose count hasn't arrived (or never will).
+
             AnimatedVisibility(
                 visible = likeCountLabel != null,
                 enter =
@@ -618,12 +483,6 @@ private fun TikTokLikeRailButton(
     Spacer(Modifier.height(2.dp))
 }
 
-/**
- * The TikTok-style count label under a rail icon: small white text with the
- * same drop-shadow treatment as [TikTokRailGlyph] (a blurred, slightly
- * offset dark copy behind the crisp one), so the label stays legible over
- * light artwork exactly like the glyphs do.
- */
 @Composable
 private fun TikTokRailCountLabel(label: String) {
     Box {
@@ -650,10 +509,6 @@ private fun TikTokRailCountLabel(label: String) {
     }
 }
 
-/**
- * One rail action: a plain glyph, no pills, no glass — the 48dp touch target
- * meets accessibility guidance.
- */
 @Composable
 private fun TikTokRailButton(
     iconRes: Int,
@@ -670,16 +525,6 @@ private fun TikTokRailButton(
     }
 }
 
-/**
- * One rail glyph with its own drop shadow: a blurred black copy of the icon
- * offset a hair down, behind the crisp one. The shadow follows the glyph's
- * shape — the reference's rail reads over any media because its icons carry
- * a real glyph shadow, not a circle behind them — so the white line icons
- * stay legible over light artwork too. (Modifier.blur is a no-op below
- * API 31, where the offset copy reads as a hard shadow instead — still
- * legible.) Together with the page's right-edge wash this is the rail's
- * whole visibility story on bright covers.
- */
 @Composable
 private fun TikTokRailGlyph(
     iconRes: Int,
@@ -706,7 +551,6 @@ private fun TikTokRailGlyph(
     }
 }
 
-/** A rail action with arbitrary content (the like heart's animated glyph). */
 @Composable
 private fun TikTokRailActionButton(
     onClick: () -> Unit,

@@ -59,7 +59,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -92,17 +91,14 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
-import moe.rukamori.archivetune.LocalMiniPlayerVisible
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_HEADER
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
@@ -118,9 +114,6 @@ import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
-import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
-import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
-import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -166,9 +159,6 @@ fun LocalSongScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var query by rememberSaveable { mutableStateOf("") }
 
-    // Whether the user has scrolled past the hero header — hoisted here
-    // so it can be propagated to the MiniPlayer subtree via
-    // CompositionLocalProvider wrapping the Box below.
     val isListScrolling by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 ||
@@ -176,39 +166,17 @@ fun LocalSongScreen(
         }
     }
 
-    // Liquid Glass header setup. Mirror LocalPlaylistScreen's pattern: read
-    // the master toggle, gate on Android 12+ (kyant RuntimeShader requires
-    // API 31+), and suspend the layerBackdrop while the full-screen lyrics
-    // overlay is open on top of this screen — otherwise the per-frame GPU
-    // recording steals budget from the 60 Hz karaoke lyrics sweep.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
-    // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
-    // content recording only happens when `Modifier.layerBackdrop(backdrop)`
-    // is applied to the LazyColumn below, gated on `layerBackdropActive`.
-    //
-    // Initial backdrop color is the page surface color (NOT Color.Black)
-    // so empty areas where the LazyColumn has no content blend with the
-    // page background instead of showing a hard black band behind the
-    // liquid glass pills.
+
     val backdrop = rememberBackdrop(MaterialTheme.colorScheme.surface)
-    // When Liquid Glass is active, pass the backdrop to the LargeFrostedTopAppBar
-    // (for the title / nav icon / actions pills) and to the LibraryHomeDockButton.
-    // When inactive, both fall back to the translucent surface path.
+
     val pillBackdrop: PlatformBackdrop? = backdrop.takeIf { layerBackdropActive }
     val (sortDescending, onSortDescendingChange) = rememberPreference(LocalSongsSortDescendingKey, true)
     val (sortTypeName, onSortTypeNameChange) = rememberPreference(LocalSongsSortTypeKey, LocalSongSortType.MODIFIED.name)
@@ -376,10 +344,6 @@ fun LocalSongScreen(
         )
     }
 
-    // Wrap the entire screen subtree in a CompositionLocalProvider so the
-    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
-    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
-    // scrolls past the hero header.
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
@@ -558,9 +522,6 @@ fun LocalSongScreen(
                 )
             }
 
-            // Sort header — pulled out of the old LocalSongControlsCard row
-            // so it lives in its own item below the hero, matching the
-            // AutoPlaylistScreen / CachePlaylistScreen pattern.
             if (visibleSongs.isNotEmpty()) {
                 item(
                     key = "sortHeader",
@@ -673,15 +634,10 @@ fun LocalSongScreen(
                 }
             }
         }
-        } // end Scaffold content lambda
+        }
 
-        // Bottom fade overlay + Floating Home dock button were removed per
-        // user request (2026-08-28). The scrollable list now ends cleanly at
-        // the bottom of the page surface; the floating liquid-glass "Home"
-        // dock button at bottom-start is also gone — both were reported as
-        // visual clutter on the playlist detail screens.
-    } // end Box
-    } // end CompositionLocalProvider
+    }
+    }
 }
 
 @Composable
@@ -842,7 +798,7 @@ private fun LocalSongScanSheet(
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         tonalElevation = 2.dp,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier =

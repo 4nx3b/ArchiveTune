@@ -52,12 +52,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -75,13 +73,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,8 +98,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,9 +107,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.source.ShuffleOrder
 import coil3.compose.AsyncImage
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.LocalDownloadUtil
-import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.move
@@ -162,7 +153,6 @@ fun SpatialFlowPlayerContent(
     val contentColor = if (isDark) Color.White else Color(0xFF1C1B1F)
     val contentSecondary = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1B1F).copy(alpha = 0.6f)
 
-    // ── Playback substrate: queue, like state, lyrics, downloads ──────────
     val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
@@ -182,7 +172,7 @@ fun SpatialFlowPlayerContent(
             val hsl = FloatArray(3)
             androidx.core.graphics.ColorUtils.colorToHSL(playerBackgroundColor.toArgb(), hsl)
             if (hsl[1] < 0.08f) {
-                // Monochromatic / Grayscale
+
                 if (isDark) Color.White else Color(0xFF1C1B1F)
             } else {
                 if (isDark) {
@@ -223,9 +213,6 @@ fun SpatialFlowPlayerContent(
             SolidColor(finalColor)
         }
 
-    // ── Lyrics mode ────────────────────────────────────────────────────────
-    // SpatialFlow's FullPlayerScreen holds this in the shared ViewModel; here
-    // it is local state that survives recompositions and re-opens.
     var lyricsModeEnabled by rememberSaveable(mediaMetadata.id) { mutableStateOf(false) }
     val syncedLyrics =
         remember(currentLyricsEntity?.lyrics) {
@@ -233,13 +220,7 @@ fun SpatialFlowPlayerContent(
             if (text.isNullOrBlank()) {
                 null
             } else {
-                // Word-synced fix (2026-09-05): plain parseLyrics() only understands line-synced
-                // LRC — it STRIPS the inline word timings and never dispatches TTML, so a
-                // word-timed track degraded to line-level highlighting here (the "word synced
-                // lyrics don't work correctly in SpatialFlow player" report). The same dispatch
-                // SimpMusicLyrics/LyricsEnhanced use: TTML through parseTtml (which keeps the
-                // per-word spans the karaoke renderer erases with), everything else through
-                // parseLyrics.
+
                 runCatching {
                     if (LyricsUtils.isTtml(text)) {
                         LyricsUtils.parseTtml(text)
@@ -256,7 +237,6 @@ fun SpatialFlowPlayerContent(
             if (syncedLyrics != null) null else currentLyricsEntity?.lyrics?.takeIf { it.isNotBlank() }
         }
 
-    // ── Queue drawer + sleep timer state (SpatialFlow's VM state, local) ──
     var queueExpanded by rememberSaveable { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     val sleepTimer = remember(playerConnection) { playerConnection.service.sleepTimer }
@@ -269,8 +249,6 @@ fun SpatialFlowPlayerContent(
             }
         }
 
-    // Unify BackHandler to collapse the sliding queue drawer / lyrics first
-    // (SpatialFlow's exact priority: lyrics, then queue).
     BackHandler(enabled = lyricsModeEnabled || queueExpanded) {
         if (lyricsModeEnabled) {
             lyricsModeEnabled = false
@@ -279,7 +257,6 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    // ── Music haptics (SpatialFlow's PlayerHapticManager, Visualizer-fed) ──
     val musicHaptics =
         remember(context) {
             SpatialFlowMusicHaptics(context, SpatialFlowHapticEngine(context))
@@ -293,8 +270,6 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    // Modern Compose-way of handling audio recording permission (the
-    // Visualizer tap requires it, exactly as SpatialFlow's haptics chip does).
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission(),
@@ -305,7 +280,6 @@ fun SpatialFlowPlayerContent(
             }
         }
 
-    // Attach the haptics tap to the live audio session while enabled.
     LaunchedEffect(hapticsEnabled) {
         if (hapticsEnabled) {
             val sessionId = runCatching { playerConnection.localPlayer.audioSessionId }.getOrDefault(0)
@@ -319,19 +293,12 @@ fun SpatialFlowPlayerContent(
                 .fillMaxSize()
                 .background(backgroundBrush),
     ) {
-        // ── Blurred-artwork backdrop ──────────────────────────────────────────
-        // The reference SpatialFlow build washes the player in a blurred copy of
-        // the current artwork under a vertical darkening scrim — lighter and more
-        // saturated at the top, darker at the bottom. The palette surface below
-        // stays as the base so a song without artwork still gets a themed screen.
+
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
         )
 
-        // The whole style renders in SpatialFlow's own Google Sans Flex
-        // (ROND 100%) typography — same metrics as the original app's Type.kt.
-        // Colors and shapes still come from the ambient theme.
         MaterialTheme(typography = SpatialFlowTypography) {
                 val configuration = LocalConfiguration.current
                 val screenWidth = configuration.screenWidthDp.dp
@@ -344,7 +311,6 @@ fun SpatialFlowPlayerContent(
                     label = "LyricsCircularReveal",
                 )
 
-                // Tie the visibility/readiness directly to the lyricsRevealProgress animation state
                 val lyricsContentReady = lyricsRevealProgress > 0.8f
 
                 Column(
@@ -356,7 +322,7 @@ fun SpatialFlowPlayerContent(
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                // Header Row (Nav controls + collapse) - Symmetric centering
+
                 Row(
                     modifier =
                         Modifier
@@ -384,9 +350,6 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.size(48.dp))
                 }
 
-                // Flexible header-to-artwork gap: the artwork sits clear of the
-                // header and the whole column stretches to fill the screen, exactly
-                // as the reference build does — no dead band under the controls.
                 Spacer(
                     modifier =
                         Modifier
@@ -394,7 +357,6 @@ fun SpatialFlowPlayerContent(
                             .weight(0.32f),
                 )
 
-                // Artwork pager over the real queue — swipe to change song
                 SpatialFlowArtworkPager(
                     mediaMetadata = mediaMetadata,
                     queueWindows = queueWindows,
@@ -413,7 +375,6 @@ fun SpatialFlowPlayerContent(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Metadata row: title/artist
                 Row(
                     modifier =
                         Modifier
@@ -453,7 +414,6 @@ fun SpatialFlowPlayerContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Premium YT Music style horizontal control chips row
                 Row(
                     modifier =
                         Modifier
@@ -480,9 +440,7 @@ fun SpatialFlowPlayerContent(
                         isDisliked = false,
                         likesCount = "Like",
                         onLikeClick = { playerConnection.toggleLike() },
-                        // ArchiveTune has no persistent dislike; the trailing half
-                        // clears the like (the real unlike path) so the split
-                        // chip's affordance stays a real action.
+
                         onDislikeClick = {
                             if (currentSong?.song?.liked == true) playerConnection.toggleLike()
                         },
@@ -491,7 +449,6 @@ fun SpatialFlowPlayerContent(
                         isDark = isDark,
                     )
 
-                    // Interactive Music Haptics Chip
                     PillChip(
                         icon = painterResource(id = R.drawable.spatialflow_ic_haptic),
                         label = "Music Haptics",
@@ -517,7 +474,6 @@ fun SpatialFlowPlayerContent(
                         isDark = isDark,
                     )
 
-                    // Interactive Lyrics Chip
                     PillChip(
                         icon = painterResource(id = R.drawable.spatialflow_ic_lyrics),
                         label = "Lyrics",
@@ -595,8 +551,7 @@ fun SpatialFlowPlayerContent(
                                 }
 
                                 else -> {
-                                    // The exact start-download branch the song
-                                    // overflow menu uses.
+
                                     val dl = download
                                     if (dl != null && dl.state != Download.STATE_COMPLETED) {
                                         DownloadService.sendRemoveDownload(
@@ -629,10 +584,6 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.width(12.dp))
                 }
 
-                // The reference build leaves a generous stretch of background
-                // between the chip row and the seek bar — this flexible gap, with the
-                // header gap above, is what makes the column fill the screen height
-                // and keeps the transport anchored to the bottom.
                 Spacer(
                     modifier =
                         Modifier
@@ -640,8 +591,6 @@ fun SpatialFlowPlayerContent(
                             .weight(0.68f),
                 )
 
-                // Premium Wavy Seek Bar (Isolated) — with the centered codec badge
-                // (the reference's "AAC" chip) between the two time labels.
                 WavySliderWithLabels(
                     currentPositionProvider = positionProvider,
                     duration = duration,
@@ -659,7 +608,6 @@ fun SpatialFlowPlayerContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // M3 Expressive transport: three custom buttons in a ButtonGroup
                 ButtonGroup(
                     modifier =
                         Modifier
@@ -824,7 +772,6 @@ fun SpatialFlowPlayerContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Swipe Up / Click Chevron Up Indicator to expand Queue
                 Box(
                     modifier =
                         Modifier
@@ -877,7 +824,6 @@ fun SpatialFlowPlayerContent(
                 )
             }
 
-            // ── CUSTOM EMBEDDED SLIDING PLAY QUEUE ─────────────────────────────
             SlidingQueueDrawer(
                 isQueueExpanded = queueExpanded,
                 onQueueExpandedChange = { queueExpanded = it },
@@ -917,7 +863,7 @@ fun SpatialFlowPlayerContent(
                     playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                 },
                 onToggleLoopMode = {
-                    // OFF -> ALL -> ONE -> OFF
+
                     playerConnection.player.repeatMode =
                         when (repeatMode) {
                             androidx.media3.common.Player.REPEAT_MODE_OFF ->
@@ -935,7 +881,6 @@ fun SpatialFlowPlayerContent(
                 isDark = isDark,
             )
 
-            // ── Standalone Sleep Timer Bottom Sheet ────────────────────────────
             if (showSleepTimerDialog) {
                 SpatialFlowSleepTimerSheet(
                     onDismissRequest = { showSleepTimerDialog = false },
@@ -952,15 +897,10 @@ fun SpatialFlowPlayerContent(
                     },
                 )
             }
-        } // close the SpatialFlowTypography MaterialTheme scope
+        }
     }
 }
 
-/**
- * The queue-backed artwork pager — SpatialFlow's ArtworkPager over
- * ArchiveTune's real queue windows: swipe to the next/previous song, the page
- * follows external queue changes, 16dp rounded corners + 16dp elevation.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SpatialFlowArtworkPager(
@@ -979,7 +919,6 @@ private fun SpatialFlowArtworkPager(
             queueWindows.size.coerceAtLeast(1)
         }
 
-    // Sync Pager Page when the active song changes externally
     LaunchedEffect(currentWindowIndex) {
         if (currentWindowIndex >= 0 &&
             currentWindowIndex < pagerState.pageCount &&
@@ -989,8 +928,6 @@ private fun SpatialFlowArtworkPager(
         }
     }
 
-    // Sync the queue when swiped in the Pager (only when settled, to avoid
-    // race conditions — SpatialFlow's exact guard).
     LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
         if (!pagerState.isScrollInProgress &&
             currentWindowIndex >= 0 &&

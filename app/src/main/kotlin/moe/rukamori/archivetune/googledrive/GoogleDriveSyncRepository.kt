@@ -24,19 +24,6 @@ import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * DataStore-backed repository for [GoogleDriveSyncSettings].
- *
- * Mirrors the pattern of [moe.rukamori.archivetune.backup.ScheduledBackupRepository]: a single
- * `observeSettings()` flow backed by DataStore Preferences, plus suspend updaters for each field.
- * All updaters serialize through [updateMutex] to prevent lost updates when multiple fields are
- * changed in rapid succession (e.g. user toggles enable + picks a frequency in quick succession).
- *
- * The settings keys are NOT portable across devices — they reference a device-specific SAF tree
- * URI whose persistable permission only exists on the device that granted it. They're added to
- * `NON_PORTABLE_PREFERENCE_KEYS` so the BackupArchiveRepository skips them when exporting a
- * portable SETTINGS backup.
- */
 @Singleton
 class GoogleDriveSyncRepository
     @Inject
@@ -84,10 +71,6 @@ class GoogleDriveSyncRepository
                     }.toSettings()
             }
 
-        /**
-         * Persists the picked SAF folder tree URI and its display name. Pass nulls to clear the
-         * folder (also disables auto-sync, since sync can't run without a target folder).
-         */
         suspend fun updateRemoteFolder(uri: String?, name: String?): GoogleDriveSyncSettings =
             updateMutex.withLock {
                 context.dataStore
@@ -111,11 +94,6 @@ class GoogleDriveSyncRepository
                     }.toSettings()
             }
 
-        /**
-         * Clears the picked folder and disables auto-sync. Called when the user taps "Clear
-         * folder" in the UI. The persistable URI permission for the old tree URI is released by
-         * the caller (the UI holds the ContentResolver) before invoking this.
-         */
         suspend fun clearRemoteFolder(): GoogleDriveSyncSettings =
             updateMutex.withLock {
                 context.dataStore
@@ -151,11 +129,6 @@ class GoogleDriveSyncRepository
             private val LAST_SYNC_MS_KEY = longPreferencesKey("googleDriveSyncLastSyncEpochMs")
             private val LAST_SYNC_FAILED_KEY = booleanPreferencesKey("googleDriveSyncLastSyncFailed")
 
-            /**
-             * Keys that should be excluded from portable SETTINGS backups because they reference
-             * device-specific state (a SAF tree URI whose persistable permission only exists on
-             * the granting device).
-             */
             val NON_PORTABLE_PREFERENCE_KEYS: Set<String> =
                 setOf(
                     ENABLED_KEY.name,

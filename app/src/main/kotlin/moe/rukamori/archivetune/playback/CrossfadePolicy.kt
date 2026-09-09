@@ -11,12 +11,8 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/**
- * Pure, JVM-testable decision logic for crossfades. Player orchestration lives in
- * [MusicService]; every deterministic rule lives here so it can be unit tested.
- */
 object CrossfadePolicy {
-    /** Equal-power fade: constant perceived loudness across the overlap. */
+
     fun outgoingGain(progress: Float): Float {
         val clamped = progress.coerceIn(0f, 1f)
         return cos(clamped.toDouble() * (PI / 2.0)).toFloat()
@@ -39,11 +35,6 @@ object CrossfadePolicy {
         maxGain: Float,
     ): Float = (baseVolume * incomingGain(progress)).coerceIn(0f, maxGain)
 
-    /**
-     * Resolves the target queue index for a crossfade: repeat-one crossfades back into the
-     * current item, anything else targets the next item. Returns null when there is no valid
-     * target (unset, out of range, or same-index non-repeat transition).
-     */
     fun resolveTargetIndex(
         repeatOne: Boolean,
         currentIndex: Int,
@@ -58,10 +49,6 @@ object CrossfadePolicy {
         return target
     }
 
-    /**
-     * Clamps the configured crossfade duration into a usable range for the current track.
-     * Returns null when the track is too short (or of unknown duration) to crossfade.
-     */
     fun effectiveDurationMs(
         requestedMs: Long,
         trackDurationMs: Long,
@@ -75,7 +62,6 @@ object CrossfadePolicy {
         return requestedMs.coerceIn(minDurationMs, maxDuration)
     }
 
-    /** State snapshot for the incoming-player readiness decision. */
     data class ReadinessSnapshot(
         val isReady: Boolean,
         val isIdle: Boolean,
@@ -84,14 +70,11 @@ object CrossfadePolicy {
         val bufferedEnough: Boolean,
     )
 
-    /** True only when the incoming player is ready AND has buffered enough audio. */
     fun isReadyForFadeStart(snapshot: ReadinessSnapshot): Boolean =
         !snapshot.hasError && !snapshot.isEnded && snapshot.isReady && snapshot.bufferedEnough
 
-    /** True when the readiness wait must abort (terminal state). */
     fun mustAbortReadiness(snapshot: ReadinessSnapshot): Boolean = snapshot.hasError || snapshot.isEnded
 
-    /** State snapshot for the audio-advancement decision. */
     data class AudioAdvancementSnapshot(
         val isReady: Boolean,
         val isPlaying: Boolean,
@@ -100,14 +83,12 @@ object CrossfadePolicy {
         val previousPositionMs: Long,
     )
 
-    /** True only when the play position actually advanced between polls. */
     fun hasAudioAdvanced(snapshot: AudioAdvancementSnapshot): Boolean =
         !snapshot.hasError &&
             snapshot.isReady &&
             snapshot.isPlaying &&
             snapshot.positionMs > snapshot.previousPositionMs
 
-    /** State snapshot for the promotion decision at fade completion. */
     data class PromotionSnapshot(
         val generationMatches: Boolean,
         val targetIndex: Int,
@@ -117,12 +98,6 @@ object CrossfadePolicy {
         val unsetIndex: Int,
     )
 
-    /**
-     * The incoming player may be promoted only when the crossfade generation is still current
-     * (no cancel/skip happened), the target item still exists in its queue, and the player is
-     * not in a terminal state. When this is false, the outgoing player must remain
-     * authoritative and must NOT be released.
-     */
     fun mayPromote(snapshot: PromotionSnapshot): Boolean =
         snapshot.generationMatches &&
             snapshot.targetIndex != snapshot.unsetIndex &&

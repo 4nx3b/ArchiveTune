@@ -17,14 +17,6 @@ internal const val OnlineSearchProviderArgument = "provider"
 
 private const val EmptyOnlineSearchQuery = "~"
 
-// java.util.Base64 (API 26+, and minSdk is 26) rather than android.util.Base64.
-// Route building is pure string logic with no reason to touch the framework, and
-// android.util.Base64 is a stub in JVM unit tests — it threw "not mocked" and took
-// OnlineSearchNavigationTest with it.
-//
-// Byte-for-byte identical to the previous URL_SAFE or NO_WRAP or NO_PADDING flags:
-// getUrlEncoder() is the same RFC 4648 §5 alphabet ('-' and '_'), it does not wrap,
-// and withoutPadding() drops the '='. So routes encoded by older builds still decode.
 private val OnlineSearchQueryEncoder: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
 private val OnlineSearchQueryDecoder: Base64.Decoder = Base64.getUrlDecoder()
 

@@ -16,7 +16,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -34,7 +33,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -69,12 +67,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
-import moe.rukamori.archivetune.LocalMiniPlayerVisible
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -96,13 +92,12 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.AppleMusicPlaylistHero
-import moe.rukamori.archivetune.ui.component.BottomFadeOverlay
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.LibraryHomeDockButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -123,7 +118,6 @@ import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
 import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
@@ -145,9 +139,6 @@ fun CachePlaylistScreen(
     val coroutineScope = rememberCoroutineScope()
     val cachedSongs by viewModel.cachedSongs.collectAsStateWithLifecycle()
 
-    // SAF folder picker for "Export all".
-    // Exports songs in their original audio format (FLAC, OPUS, M4A, etc.)
-    // based on the FormatEntity codec metadata, instead of hardcoded .mp3.
     val database = LocalDatabase.current
     val exportAllLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
@@ -165,14 +156,10 @@ fun CachePlaylistScreen(
                             }
                             val safeTitle = song.title.trim()
                                 .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
-                            // Detect the actual audio format from cached data's
-                            // magic bytes so the exported file gets the correct
-                            // extension (e.g. .opus instead of wrongly .flac).
+
                             val detectedExt = detectAudioExtensionFromSpans(spans)
                             val mime = extensionToMimeType(detectedExt)
-                            // createDocument() requires a document URI (representing the
-                            // parent directory as a document), NOT the tree URI returned by
-                            // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
+
                             val parentDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
                                 treeUri,
                                 android.provider.DocumentsContract.getTreeDocumentId(treeUri),
@@ -272,10 +259,7 @@ fun CachePlaylistScreen(
             selection = false
         }
     } else {
-        // BackHandler so the predictive back gesture always escapes the
-        // cache playlist page. Per user report (2026-08-29): gesture not
-        // working in playlists. New approach: popBackStack() directly
-        // first, fall back to navigate("library") if no previous entry.
+
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -289,7 +273,7 @@ fun CachePlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-                    // Last-resort: let the system handle the back press.
+
                 }
             }
         }
@@ -316,10 +300,6 @@ fun CachePlaylistScreen(
         }
     }
 
-    // Whether the user has scrolled past the hero header — used to trigger
-    // the SimpMusic-style mini player "shrink + dock to right of Home
-    // button" behavior. Hoisted here so it can be propagated to the
-    // MiniPlayer subtree via CompositionLocalProvider wrapping the Box.
     val isListScrolling by remember {
         derivedStateOf {
             lazyListState.firstVisibleItemIndex > 0 ||
@@ -327,36 +307,15 @@ fun CachePlaylistScreen(
         }
     }
 
-    // Liquid Glass header setup. Mirror LocalPlaylistScreen's pattern: read
-    // the master toggle, gate on Android 12+ (kyant RuntimeShader requires
-    // API 31+), and suspend the layerBackdrop while the full-screen lyrics
-    // overlay is open on top of this screen — otherwise the per-frame GPU
-    // recording steals budget from the 60 Hz karaoke lyrics sweep.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
-    // Created unconditionally (cheap — just a GraphicsLayer handle). Actual
-    // content recording only happens when `Modifier.layerBackdrop(backdrop)`
-    // is applied to the LazyColumn below, gated on `layerBackdropActive`.
-    //
-    // Initial backdrop color is the page surface color (NOT Color.Black) so
-    // that positions where the LazyColumn has no content (e.g. the empty
-    // band above the hero header item that has top padding =
-    // systemBarsTopPadding + AppBarHeight) blend with the page background
-    // instead of showing a hard black band behind the liquid glass pills.
+
     val backdrop = rememberBackdrop(surfaceColor)
 
     val transparentAppBar by remember {
@@ -371,22 +330,12 @@ fun CachePlaylistScreen(
         }
     }
 
-    // System bars padding
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Wrap the entire screen subtree in a CompositionLocalProvider so the
-    // MiniPlayer (rendered by the parent BottomSheetPlayer outside this
-    // screen) can read LocalMiniPlayerDocked and shrink/dock when the user
-    // scrolls past the hero header.
     CompositionLocalProvider(
         LocalMiniPlayerDocked provides isListScrolling,
     ) {
-    // Header haze (2026-09-04, revised): the home page's blurred top haze,
-    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
-    // overlay renders ON TOP of it (a later sibling, beneath the pinned
-    // Liquid Glass pills) — the overlay was previously the FIRST child under
-    // the list, so the list drew straight over it and the haze was never
-    // visible (user report 2026-09-04: "I don't see the haze effect").
+
     val headerHaze = rememberScreenHeaderHaze()
     Box(
         modifier =
@@ -433,7 +382,7 @@ fun CachePlaylistScreen(
                 }
             } else {
                 if (filteredSongs.isNotEmpty() && !isSearching) {
-                    // Hero Header Item — iOS-inspired Apple Music style.
+
                     item(key = "header") {
                         AppleMusicPlaylistHero(
                             sectionLabel = cachedLabel,
@@ -461,11 +410,7 @@ fun CachePlaylistScreen(
                                 )
                             },
                             additionalActions = {
-                                // Export-all pill integrated into the hero row,
-                                // matching the iOS redesign pill aesthetic (rounded
-                                // capsule + pink accent) instead of a separate
-                                // FilledTonalButton below the hero that broke the
-                                // visual rhythm of the redesigned page.
+
                                 MediaDetailAction(
                                     contentDescription = R.string.export_all_songs,
                                     contentColor = Color.White,
@@ -489,7 +434,7 @@ fun CachePlaylistScreen(
                 }
 
                 if (filteredSongs.isNotEmpty()) {
-                    // Sort Header
+
                     item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -514,7 +459,6 @@ fun CachePlaylistScreen(
                     }
                 }
 
-                // Song items
                 itemsIndexed(filteredSongs, key = { _, song -> song.item.id }) { index, songWrapper ->
                     SongListItem(
                         song = songWrapper.item,
@@ -586,49 +530,13 @@ fun CachePlaylistScreen(
             headerItems = headerItems,
         )
 
-        // ── Header haze overlay (2026-09-04, revised) ──
-        // Progressive top-fade blur over the list — declared AFTER the
-        // LazyColumn so it draws on top of it, BEFORE the pinned pills so
-        // they stay crisp above the frosted strip.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
 
-        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
-        // (children of the host Box), positioned at top-start and top-end.
-        // They sample the backdrop (which captures the entire scrolling
-        // content via Modifier.layerBackdrop on the LazyColumn) to render
-        // the frosted-glass effect. PERSISTENT — they stay at the top no
-        // matter how far the user scrolls, mirroring the LocalPlaylistScreen
-        // pattern. Previously these pills lived inside the TopAppBar, which
-        // uses scrollBehavior that slides the whole bar (including the
-        // navigation icon and actions) off-screen when scrolling — that's
-        // why the pills "scrolled and disappeared" on the cached page. Now
-        // the TopAppBar is only used for selection mode and search mode; in
-        // the default browsing state the persistent pills above handle back
-        // navigation and actions.
-        //
-        // Shown only when:
-        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - Not in selection mode
-        //  - Not searching
-        //
-        // Fixed (2026-09-04, user report: "When I select songs in history page
-        // the liquid glass pills disappear and opaque rounded pill appears.
-        // Fix this. Fix the same thing for other screens too"): selection mode
-        // NO LONGER hides the glass pills. The back pill morphs in place —
-        // close (X) icon + the "N songs" count, tap to clear the selection —
-        // and the trailing pill swaps to the select-all / deselect toggle and
-        // the ⋯ that opens SelectionSongMenu, the exact actions the opaque
-        // selection bar offered.
         if (layerBackdropActive && !isSearching) {
-            // iOS-inspired back pill: persistent translucent liquid-glass
-            // capsule containing a left-pointing chevron followed by the
-            // text "Library", matching the user's reference screenshot.
-            // Tapping it pops back to the previous destination; long-pressing
-            // it jumps straight to the Home tab. In selection mode it becomes
-            // the selection header: close (X), the count, tap to clear.
+
             LiquidGlassActionPill(
                 backdrop = backdrop,
                 interactive = true,
@@ -662,18 +570,13 @@ fun CachePlaylistScreen(
                         tint = liquidGlassContentColor(),
                     )
                 }
-                Text(
+                GlassPillTitleText(
                     text =
                         if (selection) {
                             pluralStringResource(R.plurals.n_song, selectedCount, selectedCount)
                         } else {
                             cachedLabel
                         },
-                    color = liquidGlassContentColor(),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
             LiquidGlassActionPill(
@@ -684,9 +587,7 @@ fun CachePlaylistScreen(
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
                 if (selection) {
-                    // Selection actions in glass (2026-09-04): select-all /
-                    // deselect toggle + the ⋯ that opens SelectionSongMenu —
-                    // the exact actions the opaque selection bar carried.
+
                     Box(
                         modifier = Modifier.size(48.dp),
                         contentAlignment = Alignment.Center,
@@ -737,7 +638,7 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else {
-                // Search
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -750,7 +651,7 @@ fun CachePlaylistScreen(
                         )
                     }
                 }
-                // More
+
                 if (wrappedSongs.isNotEmpty()) {
                     Box(
                         modifier = Modifier.size(48.dp),
@@ -777,14 +678,10 @@ fun CachePlaylistScreen(
                         }
                     }
                 }
-                } // end non-selection branch of the trailing pill (2026-09-04)
+                }
             }
         }
 
-        // Top App Bar (2026-09-04 revision): shown when Liquid Glass is
-        // disabled OR when searching. Selection mode is handled by the glass
-        // pills above when glass is on, so the opaque bar only renders for
-        // the non-glass case — no more opaque pill swap mid-selection.
         if (!liquidGlassHeaderActive || isSearching) {
         TopAppBar(
             scrollBehavior = scrollBehavior,
@@ -796,8 +693,7 @@ fun CachePlaylistScreen(
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
-                        // Theme-aware: hardcoded Color.White was invisible on
-                        // light surfaces. onBackground adapts to the active theme.
+
                         navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
                         titleContentColor = MaterialTheme.colorScheme.onBackground,
                         actionIconContentColor = MaterialTheme.colorScheme.onBackground,
@@ -852,13 +748,7 @@ fun CachePlaylistScreen(
                 }
             },
             navigationIcon = {
-                // Show the back/close arrow when:
-                //  - Searching
-                //  - In selection mode
-                //  - Scrolled past the hero (showTopBarTitle)
-                //  - Liquid Glass is OFF (the persistent LiquidGlass back
-                //    button isn't there, so the TopAppBar must provide back
-                //    navigation even when the hero is visible)
+
                 if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
                     IconButton(onClick = {
                         when {
@@ -890,9 +780,7 @@ fun CachePlaylistScreen(
                         )
                     }
                     if (!isSearching && !selection && !liquidGlassHeaderActive) {
-                        // Library label next to back chevron — only when
-                        // Liquid Glass is OFF (the persistent LiquidGlass
-                        // pill above carries the label when LG is on).
+
                         Text(
                             text = stringResource(R.string.library),
                             color = MaterialTheme.colorScheme.onBackground,
@@ -954,11 +842,7 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    // Show search + more when:
-                    //  - Scrolled past the hero (showTopBarTitle)
-                    //  - Liquid Glass is OFF (the persistent LiquidGlass
-                    //    pill isn't there, so the TopAppBar must provide
-                    //    search+more even when the hero is visible)
+
                     if (showTopBarTitle || !liquidGlassHeaderActive) {
                         androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
                             Icon(
@@ -992,21 +876,12 @@ fun CachePlaylistScreen(
                 }
             },
         )
-        } // end if (!liquidGlassHeaderActive || selection || isSearching)
+        }
 
-        // Bottom fade overlay + Floating Home dock button were removed per
-        // user request (2026-08-28). The scrollable list now ends cleanly at
-        // the bottom of the page surface; the floating liquid-glass "Home"
-        // dock button at bottom-start is also gone — both were reported as
-        // visual clutter on the playlist detail screens.
-    } // end Box
-    } // end CompositionLocalProvider
+    }
+    }
 }
 
-/**
- * Resolves cached spans for a given [songId]. Tries the key directly first,
- * then falls back to searching all cache keys for a matching entry.
- */
 private fun getCachedSpansForKey(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,

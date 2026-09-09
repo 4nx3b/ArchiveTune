@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -197,8 +196,7 @@ fun buildSettingsGroups(
                 SettingsChild("Extras", "extras", listOf("extras", "appearance extras", "home cards", "hide cards", "more appearance")),
             ),
         )
-    // Appearance → Extras sub-page. Hidden from the main list (it is reached through
-    // Appearance) but every toggle on it stays searchable.
+
     val appearanceExtras =
         SettingsItem(
             key = "appearance_extras",
@@ -219,8 +217,7 @@ fun buildSettingsGroups(
                 SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")),
             ),
         )
-    // Appearance → AOD customization. Entirely absent from the search index before,
-    // so none of these 17 settings could be found by name.
+
     val aodCustomization =
         SettingsItem(
             key = "aod",
@@ -250,7 +247,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")),
             ),
         )
-    // Appearance → Navigation bar customization.
+
     val navigationBar =
         SettingsItem(
             key = "navigation_bar",
@@ -270,12 +267,7 @@ fun buildSettingsGroups(
                 SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
             ),
         )
-    // Appearance → Lyrics animations removed by user request. The LyricsMode picker
-    // (V2 Legacy vs Enhanced) and Lyrics Animation Style page are gone — Enhanced is
-    // the sole renderer now, and the animation style page only adjusted V2-specific
-    // sliders (Bounce Amplitude / Glow Intensity / Fill Transition / Line Bounce
-    // Effect) that no longer have a renderer to affect. The LyricsAnimationSettings.kt
-    // screen file has also been deleted, and the navigation route is removed.
+
     val playback =
         SettingsItem(
             key = "playback",
@@ -287,7 +279,7 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/player") },
             children = listOf(
                 SettingsChild("Low data mode", "low_data_mode", listOf("data", "data saver", "low quality", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
-                SettingsChild("Enable video playback", "enable_video_playback", listOf("video", "music video", "mv", "video playback", "captions", "subtitles")) { SearchResultSwitch(EnableVideoPlaybackKey, false) },
+                SettingsChild("Enable video playback", "enable_video_playback", listOf("video", "music video", "mv", "video playback", "captions", "subtitles")) { SearchResultSwitch(EnableVideoPlaybackKey, true) },
                 SettingsChild("Enable PiP mode", "enable_pip_mode", listOf("pip", "picture in picture", "floating video", "minimize", "pop out", "overlay")) { SearchResultSwitch(EnablePipModeKey, false) },
                 SettingsChild("History duration", "history_duration", listOf("history", "duration", "recent", "queue length")),
                 SettingsChild("Crossfade", "crossfade", listOf("crossfade", "fade", "transition", "mix", "blend")) { SearchResultSwitch(CrossfadeEnabledKey, false) },
@@ -336,7 +328,7 @@ fun buildSettingsGroups(
                 SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
             ),
         )
-    // Sources → JioSaavn sub-page.
+
     val jioSaavn =
         SettingsItem(
             key = "jiosaavn",
@@ -353,7 +345,7 @@ fun buildSettingsGroups(
                 SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
             ),
         )
-    // Sources → Deezer sub-page.
+
     val deezer =
         SettingsItem(
             key = "deezer",
@@ -380,8 +372,7 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
-            // Moved to the Playback sub-page (Task 4). Kept in the search index so existing
-            // search shortcuts still work.
+
             hidden = true,
             children = listOf(
                 SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
@@ -400,13 +391,11 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc", "translation", "romanize", "karaoke"),
             onClick = { navController.navigate("settings/lyrics") },
-            // Moved to the Playback sub-page (Task 5). Kept in the search index so existing
-            // search shortcuts still work.
+
             hidden = true,
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "betterlyrics", "portato", "youlyplus", "unison")),
-                // "Lyrics mode" + "Use lyrics V2" search entries removed — the picker and
-                // toggle are gone; Enhanced is the sole renderer now.
+
                 SettingsChild("Show lyrics", "show_lyrics", listOf("show lyrics", "display lyrics", "lyrics toggle", "lyrics show")) { SearchResultSwitch(ShowLyricsKey, false) },
                 SettingsChild("Translate lyrics", "translate_lyrics", listOf("translate", "translation", "lyrics translation")) { SearchResultSwitch(TranslateLyricsKey, false) },
                 SettingsChild("Enable translator", "enable_translator", listOf("translator", "translation engine", "lyrics translator")) { SearchResultSwitch(EnableTranslatorKey, false) },
@@ -420,8 +409,7 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics romanize other languages", "lyrics_romanize_other", listOf("romanize", "other languages", "arabic", "thai", "cyrillic")),
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
-                // Restored (2026-09-04): search entries for the two control preferences
-                // that returned with the Apple Music auto-hide.
+
                 SettingsChild("Show lyrics player controls", "show_lyrics_player_controls", listOf("player controls", "lyrics controls")) { SearchResultSwitch(ShowLyricsPlayerControlsKey, true) },
                 SettingsChild("Auto-hide lyrics player controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "autohide", "hide controls", "controls fade")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, true) },
                 SettingsChild("Preload queue lyrics", "preload_queue_lyrics", listOf("preload", "preload lyrics", "queue lyrics", "preload count", "queue lyrics count", "preload amount", "preload size")),
@@ -432,10 +420,7 @@ fun buildSettingsGroups(
                 SettingsChild("LRCLIB", "lrclib", listOf("lrclib", "lrclib lyrics", "lrclib provider")),
                 SettingsChild("Kugou Lyrics", "kugou", listOf("kugou", "kugou lyrics", "kugou provider", "kugou music")),
                 SettingsChild("Unison Lyrics", "unison_lyrics", listOf("unison", "unison lyrics", "unison provider")),
-                // SimpMusic Lyrics, Paxsenix Lyrics, Paxsenix Stats, Paxsenix API key,
-                // Paxsenix endpoint search entries removed (2026-08-30) along with the
-                // providers + their settings toggles + the :lyrics:simpmusic / :lyrics:paxsenix
-                // gradle modules.
+
                 SettingsChild("First lyrics provider", "first_lyrics_provider", listOf("first lyrics", "lyrics priority", "primary lyrics provider", "lyrics order")),
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "default lyrics provider", "lyrics priority")),
                 SettingsChild("Prioritize word synced lyrics", "prioritize_word_synced_lyrics", listOf("word synced", "word by word", "karaoke lyrics", "prioritize word synced")),
@@ -448,7 +433,7 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics text size", "lyrics_text_size", listOf("lyrics text size", "lyrics font size", "lyrics size", "bigger lyrics")),
             ),
         )
-    // Lyrics → Providers sub-page.
+
     val lyricsProviders =
         SettingsItem(
             key = "lyrics_providers",
@@ -467,18 +452,14 @@ fun buildSettingsGroups(
                 SettingsChild("Enable LrcLib lyrics provider", "enable_lrclib", listOf("lrclib", "lrc lib", "lrclib lyrics")),
                 SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
                 SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
-                // Enable SimpMusic / Enable Paxsenix / Paxsenix API stats /
-                // Paxsenix API key / Paxsenix endpoint / Check Paxsenix endpoints
-                // search entries removed (2026-08-30) along with the providers +
-                // their settings rows + the :lyrics:simpmusic / :lyrics:paxsenix
-                // gradle modules.
+
                 SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
                 SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),
                 SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")),
                 SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "first lyrics provider", "lyrics priority")),
             ),
         )
-    // Lyrics → Romanisation sub-page.
+
     val lyricsRomanisation =
         SettingsItem(
             key = "lyrics_romanisation",
@@ -532,8 +513,7 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("language pack", "translation", "translate", "localization", "i18n"),
             onClick = { navController.navigate("settings/language_packs") },
-            // Moved into the Lyrics sub-page (Task 6). Kept in the search index so existing
-            // search shortcuts still work.
+
             hidden = true,
         )
     val behavior =
@@ -621,7 +601,7 @@ fun buildSettingsGroups(
                 SettingsChild("Telegram bots", "telegram_bots_title", listOf("telegram bots", "telegram bot", "bot token", "music bot")),
             ),
         )
-    // Integration → Discord experimental sub-page.
+
     val discordExperimental =
         SettingsItem(
             key = "discord_experimental",
@@ -641,7 +621,7 @@ fun buildSettingsGroups(
                 SettingsChild("Button 2 URL source", "discord_activity_button_2_url", listOf("button 2 url", "discord second button url", "rpc button 2 link")),
             ),
         )
-    // Integration → Tidal account + instance management sub-page.
+
     val tidalDetail =
         SettingsItem(
             key = "tidal",
@@ -666,7 +646,7 @@ fun buildSettingsGroups(
                 SettingsChild("Clear all instances", "tidal_reset_instances", listOf("clear instances", "reset instances", "delete all instances")),
             ),
         )
-    // Integration → Qobuz account, tokens and instance management sub-page.
+
     val qobuzDetail =
         SettingsItem(
             key = "qobuz",
@@ -693,7 +673,7 @@ fun buildSettingsGroups(
                 SettingsChild("Clear all instances", "qobuz_reset_instances", listOf("clear instances", "reset instances", "delete all instances")),
             ),
         )
-    // Integration → Telegram sub-page.
+
     val telegramDetail =
         SettingsItem(
             key = "telegram",
@@ -722,8 +702,7 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
-            // Moved to the top of the Integration sub-page (Task 8). Kept in the search
-            // index so existing search shortcuts still work.
+
             hidden = true,
             children = listOf(
                 SettingsChild("AI provider", "ai_provider", listOf("ai provider", "provider", "openai", "gemini", "claude", "anthropic", "model provider")),
@@ -779,15 +758,13 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("po token", "potoken", "botguard", "youtube token", "playability"),
             onClick = { navController.navigate(PO_TOKEN_ROUTE) },
-            // Moved into the Accounts sub-page (Task 9). Kept in the search index so existing
-            // search shortcuts still work.
+
             hidden = true,
             children = listOf(
                 SettingsChild("Web Client PO Token", "web_client_po_token", listOf("po token", "potoken", "web client po token", "botguard", "playability", "youtube token")),
             ),
         )
-    // Listen Together lives on its own screen reached from the player, not from a
-    // settings sub-page — indexed here so searching "listen together" still finds it.
+
     val musicTogether =
         SettingsItem(
             key = "music_together",
@@ -939,8 +916,7 @@ fun buildSettingsGroups(
                         }
                     }
                 },
-                // Moved into the Behaviour sub-page (Task 10). Kept in the search index so
-                // existing search shortcuts still work.
+
                 hidden = true,
             )
         } else {
@@ -1001,9 +977,7 @@ fun buildSettingsGroups(
                     appearanceExtras,
                     aodCustomization,
                     navigationBar,
-                    // lyricsAnimations entry NOT ported: this fork removed the
-                    // Lyrics-animations settings page (and its definition) per
-                    // user request; LyricsEnhanced is the sole renderer here.
+
                     playback,
                     sources,
                     jioSaavn,
@@ -1018,12 +992,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),
-            // Discord / Last.fm / Tidal / Qobuz / Telegram are intentionally NOT
-            // top-level items here — they live as children of `integration` (and
-            // also under their respective `sources` / `integration` screens).
-            // Surfacing them as separate rows on the main settings page was
-            // redundant noise per user feedback. The `hidden = true` entries below
-            // exist purely so their own sub-page settings are searchable.
+
             items =
                 listOf(
                     integration,

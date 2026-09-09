@@ -13,9 +13,6 @@ import java.security.MessageDigest
 fun makeTimeString(duration: Long?): String {
     if (duration == null || duration < 0) return ""
 
-    // Heuristic: if the value looks like an epoch millis (greater than ~1e12),
-    // format as a human-readable date/time rather than a duration.
-    // (1_000_000_000_000L ~= 2001-09-09 UTC)
     if (duration > 1_000_000_000_000L) {
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
         sdf.timeZone = java.util.TimeZone.getDefault()
@@ -30,7 +27,6 @@ fun makeTimeString(duration: Long?): String {
     val minute = sec / 60
     sec %= 60
 
-    // More human-friendly duration strings:
     return when {
         day > 0 -> "%dd %dh %dm %ds".format(day, hour, minute, sec)
         hour > 0 -> "%dh %dm %ds".format(hour, minute, sec)

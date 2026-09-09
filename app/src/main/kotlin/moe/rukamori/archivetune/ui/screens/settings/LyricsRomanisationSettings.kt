@@ -50,12 +50,6 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 
-/**
- * Romanisation sub-page (Task 3): houses every per-language romanisation toggle that
- * used to live inline on the Lyrics settings page. Behaviour preserved verbatim —
- * Japanese romanisation stays gated on the Japanese language pack being installed,
- * matching the original inline implementation.
- */
 @Composable
 fun LyricsRomanisationSettings(
     navController: NavController,
@@ -72,10 +66,7 @@ fun LyricsRomanisationSettings(
     val (lyricsRomanizeOtherLanguages, onLyricsRomanizeOtherLanguagesChange) =
         rememberPreference(LyricsRomanizeOtherLanguagesKey, defaultValue = true)
     val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
-    // When AI romanisation is on it replaces every engine on this page (see
-    // `LyricsRomanizationPreferences.aiHandled`). Greying the switches out rather than leaving them
-    // looking live is the difference between "this setting is overridden" and "this setting is
-    // broken" — the toggles would otherwise flip happily and change nothing on screen.
+
     val (aiRomanizeLyrics) = rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
     val builtInEnabled = !aiRomanizeLyrics
     val overriddenDescription =
@@ -125,7 +116,7 @@ fun LyricsRomanisationSettings(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),

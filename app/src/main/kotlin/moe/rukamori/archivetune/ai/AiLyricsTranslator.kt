@@ -16,8 +16,7 @@ class AiLyricsTranslator {
         targetLanguage: String,
     ): String {
         val normalizedLanguage = normalizeTargetLanguage(targetLanguage)
-        // Token-budget protector: translating the same lyrics to the same language with the same
-        // model is deterministic enough to reuse — repeat requests cost zero tokens.
+
         val cacheKey = "${config.provider}|${config.model}|$normalizedLanguage|${lyrics.length}|${lyrics.hashCode()}"
         synchronized(resultCache) { resultCache[cacheKey] }?.let { return it }
 
@@ -117,7 +116,6 @@ class AiLyricsTranslator {
         const val MaxCharsPerBatch = 6000
         const val MaxCachedTranslations = 8
 
-        /** Process-wide LRU of finished translations, shared across ViewModel instances. */
         val resultCache =
             object : LinkedHashMap<String, String>(MaxCachedTranslations, 0.75f, true) {
                 override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =

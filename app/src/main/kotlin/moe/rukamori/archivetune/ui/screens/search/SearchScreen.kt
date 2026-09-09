@@ -161,20 +161,6 @@ fun SearchScreen(
         }
     }
 
-    // ── Search-page redesign (2026-09-04) ──
-    // "Redesign the whole search page from scratch with the same behaviour
-    // and reference from Home page. the only difference is that there should
-    // be search text in the middle with haze include offcourse and no app
-    // logo on the left or search icon in liquid glass on the right."
-    //
-    // The shell (MainActivity) now renders the Home route's pinned
-    // transparent top bar with the centered "Search" title and the SAME
-    // BitChord progressive top-fade blur (HomeTopFadeBlur) over this
-    // screen's haze state; this root Box is the blur's SOURCE (the exact
-    // HomeScreen pattern — the source must cover the strip under the pinned
-    // bar so the blur samples what scrolls there). The Muzo atmospheric
-    // backdrop gives the page the same deep, softly-lit base the Home feed
-    // floats on, so the two tabs read as one design language.
     val searchHazeState = LocalSearchHazeState.current
     Box(
         modifier =
@@ -202,8 +188,7 @@ fun SearchScreen(
                 ),
             modifier = Modifier.fillMaxSize(),
         ) {
-            // Large rounded search bar — opens the existing OnlineSearchScreen
-            // (preserves all current search functionality and providers).
+
             item(
                 key = "search_field",
                 contentType = "search_field",
@@ -224,7 +209,6 @@ fun SearchScreen(
                 )
             }
 
-            // Modern segmented control — Explore | Suggestions.
             item(
                 key = "search_tabs",
                 contentType = "search_tabs",
@@ -282,7 +266,7 @@ fun SearchScreen(
                 is SearchDiscoveryScreenState.Success -> {
                     when (selectedTab) {
                         SearchDiscoveryTab.EXPLORE -> {
-                            // Section 1 — Recent Searches (swipe-to-delete + Clear).
+
                             if (recentSearches.isNotEmpty()) {
                                 item(
                                     key = "search_recent_searches",
@@ -298,10 +282,6 @@ fun SearchScreen(
                                 }
                             }
 
-                            // Section 2 — Trending Searches (minimal chips).
-                            // "Based on what you like" section has been removed
-                            // from the Explore tab per user request — Explore
-                            // now shows only Recent Searches + Trending Searches.
                             if (currentState.data.suggestedArtists.isNotEmpty()) {
                                 item(
                                     key = "search_trending_searches_title",
@@ -327,22 +307,6 @@ fun SearchScreen(
                                 }
                             }
 
-                            // ── Explore tab fill-out (2026-09-04) ─────────────────
-                            // User request: "Fill up more content in search's
-                            // explore tab." Three real-data sections join the
-                            // recent + trending chips so the tab is a full
-                            // discovery page (all pulled from the SAME
-                            // SearchDiscoveryRepository feed the Suggestions
-                            // tab uses — no mock content):
-                            //   3. Trending Songs — tappable song cards that
-                            //      play on tap (long-press opens the song menu)
-                            //   4. New Albums — tappable album cards navigating
-                            //      to the album page (long-press opens the
-                            //      album menu)
-                            //   5. Moods & genres — the mood/genre cards the
-                            //      discovery model already carries (previously
-                            //      rendered nowhere) navigating to their browse
-                            //      pages.
                             if (currentState.data.suggestedSongs.isNotEmpty()) {
                                 item(
                                     key = "search_explore_songs",
@@ -511,17 +475,12 @@ fun SearchScreen(
                 }
             }
 
-            // Bottom breathing room so the mini-player never overlaps content.
             item(key = "search_bottom_spacer", contentType = "spacer") {
                 Spacer(Modifier.height(SearchSectionSpacing))
             }
         }
     }
 }
-
-// ============================================================
-// Search bar
-// ============================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -541,11 +500,6 @@ private fun SearchEntryField(
     val primary = MaterialTheme.colorScheme.primary
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // The search bar is a real inline input — tapping it focuses the field
-    // and shows the keyboard WITHOUT navigating away, so the Recent Searches
-    // and "Based on what you like" content stays on screen. Pressing the
-    // search IME action submits the query (navigates to results + records
-    // history) just like the old overlay flow.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -601,6 +555,8 @@ private fun SearchEntryField(
                                         SearchSource.ONLINE ->
                                             if (searchProvider == SearchProvider.SPOTIFY) {
                                                 R.string.search_source_spotify
+                                            } else if (searchProvider == SearchProvider.APPLE_MUSIC) {
+                                                R.string.search_source_apple_music
                                             } else {
                                                 R.string.search_yt_music
                                             }
@@ -635,10 +591,6 @@ private fun SearchEntryField(
         )
     }
 }
-
-// ============================================================
-// Segmented tabs (Explore | Suggestions)
-// ============================================================
 
 @Composable
 private fun SearchSegmentedTabs(
@@ -701,10 +653,6 @@ private fun SearchSegmentedTabs(
     }
 }
 
-// ============================================================
-// Section header
-// ============================================================
-
 @Composable
 private fun SearchSectionHeader(
     title: String,
@@ -720,10 +668,7 @@ private fun SearchSectionHeader(
                 .fillMaxWidth()
                 .padding(horizontal = SearchHorizontalPadding, vertical = 8.dp),
     ) {
-        // Leading icon in a circular container — matches the Home page's
-        // HomeSectionLeadingIcon pattern (clock for Recently Played, bolt
-        // for Speed Dial) so every section header across the app has a
-        // recognisable affordance before its title text.
+
         if (leadingIconRes != null) {
             Box(
                 modifier = Modifier
@@ -752,10 +697,6 @@ private fun SearchSectionHeader(
         trailing?.invoke()
     }
 }
-
-// ============================================================
-// Section 1 — Recent Searches (swipe-to-delete + Clear)
-// ============================================================
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -893,10 +834,7 @@ private fun RecentSearchMonogram(query: String) {
     val initial = remember(query) {
         query.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "·"
     }
-    // Search icon sits behind the initial letter, giving each recent-search
-    // row a recognizable "search" affordance (user-requested: "add icons
-    // behind recent searches"). The letter remains prominent in the
-    // foreground; the icon is dimmed so it doesn't compete.
+
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -905,14 +843,14 @@ private fun RecentSearchMonogram(query: String) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        // Background search icon — dimmed, slightly offset down-right.
+
         Icon(
             painter = painterResource(R.drawable.search),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.size(26.dp),
         )
-        // Foreground initial letter.
+
         Text(
             text = initial,
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
@@ -921,10 +859,6 @@ private fun RecentSearchMonogram(query: String) {
         )
     }
 }
-
-// ============================================================
-// Section 2 — Based on what you like (2-col grid of large cards)
-// ============================================================
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -960,7 +894,7 @@ private fun BasedOnWhatYouLikeGrid(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                // Pad the last row so cards stay equal width.
+
                 if (rowItems.size < columns) {
                     repeat(columns - rowItems.size) {
                         Spacer(Modifier.weight(1f))
@@ -983,10 +917,7 @@ private fun MoodCard(
     val base = remember(stripeColor) { Color(stripeColor) }
     val surface = MaterialTheme.colorScheme.surface
     val scrim = MaterialTheme.colorScheme.scrim
-    // Reuse the same artwork cache as the MoodAndGenres screen so tiles that
-    // were already resolved there appear instantly here too. The artwork is
-    // loaded async from YouTube browse (the gradient remains as a graceful
-    // placeholder while the thumbnail loads or if it never resolves).
+
     val artworkUrl = rememberMoodAndGenresArtworkUrl(endpoint)
     val artworkModel = rememberMoodAndGenresArtworkModel(endpoint = endpoint, artworkUrl = artworkUrl)
     val cardBrush =
@@ -1019,7 +950,7 @@ private fun MoodCard(
                 .background(cardBrush)
                 .clickable(onClick = onClick),
     ) {
-        // Artwork thumbnail — fills the card, cropped.
+
         if (artworkModel != null) {
             AsyncImage(
                 model = artworkModel,
@@ -1028,7 +959,7 @@ private fun MoodCard(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // Bottom gradient for title legibility.
+
         Box(
             modifier =
                 Modifier
@@ -1049,10 +980,6 @@ private fun MoodCard(
         )
     }
 }
-
-// ============================================================
-// Section 3 — Trending Searches (horizontal chips)
-// ============================================================
 
 @Composable
 private fun TrendingSearchChips(
@@ -1095,9 +1022,7 @@ private fun TrendingChip(
                 .clickable(onClick = onClick)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
-        // Leading trending icon — gives each chip a recognizable "trending"
-        // affordance, matching the user's request to add icons behind trending
-        // searches.
+
         Icon(
             painter = painterResource(R.drawable.trending_up),
             contentDescription = null,
@@ -1113,10 +1038,6 @@ private fun TrendingChip(
         )
     }
 }
-
-// ============================================================
-// Suggestions tab — horizontal rows + song list
-// ============================================================
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1260,10 +1181,6 @@ private fun YouTubeSongMenuButton(
         )
     }
 }
-
-// ============================================================
-// Loading / empty / error states
-// ============================================================
 
 @Composable
 private fun SearchDiscoveryLoading(modifier: Modifier = Modifier) {

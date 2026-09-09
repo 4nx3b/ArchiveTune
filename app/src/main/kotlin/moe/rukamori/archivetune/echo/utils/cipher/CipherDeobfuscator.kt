@@ -10,12 +10,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/**
- * Main cipher deobfuscation orchestrator for YouTube stream URLs.
- *
- * Handles both signature deobfuscation (for signatureCipher streams) and
- * n-parameter transformation (for throttle avoidance / 403 fix).
- */
 object CipherDeobfuscator {
     private const val TAG = "Metrolist_CipherDeobfusc"
 
@@ -25,55 +19,29 @@ object CipherDeobfuscator {
     fun initialize(context: Context) {
         Timber.tag(TAG).d("CipherDeobfuscator initializing...")
         appContext = context.applicationContext
-        // Load the player-config table (bundled asset + last-good cached remote overlay) so
-        // configs exist before any lookup, then kick a non-blocking TTL-gated refresh against
-        // the remote config file. Order is load-bearing: synchronous load first, async refresh after.
+
         Timber.tag(TAG).d("Initializing PlayerConfigStore (bundled + cached overlay)...")
         PlayerConfigStore.initialize(appContext)
         Timber.tag(TAG).d("Known config hashes after init: ${PlayerConfigStore.knownHashes().sorted().joinToString()}")
         PlayerConfigStore.scheduleStartupRefresh()
-        // Cosmetic "cipher support added" dates for the song-details sheet — pulled purely from a
-        // remote file and decoupled from the decipher path (any failure just yields an unknown date).
+
         PlayerDatesStore.initialize(appContext)
         Timber.tag(TAG).d("CipherDeobfuscator initialized")
     }
 
     private var cipherWebView: CipherWebView? = null
 
-    // The PlayerConfigStore.configEpoch the cached WebView was built under. When the config table
-    // changes (epoch advances), the cached WebView may have been built from a missing or wrong
-    // config for the current player, so getOrCreateWebView() rebuilds it instead of trusting it for
-    // the life of the process — the staleness that previously required an app restart to recover.
     private var builtConfigEpoch = -1
 
-    // Written on the decipher coroutine (Dispatchers.IO) but read via lastUsedPlayerHash from the
-    // Compose UI thread (song-details sheet), so @Volatile to publish the write across threads.
     @Volatile
     private var currentPlayerHash: String? = null
 
-    /**
-     * The player_ias hash last used to decipher a web stream (sig/n), or null if none yet.
-     * Diagnostic only — surfaced in the song-details sheet. Direct-URL clients (ANDROID_VR/IOS)
-     * never run the cipher, so this reflects the last web stream.
-     */
     val lastUsedPlayerHash: String? get() = currentPlayerHash
 
     private val deobfuscateMutex = Mutex()
 
-    // After repeated renderer deaths (low-RAM device under sustained memory pressure OOM-killing
-    // the sandboxed renderer), skip re-parsing ~2.8 MB of player.js per song for a SHORT backoff
-    // window. The window must stay short/half-open: the non-WebView fallbacks are unreliable, so
-    // the cipher WebView is the primary path and we retry it as soon as pressure may have eased.
-    // Guarded by deobfuscateMutex.
     private val rendererRecoveryPolicy = RendererRecoveryPolicy()
 
-    /**
-     * SignatureTimestamp of the player JS this cipher actually deciphers with, fetching (or
-     * reusing the cached) player JS if needed. API callers must send THIS value in the
-     * /player request: during A/B rollouts other sources (e.g. NewPipe's own player fetch)
-     * can land on a different player generation, and a sig minted for one player but
-     * deciphered by another produces a URL the CDN 403s.
-     */
     suspend fun signatureTimestamp(): Int? {
         Timber.tag(TAG).d("Resolving cipher player signatureTimestamp...")
         val (playerJs, hash) = PlayerJsFetcher.getPlayerJs(forceRefresh = false) ?: run {
@@ -85,12 +53,6 @@ object CipherDeobfuscator {
         return sts
     }
 
-    /**
-     * Best-effort: create the cipher WebView (fetch player JS + load it) ahead of first playback so
-     * the deobfuscation hot path is already warm. Holds the same mutex as deobfuscateStreamUrl /
-     * transformNParamInUrl so it can't race a real request for the shared single-WebView state. On
-     * failure the WebView is simply created lazily on first use.
-     */
     suspend fun prewarm() {
         Timber.tag(TAG).d("Prewarming cipher WebView...")
         deobfuscateMutex.withLock {
@@ -104,25 +66,14 @@ object CipherDeobfuscator {
         }
     }
 
-    /**
-     * Deobfuscate a signatureCipher stream URL.
-     *
-     * The signatureCipher is a query string containing:
-     * - s: The obfuscated signature
-     * - sp: The signature parameter name (usually "sig" or "signature")
-     * - url: The base stream URL
-     *
-     * Returns the full URL with deobfuscated signature, or null if failed.
-     */
     suspend fun deobfuscateStreamUrl(signatureCipher: String, videoId: String): String? = deobfuscateMutex.withLock {
         try {
             deobfuscateInternal(signatureCipher, videoId, isRetry = false)
                 ?.also { rendererRecoveryPolicy.onSuccess() }
         } catch (e: CancellationException) {
-            throw e // request superseded/cancelled — propagate, don't treat as a decipher failure
+            throw e
         } catch (e: CipherRendererGoneException) {
-            // Renderer died (OOM kill) — a fresh-JS retry would just re-parse ~2.8 MB under the
-            // same memory pressure. Fail fast so playback falls through to the other paths.
+
             onRendererGone(e, "deobfuscate")
             null
         } catch (e: Exception) {
@@ -144,21 +95,11 @@ object CipherDeobfuscator {
         }
     }
 
-    /**
-     * Called when a deciphered stream URL was rejected by the CDN (e.g. a WEB_REMIX 403). A wrong
-     * signature that the player JS computes WITHOUT throwing — a stale/wrong player config or a
-     * legacy-regex false positive — is invisible to [deobfuscateStreamUrl]'s exception-retry, so
-     * the rejected stream is the only signal it was wrong. Re-fetch the player-config table
-     * (rate-limited); if it changes, [PlayerConfigStore.configEpoch] advances and the next decipher
-     * rebuilds the WebView from the corrected config, recovering playback without an app restart.
-     * Returns whether the config table changed.
-     */
     suspend fun onStreamRejected(): Boolean = PlayerConfigStore.refreshAfterStreamRejection()
 
     private suspend fun deobfuscateInternal(signatureCipher: String, videoId: String, isRetry: Boolean): String? {
         Timber.tag(TAG).d("deobfuscateInternal: videoId=$videoId, isRetry=$isRetry")
 
-        // Parse the signatureCipher query string
         val params = parseQueryParams(signatureCipher)
         val obfuscatedSig = params["s"]
         val sigParam = params["sp"] ?: "signature"
@@ -184,7 +125,6 @@ object CipherDeobfuscator {
         val deobfuscatedSig = webView.deobfuscateSignature(obfuscatedSig)
         Timber.tag(TAG).d("Deobfuscated signature: ${deobfuscatedSig.take(30)}... (length=${deobfuscatedSig.length})")
 
-        // Build the URL with deobfuscated signature
         val separator = if ("?" in baseUrl) "&" else "?"
         val finalUrl = "$baseUrl${separator}${sigParam}=${Uri.encode(deobfuscatedSig)}"
 
@@ -196,19 +136,8 @@ object CipherDeobfuscator {
         return finalUrl
     }
 
-    /**
-     * Transform the 'n' parameter in a streaming URL to avoid throttling/403.
-     *
-     * Uses the runtime-discovered n-function from the player JS WebView.
-     * Returns the URL with the transformed 'n' value, or the original URL if transform fails.
-     *
-     * IMPORTANT: This must be called for WEB_REMIX, WEB, WEB_CREATOR, TVHTML5 clients
-     * and for privately owned tracks (uploaded songs).
-     */
     suspend fun transformNParamInUrl(url: String): String = deobfuscateMutex.withLock {
-        // Hold the same mutex as deobfuscateStreamUrl/prewarm: the shared CipherWebView has
-        // single-shot continuation slots, so sig deciphering, n-transform, and warm-up must never
-        // touch it concurrently (concurrent calls would clobber each other's WebView state).
+
         Timber.tag(TAG).d("=== N-TRANSFORM URL ===")
         Timber.tag(TAG).d("Input URL length: ${url.length}")
         Timber.tag(TAG).d("Input URL preview: ${url.take(100)}...")
@@ -216,7 +145,7 @@ object CipherDeobfuscator {
         try {
             transformNInternal(url)
         } catch (e: CancellationException) {
-            throw e // request superseded/cancelled — propagate rather than masking as a no-op transform
+            throw e
         } catch (e: CipherRendererGoneException) {
             onRendererGone(e, "n-transform")
             url
@@ -227,7 +156,7 @@ object CipherDeobfuscator {
     }
 
     private suspend fun transformNInternal(url: String): String {
-        // Extract the 'n' parameter value from the URL
+
         val nMatch = Regex("[?&]n=([^&]+)").find(url)
         if (nMatch == null) {
             Timber.tag(TAG).d("No 'n' parameter found in URL, skipping transform")
@@ -263,7 +192,6 @@ object CipherDeobfuscator {
         Timber.tag(TAG).d("=== N-TRANSFORM SUCCESS ===")
         Timber.tag(TAG).d("N-param: $nValue -> $transformedN")
 
-        // Replace n= parameter in URL
         val transformedUrl = url.replaceFirst(
             Regex("([?&])n=[^&]+"),
             "$1n=${Uri.encode(transformedN)}"
@@ -273,11 +201,6 @@ object CipherDeobfuscator {
         return transformedUrl
     }
 
-    /**
-     * A renderer death (or renderer-gone-equivalent timeout) was detected: drop the dead
-     * instance so the next call recreates it, and record the failure so repeated deaths open
-     * the [rendererRecoveryPolicy] backoff window. Must be called with [deobfuscateMutex] held.
-     */
     private suspend fun onRendererGone(e: CipherRendererGoneException, where: String) {
         rendererRecoveryPolicy.onFailure(SystemClock.elapsedRealtime())
         Timber.tag(TAG).e(
@@ -291,16 +214,11 @@ object CipherDeobfuscator {
     private suspend fun getOrCreateWebView(forceRefresh: Boolean): CipherWebView? {
         Timber.tag(TAG).d("getOrCreateWebView: forceRefresh=$forceRefresh, existing=${cipherWebView != null}")
 
-        // A dead renderer means the cached instance is a zombie — drop it so we rebuild below.
         if (cipherWebView?.isDead == true) {
             Timber.tag(TAG).w("Cached cipher WebView renderer is dead — discarding")
             closeWebView()
         }
 
-        // Under sustained memory pressure the fresh renderer gets OOM-killed again seconds in;
-        // during the (short, half-open) backoff window skip WebView creation so the current song
-        // fails over fast instead of stalling on a doomed ~2.8 MB player.js parse. The next song
-        // after the window retries the WebView — the fallback paths are too weak to live on.
         if (!rendererRecoveryPolicy.shouldAttempt(SystemClock.elapsedRealtime())) {
             Timber.tag(TAG).w(
                 "Skipping cipher WebView creation: ${rendererRecoveryPolicy.consecutiveFailures} " +
@@ -309,29 +227,19 @@ object CipherDeobfuscator {
             return null
         }
 
-        // Snapshot the epoch BEFORE extracting/building. A refresh that lands on another thread
-        // during this (multi-second) build then leaves builtConfigEpoch behind the live epoch,
-        // forcing a rebuild on the next decipher instead of masking the change. Capturing the epoch
-        // AFTER the build would record a config this WebView never actually incorporated — the
-        // staleness this whole mechanism exists to prevent.
         val epochAtStart = PlayerConfigStore.configEpoch
         if (!forceRefresh && cipherWebView != null && builtConfigEpoch == epochAtStart) {
             Timber.tag(TAG).d("Reusing existing CipherWebView (hash=$currentPlayerHash)")
             return cipherWebView
         }
 
-        // The epoch whose config this build incorporates. Defaults to the pre-build snapshot; the
-        // heal path below advances it only after a same-thread forceRefresh whose new config we
-        // re-extract and therefore HAVE incorporated (avoids a needless next rebuild).
         var builtEpoch = epochAtStart
 
-        // Close existing WebView if any
         if (cipherWebView != null) {
             Timber.tag(TAG).d("Closing existing CipherWebView...")
             closeWebView()
         }
 
-        // Fetch player JS
         Timber.tag(TAG).d("Fetching player JS...")
         val result = PlayerJsFetcher.getPlayerJs(forceRefresh = forceRefresh)
         if (result == null) {
@@ -341,19 +249,9 @@ object CipherDeobfuscator {
         val (playerJs, hash) = result
         Timber.tag(TAG).d("Got player JS: hash=$hash, length=${playerJs.length}")
 
-        // Run full analysis for logging - pass the known hash from PlayerJsFetcher
         Timber.tag(TAG).d("Analyzing player JS for cipher functions (knownHash=$hash)...")
         var analysis = FunctionNameExtractor.analyzePlayerJs(playerJs, knownHash = hash)
 
-        // Mid-session self-heal: a rotated player_ias whose validated config may already be
-        // published in the remote config file. Trigger when EITHER transform is missing OR was
-        // resolved by the legacy regex heuristics (isHardcoded == false) instead of a validated
-        // config. The regexes are unanchored and can false-match anywhere in the ~2 MB player JS,
-        // returning a non-null but WRONG result; gating on null alone would let that shadow the
-        // validated config and silently break playback. forceRefresh returns true only when the
-        // hash is now in the table, so re-extraction runs exactly when it can succeed; a genuine
-        // old-style regex player with no config simply gets false back (one cooldown-gated fetch)
-        // and keeps its working regex result.
         val sigFromConfig = analysis.sigInfo?.isHardcoded == true
         val nFromConfig = analysis.nFuncInfo?.isHardcoded == true
         if (!sigFromConfig || !nFromConfig) {
@@ -380,7 +278,6 @@ object CipherDeobfuscator {
         Timber.tag(TAG).d("  sig: ${analysis.sigInfo.name} (constantArg=${analysis.sigInfo.constantArg}, hardcoded=${analysis.sigInfo.isHardcoded})")
         Timber.tag(TAG).d("  nFunc: ${analysis.nFuncInfo?.name}[${analysis.nFuncInfo?.arrayIndex}] (hardcoded=${analysis.nFuncInfo?.isHardcoded})")
 
-        // Create WebView
         val webView = CipherWebView.create(
             context = appContext,
             playerJs = playerJs,
@@ -424,9 +321,6 @@ object CipherDeobfuscator {
         return result
     }
 
-    /**
-     * Debug method: Get current state information
-     */
     fun getDebugInfo(): Map<String, Any?> {
         return mapOf(
             "hasWebView" to (cipherWebView != null),

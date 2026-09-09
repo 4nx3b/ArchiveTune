@@ -36,13 +36,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
-/**
- * Shazam music recognition with built-in rate limiting and queue management
- */
 object Shazam {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Configuration
     private const val MAX_CONCURRENT_REQUESTS = 2
 
     private const val MIN_REQUEST_INTERVAL_MS = 1000L
@@ -55,7 +51,6 @@ object Shazam {
 
     private const val MAX_QUEUE_SIZE = 50
 
-    // Internal State
     private val activeRequests = AtomicInteger(0)
 
     private var lastRequestTime = 0L
@@ -70,7 +65,6 @@ object Shazam {
 
     private var isProcessingQueue = false
 
-    // HTTP Client Configuration
     private val client by lazy {
         HttpClient(CIO) {
             install(ContentNegotiation) {
@@ -109,13 +103,6 @@ object Shazam {
             "Asia/Dubai",
         )
 
-    /**
-     * Recognize music from audio signature
-     *
-     * @param signature Audio signature in Shazam DejaVu format
-     * @param sampleDurationMs Sample duration in milliseconds
-     * @return Result containing recognition result or error
-     */
     suspend fun recognize(
         signature: String,
         sampleDurationMs: Long,
@@ -128,42 +115,24 @@ object Shazam {
         return enqueueRequest(signature, sampleDurationMs)
     }
 
-    /**
-     * Get number of pending requests in queue
-     */
     fun getPendingRequestsCount(): Int = requestQueue.size
 
-    /**
-     * Get number of active requests
-     */
     fun getActiveRequestsCount(): Int = activeRequests.get()
 
-    /**
-     * Clear cache
-     */
     fun clearCache() {
         resultCache.clear()
     }
 
-    /**
-     * Cancel all pending requests
-     */
     fun cancelPendingRequests() {
         requestQueue.clear()
     }
 
-    /**
-     * Cleanup resources
-     */
     fun cleanup() {
         cancelPendingRequests()
         clearCache()
         client.close()
     }
 
-    /**
-     * Enqueue request for processing
-     */
     private suspend fun enqueueRequest(
         signature: String,
         sampleDurationMs: Long,
@@ -191,9 +160,6 @@ object Shazam {
             return request.awaitResult()
         }
 
-    /**
-     * Process request queue
-     */
     private suspend fun processQueue() {
         while (true) {
             val request = requestQueue.poll() ?: break
@@ -221,9 +187,6 @@ object Shazam {
         isProcessingQueue = false
     }
 
-    /**
-     * Execute recognition request with retry logic
-     */
     private suspend fun executeRequest(
         signature: String,
         sampleDurationMs: Long,
@@ -260,9 +223,6 @@ object Shazam {
         throw lastException ?: Exception("Recognition failed after $MAX_RETRIES attempts")
     }
 
-    /**
-     * Perform actual recognition request
-     */
     private suspend fun performRecognition(
         signature: String,
         sampleDurationMs: Long,
@@ -319,9 +279,6 @@ object Shazam {
             ?: throw Exception("No match found")
     }
 
-    /**
-     * Enforce minimum time between requests
-     */
     private suspend fun enforceRateLimit() {
         val currentTime = System.currentTimeMillis()
         val timeSinceLastRequest = currentTime - lastRequestTime
@@ -334,19 +291,10 @@ object Shazam {
         lastRequestTime = System.currentTimeMillis()
     }
 
-    /**
-     * Calculate delay using Exponential Backoff
-     */
     private fun calculateBackoffDelay(attempt: Int): Long = INITIAL_RETRY_DELAY_MS * (1 shl attempt)
 
-    /**
-     * Generate cache key
-     */
     private fun generateCacheKey(signature: String): String = signature.hashCode().toString()
 
-    /**
-     * Get result from cache
-     */
     private fun getCachedResult(key: String): RecognitionResult? {
         val cached = resultCache[key] ?: return null
         val currentTime = System.currentTimeMillis()
@@ -359,9 +307,6 @@ object Shazam {
         return cached.result
     }
 
-    /**
-     * Cache result
-     */
     private fun cacheResult(
         key: String,
         result: RecognitionResult,
@@ -375,9 +320,6 @@ object Shazam {
         cleanupCache()
     }
 
-    /**
-     * Cleanup expired cache entries
-     */
     private fun cleanupCache() {
         if (resultCache.size < 100) return
 
@@ -392,9 +334,6 @@ object Shazam {
         }
     }
 
-    /**
-     * Convert Shazam response to internal model
-     */
     private fun ShazamResponseJson.toRecognitionResult(): RecognitionResult? {
         val track = this.track ?: return null
 
@@ -453,9 +392,6 @@ object Shazam {
         )
     }
 
-    /**
-     * Pending request in queue
-     */
     private class PendingRequest(
         val id: Long,
         val signature: String,
@@ -478,9 +414,6 @@ object Shazam {
         }
     }
 
-    /**
-     * Cached result
-     */
     private data class CachedResult(
         val timestamp: Long,
         val result: RecognitionResult,

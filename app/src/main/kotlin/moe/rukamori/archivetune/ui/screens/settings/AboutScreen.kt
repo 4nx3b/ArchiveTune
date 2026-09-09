@@ -149,15 +149,7 @@ private fun AboutScreenContent(
     val listState = rememberLazyListState()
 
     Scaffold(
-        // Fixed (2026-09-05, user report: "There's still empty space in about
-        // page"): the LargeFlexibleTopAppBar reserved its full EXPANDED height
-        // (~152dp) behind an empty title, so a dead band sat between the pill
-        // header and the identity card — the same class of bug the Updates and
-        // Account screens had. A pinned single-row TopAppBar (the exact
-        // UpdateScreen/DebugSettings pattern) replaces it: same transparent
-        // colors, same FrostedHeaderPill navigation slot, no expanded state to
-        // reserve. The LazyColumn keeps its contentPadding top so content still
-        // flows under the transparent bar into the header haze.
+
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -203,12 +195,6 @@ private fun AboutScreenContent(
                 WindowInsetsSides.Horizontal,
             )
 
-        // Header haze (2026-09-04, user request: "There's no haze effect and
-        // header behaviour like home page in developer options, updates and
-        // about page") — the Success branch's LazyColumn is the haze source
-        // (its top spacing is contentPadding, so content scrolls under the
-        // now-transparent header exactly like the ported settings screens);
-        // the overlay is a later sibling so it draws on top of every branch.
         val headerHaze = rememberScreenHeaderHaze()
         val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -257,7 +243,7 @@ private fun AboutScreenContent(
                         Modifier
                             .fillMaxSize()
                             .windowInsetsPadding(playerAwareInsets)
-                            // Haze source for the header's top-fade blur.
+
                             .hazeSource(headerHaze),
                     contentPadding =
                         PaddingValues(
@@ -269,8 +255,6 @@ private fun AboutScreenContent(
             }
         }
 
-            // Header haze overlay — later sibling of every branch so it draws
-            // on top of the content, under the pinned pill header.
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
@@ -369,7 +353,7 @@ private fun AboutFullScreenDialog(
                 decorFitsSystemWindows = false,
             ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.surface,

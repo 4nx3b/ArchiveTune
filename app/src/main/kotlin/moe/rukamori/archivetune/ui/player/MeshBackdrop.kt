@@ -5,19 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * The mesh-gradient backdrop: four luminous colour blobs sampled from the album art, drawn as
- * soft radial gradients and blurred into a field. Originally from BitChord
- * (https://github.com/kushagrasinghx/BitChord, ui/player/MeshGradient.kt).
- *
- * Shared by the Bitchord and TikTok player styles, which is a deliberate exception to the
- * self-containment rule those styles otherwise follow. The rule is about layout and controls —
- * things a style should be free to change without touching another. This is a shader: two copies
- * of it means fixing every drawing bug twice, and the copies had already drifted (blob alpha
- * 0.85 vs 0.78) with nothing recording that the difference was intentional. It takes the
- * parameters that actually differ.
- */
-
 package moe.rukamori.archivetune.ui.player
 
 import android.graphics.Bitmap
@@ -67,7 +54,6 @@ private val FallbackColors =
         Color(0xFFFFAF7B),
     )
 
-/** The four mesh colours, already tuned for drawing. */
 @Immutable
 data class MeshPalette internal constructor(val colors: List<Color>) {
     internal val base: Color get() = colors.first().dimmed()
@@ -77,7 +63,6 @@ data class MeshPalette internal constructor(val colors: List<Color>) {
     }
 }
 
-/** Where each blob sits at rest, as a fraction of the canvas. */
 private val Anchors =
     floatArrayOf(
         0.20f, 0.25f,
@@ -86,34 +71,13 @@ private val Anchors =
         0.25f, 0.75f,
     )
 
-/** Irrational multiples of each other, so the drift pattern never repeats. */
 private val Speeds = floatArrayOf(1f, -0.7f, 0.85f, -1.15f)
 
-/**
- * How far the blobs travel in one settle. A shade under half a turn: enough that the backdrop
- * visibly reacts to a track change, short of a full orbit that would land them where they started.
- */
 private const val DriftRadians = (PI * 0.45f).toFloat()
 
-/** Both animations run on one clock so a track change is a single 1.4s pass, not two. */
 private const val CrossfadeMillis = 1_400
 private const val DriftMillis = 8_000
 
-/**
- * The mesh field for [palette], crossfading over ~1.4s when [trackKey] changes.
- *
- * The blobs drift when there is a reason to — the backdrop appearing, or the track changing — and
- * then come to rest. They used to orbit forever, which meant re-blurring a full-screen layer at
- * display refresh rate for as long as the player was up, for motion that reads as ambient at best
- * and is invisible while the phone is in a pocket.
- *
- * **Nothing here is read during composition.** The crossfade and the drift are both `Animatable`s
- * read inside the draw lambda, so a frame of either invalidates drawing alone and composition
- * never runs. The version this replaces animated five colours with `animateColorAsState` and read
- * them in composition, which recomposed the whole backdrop on every frame of the crossfade — and
- * each of those recompositions re-derived the tuned palette, four HSL round-trips and three list
- * allocations at a time. Drawing a blurred full-screen layer is expensive enough on its own.
- */
 @Composable
 fun MeshBackdrop(
     palette: MeshPalette,
@@ -124,9 +88,7 @@ fun MeshBackdrop(
     blobAlpha: Float = 0.82f,
     scrim: Boolean = true,
 ) {
-    // The palette being crossfaded *from*, and the progress of that crossfade. Held rather than
-    // animated per-colour: one Animatable drives all five colours, and lerping in the draw lambda
-    // costs four lerps a frame against five state objects plus five recompositions.
+
     val previous = remember { mutableStateOf(palette) }
     val target = remember { mutableStateOf(palette) }
     val fade = remember { Animatable(1f) }
@@ -134,8 +96,7 @@ fun MeshBackdrop(
 
     LaunchedEffect(palette, reduceAnimation) {
         if (palette == target.value) return@LaunchedEffect
-        // Start the new fade from wherever the current one reached, so a fast skip blends from
-        // what is on screen rather than snapping back to the palette before last.
+
         previous.value = if (fade.value >= 1f) target.value else blend(previous.value, target.value, fade.value)
         target.value = palette
         if (reduceAnimation) {
@@ -151,21 +112,13 @@ fun MeshBackdrop(
             phase.snapTo(0f)
             return@LaunchedEffect
         }
-        // Restarted rather than looped with an infinite spec: a linear phase keeps the orbit even
-        // instead of easing to a halt each lap, and stopping is the whole point.
+
         phase.animateTo(
             targetValue = phase.value + DriftRadians,
             animationSpec = tween(DriftMillis, easing = FastOutSlowInEasing),
         )
     }
 
-    // Scale up slightly so the blur's clamped edges never show, then blur the whole layer
-    // (RenderEffect, API 31+; a no-op below — the radial falloff already reads soft there).
-    //
-    // Clipped on the way out, and from a layer of its own rather than by setting `clip` on the one
-    // below: that one clips what is drawn *into* it, in its own coordinates, and the scale is
-    // applied after — so the overhang the scale creates survives it. This has to sit outside the
-    // scale to contain it.
     Canvas(
         modifier =
             modifier
@@ -181,8 +134,6 @@ fun MeshBackdrop(
         val to = target.value
         val drift = phase.value
 
-        // The base fill, drawn rather than set with Modifier.background: the modifier would take
-        // the colour at composition time and so would need a recomposition to change.
         drawRect(color = lerp(from.base, to.base, t))
 
         for (index in 0 until 4) {
@@ -201,8 +152,6 @@ fun MeshBackdrop(
             )
         }
 
-        // Gentle scrim so white text stays legible over bright art. Styles that lay their own
-        // legibility scrim over this layer pass scrim = false rather than double up.
         if (scrim) {
             drawRect(
                 brush =
@@ -231,22 +180,10 @@ private fun blobCenter(index: Int, drift: Float, size: Size): Offset {
 private fun blend(from: MeshPalette, to: MeshPalette, t: Float): MeshPalette =
     MeshPalette(List(4) { lerp(from.colors[it], to.colors[it], t) })
 
-/**
- * Palettes already extracted this session, keyed by artwork URL.
- *
- * Extraction is a Coil decode plus a [Palette] quantisation pass, and the TikTok feed asks for one
- * per page — so swiping a queue back and forth re-ran the same work on every pass, per page, with
- * nothing remembering the answer. Bounded and evicted oldest-first: a queue is long, a palette is
- * four Colors, and the ceiling matters more than the exact number.
- */
 private val paletteCache = object : LinkedHashMap<String, MeshPalette>(16, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MeshPalette>): Boolean = size > 64
 }
 
-/**
- * The four mesh colours for [imageUrl], loaded at thumbnail size — the palette only needs colours,
- * never detail — and cached across every caller for the life of the process.
- */
 @Composable
 fun rememberMeshPalette(imageUrl: String?): MeshPalette {
     val context = LocalContext.current
@@ -259,13 +196,12 @@ fun rememberMeshPalette(imageUrl: String?): MeshPalette {
             ImageRequest
                 .Builder(context)
                 .data(imageUrl)
-                .size(128) // palette quality is fine at thumbnail size, and it's fast
-                .allowHardware(false) // Palette needs pixel access
+                .size(128)
+                .allowHardware(false)
                 .build()
         val result = context.imageLoader.execute(request)
         val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@LaunchedEffect
-        // Palette.generate() is synchronous pixel work; a 128px bitmap is quick, but it still has
-        // no business on the main dispatcher.
+
         val palette = withContext(Dispatchers.Default) { MeshPalette(paletteOf(bitmap).map { it.tuned() }) }
         synchronized(paletteCache) { paletteCache[imageUrl] = palette }
         state.value = palette
@@ -273,15 +209,6 @@ fun rememberMeshPalette(imageUrl: String?): MeshPalette {
     return state.value
 }
 
-/**
- * Four mesh colours drawn from the artwork.
- *
- * The named swatches — vibrant, muted and friends — are a convenience over the full set, and on
- * dark or desaturated sleeves every vibrant slot comes back null. Topping the rest up from
- * [FallbackColors] is what left those covers sitting under the stock purple. So the whole swatch
- * list is read instead, and any shortfall is derived from the art's own colours rather than
- * borrowed.
- */
 private fun paletteOf(bitmap: Bitmap): List<Color> {
     fun swatchesOf(builder: Palette.Builder): List<Color> =
         builder
@@ -293,8 +220,7 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
 
     val found =
         swatchesOf(Palette.from(bitmap)).ifEmpty {
-            // The default filter discards near-black and near-white, which on a monochrome sleeve
-            // can be everything there is.
+
             swatchesOf(Palette.from(bitmap).clearFilters())
         }
 
@@ -306,7 +232,6 @@ private fun paletteOf(bitmap: Bitmap): List<Color> {
     }
 }
 
-/** Drop near-duplicates, so the four blobs don't collapse into one wash. */
 private fun List<Color>.distinctEnough(): List<Color> {
     val kept = mutableListOf<Color>()
     forEach { color -> if (kept.none { it.isCloseTo(color) }) kept += color }
@@ -320,7 +245,6 @@ private fun Color.isCloseTo(other: Color): Boolean {
     return hueGap < 15f && abs(a[2] - b[2]) < 0.12f
 }
 
-/** Fill the empty slots off the art itself, fanning hue and lightness out. */
 private fun List<Color>.expandedToFour(): List<Color> {
     val out = toMutableList()
     var step = 1
@@ -340,7 +264,6 @@ private fun Color.shifted(hue: Float, lightness: Float): Color {
 
 private fun Color.hsl(): FloatArray = FloatArray(3).also { ColorUtils.colorToHSL(toArgb(), it) }
 
-/** Boost saturation and clamp lightness so any artwork yields a rich, non-muddy mesh. */
 private fun Color.tuned(): Color {
     val hsl = hsl()
     hsl[1] = (hsl[1] * 1.35f).coerceAtMost(1f)

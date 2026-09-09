@@ -166,8 +166,7 @@ object Updater {
 
     private val semVerRegex =
         Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
-    // Fork Canary tags include a date and usually an HHmm suffix (NyyyyMMddHHmm).
-    // Accept the older date-only form too so workflow fallback remains compatible.
+
     private val canaryTagRegex = Regex("""N\d{8}(?:\d{4})?""")
 
     private fun parseSemVerOrNull(text: String): SemVer? {
@@ -199,13 +198,6 @@ object Updater {
     private fun parseReleaseSemVerOrNull(release: ReleaseInfo): SemVer? =
         parseSemVerOrNull(release.tagName) ?: parseSemVerOrNull(release.name)
 
-    // Canary builds share a single fixed display versionName (e.g. "13.7.5"), so the version *name*
-    // can't distinguish two canary builds. Instead each canary build number is carried inline as a
-    // human-readable suffix: "13.7.5 (build <versionCode>)". This string is both shown in the UI and
-    // used for comparison — when it carries a build number we compare that monotonic number against
-    // the running app's BuildConfig.VERSION_CODE, which is what makes "update available" true only
-    // for a genuinely newer canary build. The string never leaves the app (it is produced and parsed
-    // by this same Updater), so the format is free to be display-friendly.
     private val buildNumberRegex = Regex("""\(build (\d+)\)""")
 
     internal fun buildNumberOrNull(version: String): Int? = buildNumberRegex.find(version)?.groupValues?.get(1)?.toIntOrNull()
@@ -232,8 +224,7 @@ object Updater {
         latestVersion: String,
         currentVersion: String,
     ): Boolean {
-        // Canary build-number comparison takes priority: a newer build number means an update is
-        // available even though the display versionName is unchanged.
+
         buildNumberOrNull(latestVersion)?.let { return it > BuildConfig.VERSION_CODE }
         val latestSemVer = parseSemVerOrNull(latestVersion)
         val currentSemVer = parseSemVerOrNull(currentVersion)
@@ -247,12 +238,6 @@ object Updater {
     internal fun findLatestRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
         if (releases.isEmpty()) return null
 
-        // Exclude canary-tagged releases up front. Canary tags look like `N202608041230` and
-        // are matched by `canaryTagRegex`. Without this filter, a canary release whose *name*
-        // is "Canary 13.7.5" would slip through the `preRelease.isEmpty()` stable filter
-        // below — `parseReleaseSemVerOrNull` falls back to parsing the release name when the
-        // tag itself isn't SemVer, and "13.7.5" has no pre-release identifier — and a stable-
-        // channel user would see a canary-release popup. This is the root cause of issue #11.
         val nonCanary = releases.filterNot { canaryTagRegex.matches(it.tagName) }
         if (nonCanary.isEmpty()) return null
 
@@ -423,11 +408,6 @@ object Updater {
                 return@runCatchingCancellable emptyList()
             }
 
-            // GitHub's `/commits` endpoint caps `per_page` at 100. To honour a request larger
-            // than that (or an "unlimited" request when callers pass a very large `count`),
-            // we paginate by following the `Link: rel="next"` header until we've collected
-            // `count` commits or run out of pages. A `count <= 0` is treated as unlimited
-            // and pages until the API stops returning a next link.
             val perPage = if (count <= 0) 100 else count.coerceAtMost(100)
             val unlimited = count <= 0
             val commits = mutableListOf<GitCommit>()
@@ -467,7 +447,6 @@ object Updater {
 
                 if (!unlimited && commits.size >= count) break
 
-                // Parse `Link: <url>; rel="next", <url>; rel="last"` if present.
                 pageUrl = response.headers["Link"]?.let { linkHeader ->
                     val nextRegex = Regex("""<([^>]+)>;\s*rel="next"""")
                     nextRegex.find(linkHeader)?.groupValues?.getOrNull(1)

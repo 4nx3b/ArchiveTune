@@ -29,26 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 
-/**
- * A [TopAppBar] variant with a fully transparent container and the title / navigation icon /
- * actions each wrapped in a [FrostedHeaderPill] so the header content stays legible against
- * any scrolling background (album art, gradient, etc.) without needing a solid bar.
- *
- * The pills use the shared [LocalNavigationBarBackdrop] GraphicsLayer for real backdrop blur
- * on Android 12+, and degrade to a semi-transparent `surfaceContainer` on pre-S or when no
- * backdrop is available.
- *
- * Pass a non-null [backdrop] (created via [rememberBackdrop] and applied to a sibling
- * `LazyColumn` via [Modifier.layerBackdrop]) to switch all three pills (title / nav icon /
- * actions) to real kyant liquid glass. The pills MUST be siblings of the composable carrying
- * `layerBackdrop` — nesting inside the source creates a render-feedback loop.
- *
- * Usage: drop-in replacement for a standard `TopAppBar` that has a title, a back arrow,
- * and optional actions. For screens that need a more custom title (e.g. with an avatar or
- * animated content), use [FrostedHeaderPill] directly.
- */
-
-/** Primary variant: takes a string resource for the title. */
 @Composable
 fun FrostedTopAppBar(
     titleRes: Int,
@@ -66,7 +46,6 @@ fun FrostedTopAppBar(
     )
 }
 
-/** Flexible variant: takes a composable title (for custom title content). */
 @Composable
 fun FrostedTopAppBar(
     title: @Composable () -> Unit,
@@ -116,15 +95,6 @@ fun FrostedTopAppBar(
     )
 }
 
-/**
- * Large variant: wraps a [LargeFlexibleTopAppBar] with frosted pills around the title, nav icon,
- * and actions. Use for screens that have a hero header which collapses on scroll.
- *
- * Pass a non-null [backdrop] (created via [rememberBackdrop] and applied to a sibling
- * `LazyColumn` via [Modifier.layerBackdrop]) to switch all three pills to real kyant liquid
- * glass. The pills MUST be siblings of the composable carrying `layerBackdrop` — nesting
- * inside the source creates a render-feedback loop.
- */
 @Composable
 fun LargeFrostedTopAppBar(
     titleRes: Int,
@@ -177,7 +147,6 @@ fun LargeFrostedTopAppBar(
     )
 }
 
-/** Large variant with composable title (for custom title content). */
 @Composable
 fun LargeFrostedTopAppBar(
     title: @Composable () -> Unit,

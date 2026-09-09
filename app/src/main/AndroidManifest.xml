@@ -24,9 +24,7 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Google Drive sync: needed to enumerate Google accounts on the device so the user can
-         pick which one to upload backups to. On API 23+ this is a runtime permission grouped
-         under "Contacts" — we request it on demand when the user taps "Sign in with Google". -->
+
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
 
     <queries>
@@ -37,11 +35,7 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
-        <!-- Voice search: ACTION_RECOGNIZE_SPEECH must be declared as a &lt;queries&gt; intent
-             filter on Android 11+ (API 30+) so that PackageManager.resolveActivity() can see
-             speech recognizers (e.g. Google app, Samsung Voice Input). Without this, the
-             resolveActivity() check returns null even when a recognizer is installed, causing
-             the "Voice search is not available on this device" toast. -->
+
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
             <category android:name="android.intent.category.DEFAULT" />
@@ -98,7 +92,6 @@
                     android:scheme="archivetune" />
             </intent-filter>
 
-            <!-- Youtube filter -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
@@ -113,19 +106,19 @@
                 <data android:host="m.youtube.com" />
                 <data android:host="www.youtube.com" />
                 <data android:host="music.youtube.com" />
-                <!-- video prefix -->
+
                 <data android:pathPrefix="/v/" />
                 <data android:pathPrefix="/embed/" />
                 <data android:pathPrefix="/watch" />
-                <!-- channel prefix -->
+
                 <data android:pathPrefix="/channel/" />
                 <data android:pathPrefix="/user/" />
                 <data android:pathPrefix="/c/" />
-                <!-- playlist prefix -->
+
                 <data android:pathPrefix="/playlist" />
-                <!-- browse prefix -->
+
                 <data android:pathPrefix="/browse/" />
-                <!-- search prefix -->
+
                 <data android:pathPrefix="/search" />
             </intent-filter>
 
@@ -159,7 +152,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- Share filter -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
 
@@ -368,7 +360,6 @@
         android:name="android.appwidget.provider"
         android:resource="@xml/widget_listening_insights_info" />
 </receiver>
-
 
         <meta-data
             android:name="com.google.android.gms.car.application"

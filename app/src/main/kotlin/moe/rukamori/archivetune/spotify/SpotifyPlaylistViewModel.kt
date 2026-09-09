@@ -62,6 +62,18 @@ class SpotifyPlaylistViewModel
                 _uiState.value = SpotifyPlaylistUiState(errorMessage = "Missing Spotify playlist")
                 return
             }
+            // The DJ is not a playlist — see [SPOTIFY_DJ_PLAYLIST_ID]. Fetching it returns nothing
+            // to play, so say why instead of showing an empty list that reads as a failure. The
+            // home feed hands the tile to Spotify before it ever gets here; this catches every
+            // other way in — a deep link, a search result, a stale cached feed.
+            if (isSpotifyDj(playlistId)) {
+                _uiState.value =
+                    SpotifyPlaylistUiState(
+                        isLoading = false,
+                        errorMessage = context.getString(R.string.spotify_dj_unsupported),
+                    )
+                return
+            }
             reloadJob?.cancel()
             downloadResolutionJob?.cancel()
             downloadResolutionJob = null
@@ -75,17 +87,7 @@ class SpotifyPlaylistViewModel
             }
             reloadJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    // Network-call timeout: previously a hung HTTP request
-                    // (e.g. user's Spotify session silently expired and the
-                    // token refresh endpoint is unreachable) would leave
-                    // `isLoading = true` forever, trapping the user on the
-                    // page with no way to know what went wrong. The 20s
-                    // ceiling matches typical mobile network tolerances —
-                    // long enough for a slow cell connection, short enough
-                    // that the user sees a recoverable error state instead
-                    // of an infinite spinner. On timeout we surface a
-                    // user-facing error message so the page renders the
-                    // "tap to retry" CTA via the existing errorMessage UI.
+
                     val (playlist, tracks) =
                         withTimeoutOrNull(PLAYLIST_LOAD_TIMEOUT_MS) {
                             if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
@@ -158,9 +160,7 @@ class SpotifyPlaylistViewModel
         }
 
         companion object {
-            // 20s ceiling for the playlist + tracks fetch. Long enough for
-            // a slow cell connection, short enough that the user sees a
-            // recoverable error state instead of an infinite spinner.
+
             private const val PLAYLIST_LOAD_TIMEOUT_MS = 20_000L
         }
     }

@@ -13,14 +13,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 object ImageBlurUtils {
-    /**
-     * Apply a stack blur to a bitmap. For large bitmaps (>720px on longest side),
-     * the image is downscaled before blurring for performance.
-     *
-     * @param source The source bitmap (will not be recycled).
-     * @param radius Blur radius (typically 1..25, clamped to 0.5..48).
-     * @return A new blurred bitmap, or the source if radius is negligible.
-     */
+
     fun blur(
         source: Bitmap,
         radius: Float,
@@ -41,10 +34,6 @@ object ImageBlurUtils {
         return Bitmap.createScaledBitmap(blurred, source.width, source.height, true)
     }
 
-    /**
-     * Stack blur implementation — a fast box-blur approximation that operates
-     * on pixel arrays without any native / RenderScript dependencies.
-     */
     private fun stackBlur(
         source: Bitmap,
         radius: Int,

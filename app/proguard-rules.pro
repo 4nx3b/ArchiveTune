@@ -1,25 +1,3 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.kts.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
 # Move all classes that R8 is allowed to move into a single 'r8' package.
 # This shortens class name strings in the DEX constant pool and removes
 # per-package directory entries, reducing DEX size by ~1–3%. It does NOT
@@ -201,3 +179,11 @@
 # TDLib (Telegram) — JNI bridges into these classes by reflection; must not be renamed/stripped
 -keep class org.drinkless.tdlib.** { *; }
 -dontwarn org.drinkless.tdlib.**
+
+# Vendored td-ktx core (3 classes driving the engine's coroutine bridge).
+# Cheap insurance against R8 renaming across the vendored boundary; the
+# generated td-ktx extension wrappers are NOT vendored, so this keep adds
+# near-zero DEX compared to the upstream AAR's blanket rule.
+-keep class kotlinx.telegram.core.** { *; }
+-dontwarn kotlinx.telegram.core.**
+

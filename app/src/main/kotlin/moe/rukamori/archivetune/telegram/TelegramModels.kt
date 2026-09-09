@@ -6,13 +6,16 @@
  *
  * Plain models for the Telegram channel browser plus the lossless-format detection used to filter
  * channel content. Kept free of Android/TDLib imports so the detection logic is unit-testable.
+ *
+ * Track addressing: a track carries the server-stable unique file id
+ * ("<docId>:<dcId>") plus the raw chat/message coordinates; TDLib-local
+ * file ids are session-scoped and only used transiently for downloads.
  */
 
 package moe.rukamori.archivetune.telegram
 
 import java.util.Locale
 
-/** A public Telegram channel (or supergroup) as shown in channel search results. */
 data class TelegramChannel(
     val chatId: Long,
     val title: String,
@@ -20,19 +23,20 @@ data class TelegramChannel(
     val memberCount: Int,
     val isBroadcastChannel: Boolean,
     val photoMinithumbnail: ByteArray?,
-    /** TDLib file id of the full-size channel avatar (0 when the chat has no photo). */
-    val photoFileId: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean = other is TelegramChannel && other.chatId == chatId
 
     override fun hashCode(): Int = chatId.hashCode()
 }
 
-/** One playable audio file found in a Telegram channel. */
 data class TelegramTrack(
     val chatId: Long,
     val messageId: Long,
+
+    /** TDLib-local file id (session-scoped; used to drive downloads). */
     val fileId: Int,
+
+    /** Server-stable unique file id ("<docId>:<dcId>"), persisted in media ids. */
     val fileUniqueId: String,
     val title: String,
     val performer: String?,
@@ -42,33 +46,28 @@ data class TelegramTrack(
     val sizeBytes: Long,
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
-    /** TDLib file id of the full album-cover thumbnail (0 when the file has none). */
-    val thumbnailFileId: Int = 0,
+
+    /** TDLib file id of the album-cover/document thumbnail. */
+    val thumbnailFileId: Int,
+    val hasThumbnail: Boolean = false,
 ) {
     val mediaId: String
         get() =
             TelegramMediaId(
                 chatId = chatId,
                 messageId = messageId,
-                fileId = fileId,
                 fileUniqueId = fileUniqueId,
             ).encode()
 
     val isLossless: Boolean
         get() = isLosslessAudio(mimeType, fileName)
 
-    /** Best-effort display title: audio tag title, else the file name without its extension. */
     val displayTitle: String
         get() =
             title.ifBlank {
                 fileName.substringBeforeLast('.').ifBlank { fileName }
             }
 
-    /**
-     * Title/artist for metadata lookups (lyrics, canvas, cover art) and library rows. Prefers the
-     * audio tags; when the performer tag is missing, tries to split the file name as
-     * "Artist - Title" (with track numbers and noise stripped) so provider lookups can match.
-     */
     val lookupMetadata: TelegramTrackMetadata
         get() = deriveTrackMetadata(tagTitle = title, tagPerformer = performer, fileName = fileName)
 
@@ -78,10 +77,30 @@ data class TelegramTrack(
     override fun hashCode(): Int = (chatId * 31 + messageId).hashCode()
 }
 
-/** One page of channel audio results plus the cursor for the next page (0 = exhausted). */
 data class TelegramAudioPage(
     val tracks: List<TelegramTrack>,
     val nextFromMessageId: Long,
+)
+
+data class TelegramAccount(
+    val id: Long,
+    val firstName: String,
+    val lastName: String?,
+    val username: String?,
+    val phoneNumber: String?,
+    val isBot: Boolean,
+) {
+    val displayName: String
+        get() = listOfNotNull(firstName.takeIf { it.isNotBlank() }, lastName?.takeIf { it.isNotBlank() })
+            .joinToString(" ")
+            .ifBlank { username ?: "" }
+}
+
+data class TelegramBotInfo(
+    val chatId: Long,
+    val userId: Long,
+    val firstName: String,
+    val isBot: Boolean,
 )
 
 private val LOSSLESS_MIME_TYPES =
@@ -123,7 +142,6 @@ private val LOSSLESS_EXTENSIONS =
         "shn",
     )
 
-/** Extensions that make a document message count as audio at all (documents carry no duration). */
 private val AUDIO_EXTENSIONS =
     LOSSLESS_EXTENSIONS +
         setOf("mp3", "m4a", "aac", "ogg", "oga", "opus", "wma", "mka")
@@ -139,7 +157,6 @@ fun isLosslessAudio(
     return fileExtension(fileName) in LOSSLESS_EXTENSIONS
 }
 
-/** Whether a document message (arbitrary file) looks like an audio file worth listing. */
 fun isAudioDocument(
     mimeType: String,
     fileName: String,
@@ -149,7 +166,6 @@ fun isAudioDocument(
     return fileExtension(fileName) in AUDIO_EXTENSIONS
 }
 
-/** Cleaned-up title + optional artist derived from a track's tags/file name. */
 data class TelegramTrackMetadata(
     val title: String,
     val artist: String?,
@@ -161,7 +177,6 @@ private val BRACKET_TAG_REGEX = Regex("\\[[^\\]]*\\]")
 private val LEADING_TRACK_NUMBER_REGEX = Regex("^\\s*\\d{1,3}\\s*[.\\-]\\s*")
 private val WHITESPACE_REGEX = Regex("\\s+")
 
-/** Strips bracketed tags, "(official …)" noise and leading track numbers from a raw name. */
 fun cleanTrackName(raw: String): String =
     raw
         .replace(NOISE_SUFFIX_REGEX, " ")
@@ -170,10 +185,6 @@ fun cleanTrackName(raw: String): String =
         .replace(WHITESPACE_REGEX, " ")
         .trim()
 
-/**
- * Derives lookup metadata from tags + file name. When the performer tag is missing, a file name
- * shaped like "Artist - Title.flac" is split so the artist isn't lost (many channels tag nothing).
- */
 fun deriveTrackMetadata(
     tagTitle: String,
     tagPerformer: String?,

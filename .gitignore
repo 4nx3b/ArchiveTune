@@ -96,6 +96,9 @@ output-metadata.json
 core
 core.*
 !/core/
+# never ignore the vendored td-ktx Kotlin sources (directory named "core")
+!app/src/main/kotlin/kotlinx/telegram/core/
+!app/src/main/kotlin/kotlinx/telegram/core/**
 *.so
 *.bin
 /.trae
@@ -128,3 +131,9 @@ core.*
 /.env
 /.cursor/
 /.windsurf/
+
+# graphify knowledge-graph state (regenerable, ~60MB)
+.graphify/
+
+# tdlight local native-build workspace (scripts/tdlight)
+tdlight-work/

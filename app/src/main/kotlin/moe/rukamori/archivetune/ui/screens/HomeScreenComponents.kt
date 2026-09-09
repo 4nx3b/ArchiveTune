@@ -10,8 +10,6 @@ package moe.rukamori.archivetune.ui.screens
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
@@ -23,7 +21,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -54,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -62,13 +58,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
@@ -90,26 +81,18 @@ import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
-import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.pages.HomePage
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.SimilarRecommendation
-import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
-import moe.rukamori.archivetune.playback.queues.YouTubeQueue
-import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.SpeedDialGridItem
 import moe.rukamori.archivetune.ui.menu.AlbumMenu
 import moe.rukamori.archivetune.ui.menu.ArtistMenu
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
-import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
-import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
-import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
-import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -180,11 +163,7 @@ fun HomeSectionHeader(
     leadingIcon: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    // BitChord-style section header (2026-09-03 redesign): a heavy 22sp W700
-    // title with an optional subtitle line, typography-led rather than
-    // chrome-led, sitting at the 10dp page gutter. The fork's existing
-    // affordances (leading glyph, account avatar, tap-to-navigate) render
-    // inline before the title. See HomeFeedSectionHeader.
+
     HomeFeedSectionHeader(
         title = title,
         subtitle = label.orEmpty(),
@@ -206,7 +185,8 @@ fun SpeedDialSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -332,7 +312,7 @@ fun SpeedDialSection(
 
     fun playSpeedDialQueue(startIndex: Int) {
         if (speedDialSongs.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.speed_dial),
                 items = speedDialSongs.map { it.toMediaItem() },
@@ -425,7 +405,7 @@ fun SpeedDialSection(
                                                                 when (localItem) {
                                                                     is Song -> {
                                                                         if (isActive) {
-                                                                            playerConnection.player.togglePlayPause()
+                                                                            playerConnection?.player?.togglePlayPause()
                                                                         } else {
                                                                             playSpeedDialQueue(songIndex)
                                                                         }
@@ -574,10 +554,6 @@ private fun SpeedDialRandomTile(
     }
 }
 
-/**
- * Keep Listening section — the BitChord compact shelf (2026-09-03 redesign):
- * a single row of square 150dp cards for the mixed Song/Album/Artist items.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun KeepListeningSection(
@@ -585,7 +561,8 @@ fun KeepListeningSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -593,23 +570,12 @@ fun KeepListeningSection(
 ) {
     val context = LocalContext.current
 
-    // Per user request (2026-08-28): "Whenever I play a song from forgotten
-    // favourites, keep listening or any other section I've to play each of
-    // them manually because the queue for each song is different. it should
-    // be same. For example if I play a song in recently listened all the
-    // other next songs in queue should be from recently listened one by one
-    // in order".
-    //
-    // Filter keepListening to songs only (the section is a mix of Song /
-    // Album / Artist / Playlist) so we can build a ListQueue from just the
-    // playable items. When a song is tapped, we look up its index in this
-    // filtered list and pass it to the card as the startIndex.
     val songsInSection = remember(keepListening) { keepListening.filterIsInstance<Song>() }
 
     fun playFromSection(songId: String) {
         val index = songsInSection.indexOfFirst { it.id == songId }
         if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.keep_listening),
                 items = songsInSection.map { it.toMediaItem() },
@@ -650,11 +616,6 @@ fun KeepListeningSection(
     }
 }
 
-/**
- * Forgotten Favorites section — the BitChord compact shelf (2026-09-03
- * redesign): a single row of square 150dp song cards. Tap plays from a queue
- * built over the whole section; hold opens the song menu.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ForgottenFavoritesSection(
@@ -662,7 +623,8 @@ fun ForgottenFavoritesSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -670,20 +632,10 @@ fun ForgottenFavoritesSection(
     val context = LocalContext.current
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same. For example if I play a song in
-    // recently listened all the other next songs in queue should be
-    // from recently listened one by one in order".
-    //
-    // Build the queue from the entire section list (with the tapped song
-    // as the startIndex) so Next/Previous walks the section list in
-    // order.
     fun playSectionQueue(startIndex: Int) {
         if (distinctForgottenFavorites.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctForgottenFavorites.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.forgotten_favorites),
                 items = distinctForgottenFavorites.map { it.toMediaItem() },
@@ -716,9 +668,6 @@ fun ForgottenFavoritesSection(
     }
 }
 
-/**
- * Account Playlists section - horizontal row of YouTube playlists
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AccountPlaylistsSection(
@@ -726,7 +675,6 @@ fun AccountPlaylistsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -757,9 +705,6 @@ fun AccountPlaylistsSection(
     }
 }
 
-/**
- * Similar Recommendations section
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SimilarRecommendationsSection(
@@ -767,7 +712,6 @@ fun SimilarRecommendationsSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -796,9 +740,6 @@ fun SimilarRecommendationsSection(
     }
 }
 
-/**
- * HomePage Section - a single section from YouTube home page
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomePageSectionContent(
@@ -806,7 +747,8 @@ fun HomePageSectionContent(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -814,23 +756,13 @@ fun HomePageSectionContent(
 ) {
     val context = LocalContext.current
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same."
-    //
-    // For remote YouTube home sections (Quick Picks / Live Performances
-    // / Other Remote shelves), build the queue from the section's
-    // SongItem entries only (AlbumItem/ArtistItem/PlaylistItem navigate
-    // to detail pages, not playback) with the tapped song as the
-    // startIndex.
     val songsInSection = remember(section) { section.items.filterIsInstance<SongItem>() }
     val sectionTitle = remember(section) { section.title.takeIf { it.isNotBlank() } }
 
     fun playFromSection(songId: String) {
         val index = songsInSection.indexOfFirst { it.id == songId }
         if (index < 0 || songsInSection.isEmpty()) return
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = sectionTitle ?: context.getString(R.string.quick_picks),
                 items = songsInSection.map { it.toMediaItem() },
@@ -863,9 +795,6 @@ fun HomePageSectionContent(
     }
 }
 
-/**
- * Account playlist navigation title with image
- */
 @Composable
 fun AccountPlaylistsTitle(
     accountName: String,
@@ -918,27 +847,16 @@ fun AccountPlaylistsTitle(
     )
 }
 
-/**
- * Similar recommendations navigation title
- */
 @Composable
 fun SimilarRecommendationsTitle(
     recommendation: SimilarRecommendation,
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val thumbSizePx =
-        with(LocalDensity.current) {
-            ListThumbnailSize.roundToPx().coerceAtLeast(1)
-        }
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,
-        // Thumbnail (album art) removed per user request — the "Similar to"
-        // label + artist/album title is enough context without the leading
-        // image. Keeps these headers visually consistent with the other
-        // text-only section headers on the home page.
+
         onClick = {
             when (recommendation.title) {
                 is Song -> {
@@ -960,9 +878,6 @@ fun SimilarRecommendationsTitle(
     )
 }
 
-/**
- * HomePage section navigation title
- */
 @Composable
 fun HomePageSectionTitle(
     section: HomePage.Section,
@@ -978,12 +893,7 @@ fun HomePageSectionTitle(
         title = section.title,
         label = section.label,
         leadingIcon = {
-            // Every remote HomePage section now gets a leading icon — matches
-            // the Recently Played (history) and Keep Listening (listening)
-            // pattern so all home-section headers have a recognisable
-            // affordance before the title text. Live performances get a
-            // microphone; algorithmic shelves (Fresh finds, Old favourites,
-            // Quick picks, etc.) get an auto_awesome sparkle.
+
             val iconRes =
                 when {
                     section.title.contains("Live performance", ignoreCase = true) -> R.drawable.mic
@@ -1001,11 +911,7 @@ fun HomePageSectionTitle(
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {
-                    // Sized ImageRequest — same rationale as in
-                    // SimilarRecommendationsTitle: request a thumbnail bucket
-                    // close to 56dp instead of the original full-res artwork
-                    // the CDN would otherwise serve. This is the slow-loading
-                    // "playlist thumbnail" the user reported on the home feed.
+
                     val imageRequest =
                         remember(thumbnailUrl, thumbSizePx) {
                             ImageRequest
@@ -1041,19 +947,6 @@ fun HomePageSectionTitle(
     )
 }
 
-// ============================================================
-// Apple Music–style Home Redesign Components
-// ============================================================
-
-/**
- * "Jump back in" hero shelf — the BitChord lead-shelf treatment (2026-09-03
- * redesign): near-page-width cards (70% of the row, capped at 320dp, 0.92
- * aspect, 18dp corners) that page sideways, with the title/artist caption
- * laid over a scrim on the artwork itself.
- *
- * Uses [recentlyPlayed] (the listening-preference hero picks). Falls back
- * gracefully if fewer are available.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun JumpBackInHeroSection(
@@ -1061,7 +954,8 @@ fun JumpBackInHeroSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -1069,17 +963,10 @@ fun JumpBackInHeroSection(
     val context = LocalContext.current
     if (recentlyPlayed.isEmpty()) return
 
-    // Per user request (2026-08-28): "Whenever I play a song from
-    // forgotten favourites, keep listening or any other section I've to
-    // play each of them manually because the queue for each song is
-    // different. it should be same."
-    //
-    // Build the queue from the entire hero list with the tapped song as the
-    // startIndex, so Next/Previous walks the shelf in order.
     fun playFromSection(startIndex: Int) {
         if (recentlyPlayed.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, recentlyPlayed.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.home_jump_back_in_badge),
                 items = recentlyPlayed.map { it.toMediaItem() },
@@ -1090,8 +977,7 @@ fun JumpBackInHeroSection(
 
     Column(modifier = modifier.fillMaxWidth()) {
         HomeFeedSectionHeader(title = stringResource(R.string.home_jump_back_in_badge))
-        // Measured rather than taken as a share of the parent, because the
-        // card has a ceiling as well as a fraction — see homeHeroCardWidth().
+
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val cardWidth = homeHeroCardWidth(maxWidth)
             LazyRow(
@@ -1112,7 +998,7 @@ fun JumpBackInHeroSection(
                         isPlaying = isPlaying,
                         onClick = {
                             if (song.id == mediaMetadata?.id) {
-                                playerConnection.player.togglePlayPause()
+                                playerConnection?.player?.togglePlayPause()
                             } else {
                                 playFromSection(index)
                             }
@@ -1135,12 +1021,6 @@ fun JumpBackInHeroSection(
     }
 }
 
-/**
- * "Recently Played" section — the BitChord compact shelf (2026-09-03
- * redesign): a single row of square 150dp cards, 12dp corners, hairline
- * thumbnail border, with the title and artist beneath the artwork. Tap plays
- * from a queue built over the whole section; hold opens the song menu.
- */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RecentlyPlayedSection(
@@ -1148,7 +1028,8 @@ fun RecentlyPlayedSection(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (moe.rukamori.archivetune.playback.queues.Queue) -> Unit = { playerConnection?.playQueue(it) },
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
@@ -1157,16 +1038,10 @@ fun RecentlyPlayedSection(
     val distinctSongs = remember(recentlyPlayed) { recentlyPlayed.distinctBy { it.id } }
     if (distinctSongs.isEmpty()) return
 
-    // Per user request (2026-08-28): "Whenever I play a song from forgotten
-    // favourites, keep listening or any other section I've to play each of
-    // them manually because the queue for each song is different. it should
-    // be same. For example if I play a song in recently listened all the
-    // other next songs in queue should be from recently listened one by one
-    // in order".
     fun playFromSection(startIndex: Int) {
         if (distinctSongs.isEmpty()) return
         val safeStart = startIndex.coerceIn(0, distinctSongs.lastIndex)
-        playerConnection.playQueue(
+        onPlayQueue(
             ListQueue(
                 title = context.getString(R.string.recently_played),
                 items = distinctSongs.map { it.toMediaItem() },
@@ -1199,13 +1074,6 @@ fun RecentlyPlayedSection(
     }
 }
 
-/**
- * Helper that renders the small neutral glyph used as the leading icon for
- * section headers (clock for "Recently Played", bolt for "Speed Dial").
- * Restyled for the BitChord header design (2026-09-03): the icon now renders
- * inline at 20dp with no circular container, so the header reads as
- * typography first with a quiet affordance before it.
- */
 @Composable
 fun HomeSectionLeadingIcon(
     iconRes: Int,

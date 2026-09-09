@@ -39,7 +39,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -61,7 +61,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -103,6 +102,10 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -112,7 +115,6 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
-import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
@@ -154,7 +156,10 @@ fun AodCustomizedScreen(
     navController: NavController,
     scrollTo: String? = null,
 ) {
-    val scrollBehavior = appBarScrollBehavior()
+
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
             AodThumbnailShapeKey,
@@ -266,14 +271,10 @@ fun AodCustomizedScreen(
         }
 
     Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFlexibleTopAppBar(
+            TopAppBar(
                 title = {},
                 navigationIcon = {
                     FrostedHeaderPill(plain = true) {
@@ -295,10 +296,9 @@ fun AodCustomizedScreen(
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior,
                 colors =
-                    TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
                         scrolledContainerColor = Color.Transparent,
                     ),
             )
@@ -312,20 +312,27 @@ fun AodCustomizedScreen(
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         val positions = rememberPreferencePositions()
         androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+
+        Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
+                    .hazeSource(headerHaze)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
                     )
-                    // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+
                     .then(positions.containerModifier()),
-            contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 16.dp),
+            contentPadding =
+                PaddingValues(
+
+                    top = paddingValues.calculateTopPadding(),
+                    bottom = playerAwareBottomPadding + 16.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item(
@@ -653,6 +660,12 @@ fun AodCustomizedScreen(
                 Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
             }
         }
+
+        ScreenHeaderHaze(
+            hazeState = headerHaze,
+            systemBarsTopPadding = systemBarsTopPadding,
+        )
+        }
     }
 }
 
@@ -867,8 +880,7 @@ private fun PreviewProgress(
     showTimeLabels: Boolean,
     sliderStyle: SliderStyle = SliderStyle.Standard,
 ) {
-    // Static 46% preview value — gives the user a feel for what each slider
-    // style looks like at a glance, without animating in the customize screen.
+
     var previewValue by remember { mutableFloatStateOf(0.46f) }
 
     Column(

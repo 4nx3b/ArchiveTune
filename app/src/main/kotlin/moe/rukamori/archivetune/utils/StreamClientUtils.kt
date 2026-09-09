@@ -20,14 +20,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.util.Locale
 
-/**
- * Shared utility for resolving the correct User-Agent and Origin/Referer headers
- * based on the stream client query parameters embedded in YouTube stream URLs.
- *
- * This centralizes the logic that was previously duplicated across:
- * - MusicService OkHttp interceptor
- * - DownloadUtil OkHttp interceptor
- */
 object StreamClientUtils {
     data class StreamRequestProfile(
         val requestedClientName: String,
@@ -46,31 +38,13 @@ object StreamClientUtils {
             get() = "$resolvedClientFamily@$resolvedClientVersion"
     }
 
-    /**
-     * Resolve the correct User-Agent for a YouTube media request based on
-     * the `c` query parameter from the stream URL.
-     *
-     * @param clientParam  the value of the `c` query parameter (e.g. "WEB_REMIX", "IOS", "ANDROID_VR")
-     * @return the appropriate User-Agent string
-     */
     fun resolveUserAgent(clientParam: String): String = resolveRequestProfile(clientParam = clientParam).userAgent
 
-    /**
-     * Data class holding Origin and Referer header values (nullable when not required).
-     */
     data class OriginReferer(
         val origin: String?,
         val referer: String?,
     )
 
-    /**
-     * Determine the correct Origin and Referer for a YouTube media request.
-     * Web, mobile web, YouTube Music, and TV clients use their corresponding
-     * YouTube origin; native app clients do not need these headers.
-     *
-     * @param clientParam  the value of the `c` query parameter
-     * @return [OriginReferer] with appropriate values, or null fields if not needed
-     */
     fun resolveOriginReferer(clientParam: String): OriginReferer =
         resolveRequestProfile(clientParam = clientParam).let { OriginReferer(it.origin, it.referer) }
 
@@ -121,10 +95,6 @@ object StreamClientUtils {
         return requestBuilder
     }
 
-    /**
-     * Check whether the given client parameter represents a web-type client
-     * that requires poToken for playback requests.
-     */
     fun isWebClient(clientParam: String): Boolean = resolveRequestProfile(clientParam = clientParam).requiresPlaybackProbeRanges
 
     fun isWebClient(requestProfile: StreamRequestProfile): Boolean = requestProfile.requiresPlaybackProbeRanges
@@ -138,13 +108,6 @@ object StreamClientUtils {
             ?.uppercase(Locale.US)
             .orEmpty()
 
-    /**
-     * Append a poToken to a stream URL as the `pot` query parameter.
-     *
-     * @param url      the stream URL
-     * @param poToken  the token to append
-     * @return the URL with the `pot` parameter appended
-     */
     fun appendPoToken(
         url: String,
         poToken: String,
@@ -154,14 +117,6 @@ object StreamClientUtils {
         return "$url${separator}pot=$poToken"
     }
 
-    /**
-     * Patch the `cver` (client version) parameter in a stream URL to match the actual
-     * client version we used, preventing version mismatch 403 errors.
-     *
-     * @param url           the original stream URL
-     * @param clientVersion the client version string that was used for the player request
-     * @return the patched URL, or the original URL if no patching was needed
-     */
     fun patchClientVersion(
         url: String,
         clientVersion: String,

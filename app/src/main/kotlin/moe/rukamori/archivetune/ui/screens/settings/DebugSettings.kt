@@ -96,17 +96,6 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 
-/**
- * Best-effort: sum the cached bytes for a song across all source-prefixed
- * cache keys (qobuz:, tidal:, deezer:, and the bare mediaId). Used as a
- * fallback when the persisted FormatEntity has contentLength == 0 — common
- * for FLAC streams where the upstream provider doesn't expose
- * Content-Length on the resolved stream URL. Returns 0 if no cache entries
- * exist for the song yet (e.g. before playback starts).
- *
- * This is intentionally a thin reflection of what's on disk — it does not
- * distinguish between partial and complete caches, just sums span sizes.
- */
 private fun sumCachedBytesForSong(
     downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil?,
     songId: String,
@@ -151,12 +140,6 @@ fun DebugSettings(navController: NavController) {
 
     val playerConnection = LocalPlayerConnection.current
 
-    // Header haze (2026-09-04, user request: "There's no haze effect and
-    // header behaviour like home page in developer options, updates and
-    // about page") — the same progressive top-fade blur the Home route and
-    // the other settings screens use: the scrolling content is the haze
-    // source, the transparent pill header zone blurs whatever scrolls
-    // under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -207,11 +190,7 @@ fun DebugSettings(navController: NavController) {
                                 WindowInsetsSides.Horizontal,
                             ),
                         ).verticalScroll(scrollState)
-                        // Haze source for the pinned header's top-fade blur —
-                        // chained AFTER verticalScroll (like every ported
-                        // screen) so the top padding scrolls away and content
-                        // flows under the header pill, which is what makes the
-                        // blur visible.
+
                         .hazeSource(headerHaze)
                         .padding(top = topPadding)
                         .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
@@ -308,11 +287,6 @@ fun DebugSettings(navController: NavController) {
             }
             }
 
-            // Header haze overlay — later sibling of the scrolling content so
-            // it draws on top of it, under the pinned pill header (the same
-            // placement every ported settings screen uses; the bottom spacing
-            // the old trailing Spacer provided now rides on the Column's own
-            // bottom padding).
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
@@ -350,9 +324,7 @@ private fun DiscordDebugSection() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // weight(1f) keeps the trailing status chip at its intrinsic width. Without it a
-                // long localized subtitle consumes the whole row and the chip's Text is measured
-                // with near-zero width, wrapping "ACTIVE" one letter per line.
+
                 Row(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -515,14 +487,7 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var currentPosition by remember { mutableLongStateOf(0L) }
     var playbackSpeed by remember { mutableStateOf(1.0f) }
-    // Best-effort fallback size when the persisted FormatEntity has
-    // contentLength == 0 (common for FLAC streams where the upstream
-    // provider doesn't expose Content-Length on the stream URL). We sum
-    // the bytes held under all source-prefixed cache keys (qobuz:,
-    // tidal:, deezer:, and the bare mediaId) so the card shows e.g.
-    // "32.45 MB" once the playerCache has the bytes, even before the
-    // HEAD-request backfill in MusicService.persistDirectStreamFormat
-    // completes.
+
     var fallbackSizeBytes by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
@@ -531,10 +496,7 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
             bufferedPosition = player.bufferedPosition
             currentPosition = player.currentPosition
             playbackSpeed = player.playbackParameters.speed
-            // Refresh the fallback size every poll. Cheap once the cache is
-            // fully populated (a few ConcurrentHashMap lookups); expensive
-            // only when the cache is mid-write, in which case we want the
-            // updated number anyway.
+
             val songId = mediaMetadata?.id
             if (songId != null && (currentFormat?.contentLength ?: 0L) <= 0L) {
                 fallbackSizeBytes = runCatching {

@@ -740,33 +740,6 @@ object ComposeToImage {
         canvas.drawText(appName, textX, textY, appNamePaint)
     }
 
-    /**
-     * Renders a "vinyl"-style share image inspired by the MD Vinyl reference
-     * screenshot the user uploaded. Layout (top-to-bottom, left-to-right):
-     *
-     *   - Dark teal/navy background filling the canvas.
-     *   - Centered horizontal Row (vertically centered around the upper 60%
-     *     of the canvas) containing:
-     *       * Square album cover on the LEFT, with a thin white border.
-     *       * Vinyl record (black disc + subtle groove rings + cyan center
-     *         label) peeking out from BEHIND the cover on the RIGHT. The
-     *         cover overlaps the left ~40% of the disc.
-     *       * Song title + artist drawn on the center label (multi-line,
-     *         centered, ellipsized if too long).
-     *   - Song title in large white bold text below the cover/vinyl row.
-     *   - Artist name in smaller white text below the title.
-     *   - "ARCHIVETUNE" wordmark at the very bottom.
-     *
-     * The image is always rendered as a square (canvasSize × canvasSize),
-     * regardless of [width]/[height] — the vinyl aesthetic only works at 1:1.
-     * Callers passing non-square dimensions get a square back, padded to the
-     * larger of width/height, so the share intent always receives a valid
-     * image.
-     *
-     * If the album art can't be loaded, the cover is rendered as a flat dark
-     * grey square with a music-note glyph fallback (so the layout still reads
-     * as "vinyl + cover" rather than collapsing to just a disc).
-     */
     @RequiresApi(Build.VERSION_CODES.M)
     suspend fun createVinylImage(
         context: Context,
@@ -781,9 +754,6 @@ object ComposeToImage {
             val bitmap = createBitmap(canvasSize, canvasSize)
             val canvas = Canvas(bitmap)
 
-            // --- Background ---------------------------------------------------
-            // Deep teal/navy from the reference screenshot. A subtle vertical
-            // gradient adds depth without distracting from the vinyl.
             val bgTop = 0xFF0A1F24.toInt()
             val bgBottom = 0xFF051418.toInt()
             val bgPaint = Paint().apply {
@@ -796,7 +766,6 @@ object ComposeToImage {
             }
             canvas.drawRect(0f, 0f, canvasSize.toFloat(), canvasSize.toFloat(), bgPaint)
 
-            // --- Load cover art (best-effort) --------------------------------
             var coverArtBitmap: Bitmap? = null
             if (coverArtUrl != null) {
                 runCatching {
@@ -810,12 +779,6 @@ object ComposeToImage {
                 }
             }
 
-            // --- Geometry -----------------------------------------------------
-            // Cover occupies ~46% of the canvas on the left; vinyl disc is the
-            // same size, positioned so its left edge sits ~18% into the cover
-            // (creating the "peeking out" effect). Both are vertically centered
-            // around 42% of the canvas height (slightly above true center to
-            // leave room for the title/artist below).
             val coverSize = canvasSize * 0.46f
             val discSize = canvasSize * 0.46f
             val coverLeft = canvasSize * 0.22f
@@ -825,11 +788,6 @@ object ComposeToImage {
             val discCenterX = discLeft + discSize / 2f
             val discCenterY = discTop + discSize / 2f
 
-            // --- Vinyl disc ---------------------------------------------------
-            // Drawn FIRST so the cover overlaps it. Layered as:
-            //   1. Black disc (filled circle)
-            //   2. Subtle groove rings (concentric circles, faint stroke)
-            //   3. Cyan center label (smaller filled circle)
             val discPaint = Paint().apply {
                 color = 0xFF050505.toInt()
                 isAntiAlias = true
@@ -848,7 +806,6 @@ object ComposeToImage {
                 canvas.drawCircle(discCenterX, discCenterY, radius, groovePaint)
             }
 
-            // Center label — cyan/teal gradient, ~38% of disc diameter.
             val labelRadius = discSize * 0.19f
             val labelPaint = Paint().apply {
                 isAntiAlias = true
@@ -860,15 +817,12 @@ object ComposeToImage {
             }
             canvas.drawCircle(discCenterX, discCenterY, labelRadius, labelPaint)
 
-            // Center hole (small black dot)
             val holePaint = Paint().apply {
                 color = 0xFF000000.toInt()
                 isAntiAlias = true
             }
             canvas.drawCircle(discCenterX, discCenterY, discSize * 0.012f, holePaint)
 
-            // Label text — song title (bold) + artist (regular), drawn as
-            // multi-line StaticLayouts centered on the label.
             val labelTextSize = labelRadius * 0.32f
             val titlePaint = TextPaint().apply {
                 color = 0xFF0A1F24.toInt()
@@ -908,8 +862,6 @@ object ComposeToImage {
                 artistLayout.draw(canvas)
             }
 
-            // --- Album cover --------------------------------------------------
-            // Drawn AFTER the disc so it overlaps the left part of the vinyl.
             val coverRect = RectF(coverLeft, coverTop, coverLeft + coverSize, coverTop + coverSize)
             val coverPath = Path().apply {
                 addRect(coverRect, Path.Direction.CW)
@@ -921,7 +873,7 @@ object ComposeToImage {
                     drawRect(coverRect, Paint().apply { color = 0xFF1A2A2E.toInt() })
                 }
             }
-            // White border around the cover (1.5% of cover size).
+
             val coverBorderPaint = Paint().apply {
                 style = Paint.Style.STROKE
                 strokeWidth = coverSize * 0.015f
@@ -930,7 +882,6 @@ object ComposeToImage {
             }
             canvas.drawRect(coverRect, coverBorderPaint)
 
-            // --- Title + artist below the artwork ----------------------------
             val titleTextPaint = TextPaint().apply {
                 color = 0xFFFFFFFF.toInt()
                 textSize = canvasSize * 0.038f
@@ -974,7 +925,6 @@ object ComposeToImage {
                 artistTextLayout.draw(canvas)
             }
 
-            // --- Bottom wordmark ---------------------------------------------
             val wordmarkPaint = TextPaint().apply {
                 color = 0x99FFFFFF.toInt()
                 textSize = canvasSize * 0.018f
@@ -1030,20 +980,6 @@ object ComposeToImage {
     }
 }
 
-/**
- * Fetches the image at [thumbnailUrl] via Coil and saves it to
- * `Pictures/ArchiveTune/<fileName>.png` via MediaStore (Android 10+) or
- * the app's cache dir + FileProvider (pre-Q). Returns the saved [Uri] on
- * success, or null if the URL was null/blank, the network fetch failed,
- * or the decoded bitmap was null.
- *
- * Used by the "Download cover" overflow-menu action in song menus —
- * gives users a one-tap way to save the album art for any song to their
- * gallery without needing to grant runtime permissions.
- *
- * Must be called on a background dispatcher (it does network I/O + disk
- * writes); callers typically wrap it in `withContext(Dispatchers.IO)`.
- */
 suspend fun saveCoverArtworkFromUrl(
     context: Context,
     thumbnailUrl: String?,

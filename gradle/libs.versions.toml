@@ -27,6 +27,8 @@ workManager = "2.11.2"
 composeReorderable = "3.1.0"
 squigglyslider = "1.0.0"
 shimmer = "1.5.0"
+lottie = "6.6.6"
+profileinstaller = "1.4.1"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
 brotli = "0.1.2"
@@ -61,10 +63,10 @@ extractor = "0.26.5"
 pipepipe = "f8982ca9e7"
 braveNewpipe = "0fcaf19ecc"
 graphicsShapes = "1.0.1"
-quickjsKt = "1.0.14"
 bouncyCastle = "1.85"
 translator = "1.1.1"
 rhino = "1.9.1"
+quickjsKt = "1.0.14"
 markwon = "4.6.2"
 okhttp = "5.4.0"
 accompanist = "1.0.19"
@@ -121,6 +123,8 @@ coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 shimmer = { module = "com.valentinilk.shimmer:compose-shimmer", version.ref = "shimmer" }
+lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
+profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
 
 palette = { module = "androidx.palette:palette-ktx", version.ref = "palette" }
 
@@ -184,8 +188,8 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 pipepipe-extractor = { module = "com.github.maxrave-dev:PipePipeExtractor", version.ref = "pipepipe" }
 brave-extractor = { module = "com.github.maxrave-dev:BravePipeExtractor", version.ref = "braveNewpipe" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
-quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }

@@ -304,11 +304,44 @@ private class GmsCastMediaItemConverter(
 
     override fun toMediaItem(mediaQueueItem: MediaQueueItem): MediaItem =
         try {
-            delegate.toMediaItem(mediaQueueItem)
+            delegate
+                .toMediaItem(mediaQueueItem)
+                .enrichWithAppMetadata(mediaQueueItem)
         } catch (error: RuntimeException) {
             Timber.tag("Cast").w(error, "Falling back to manual Cast media item conversion")
             mediaQueueItem.toFallbackMediaItem()
         }
+
+    private fun MediaItem.enrichWithAppMetadata(mediaQueueItem: MediaQueueItem): MediaItem {
+        val mediaInfo = mediaQueueItem.media
+        val appMetadata = (localConfiguration?.tag as? moe.rukamori.archivetune.models.MediaMetadata)
+            ?: mediaInfo.toAppMediaMetadata(mediaId)
+        val media3Metadata = mediaMetadata
+        val enrichedMedia3Metadata =
+            if (media3Metadata.title == null || media3Metadata.artist == null) {
+                val castMetadata = mediaInfo?.metadata
+                media3Metadata
+                    .buildUpon()
+                    .apply {
+                        if (media3Metadata.title == null) {
+                            castMetadata?.stringValue(CastMetadata.KEY_TITLE)?.let { title ->
+                                setTitle(title)
+                            }
+                        }
+                        if (media3Metadata.artist == null) {
+                            castMetadata?.stringValue(CastMetadata.KEY_ARTIST)?.let { artist ->
+                                setArtist(artist)
+                            }
+                        }
+                    }.build()
+            } else {
+                media3Metadata
+            }
+        return buildUpon()
+            .setTag(appMetadata)
+            .setMediaMetadata(enrichedMedia3Metadata)
+            .build()
+    }
 
     private fun MediaItem.resolveForReceiver(): MediaItem {
         val uri = localConfiguration?.uri ?: return this

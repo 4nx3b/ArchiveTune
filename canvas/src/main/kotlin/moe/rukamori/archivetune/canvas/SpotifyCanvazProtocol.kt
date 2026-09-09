@@ -9,38 +9,6 @@ package moe.rukamori.archivetune.canvas
 
 import java.io.ByteArrayOutputStream
 
-/**
- * Minimal, dependency-free protobuf codec for Spotify's Canvas endpoint
- * (`POST https://spclient.wg.spotify.com/canvaz-cache/v0/canvases`).
- *
- * Spotify serves Canvas metadata as protobuf, not JSON, so this module needs to
- * speak just enough of the wire format to build the request and pull the video
- * URL back out. Only two messages are involved and each needs a single field,
- * so hand-rolling the two varint/length-delimited paths is far cheaper than
- * adding a protobuf runtime + codegen to a pure-JVM module:
- *
- * ```proto
- * message EntityCanvazRequest {
- *   repeated Entity entities = 1;
- *   message Entity { string entity_uri = 1; }
- * }
- *
- * message EntityCanvazResponse {
- *   repeated Canvaz canvases = 1;
- *   message Canvaz {
- *     string id         = 1;
- *     string url        = 2;   // the looping canvas video (mp4)
- *     string file_id    = 3;
- *     Type   type       = 4;
- *     string entity_uri = 5;   // spotify:track:<id> this canvas belongs to
- *   }
- *   string ttl_in_seconds = 2;
- * }
- * ```
- *
- * Unknown fields are skipped rather than rejected, so Spotify adding fields to
- * either message is a no-op here.
- */
 internal object SpotifyCanvazProtocol {
     private const val WIRE_VARINT = 0
     private const val WIRE_64BIT = 1
@@ -49,28 +17,19 @@ internal object SpotifyCanvazProtocol {
     private const val WIRE_END_GROUP = 4
     private const val WIRE_32BIT = 5
 
-    /** `EntityCanvazRequest.entities` / `EntityCanvazResponse.canvases`. */
     private const val FIELD_ENTITIES = 1
 
-    /** `EntityCanvazRequest.Entity.entity_uri`. */
     private const val FIELD_ENTITY_URI = 1
 
-    /** `EntityCanvazResponse.Canvaz.url`. */
     private const val FIELD_CANVAZ_URL = 2
 
-    /** `EntityCanvazResponse.Canvaz.entity_uri`. */
     private const val FIELD_CANVAZ_ENTITY_URI = 5
 
-    /** A single canvas entry decoded out of an `EntityCanvazResponse`. */
     data class CanvazEntry(
         val entityUri: String?,
         val url: String?,
     )
 
-    /**
-     * Encodes an `EntityCanvazRequest` asking for the canvas of each of
-     * [trackUris] (full `spotify:track:<id>` URIs).
-     */
     fun encodeRequest(trackUris: List<String>): ByteArray {
         val out = ByteArrayOutputStream()
         for (uri in trackUris) {
@@ -82,12 +41,6 @@ internal object SpotifyCanvazProtocol {
         return out.toByteArray()
     }
 
-    /**
-     * Decodes an `EntityCanvazResponse` into its canvas entries. Returns an empty
-     * list for a well-formed response with no canvases, and also for a truncated
-     * or unexpected body — a malformed response is treated as "no canvas" rather
-     * than an error, since a missing canvas is the common case.
-     */
     fun decodeResponse(bytes: ByteArray): List<CanvazEntry> {
         val reader = Reader(bytes)
         val entries = mutableListOf<CanvazEntry>()
@@ -123,8 +76,6 @@ internal object SpotifyCanvazProtocol {
         return CanvazEntry(entityUri = entityUri, url = url)
     }
 
-    // ── Writing ──────────────────────────────────────────────────────────────
-
     private fun writeStringField(
         out: ByteArrayOutputStream,
         field: Int,
@@ -156,8 +107,6 @@ internal object SpotifyCanvazProtocol {
             out.write(chunk or 0x80)
         }
     }
-
-    // ── Reading ──────────────────────────────────────────────────────────────
 
     private data class Tag(
         val field: Int,
@@ -200,15 +149,13 @@ internal object SpotifyCanvazProtocol {
             return slice
         }
 
-        /** Advances past a field of [wire] type. Returns false if unrecoverable. */
         fun skip(wire: Int): Boolean =
             when (wire) {
                 WIRE_VARINT -> readVarint() != null
                 WIRE_64BIT -> advance(8)
                 WIRE_LENGTH_DELIMITED -> readLengthDelimited() != null
                 WIRE_32BIT -> advance(4)
-                // Groups are deprecated and never appear in these messages; an
-                // end-group marker here means we are out of sync.
+
                 WIRE_START_GROUP, WIRE_END_GROUP -> false
                 else -> false
             }

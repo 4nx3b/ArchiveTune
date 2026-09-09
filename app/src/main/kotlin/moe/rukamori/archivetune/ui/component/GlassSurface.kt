@@ -35,25 +35,16 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.utils.rememberPreference
 
-/** True while the user has opted into the Liquid Glass look. */
 @Composable
 fun rememberLiquidGlassEnabled(): Boolean {
     val enabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     return enabled
 }
 
-/**
- * Container colour for a screen that sits over the glass backdrop: transparent when Liquid Glass
- * is on so the backdrop shows through, and the ordinary Material 3 surface when it is off.
- */
 @Composable
 fun glassAwareSurface(): Color =
     if (rememberLiquidGlassEnabled()) Color.Transparent else MaterialTheme.colorScheme.surface
 
-/**
- * Large-top-app-bar colours to match [glassAwareSurface]. `scrolledContainerColor` is already
- * transparent in the Material 3 path here, so only the resting container colour changes.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
@@ -62,20 +53,6 @@ fun glassAwareLargeTopAppBarColors(): TopAppBarColors =
         scrolledContainerColor = Color.Transparent,
     )
 
-/**
- * Container colour for a card that sits over the glass backdrop: a translucent tint when Liquid
- * Glass is on, and the ordinary Material 3 [MaterialTheme.colorScheme.surfaceContainerHigh]
- * otherwise.
- *
- * The two alphas differ because the backdrop does: over a dark backdrop a card has to *add* light
- * to read as raised, over a light one it has to stay mostly opaque or the text underneath shows
- * through. Same values the fork settled on.
- *
- * Which of the two applies is read off the surface's own luminance rather than
- * `isSystemInDarkTheme()`: the app's dark mode is a preference with an AUTO/ON/OFF setting plus a
- * pure-black variant, so forcing dark on a light system would otherwise paint the light tint over
- * a dark card and wash the text out.
- */
 @Composable
 fun glassAwareCardColor(): Color =
     when {
@@ -85,11 +62,6 @@ fun glassAwareCardColor(): Color =
         else -> Color.White.copy(alpha = 0.65f)
     }
 
-/**
- * The hairline that separates a glass card from the backdrop — brighter at the top than the
- * bottom, so the card reads as lit from above. A no-op while Liquid Glass is off: a Material 3
- * card is separated by its own elevation and tone, and outlining it as well just looks noisy.
- */
 @Composable
 fun Modifier.glassAwareCardBorder(shape: Shape): Modifier =
     if (!rememberLiquidGlassEnabled()) {

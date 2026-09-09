@@ -101,9 +101,6 @@ class ExoDownloadService :
             ).build()
     }
 
-    /**
-     * This helper will outlive the lifespan of a single instance of [ExoDownloadService]
-     */
     class TerminalStateNotificationHelper(
         private val context: Context,
         private val notificationHelper: DownloadNotificationHelper,

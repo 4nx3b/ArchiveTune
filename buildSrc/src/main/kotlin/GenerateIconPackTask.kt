@@ -16,6 +16,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
@@ -49,6 +50,9 @@ abstract class GenerateIconPackTask : DefaultTask() {
     @get:Input
     abstract val targetActivityClassName: Property<String>
 
+    @get:Input
+    abstract val excludedIconIds: SetProperty<String>
+
     @get:OutputDirectory
     abstract val resourceOutputDirectory: DirectoryProperty
 
@@ -60,7 +64,11 @@ abstract class GenerateIconPackTask : DefaultTask() {
 
     @TaskAction
     fun generate() {
-        val metadata = parseMetadata()
+        val excluded = excludedIconIds.get()
+        val metadata =
+            parseMetadata().filter { rawEntry ->
+                (rawEntry as? Map<*, *>)?.get("Id")?.toString() !in excluded
+            }
         val resourcesDirectory = resourceOutputDirectory.get().asFile
         val assetsDirectory = assetOutputDirectory.get().asFile
         val manifestFile = manifestOutputFile.get().asFile

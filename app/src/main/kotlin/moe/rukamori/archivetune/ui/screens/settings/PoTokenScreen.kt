@@ -494,7 +494,7 @@ private fun RegenerateTokenSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier

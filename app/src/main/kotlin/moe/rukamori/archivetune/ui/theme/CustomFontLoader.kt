@@ -24,6 +24,9 @@ object CustomFontLoader {
             "font/ttf",
             "application/x-font-ttf",
             "application/x-font-truetype",
+            "font/otf",
+            "application/x-font-opentype",
+            "application/vnd.ms-opentype",
             "application/octet-stream",
         )
 
@@ -55,7 +58,26 @@ object CustomFontLoader {
     fun isSupportedTtf(
         context: Context,
         uri: Uri,
-    ): Boolean = displayName(context, uri).endsWith(".ttf", ignoreCase = true)
+    ): Boolean {
+        val name = displayName(context, uri)
+        return name.endsWith(".ttf", ignoreCase = true) || name.endsWith(".otf", ignoreCase = true)
+    }
+
+    suspend fun applyDownloadedFont(
+        context: Context,
+        bytes: ByteArray,
+        fileName: String,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val fontDirectory = File(context.filesDir, "custom_fonts")
+                if (!fontDirectory.exists()) fontDirectory.mkdirs()
+                val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val fontFile = File(fontDirectory, safeName)
+                fontFile.writeBytes(bytes)
+                Uri.fromFile(fontFile).toString()
+            }.getOrNull()
+        }
 
     suspend fun loadFontFamily(
         context: Context,

@@ -29,8 +29,6 @@ import kotlinx.serialization.json.Json
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-// --- Data models for public client ---
-
 @Serializable
 data class SaavnDownloadUrl(
     @SerialName("quality") val quality: String = "",
@@ -72,11 +70,9 @@ data class SaavnSong(
     @SerialName("image") val image: List<SaavnImage> = emptyList(),
     @SerialName("downloadUrl") val downloadUrl: List<SaavnDownloadUrl> = emptyList(),
     @SerialName("album") val album: SaavnAlbum? = null,
-    /** True when JioSaavn marks this track as Pro-Only (paid/premium content). */
+
     val isProOnly: Boolean = false,
 )
-
-// --- JioSaavn Raw API Response Models ---
 
 @Serializable
 data class RawArtistMapItem(
@@ -93,10 +89,6 @@ data class RawArtistMap(
     val artists: List<RawArtistMapItem> = emptyList(),
 )
 
-/**
- * Rights information returned by JioSaavn for every song.
- * code == "1" means the track is Pro-Only (requires a paid subscription).
- */
 @Serializable
 data class RawRights(
     val code: String = "",
@@ -104,7 +96,7 @@ data class RawRights(
     @SerialName("delete_cached_object") val deleteCachedObject: String = "",
     val reason: String = "",
 ) {
-    /** True when this track is gated behind JioSaavn Pro. */
+
     val isProOnly: Boolean
         get() = code == "1" || reason.contains("Pro Only", ignoreCase = true)
 }
@@ -116,7 +108,7 @@ data class RawMoreInfo(
     @SerialName("encrypted_media_url") val encryptedMediaUrl: String = "",
     val duration: String = "",
     val artistMap: RawArtistMap = RawArtistMap(),
-    /** Pro/rights gating metadata. code=="1" means Pro-Only. */
+
     val rights: RawRights = RawRights(),
 )
 
@@ -145,8 +137,6 @@ data class RawSongsResponse(
     val songs: List<RawSongItem> = emptyList(),
 )
 
-// --- Service ---
-
 object SaavnService {
     private const val TAG = "SaavnService"
 
@@ -167,8 +157,7 @@ object SaavnService {
         HttpClient(CIO) {
             install(ContentNegotiation) { json(json) }
             install(HttpTimeout) {
-                // Keep timeouts short so that a slow/unavailable Saavn response
-                // falls back to YouTube quickly.
+
                 requestTimeoutMillis = 6_000
                 connectTimeoutMillis = 4_000
                 socketTimeoutMillis = 6_000
@@ -189,14 +178,11 @@ object SaavnService {
         }
     }
 
-    /**
-     * Decrypt the encrypted media URL string returned by JioSaavn using DES-ECB.
-     */
     private fun decryptUrl(encryptedUrl: String): String {
         if (encryptedUrl.isBlank()) return ""
         Log.d(TAG, "decryptUrl: encryptedUrl length = ${encryptedUrl.length}")
         return try {
-            val key = "38346591" // DES 8-byte key
+            val key = "38346591"
             val secretKey = SecretKeySpec(key.toByteArray(Charsets.UTF_8), "DES")
             val cipher = Cipher.getInstance("DES/ECB/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey)
@@ -211,9 +197,6 @@ object SaavnService {
         }
     }
 
-    /**
-     * Decode and build direct CDN download URLs for different audio bitrates.
-     */
     private fun createDownloadLinks(encryptedUrl: String): List<SaavnDownloadUrl> {
         Log.d(TAG, "createDownloadLinks: starting decryption for URL...")
         val decryptedUrl = decryptUrl(encryptedUrl)
@@ -246,9 +229,6 @@ object SaavnService {
         return generatedUrls
     }
 
-    /**
-     * Clean and generate higher quality image URLs matching typical grid sizes.
-     */
     private fun createImageLinks(link: String): List<SaavnImage> {
         if (link.isBlank()) return emptyList()
         val qualities = listOf("50x50", "150x150", "500x500")
@@ -261,9 +241,6 @@ object SaavnService {
         }
     }
 
-    /**
-     * Map the raw API structure received from JioSaavn into SaavnSong models used in playback.
-     */
     private fun mapRawToSaavnSong(raw: RawSongItem): SaavnSong {
         val primaryArtists =
             raw.moreInfo.artistMap.primaryArtists.map {
@@ -300,9 +277,6 @@ object SaavnService {
         )
     }
 
-    /**
-     * Search for songs on JioSaavn directly by a free-form query.
-     */
     suspend fun searchSongs(query: String): Result<List<SaavnSong>> =
         runCatching {
             Log.d(TAG, "searchSongs: query=\"$query\"")
@@ -312,10 +286,10 @@ object SaavnService {
                     parameter("_format", "json")
                     parameter("_marker", "0")
                     parameter("api_version", "4")
-                    parameter("ctx", "android") // android ctx: better 320kbps access than wap6dot0
+                    parameter("ctx", "android")
                     parameter("q", query)
                     parameter("p", "1")
-                    parameter("n", "10") // larger pool -> better candidate matching
+                    parameter("n", "10")
                 }
 
             Log.d(TAG, "searchSongs: HTTP response status: ${response.status}")
@@ -337,10 +311,6 @@ object SaavnService {
             Log.e(TAG, "searchSongs: failed for query=\"$query\"", it)
         }
 
-    /**
-     * Choose the best stream URL matching [quality] from a list of download URLs.
-     * If the exact quality is not found, it falls back to 320kbps or the highest quality.
-     */
     fun selectBestUrl(
         urls: List<SaavnDownloadUrl>,
         quality: String,
@@ -352,30 +322,23 @@ object SaavnService {
             return null
         }
 
-        // 1. Try the exact requested quality
         val exactUrl = filteredUrls.firstOrNull { it.quality.equals(quality, ignoreCase = true) }?.url
         if (exactUrl != null) {
             Log.d(TAG, "selectBestUrl: exact match found for $quality: $exactUrl")
             return exactUrl
         }
 
-        // 2. Fall back to 320kbps if available
         val fallback320 = filteredUrls.firstOrNull { it.quality.equals("320kbps", ignoreCase = true) }?.url
         if (fallback320 != null) {
             Log.d(TAG, "selectBestUrl: fallback to 320kbps: $fallback320")
             return fallback320
         }
 
-        // 3. Fall back to highest bitrate (last entry tends to be highest)
         val highestUrl = filteredUrls.lastOrNull()?.url
         Log.d(TAG, "selectBestUrl: final fallback (highest available): $highestUrl")
         return highestUrl
     }
 
-    /**
-     * Fetch the [SaavnSong] detail for a known Saavn song ID and extract the
-     * best stream URL matching [quality].
-     */
     suspend fun getBestStreamUrl(
         saavnSongId: String,
         quality: String,

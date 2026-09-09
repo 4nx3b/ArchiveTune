@@ -58,11 +58,9 @@ import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
-import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.lyrics.LyricsProviderTestOutcome
-import moe.rukamori.archivetune.lyrics.LyricsProviderTestResult
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -75,23 +73,6 @@ import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.LyricsTestState
 import androidx.compose.foundation.layout.asPaddingValues
 
-/**
- * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the
- * Musixmatch experimental section that used to live inline on the Lyrics settings page.
- *
- * Behaviour preserved verbatim from the original inline groups:
- *   • All provider switches default to on (except Musixmatch experimental).
- *   • "Set first lyrics provider" opens the reorderable dialog. The dialog itself lives
- *     in LyricsSettings.kt and is `internal` so this screen can reuse it.
- *   • "Lyrics test" runs a sweep across every enabled provider with a known test
- *     track and shows per-provider outcomes — see [LyricsTestDialog] below.
- *
- * Paxsenix/Tidal/Deezer toggles and their sub-toggles (Apple Music / NetEase / Spotify /
- * Musixmatch / YouTube), the Paxsenix stats dialog, API key entry, endpoint entry, and
- * endpoint check dialog have been removed (user request 2026-08-28: "I still see enable
- * paxesnix lyrics switch in lyrics provider. Remove it"). BiniLyrics replaces the Paxsenix
- * Apple Music path as the user-visible label on the same backend.
- */
 @Composable
 fun LyricsProvidersSettings(
     navController: NavController,
@@ -191,17 +172,13 @@ fun LyricsProvidersSettings(
                         WindowInsetsSides.Horizontal,
                     ),
                 )
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
-                // "Prioritize Word Synced Lyrics" sits at the TOP of the providers
-                // group because when it's ON it overrides every other toggle and the
-                // Lyrics Priority order below — the app queries only BetterLyrics,
-                // BetterLyrics Portato, YouLyPlus, and Unison directly. Putting it
-                // first makes the override relationship visually obvious.
+
                 item {
                     SwitchPreference(
                         modifier = positions.modifierFor("prioritize_word_synced_lyrics"),
@@ -213,13 +190,6 @@ fun LyricsProvidersSettings(
                     )
                 }
 
-                // When "Prioritize Word Synced Lyrics" is ON, the per-provider
-                // toggles and Lyrics Priority order are ignored by LyricsHelper
-                // (the four word-sync-capable providers are queried directly).
-                // We grey them out here to signal that they have no effect while
-                // the override is active. They remain visible (not hidden) so the
-                // user can still see their state and understand what will resume
-                // when the override is turned back off.
                 val providerTogglesEnabled = !prioritizeWordSynced
 
                 item {
@@ -288,27 +258,6 @@ fun LyricsProvidersSettings(
                     )
                 }
 
-                // Megalobiz lyrics provider removed per user request
-                // (2026-08-28): "Remove megalobiz lyrics provider". The
-                // MegalobizLyricsProvider file was deleted; the
-                // PreferredLyricsProvider.MEGALOBIZ enum value and the
-                // DefaultLyricsProviderOrder entry are also gone.
-                //
-                // SimpMusic and BiniLyrics lyrics providers removed per user
-                // request (2026-08-30): "Remove simpmusic and binilyrics lyrics
-                // provider and their entire code too". The provider files,
-                // settings toggles, enum entries, gradle module includes and
-                // the underlying :lyrics:simpmusic / :lyrics:paxsenix gradle
-                // modules have all been deleted. Only the no-op DataStore keys
-                // remain for backward-compatible reads.
-
-                // "Lyrics test" — sweeps every enabled provider with a known
-                // test track (Ed Sheeran — Shape of You) and reports per-
-                // provider outcomes (Working / No lyrics for test track /
-                // Timed out / Failed) in a dialog. Per user request
-                // (2026-08-28): "Add an option in lyrics provider named
-                // Lyrics test. when I click on it, it should show that
-                // whether all the lyrics providers are working or not".
                 item {
                     PreferenceEntry(
                         modifier = positions.modifierFor("lyrics_test"),
@@ -363,27 +312,6 @@ fun LyricsProvidersSettings(
     }
 }
 
-/**
- * "Lyrics test" dialog — runs a sweep across every enabled provider with a
- * known test track (Ed Sheeran — "Shape of You") and shows per-provider
- * outcomes: Working / No lyrics for test track / Timed out / Failed.
- *
- * The four outcomes are deliberately distinct:
- *   • Working — the provider returned meaningful lyrics for the test track.
- *     The provider is reachable and serving the test case.
- *   • No lyrics for test track — the provider responded cleanly but had no
- *     entry for the test track. The provider is reachable; it just doesn't
- *     have this specific song. Most providers should land here for the test
- *     track since "Shape of You" is widely catalogued, but a provider that
- *     uses a different index format may legitimately not have it.
- *   • Timed out — the provider didn't respond within the per-provider budget
- *     (12s). May indicate a slow endpoint or a temporary network issue.
- *   • Failed — the provider errored out (network/DNS/5xx/exception). The
- *     provider is currently not usable.
- *
- * A "Retry" button re-runs the sweep, replacing stale results with a fresh
- * probe.
- */
 @Composable
 private fun LyricsTestDialog(
     state: LyricsTestState,

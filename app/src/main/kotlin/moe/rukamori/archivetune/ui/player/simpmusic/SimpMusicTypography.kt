@@ -32,13 +32,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 
-/** SimpMusic's single font file — Poppins Medium, weights applied per style. */
 val SimpMusicPoppins: FontFamily = FontFamily(Font(R.font.simpmusic_poppins))
 
-/** The Typography from SimpMusic's ui/theme/Typo.kt, metrics copied one-for-one. */
 val SimpMusicTypography: Typography =
     Typography(
-        // Playlist/artist/song/album titles on Home, Mood, Genre, etc.
+
         titleSmall =
             TextStyle(
                 fontSize = 13.sp,

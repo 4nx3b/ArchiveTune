@@ -85,16 +85,6 @@ class HistoryViewModel
             }
         }
 
-        /**
-         * Fetches remote history without transitioning the UI to a Loading state.
-         *
-         * - [RemoteHistoryUiState.Error]   → delegates to [fetchRemoteHistory] (user sees spinner)
-         * - [RemoteHistoryUiState.Loading] → fetches silently; transitions to Error on failure
-         * - [RemoteHistoryUiState.Empty]   → fetches silently; transitions to Error on failure
-         * - [RemoteHistoryUiState.Success] → fetches silently; keeps cached data + logs warning on failure
-         *
-         * Call from a coroutine context (e.g. LaunchedEffect or viewModelScope.launch).
-         */
         suspend fun fetchRemoteHistorySilent() {
             val snapshot = _remoteHistoryState.value
 
@@ -113,7 +103,7 @@ class HistoryViewModel
                     Timber.tag("History").w(e, "Silent remote history fetch failed")
                     when (snapshot) {
                         is RemoteHistoryUiState.Success -> {
-                            // Keep cached data; don't disrupt the user
+
                         }
 
                         is RemoteHistoryUiState.Loading,
@@ -133,10 +123,6 @@ class HistoryViewModel
                 RemoteHistoryUiState.Empty
             }
 
-        /**
-         * Non-suspend wrapper for call sites that are not already in a coroutine
-         * (e.g. click handlers in Compose).
-         */
         fun enqueueSilentFetch() {
             viewModelScope.launch(Dispatchers.IO) {
                 fetchRemoteHistorySilent()
@@ -188,14 +174,6 @@ class HistoryViewModel
             }
     }
 
-// Page size set to a very large value so the entire local history loads in
-// a single page. Per user request (2026-08-28): the Library page's History
-// row badge shows the true total event count (e.g. 13406), but the History
-// page itself was paginating at HISTORY_PAGE_SIZE=100 and the load-more
-// threshold only triggered when the user scrolled within 12 items of the
-// end — so the user saw at most ~200 songs before scrolling further to
-// trigger the next page. Bumping this to 100000 effectively loads every
-// event in one pass; any real-world song library fits comfortably.
 private const val HISTORY_PAGE_SIZE = 100_000
 
 sealed interface RemoteHistoryUiState {

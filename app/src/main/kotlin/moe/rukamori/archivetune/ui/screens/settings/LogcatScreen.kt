@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,7 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
@@ -64,10 +65,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -91,6 +92,10 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
@@ -102,10 +107,6 @@ fun LogcatScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Force-flush any pending GlobalLog buffer the moment the LogcatScreen
-    // enters composition. GlobalLog coalesces emissions to ~10/sec (and skips
-    // them entirely when no collector is active), so without this flush the
-    // user would see stale logs for up to 100ms after opening the screen.
     LaunchedEffect(Unit) {
         moe.rukamori.archivetune.utils.GlobalLog.flush()
     }
@@ -206,7 +207,10 @@ private fun LogcatScreenContent(
             -> null
         }
     val listState = rememberLazyListState()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
     val logUserScrollConnection =
         remember(onPauseAutoScroll) {
             object : NestedScrollConnection {
@@ -224,7 +228,6 @@ private fun LogcatScreenContent(
         }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LogcatTopBar(
@@ -236,7 +239,6 @@ private fun LogcatScreenContent(
                 onClear = onClear,
                 onShare = onShare,
                 onExport = onExport,
-                scrollBehavior = scrollBehavior,
             )
         },
         floatingActionButton = {
@@ -263,18 +265,22 @@ private fun LogcatScreenContent(
             SnackbarHost(hostState = snackbarHostState)
         },
     ) { innerPadding ->
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal,
-                        ),
-                    ),
-            contentAlignment = Alignment.TopCenter,
-        ) {
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .windowInsetsPadding(
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal,
+                            ),
+                        )
+
+                        .hazeSource(headerHaze),
+                contentAlignment = Alignment.TopCenter,
+            ) {
             when (state) {
                 LogcatScreenState.Loading -> {
                     LoadingIndicator(
@@ -319,6 +325,12 @@ private fun LogcatScreenContent(
                     )
                 }
             }
+            }
+
+            ScreenHeaderHaze(
+                hazeState = headerHaze,
+                systemBarsTopPadding = systemBarsTopPadding,
+            )
         }
     }
 
@@ -340,10 +352,14 @@ private fun LogcatTopBar(
     onClear: () -> Unit,
     onShare: () -> Unit,
     onExport: () -> Unit,
-    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
 ) {
-    MediumFlexibleTopAppBar(
+    TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
             FrostedHeaderPill(plain = true) {
                 ArchiveTuneIconButton(
@@ -433,7 +449,6 @@ private fun LogcatTopBar(
                 }
             }
         },
-        scrollBehavior = scrollBehavior,
     )
 }
 

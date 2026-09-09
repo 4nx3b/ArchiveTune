@@ -16,11 +16,7 @@ data class TranslatorLang(
 )
 
 object TranslatorLanguages {
-    /**
-     * Load languages from assets/translator_languages.json.
-     * Expected format: [{"name":"Japanese","code":"JAPANESE"}, ...]
-     * Falls back to a small built-in list on error or missing asset.
-     */
+
     fun load(context: Context): List<TranslatorLang> {
         try {
             val json =
@@ -45,10 +41,9 @@ object TranslatorLanguages {
             }
             if (out.isNotEmpty()) return out
         } catch (_: Exception) {
-            // ignore and fallback
+
         }
 
-        // Fallback list
         return listOf(
             TranslatorLang("English", "ENGLISH"),
             TranslatorLang("Japanese", "JAPANESE"),

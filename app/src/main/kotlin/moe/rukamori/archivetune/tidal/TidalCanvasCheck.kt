@@ -19,26 +19,6 @@ import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
 import moe.rukamori.archivetune.utils.dataStore
 import kotlinx.coroutines.flow.first
 
-/**
- * ── Tidal row of the Canvas Check diagnostic (2026-09-04) ───────────────────
- *
- * User request: "Also in the canvas check there's no tidal option."
- *
- * Tidal in ArchiveTune contributes high-res still artwork (and the animated
- * cover preference) through TWO real layers, and this check exercises both
- * with the exact requests playback would make — no mock pings:
- *
- *  1. **Your Tidal account** (when signed in): the stored access token is
- *     validated, refreshing it through auth.tidal.com when it has expired
- *     (the same exchange [TidalAccountManager.refreshAccessToken] performs).
- *     The refreshed token is deliberately NOT persisted here — this is a
- *     diagnosis, not a login; playback keeps owning the token lifecycle.
- *  2. **The Tidal catalog search** the artwork path performs
- *     ([TidalAudioProvider.probeCatalogSearch]): the user's own
- *     HiFi/QQDL instances first, then the public tidal.com/v1 API.
- *
- * The result merges the two layers into one honest status line.
- */
 object TidalCanvasCheck {
     suspend fun diagnose(
         context: Context,
@@ -51,7 +31,6 @@ object TidalCanvasCheck {
         merge(accountDiagnosis, catalogDiagnosis)
     }
 
-    /** Outcome of the account leg — null means "no account, nothing to check". */
     private sealed interface AccountDiagnosis {
         data object Ok : AccountDiagnosis
 
@@ -62,7 +41,7 @@ object TidalCanvasCheck {
 
     private suspend fun checkAccount(context: Context): AccountDiagnosis? {
         val accessToken = readString(context, TidalAccessTokenKey)
-        if (accessToken.isBlank()) return null // not signed in — not a failure
+        if (accessToken.isBlank()) return null
 
         val expiry = readLong(context, TidalTokenExpiryKey)
         val freshEnough = expiry - System.currentTimeMillis() > 60_000L
@@ -90,7 +69,6 @@ object TidalCanvasCheck {
         }
     }
 
-    /** Outcome of the catalog-search leg. */
     private suspend fun checkCatalog(
         title: String,
         artist: String?,
@@ -136,7 +114,7 @@ object TidalCanvasCheck {
         when (account) {
             null ->
                 when (catalog) {
-                    // No account signed in, but the catalog layer works.
+
                     is CanvasSourceDiagnosis.Ok ->
                         catalog.copy(
                             detail = catalog.detail + " (no Tidal account signed in — add one in Tidal settings for account-quality sources)",

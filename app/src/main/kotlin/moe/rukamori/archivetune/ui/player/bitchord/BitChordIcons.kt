@@ -5,17 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Bitchord player style — icon set.
- *
- * Ported verbatim from BitChord (https://github.com/kushagrasinghx/BitChord),
- * app/src/main/java/com/music/bitchord/ui/icons/BitChordIcons.kt.
- *
- * This object belongs exclusively to the Bitchord player style and is not
- * shared with any other player style, per the self-containment rule for
- * player styles (2026-09-01).
- */
-
 package moe.rukamori.archivetune.ui.player.bitchord
 
 import androidx.compose.ui.graphics.Color
@@ -26,11 +15,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-/**
- * Thick-stroke, round-capped icons in the spirit of Telegram's modern icon set.
- * Drawn as strokes (no fills) so the 2.2px weight + round joins read as a
- * single polished family. Tint is applied by [androidx.compose.material3.Icon].
- */
 object BitChordIcons {
 
     private const val STROKE = 2.2f
@@ -48,10 +32,10 @@ object BitChordIcons {
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-                // Strand that crosses downwards, with its arrow head
+
                 moveTo(3.4f, 7.4f); lineTo(7f, 7.4f); lineTo(16.6f, 16.6f); lineTo(20.6f, 16.6f)
                 moveTo(18.1f, 14.1f); lineTo(20.6f, 16.6f); lineTo(18.1f, 19.1f)
-                // Strand that crosses upwards, broken around the intersection
+
                 moveTo(3.4f, 16.6f); lineTo(7f, 16.6f); lineTo(9.8f, 13.9f)
                 moveTo(13.9f, 10.1f); lineTo(16.6f, 7.4f); lineTo(20.6f, 7.4f)
                 moveTo(18.1f, 4.9f); lineTo(20.6f, 7.4f); lineTo(18.1f, 9.9f)
@@ -61,11 +45,6 @@ object BitChordIcons {
 
     val Repeat: ImageVector by lazy { repeatLoop("bc_repeat") }
 
-    /**
-     * Two straight runs joined by semicircles, with the arrow heads lying flat
-     * at the ends of the straights. Putting them on the curves instead — as a
-     * first pass did — makes the glyph read as a refresh/sync symbol.
-     */
     private fun repeatLoop(name: String): ImageVector =
         ImageVector.Builder(
             name = name,
@@ -84,13 +63,12 @@ object BitChordIcons {
                 lineTo(8.6f, 16.4f)
                 arcToRelative(4.4f, 4.4f, 0f, isMoreThanHalf = false, isPositiveArc = true, 0f, -8.8f)
                 close()
-                // Direction of travel: right along the top, left along the bottom.
+
                 moveTo(13.5f, 5.7f); lineTo(15.4f, 7.6f); lineTo(13.5f, 9.5f)
                 moveTo(10.5f, 14.5f); lineTo(8.6f, 16.4f); lineTo(10.5f, 18.3f)
             }
         }.build()
 
-    /** AutoPlay's lemniscate. */
     val Infinity: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_infinity",
@@ -114,14 +92,13 @@ object BitChordIcons {
         }.build()
     }
 
-    /** Beamed pair of notes, for instrumental stretches in the lyrics. */
     val MusicNote: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_music_note",
             defaultWidth = 24.dp, defaultHeight = 24.dp,
             viewportWidth = 24f, viewportHeight = 24f,
         ).apply {
-            // Heads are solid; stems and beam keep the family's stroke weight.
+
             path(fill = stroke) {
                 moveTo(4.2f, 17.7f)
                 arcToRelative(2.9f, 2.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, 5.8f, 0f)
@@ -145,7 +122,6 @@ object BitChordIcons {
         }.build()
     }
 
-    /** Plain chevron — a disclosure hint, not a directional arrow. */
     val ChevronRight: ImageVector by lazy {
         ImageVector.Builder(
             name = "bc_chevron_right",
@@ -165,13 +141,6 @@ object BitChordIcons {
         }.build()
     }
 
-    /**
-     * The player's like control, in two weights.
-     *
-     * Filled rather than merely tinted when set: the player draws every glyph
-     * white on artwork, where a colour change alone is the one signal the
-     * backdrop can swallow. A shape change survives any album cover.
-     */
     val Heart: ImageVector by lazy { heart("bc_heart", filled = false) }
 
     val HeartFilled: ImageVector by lazy { heart("bc_heart_filled", filled = true) }
@@ -189,7 +158,7 @@ object BitChordIcons {
                 strokeLineJoin = StrokeJoin.Round,
                 fill = if (filled) stroke else null,
             ) {
-                // Two lobes meeting at the top notch, falling to a single point.
+
                 moveTo(12f, 20f)
                 curveTo(12f, 20f, 3.2f, 14.6f, 3.2f, 8.9f)
                 arcToRelative(4.5f, 4.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, 8.8f, -1.5f)

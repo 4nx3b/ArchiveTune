@@ -110,12 +110,6 @@ class BackupArchiveRepository
                     zipStream.closeEntry()
                     completedUnits++
 
-                    // Embed custom font .ttf files so the user's font choice survives a
-                    // backup/restore cycle. The font URI/name preferences live in settings.xml,
-                    // but the actual .ttf binary lives in filesDir/custom_fonts/ — without
-                    // embedding the binary, restoring settings.xml would point at a font file
-                    // that doesn't exist on the new install. We walk the directory and write
-                    // each .ttf under a `fonts/` prefix in the ZIP.
                     val fontsDir = java.io.File(context.filesDir, CUSTOM_FONTS_DIR_NAME)
                     val fontFiles =
                         if (fontsDir.isDirectory) {
@@ -282,8 +276,7 @@ class BackupArchiveRepository
                     "spotify_access_token_expires_at",
                     "spotify_account_name",
                     "spotify_account_avatar_url",
-                    // Tidal login/session (sensitive) — travels with an Account backup, not a
-                    // Settings-only one. Instance URL lists (tidalInstances) stay under Settings.
+
                     "tidalAccessToken",
                     "tidalRefreshToken",
                     "tidalTokenExpiry",
@@ -294,7 +287,7 @@ class BackupArchiveRepository
                     "tidalNeedsRelogin",
                     "tidal_account_name",
                     "tidalCookie",
-                    // Qobuz direct-API tokens (contain user_auth_token + app_secret — sensitive).
+
                     "qobuzTokens",
                 )
         }

@@ -102,9 +102,7 @@ class SpotifySearchViewModel
                             page.artists,
                             page.playlists,
                         ).maxOfOrNull { it.total } ?: 0
-                    // Spotify's offset is advanced by the number actually returned. Do not force
-                    // a full PAGE_SIZE advance: a proxy or a reduced server page can legitimately
-                    // return fewer items, and jumping by PAGE_SIZE would skip catalog results.
+
                     nextOffset += returnedCount
                     _uiState.value =
                         SpotifySearchUiState(

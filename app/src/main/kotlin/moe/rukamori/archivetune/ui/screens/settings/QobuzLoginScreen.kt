@@ -13,7 +13,6 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -46,10 +45,6 @@ const val QOBUZ_LOGIN_ROUTE = "settings/qobuz/login"
 
 private const val QOBUZ_WEB_PLAYER_URL = "https://play.qobuz.com/login"
 
-// Hooks fetch()/XHR to capture the auth token + app_id headers, then scrapes loaded bundle
-// scripts for the 32-char hex app_secret. Calls onCredentials(token, appId) as soon as the
-// headers are seen, and onSecret(secret) once a valid candidate is found in a bundle script.
-// Both run once per page load (guarded by __atQobuzHook).
 private val QOBUZ_HOOK_JS =
     """
     javascript:(function(){
@@ -100,11 +95,10 @@ fun QobuzLoginScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
     val credentialHandled = remember { AtomicBoolean(false) }
 
-    // Captured headers from the web player.
     var captured by remember { mutableStateOf<Pair<String, String>?>(null) }
-    // App secret scraped from the bundle — null until found.
+
     var scrapedSecret by remember { mutableStateOf<String?>(null) }
-    // Whether to show the manual-paste fallback dialog.
+
     var showSecretDialog by remember { mutableStateOf(false) }
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
@@ -123,30 +117,24 @@ fun QobuzLoginScreen(navController: NavController) {
         }
     }
 
-    // When credentials arrive, check if we already have the scraped secret and save immediately;
-    // otherwise hold and wait (or fall through to the dialog after a short window).
     fun onCredentialsReceived(token: String, appId: String) {
         val secret = scrapedSecret
         if (secret != null) {
             saveToken(token, appId, secret)
         } else {
-            // Hold the credentials; the secret callback will fire saveToken when it arrives.
-            // If the user navigates away from the login page before the secret arrives we fall
-            // back to the manual dialog.
+
             captured = token to appId
         }
     }
 
-    // When the bundle secret arrives, save immediately if we already have credentials.
     fun onSecretReceived(secret: String) {
         scrapedSecret = secret
         val (token, appId) = captured ?: return
-        // Secret arrived after credentials — save now, no dialog needed.
+
         showSecretDialog = false
         saveToken(token, appId, secret)
     }
 
-    // Fallback manual-paste dialog — shown only when scraping failed.
     if (showSecretDialog) {
         captured?.let { (token, appId) ->
             TextFieldDialog(
@@ -208,8 +196,6 @@ fun QobuzLoginScreen(navController: NavController) {
         },
     )
 
-    // After credentials are held for a bit without a secret arriving, surface the fallback dialog.
-    // We use a LaunchedEffect with a 4-second timeout rather than making the user wait forever.
     captured?.let {
         androidx.compose.runtime.LaunchedEffect(it) {
             kotlinx.coroutines.delay(4_000)

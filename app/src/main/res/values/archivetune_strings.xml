@@ -407,14 +407,14 @@
     <string name="set_first_lyrics_provider">Preferred lyrics provider</string>
     <string name="artwork_priority">Artwork priority</string>
     <string name="audio_quality_max">Max (beta)</string>
-    <!-- Inline music video player controls -->
+
     <string name="video_fullscreen">Enter fullscreen</string>
     <string name="video_exit_fullscreen">Exit fullscreen</string>
     <string name="video_captions">Toggle captions</string>
     <string name="video_captions_off">Captions off</string>
     <string name="video_quality">Video quality</string>
     <string name="video_quality_auto">Auto (highest available)</string>
-    <!-- Video quality bottom sheet -->
+
     <string name="video_quality_mode_auto">Auto</string>
     <string name="video_quality_mode_auto_desc">Adjusts to your connection, up to 1080p</string>
     <string name="video_quality_mode_data_saver">Data saver</string>
@@ -427,11 +427,11 @@
     <string name="video_quality_back">Back</string>
     <string name="video_quality_current">Playing at %1$s</string>
     <string name="video_quality_unavailable_on_device">Not supported by this device</string>
-    <!-- Fullscreen video overlay transport controls -->
+
     <string name="video_fs_play_pause">Play/Pause</string>
     <string name="video_fs_next">Next</string>
     <string name="video_fs_previous">Previous</string>
-    <!-- Fullscreen video overlay 3-dot overflow menu -->
+
     <string name="video_overflow_menu">More video options</string>
     <string name="video_slider_style">Slider style</string>
     <string name="video_playback_speed">Playback speed</string>
@@ -445,15 +445,15 @@
     <string name="video_aspect_stretch">Stretch</string>
     <string name="video_aspect_fill">Fill screen</string>
     <string name="video_aspect_selected">Currently selected</string>
-    <!-- Fullscreen video overlay gesture feedback -->
+
     <string name="video_gesture_brightness">Brightness</string>
     <string name="video_gesture_volume">Volume</string>
     <string name="video_gesture_seek_forward">+10 seconds</string>
     <string name="video_gesture_seek_backward">-10 seconds</string>
-    <!-- Enable video playback setting (Player & audio settings) -->
+
     <string name="enable_video_playback">Enable video playback</string>
     <string name="enable_video_playback_desc">Show music videos inline in the player and keep audio/video in sync. When disabled, music videos play as audio only.</string>
-    <!-- Enable PiP mode setting (Player & audio settings) -->
+
     <string name="enable_pip_mode">Enable PiP mode</string>
     <string name="enable_pip_mode_desc">When a music video is playing and you leave the app, it keeps playing in a small floating window (Picture-in-Picture). Requires video playback to be enabled.</string>
     <string name="percentage_format">%d%%</string>
@@ -529,6 +529,11 @@
     <string name="singles">Singles</string>
     <string name="ep">EP</string>
     <string name="no_releases_found">No releases found</string>
+    <string name="marked_as_read">Marked as read</string>
+    <string name="mark_as_read">Mark as read</string>
+    <string name="selected_count">%1$d selected</string>
+    <string name="select_releases">Select releases</string>
+    <string name="select_all">Select all</string>
     <string name="playlist_private_title">This playlist was private</string>
     <string name="playlist_private_desc">You don\'t have access to this playlist.</string>
     <string name="empty_playlist">Empty Playlist</string>
@@ -711,8 +716,8 @@
     <string name="spotify_account">Spotify account</string>
     <string name="spotify_playlists">Spotify Playlist</string>
     <string name="spotify_waiting_for_login">Waiting for Spotify login</string>
-    <string name="spotify_show_playlist">Show Playlist</string>
-    <string name="spotify_show_playlist_desc">Show Spotify playlists in Library.</string>
+    <string name="spotify_show_playlist">Show Spotify in Library</string>
+    <string name="spotify_show_playlist_desc">Adds a Spotify pill to each Library section, so playlists, songs, artists and albums can be browsed from either service.</string>
     <string name="spotify_reload_playlist">Reload Playlist</string>
     <string name="spotify_reload_playlist_desc">Refresh Spotify playlists from your account.</string>
     <string name="spotify_no_tracks">No Spotify tracks found.</string>
@@ -810,7 +815,6 @@
     <string name="about_content_desc_telegram">Telegram</string>
     <string name="about_content_desc_donate">Donate</string>
 
-    <!-- Search redesign -->
     <string name="search_recent_searches">Recent Searches</string>
     <string name="search_recent_label">Recent</string>
     <string name="search_based_on_what_you_like">Based on what you like</string>
@@ -818,11 +822,11 @@
     <string name="search_recommended_artists">Recommended Artists</string>
     <string name="search_recommended_albums">Recommended Albums</string>
     <string name="search_recommended_songs">Recommended Songs</string>
-    <!-- Explore-tab fill-out (2026-09-04): the explore discovery sections. -->
+
     <string name="search_trending_songs">Trending Songs</string>
     <string name="search_new_albums">New Albums</string>
     <string name="search_moods_genres">Moods &amp; Genres</string>
-    <!-- YouTube sign-in: the browser (cookie) route and the OAuth device-code route. -->
+
     <string name="yt_browser_sign_in">Sign in with browser</string>
     <string name="yt_browser_sign_in_desc">Full account: library, playlists, uploads and personalised browse.</string>
     <string name="yt_oauth_sign_in">Sign in with a code</string>

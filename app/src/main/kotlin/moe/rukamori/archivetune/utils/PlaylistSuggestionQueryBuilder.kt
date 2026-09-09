@@ -175,7 +175,7 @@ object PlaylistSuggestionQueryBuilder {
     ): Boolean {
         val currentTime = System.currentTimeMillis()
         val timeDiff = currentTime - lastTimestamp
-        val expiryTime = cacheExpiryHours * 60 * 60 * 1000 // Convert hours to milliseconds
+        val expiryTime = cacheExpiryHours * 60 * 60 * 1000
 
         return timeDiff > expiryTime
     }

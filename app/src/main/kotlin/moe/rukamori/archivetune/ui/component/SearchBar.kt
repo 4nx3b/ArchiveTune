@@ -29,11 +29,9 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,7 +79,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
@@ -107,14 +104,7 @@ fun TopSearch(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     tonalElevation: Dp = SearchBarDefaults.TonalElevation,
-    // IMPORTANT: default to safeDrawing, NOT systemBars. When the immersive
-    // status bar is hidden (PlayerDesignStyle.V7 / APPLE_MUSIC player expanded,
-    // overflow menu open, bottom-sheet page open — see MainActivity.setStatusBarsHidden),
-    // WindowInsets.systemBars reports 0 for the top inset, which would let the
-    // search bar float up into the camera cutout. safeDrawing always reports
-    // the cutout-safe area even when the status bar is hidden, so the search
-    // bar stays below the notch at all times. The same fix is mirrored in
-    // OnlineSearchResult.kt for the filter-chips Surface under the search bar.
+
     windowInsets: WindowInsets = WindowInsets.safeDrawing,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     focusRequester: FocusRequester = remember { FocusRequester() },
@@ -382,7 +372,6 @@ private fun TextRange.coerceInText(textLength: Int): TextRange =
         end = maxOf(start, end).coerceIn(0, textLength),
     )
 
-// Measurement specs
 val InputFieldHeight = 48.dp
 private val SearchBarCornerRadius: Dp = InputFieldHeight / 2
 internal val SearchBarVerticalPadding: Dp = 8.dp

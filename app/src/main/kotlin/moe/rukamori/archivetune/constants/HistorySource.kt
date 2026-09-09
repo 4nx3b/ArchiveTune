@@ -8,6 +8,9 @@
 package moe.rukamori.archivetune.constants
 
 enum class HistorySource {
+    /** What this device played, out of the app's own database. */
     LOCAL,
+
+    /** The signed-in YouTube Music account's watch history. */
     REMOTE,
 }

@@ -72,7 +72,6 @@ fun PlaylistSuggestionsSection(
     val playlistSuggestions by viewModel.playlistSuggestions.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoadingSuggestions.collectAsStateWithLifecycle()
 
-    // State for duplicate check dialog
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var songToCheck by remember { mutableStateOf<SongItem?>(null) }
 
@@ -80,7 +79,6 @@ fun PlaylistSuggestionsSection(
     if (currentSuggestions == null && !isLoading) return
     if (currentSuggestions != null && currentSuggestions.items.isEmpty() && !isLoading) return
 
-    // Duplicate Check Dialog
     if (showDuplicateDialog && songToCheck != null) {
         val song = songToCheck!!
         DefaultDialog(
@@ -98,7 +96,7 @@ fun PlaylistSuggestionsSection(
                 TextButton(
                     onClick = {
                         coroutineScope.launch {
-                            // Add to current playlist anyway
+
                             val browseId =
                                 viewModel.playlist.value
                                     ?.playlist
@@ -137,7 +135,7 @@ fun PlaylistSuggestionsSection(
     Column(
         modifier = modifier.fillMaxWidth(),
     ) {
-        // Header
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -159,7 +157,7 @@ fun PlaylistSuggestionsSection(
         Spacer(modifier = Modifier.height(8.dp))
 
         currentSuggestions?.let { suggestions ->
-            // Suggestions List (Vertical)
+
             suggestions.items.forEach { item ->
                 YouTubeListItem(
                     item = item,
@@ -170,7 +168,7 @@ fun PlaylistSuggestionsSection(
                             onClick = {
                                 val songItem = item as? SongItem
                                 if (songItem != null) {
-                                    // Check for duplicates in current playlist first
+
                                     songToCheck = songItem
                                     coroutineScope.launch {
                                         val isDuplicate =
@@ -186,7 +184,7 @@ fun PlaylistSuggestionsSection(
                                         if (isDuplicate) {
                                             showDuplicateDialog = true
                                         } else {
-                                            // No duplicate, add directly
+
                                             val browseId =
                                                 viewModel.playlist.value
                                                     ?.playlist

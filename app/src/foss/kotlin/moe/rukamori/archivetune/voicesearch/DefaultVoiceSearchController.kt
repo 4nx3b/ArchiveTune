@@ -12,15 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * FOSS flavor no-op implementation. FOSS builds have no GMS dependency, so the
- * in-app mic button is disabled and surfaces a friendly error if the user taps it.
- *
- * FOSS users can still voice-search through the system MediaSession voice intent
- * (e.g. "OK Google, play X on ArchiveTune") — that flow is handled in
- * [moe.rukamori.archivetune.playback.MusicService] and does not require any
- * in-app UI.
- */
 class DefaultVoiceSearchController : VoiceSearchController {
     private val _state = MutableStateFlow<VoiceSearchState>(VoiceSearchState.Idle)
     override val state: StateFlow<VoiceSearchState> = _state.asStateFlow()

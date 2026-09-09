@@ -51,42 +51,10 @@ import moe.rukamori.archivetune.tidal.TidalCanvasCheck
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 
-/**
- * ── Canvas Check (2026-09-04) ────────────────────────────────────────────────
- *
- * User request: "Add an option under artwork header in playback settings named
- * Canvas Check which tells me all the mirrors, my own accounts, APIs or
- * endpoints for canvas are working or not".
- *
- * One dialog that live-checks every canvas source the player actually uses:
- *  * **Spotify Canvas — your account**: the official `canvaz-cache` endpoint
- *    through YOUR Spotify session (the same tokenProvider/trackUriResolver
- *    hooks playback uses) — a real protobuf canvaz request for the current
- *    song (or a fixed famous probe when nothing plays).
- *  * **Apple Music canvas API**: the AMP catalog search the Apple-Music
- *    canvas path performs, including token refresh.
- *  * **Tidal** (2026-09-04, user request: "Also in the canvas check there's
- *    no tidal option"): the account token validated (refreshing through
- *    auth.tidal.com when expired) and the catalog search the Tidal artwork
- *    path performs — own instances first, public API as fallback.
- *  * **Every configured mirror**: each user resolver endpoint gets the exact
- *    `GET <base>?id=<video id>` the fallback chain issues, validated with the
- *    same JSON content-type rule (HTML = dead endpoint).
- *
- * All checks run in parallel on Dispatchers.IO through the real network
- * stacks — no mock pings; the statuses shown are what playback
- * would experience right now. Results stream in as each source answers.
- */
 private const val SPOTIFY_ROW_KEY = "spotify-account"
 private const val APPLE_MUSIC_ROW_KEY = "apple-music"
 private const val TIDAL_ROW_KEY = "tidal"
 
-/**
- * Fallback probe when nothing is playing: a permanently-online, extremely
- * well-known music video id ("Never Gonna Give You Up"). Mirrors answer JSON
- * for any id — the probe only needs to be a real video so the "reachable"
- * signal is meaningful.
- */
 private const val FALLBACK_PROBE_VIDEO_ID = "dQw4w9WgXcQ"
 private const val FALLBACK_PROBE_TITLE = "Blinding Lights"
 private const val FALLBACK_PROBE_ARTIST = "The Weeknd"
@@ -111,9 +79,6 @@ fun CanvasCheckDialog(
             CanvasResolverEndpoints.parse(resolverEndpointsRaw)
         }
 
-    // Probe context — the CURRENTLY PLAYING song when there is one, so the
-    // results reflect what the user is actually listening to; a fixed famous
-    // track otherwise.
     val currentMetadata = remember { playerConnection?.mediaMetadata?.value }
     val usingCurrentSong = !currentMetadata?.title.isNullOrBlank()
     val probeTitle = currentMetadata?.title?.takeIf { it.isNotBlank() } ?: FALLBACK_PROBE_TITLE
@@ -135,9 +100,7 @@ fun CanvasCheckDialog(
         }
 
     var rows by remember(mirrors) { mutableStateOf(initialRows()) }
-    // Running == any row still awaiting its result. Derived from the rows
-    // themselves so a cancelled/restarted check can never leave a stale
-    // "running" flag behind.
+
     val checkRunning = rows.any { it.status == null }
     var checkJob by remember { mutableStateOf<Job?>(null) }
 
@@ -185,7 +148,6 @@ fun CanvasCheckDialog(
             }
     }
 
-    // Run the checks as soon as the dialog opens.
     LaunchedEffect(mirrors) {
         startCheck()
     }
@@ -314,10 +276,8 @@ private fun CanvasCheckRow(row: CanvasCheckRow) {
     )
 }
 
-/** iOS-style system green for the success rows (matches the iOS-red error rows). */
 private val CanvasCheckSuccessColor = Color(0xFF30D158)
 
-/** stringResource outside of composable context (initialRows runs in a click handler). */
 private fun stringResourceSafe(
     context: android.content.Context,
     resId: Int,

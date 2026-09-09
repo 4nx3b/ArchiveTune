@@ -67,9 +67,6 @@ fun DeezerSettings(
     val (_, onArlChange) = rememberPreference(DeezerArlKey, "")
     val (_, onPremiumChange) = rememberPreference(DeezerAccountPremiumKey, false)
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -120,7 +117,7 @@ fun DeezerSettings(
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -148,8 +145,7 @@ fun DeezerSettings(
                             description = stringResource(R.string.deezer_signed_in_as, accountName),
                             icon = { Icon(painterResource(R.drawable.logout), null) },
                             onClick = {
-                                // Clearing the ARL is what actually signs out; App.kt's collector observes it
-                                // and drops the provider's session. Name/premium are display state only.
+
                                 onArlChange("")
                                 onAccountNameChange("")
                                 onPremiumChange(false)
@@ -162,9 +158,7 @@ fun DeezerSettings(
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
