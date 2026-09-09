@@ -1301,3 +1301,89 @@ Stage Summary:
   constant), scripts/telegram-js/test/{smoke.js, check_mainloop_sync.js}.
 - Next: on-device retest of the Telegram login flow (TDLib-era sessions
   still need the one-time re-login documented in Task 24).
+---
+Task ID: 26
+Agent: main (Super Z)
+Task: ArchiveTune — fix the Telegram login "never sends / infinitely stuck
+at OTP, always shows timeout" reported with screenshot
+Screenshot_20260909-073730 (Send Code step, error "Timed out waiting for
+45000 ms")
+
+Work Log:
+- Read the screenshot via VLM: Telegram Login step 1, phone +91
+  7004959922, "Send Code", error line "Timed out waiting for 45000 ms" —
+  i.e. Kotlin's withTimeout(INTERACTIVE_CALL_TIMEOUT_MS = 45s) on the
+  sendCode RPC; the JS-side handler never completed.
+- Traced the pipeline: TelegramClient.submitPhoneNumber -> TgJsRuntime
+  invokeRpc -> JS main loop -> handlers.sendCode -> mtcute sendCode. The
+  25s init timeout silently falls back to WaitPhoneNumber, so the phone
+  step renders even when the MTProto connection never comes up — the
+  first user-visible failure lands on Send Code.
+- Rebuilt a REAL-NETWORK Node harness (scripts/telegram-js/test/
+  real_network.js) that runs the exact committed banner+bundle in a bare
+  vm context (like QuickJS: no Node/browser globals) with the bridge
+  mirroring TgJsRuntime 1:1 (ws package for OkHttp, subprotocol
+  'binary', event protocol [0,id,kind,code,reason,Int8Array], timers
+  through the event queue, Node crypto mirroring TgJsCrypto contracts,
+  in-memory storage, MAIN_LOOP_JS RPC protocol).
+- REPRODUCED the user's bug in the harness: every connection died at
+  open with "ReferenceError: URL is not defined". Root cause:
+  @mtcute/core's PersistentConnection._updateLogPrefix() calls
+  @fuman/net ip.prettify(dc.ipAddress) on EVERY connection open ->
+  new URL('http://149.154.167.50').hostname; bare QuickJS has no URL
+  global, so the exception tore down every connection right after
+  onOpen and mtcute reconnected forever (15+ WS connects in 30s) -> init
+  timed out at 25s -> sendCode timed out at 45s. The old smoke test
+  stubbed the WS as a failure, so this path was never exercised.
+- Fix: WHATWG URL + URLSearchParams subset added to the banner shims
+  (host/banner.js): scheme/authority parsing, IPv6 brackets (hostname
+  keeps brackets, prettify semantics preserved), default-port dropping
+  for http/https/ws/wss/ftp, dot-segment normalization, base
+  resolution, opaque paths (tg://), URLSearchParams with two-way sync
+  into search, getters/setters for all parts, toJSON. Full IPv6
+  zero-run canonicalization intentionally skipped (log-prefix only
+  consumer; documented in the test).
+- Asset regenerated as header + new banner + the UNCHANGED committed
+  esbuild bundle (kept byte-identical to avoid symbol-rename noise);
+  verified the reconstructed asset end-to-end.
+- Verified with the real server: with the polyfill the WS opens, the
+  64-byte obfuscation init is accepted, req_pq goes out, resPQ comes
+  back (104B), PQ factorization verified (p*q==pq, big-endian trimTo4
+  parity with TgJsCrypto), req_DH_params is sent. The sandbox's
+  datacenter IP then gets server-side 404-throttled at the req_DH step
+  (connection-level rejection: server answers resPQ then kills ~1-5s
+  later even when the client stalls; browser Origin/UA headers make no
+  difference) — full login can only be re-validated from a clean
+  network (user's device), which matches TDLib-era behaviour from the
+  same phone.
+- New tests: test/url_polyfill.js (27 checks: prettify IPv4/IPv6, wss
+  URL, proxy userinfo/port, searchParams get/set/append/size, tg://
+  deeplink params, base resolution, host lowercasing, default-port
+  drop, TypeError on invalid, dot segments, toJSON); test/
+  real_network.js (dev-only real-server harness, TG_BROWSER_HEADERS /
+  TG_VERBOSE env toggles). package.json: test = smoke + url_polyfill +
+  check_mainloop_sync; new test:real script.
+- All suites green locally: smoke 20/20, url_polyfill 27/27,
+  check_mainloop_sync OK. No Kotlin changes (fix is entirely in the JS
+  asset), so kotlin_balance_check was not needed.
+- Committed 4b7be379f on dev through a clean worktree (local workspace
+  branch still carries environment snapshot commits) and pushed.
+
+Stage Summary:
+- Root cause of the OTP "never sends / always timeout" hang: missing
+  WHATWG URL global in bare QuickJS crashed every MTProto connection
+  open via ip.prettify -> endless mtcute reconnect loop -> init and
+  sendCode RPCs time out at their Kotlin bounds.
+- Fix: URL + URLSearchParams polyfill in the QuickJS host banner;
+  committed asset keeps the previous esbuild bundle byte-identical
+  (diff is banner-only, +528 lines).
+- Real-network Node harness now exists to exercise the bundle against
+  the actual Telegram servers from a clean IP (docs in the script
+  header); sandbox validation reached resPQ + verified factorization
+  before datacenter-IP throttling kicked in.
+- Key files: scripts/telegram-js/host/banner.js (polyfill),
+  app/src/main/assets/telegram/mtcute_host.js (regenerated asset),
+  scripts/telegram-js/test/{url_polyfill.js, real_network.js} (new),
+  scripts/telegram-js/package.json (test wiring).
+- Next: on-device retest of phone -> OTP -> (2FA) login; TDLib-era
+  sessions still need the one-time re-login documented in Task 24.
