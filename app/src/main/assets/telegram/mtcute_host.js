@@ -75,6 +75,534 @@
     globalThis.queueMicrotask = function (fn) { Promise.resolve().then(fn) }
   }
 
+  // ---------------------------------------------------------------------- URL
+  // WHATWG URL / URLSearchParams subset. mtcute needs `new URL()` at runtime:
+  // @fuman/net's ip.prettify() runs on EVERY connection open (log prefix) and
+  // proxy/deeplink parsing uses more of it. QuickJS ships neither global.
+  if (typeof globalThis.URL === 'undefined') {
+    var SPECIAL_SCHEMES = {
+      http: 80, https: 443, ws: 80, wss: 443, ftp: 21, file: null,
+    }
+
+    function TgUrlSearchParams(init) {
+      this._pairs = []
+      this._url = null
+      if (init == null) return
+      if (typeof init === 'string') {
+        this._fromString(init)
+      } else if (typeof init === 'object') {
+        var self = this
+        if (typeof init.forEach === 'function') {
+          init.forEach(function (entry) {
+            if (Array.isArray(entry)) self.append(String(entry[0]), String(entry[1]))
+          })
+        } else {
+          for (var key in init) {
+            if (Object.prototype.hasOwnProperty.call(init, key)) self.append(key, String(init[key]))
+          }
+        }
+      }
+    }
+    TgUrlSearchParams.prototype._fromString = function (str) {
+      var s = String(str)
+      if (s.charAt(0) === '?') s = s.slice(1)
+      this._pairs.length = 0
+      if (!s) return
+      var parts = s.split('&')
+      for (var i = 0; i < parts.length; i++) {
+        var part = parts[i]
+        if (!part) continue
+        var eq = part.indexOf('=')
+        var k, v
+        if (eq < 0) {
+          k = part; v = ''
+        } else {
+          k = part.slice(0, eq); v = part.slice(eq + 1)
+        }
+        this._pairs.push([tgUrlDecode(k), tgUrlDecode(v.replace(/\+/g, ' '))])
+      }
+    }
+    TgUrlSearchParams.prototype._sync = function () {
+      if (this._url) this._url._setSearchFromParams(this)
+    }
+    TgUrlSearchParams.prototype.append = function (k, v) {
+      this._pairs.push([String(k), String(v)])
+      this._sync()
+    }
+    TgUrlSearchParams.prototype.set = function (k, v) {
+      var key = String(k)
+      var found = false
+      for (var i = this._pairs.length - 1; i >= 0; i--) {
+        if (this._pairs[i][0] === key) {
+          if (found) { this._pairs.splice(i, 1) }
+          else { this._pairs[i][1] = String(v); found = true }
+        }
+      }
+      if (!found) this._pairs.push([key, String(v)])
+      this._sync()
+    }
+    TgUrlSearchParams.prototype.get = function (k) {
+      for (var i = 0; i < this._pairs.length; i++) {
+        if (this._pairs[i][0] === String(k)) return this._pairs[i][1]
+      }
+      return null
+    }
+    TgUrlSearchParams.prototype.getAll = function (k) {
+      var out = []
+      for (var i = 0; i < this._pairs.length; i++) {
+        if (this._pairs[i][0] === String(k)) out.push(this._pairs[i][1])
+      }
+      return out
+    }
+    TgUrlSearchParams.prototype.has = function (k) {
+      for (var i = 0; i < this._pairs.length; i++) {
+        if (this._pairs[i][0] === String(k)) return true
+      }
+      return false
+    }
+    TgUrlSearchParams.prototype['delete'] = function (k) {
+      var key = String(k)
+      for (var i = this._pairs.length - 1; i >= 0; i--) {
+        if (this._pairs[i][0] === key) this._pairs.splice(i, 1)
+      }
+      this._sync()
+    }
+    TgUrlSearchParams.prototype.forEach = function (fn) {
+      for (var i = 0; i < this._pairs.length; i++) fn(this._pairs[i][1], this._pairs[i][0], this)
+    }
+    TgUrlSearchParams.prototype.toString = function () {
+      var out = ''
+      for (var i = 0; i < this._pairs.length; i++) {
+        if (i) out += '&'
+        out += tgUrlEncodeQuery(this._pairs[i][0]) + '=' + tgUrlEncodeQuery(this._pairs[i][1])
+      }
+      return out
+    }
+    Object.defineProperty(TgUrlSearchParams.prototype, 'size', {
+      get: function () { return this._pairs.length },
+      enumerable: true,
+    })
+
+    var HEX_DIGITS = '0123456789ABCDEF'
+
+    function tgUrlDecode(str) {
+      var s = String(str)
+      if (s.indexOf('%') < 0) return s
+      var bytes = []
+      for (var i = 0; i < s.length; i++) {
+        var c = s.charAt(i)
+        if (c === '%') {
+          var hi = parseInt(s.slice(i + 1, i + 3), 16)
+          if (!isNaN(hi)) {
+            bytes.push(hi)
+            i += 2
+            continue
+          }
+        }
+        bytes.push(s.charCodeAt(i) & 0xff)
+      }
+      return utf8Decode(new Uint8Array(bytes))
+    }
+
+    function tgUrlEncodeQuery(str) {
+      return tgUrlEncodeComponent(str, false).replace(/%20/g, '+')
+    }
+
+    function tgUrlEncodeComponent(str, keepPathSafe) {
+      var bytes = utf8Encode(String(str))
+      var out = ''
+      for (var i = 0; i < bytes.length; i++) {
+        var b = bytes[i]
+        var c = String.fromCharCode(b)
+        var unreserved =
+          (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a) || (b >= 0x30 && b <= 0x39) ||
+          c === '-' || c === '_' || c === '.' || c === '!' || c === '~' || c === '*' || c === "'" || c === '(' || c === ')'
+        if (unreserved) {
+          out += c
+        } else if (keepPathSafe && (c === '$' || c === '&' || c === '+' || c === ',' || c === '/' || c === ':' || c === ';' || c === '=' || c === '?' || c === '@')) {
+          out += c
+        } else {
+          out += '%' + HEX_DIGITS[b >> 4] + HEX_DIGITS[b & 15]
+        }
+      }
+      return out
+    }
+
+    function TgUrl(input, base) {
+      if (!(this instanceof TgUrl)) return new TgUrl(input, base)
+      var parsed = tgUrlParse(String(input), base ? new TgUrl(base) : null)
+      if (!parsed) {
+        throw new TypeError('Invalid URL: ' + input)
+      }
+      this._scheme = parsed.scheme
+      this._username = parsed.username
+      this._password = parsed.password
+      this._host = parsed.host
+      this._port = parsed.port
+      this._path = parsed.path
+      this._query = parsed.query
+      this._fragment = parsed.fragment
+      this._opaque = parsed.opaque
+      this._searchParams = null
+    }
+
+    function tgUrlParse(input, baseUrl) {
+      var s = input.replace(/[\t\n\r]/g, '')
+      if (!s) return null
+      var schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(s)
+      var scheme
+      var rest
+      if (schemeMatch) {
+        scheme = schemeMatch[1].toLowerCase()
+        rest = s.slice(schemeMatch[0].length)
+      } else if (baseUrl) {
+        if (s.charAt(0) === '/' && s.charAt(1) === '/') {
+          s = baseUrl._scheme + ':' + s
+        } else if (s.charAt(0) === '/') {
+          s = baseUrl._scheme + '://' + baseUrl._authority() + s
+        } else if (s.charAt(0) === '?') {
+          s = baseUrl._scheme + '://' + baseUrl._authority() + baseUrl._path + s
+        } else if (s.charAt(0) === '#') {
+          s = baseUrl._hrefNoFragment() + s
+        } else {
+          var dir = baseUrl._path.slice(0, baseUrl._path.lastIndexOf('/') + 1)
+          s = baseUrl._scheme + '://' + baseUrl._authority() + dir + s
+        }
+        return tgUrlParse(s, null)
+      } else {
+        return null
+      }
+
+      var special = Object.prototype.hasOwnProperty.call(SPECIAL_SCHEMES, scheme)
+      var authority = ''
+      var path = ''
+      var opaque = ''
+      var afterAuthority = rest
+
+      if (rest.charAt(0) === '/' && rest.charAt(1) === '/') {
+        var endAuth = -1
+        for (var i = 2; i < rest.length; i++) {
+          var ch = rest.charAt(i)
+          if (ch === '/' || ch === '?' || ch === '#') { endAuth = i; break }
+        }
+        if (endAuth < 0) endAuth = rest.length
+        authority = rest.slice(2, endAuth)
+        afterAuthority = rest.slice(endAuth)
+      } else if (special) {
+        // WHATWG tolerates http:/path — normalize to http://path
+        if (rest.charAt(0) === '/') {
+          return tgUrlParse(scheme + ':' + '/' + rest, null)
+        }
+        authority = ''
+        afterAuthority = rest
+      } else {
+        // opaque path (tg://deep, mailto:...)
+        var endOpaque = -1
+        for (var j = 0; j < rest.length; j++) {
+          var c2 = rest.charAt(j)
+          if (c2 === '?' || c2 === '#') { endOpaque = j; break }
+        }
+        if (endOpaque < 0) endOpaque = rest.length
+        opaque = rest.slice(0, endOpaque)
+        afterAuthority = rest.slice(endOpaque)
+      }
+
+      var username = ''
+      var password = ''
+      var host = ''
+      var port = ''
+      if (authority) {
+        var hostPart = authority
+        var at = authority.lastIndexOf('@')
+        if (at >= 0) {
+          var userinfo = authority.slice(0, at)
+          hostPart = authority.slice(at + 1)
+          var colon = userinfo.indexOf(':')
+          if (colon < 0) {
+            username = tgUrlDecode(userinfo)
+          } else {
+            username = tgUrlDecode(userinfo.slice(0, colon))
+            password = tgUrlDecode(userinfo.slice(colon + 1))
+          }
+        }
+        if (hostPart.charAt(0) === '[') {
+          var close = hostPart.indexOf(']')
+          if (close < 0) return null
+          host = hostPart.slice(0, close + 1).toLowerCase()
+          var after = hostPart.slice(close + 1)
+          if (after.charAt(0) === ':') port = after.slice(1)
+        } else {
+          var pc = hostPart.lastIndexOf(':')
+          if (pc >= 0 && /^\d*$/.test(hostPart.slice(pc + 1))) {
+            host = hostPart.slice(0, pc).toLowerCase()
+            port = hostPart.slice(pc + 1)
+          } else {
+            host = hostPart.toLowerCase()
+          }
+        }
+        if (special && !host && scheme !== 'file') return null
+        if (port) {
+          if (!/^\d+$/.test(port)) return null
+          var portNum = parseInt(port, 10)
+          if (Object.prototype.hasOwnProperty.call(SPECIAL_SCHEMES, scheme) &&
+            SPECIAL_SCHEMES[scheme] === portNum) {
+            port = ''
+          }
+        }
+      }
+
+      var endPath = -1
+      for (var k = 0; k < afterAuthority.length; k++) {
+        var c3 = afterAuthority.charAt(k)
+        if (c3 === '?' || c3 === '#') { endPath = k; break }
+      }
+      if (endPath < 0) endPath = afterAuthority.length
+      path = afterAuthority.slice(0, endPath)
+      var tail = afterAuthority.slice(endPath)
+      var query = ''
+      var fragment = ''
+      if (tail.charAt(0) === '?') {
+        var endQuery = tail.indexOf('#')
+        if (endQuery < 0) {
+          query = tail.slice(1)
+        } else {
+          query = tail.slice(1, endQuery)
+          fragment = tail.slice(endQuery + 1)
+        }
+      } else if (tail.charAt(0) === '#') {
+        fragment = tail.slice(1)
+      }
+
+      if (opaque) {
+        return {
+          scheme: scheme, username: username, password: password, host: host, port: port,
+          path: opaque, query: query, fragment: fragment, opaque: true,
+        }
+      }
+
+      if (special) {
+        path = path.replace(/\\/g, '/')
+        if (path.charAt(0) !== '/') path = '/' + path
+        path = tgNormalizePath(path)
+      } else {
+        if (authority && path && path.charAt(0) !== '/') path = '/' + path
+      }
+
+      return {
+        scheme: scheme, username: username, password: password, host: host, port: port,
+        path: path, query: query, fragment: fragment, opaque: false,
+      }
+    }
+
+    function tgNormalizePath(path) {
+      var segs = path.split('/')
+      var out = []
+      for (var i = 0; i < segs.length; i++) {
+        var seg = segs[i]
+        if (seg === '.') {
+          if (i === segs.length - 1) out.push('')
+          continue
+        }
+        if (seg === '..') {
+          if (out.length > 1) out.pop()
+          if (i === segs.length - 1) out.push('')
+          continue
+        }
+        out.push(seg)
+      }
+      var res = out.join('/')
+      if (res.charAt(0) !== '/') res = '/' + res
+      return res
+    }
+
+    function defineUrlPart(proto, name, getFn, setFn) {
+      Object.defineProperty(proto, name, {
+        get: getFn,
+        set: setFn,
+        enumerable: true,
+        configurable: true,
+      })
+    }
+
+    defineUrlPart(TgUrl.prototype, 'protocol', function () {
+      return this._scheme + ':'
+    }, function (value) {
+      var m = /^([a-zA-Z][a-zA-Z0-9+.-]*):?/.exec(String(value))
+      if (!m) return
+      var old = this._href()
+      var reparsed = tgUrlParse(m[1].toLowerCase() + ':' + old.slice(old.indexOf(':') + 1), null)
+      if (reparsed) tgUrlCopyParts(this, reparsed)
+    })
+
+    defineUrlPart(TgUrl.prototype, 'username', function () {
+      return this._username
+    }, function (value) {
+      this._username = tgUrlEncodeComponent(String(value), true)
+    })
+
+    defineUrlPart(TgUrl.prototype, 'password', function () {
+      return this._password
+    }, function (value) {
+      this._password = tgUrlEncodeComponent(String(value), true)
+    })
+
+    TgUrl.prototype._authority = function () {
+      var auth = this._host
+      if (this._port) auth += ':' + this._port
+      var userinfo = ''
+      if (this._username || this._password) {
+        userinfo = this._username
+        if (this._password) userinfo += ':' + this._password
+        userinfo += '@'
+      }
+      return userinfo + auth
+    }
+
+    TgUrl.prototype._href = function () {
+      var href = this._scheme + ':'
+      if (this._opaque) {
+        href += this._path
+      } else if (this._host) {
+        href += '//' + this._authority() + this._path
+      } else if (Object.prototype.hasOwnProperty.call(SPECIAL_SCHEMES, this._scheme)) {
+        if (this._scheme === 'file') {
+          href += '//' + this._path
+        } else {
+          href += this._path
+        }
+      } else {
+        href += this._path
+      }
+      if (this._searchParams && this._searchParams.size) {
+        href += '?' + this._searchParams.toString()
+      } else if (this._query) {
+        href += '?' + this._query
+      }
+      if (this._fragment) href += '#' + this._fragment
+      return href
+    }
+
+    TgUrl.prototype._hrefNoFragment = function () {
+      var saved = this._fragment
+      this._fragment = ''
+      var href = this._href()
+      this._fragment = saved
+      return href
+    }
+
+    defineUrlPart(TgUrl.prototype, 'host', function () {
+      return this._host + (this._port ? ':' + this._port : '')
+    }, function (value) {
+      var parsed = tgUrlParse('http://' + String(value), null)
+      if (parsed && parsed.host) {
+        this._host = parsed.host
+        this._port = parsed.port
+      }
+    })
+
+    defineUrlPart(TgUrl.prototype, 'hostname', function () {
+      return this._host
+    }, function (value) {
+      var parsed = tgUrlParse('http://' + String(value), null)
+      if (parsed && parsed.host) this._host = parsed.host
+    })
+
+    defineUrlPart(TgUrl.prototype, 'port', function () {
+      return this._port
+    }, function (value) {
+      var v = String(value).replace(/^:/, '')
+      if (!v) { this._port = ''; return }
+      if (!/^\d+$/.test(v)) return
+      var n = parseInt(v, 10)
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_SCHEMES, this._scheme) &&
+        SPECIAL_SCHEMES[this._scheme] === n) {
+        this._port = ''
+      } else {
+        this._port = String(n)
+      }
+    })
+
+    defineUrlPart(TgUrl.prototype, 'pathname', function () {
+      return this._path
+    }, function (value) {
+      if (this._opaque) return
+      var v = String(value)
+      this._path = v.charAt(0) === '/' ? tgNormalizePath(v) : '/' + tgNormalizePath(v)
+    })
+
+    TgUrl.prototype._setSearchFromParams = function (params) {
+      this._query = params.toString()
+      if (params._url === this) this._searchParams = params
+    }
+
+    defineUrlPart(TgUrl.prototype, 'search', function () {
+      var q = this._searchParams ? this._searchParams.toString() : this._query
+      return q ? '?' + q : ''
+    }, function (value) {
+      var v = String(value)
+      if (v.charAt(0) === '?') v = v.slice(1)
+      this._query = v
+      this._searchParams = null
+    })
+
+    defineUrlPart(TgUrl.prototype, 'hash', function () {
+      return this._fragment ? '#' + this._fragment : ''
+    }, function (value) {
+      var v = String(value)
+      if (v.charAt(0) === '#') v = v.slice(1)
+      this._fragment = v
+    })
+
+    defineUrlPart(TgUrl.prototype, 'origin', function () {
+      if (Object.prototype.hasOwnProperty.call(SPECIAL_SCHEMES, this._scheme) && this._scheme !== 'file') {
+        return this._scheme + '://' + this.host
+      }
+      return 'null'
+    })
+
+    defineUrlPart(TgUrl.prototype, 'searchParams', function () {
+      if (!this._searchParams) {
+        this._searchParams = new TgUrlSearchParams(this._query)
+        this._searchParams._url = this
+      }
+      return this._searchParams
+    })
+
+    defineUrlPart(TgUrl.prototype, 'href', function () {
+      return this._href()
+    }, function (value) {
+      var parsed = tgUrlParse(String(value), null)
+      if (parsed) {
+        tgUrlCopyParts(this, parsed)
+      } else {
+        throw new TypeError('Invalid URL: ' + value)
+      }
+    })
+
+    function tgUrlCopyParts(url, parts) {
+      url._scheme = parts.scheme
+      url._username = parts.username
+      url._password = parts.password
+      url._host = parts.host
+      url._port = parts.port
+      url._path = parts.path
+      url._query = parts.query
+      url._fragment = parts.fragment
+      url._opaque = parts.opaque
+      url._searchParams = null
+    }
+
+    TgUrl.prototype.toString = function () {
+      return this._href()
+    }
+    TgUrl.prototype.toJSON = function () {
+      return this._href()
+    }
+
+    globalThis.URL = TgUrl
+    globalThis.URLSearchParams = TgUrlSearchParams
+  }
+
   // ---------------------------------------------------------------------- UTF8
   // Minimal WHATWG-compliant TextEncoder / TextDecoder (fatal=false).
   function utf8Encode(str) {
