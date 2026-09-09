@@ -86,7 +86,10 @@ internal object TdEngine {
 
     /**
      * Boots the native library and the TDLib client. Returns false (and
-     * records [lastStartError]) when the native library is unavailable.
+     * records [lastStartError]) when the native library is unavailable or
+     * the client cannot be created — never throws, so app boot and the
+     * login screen can treat a failed engine start as a recoverable state
+     * instead of a crash.
      */
     fun start(context: Context): Boolean {
         if (started.get()) return true
@@ -102,14 +105,26 @@ internal object TdEngine {
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
 
             val handler = ChannelResultHandler(updateChannel)
-            val client =
-                Client.create(
-                    handler,
-                    { throwable -> Timber.tag(TAG).e(throwable, "TDLib update handler exception") },
-                    { throwable -> Timber.tag(TAG).e(throwable, "TDLib exception") },
-                )
-            val telegramFlow = TelegramFlow(handler)
-            telegramFlow.attachClient(client)
+            val boot =
+                runCatching {
+                    val client =
+                        Client.create(
+                            handler,
+                            { throwable -> Timber.tag(TAG).e(throwable, "TDLib update handler exception") },
+                            { throwable -> Timber.tag(TAG).e(throwable, "TDLib exception") },
+                        )
+                    val telegramFlow = TelegramFlow(handler)
+                    telegramFlow.attachClient(client)
+                    telegramFlow to client
+                }
+            val (telegramFlow, _) =
+                boot.getOrElse { failure ->
+                    Timber.tag(TAG).e(failure, "Creating the TDLib client failed")
+                    lastStartError =
+                        "Engine start failed: ${failure.javaClass.simpleName}: ${failure.message.orEmpty()}"
+                            .take(200)
+                    return false
+                }
             flow = telegramFlow
             lastStartError = null
             started.set(true)

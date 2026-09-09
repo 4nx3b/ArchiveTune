@@ -66,6 +66,7 @@ graphicsShapes = "1.0.1"
 bouncyCastle = "1.85"
 translator = "1.1.1"
 rhino = "1.9.1"
+quickjsKt = "1.0.14"
 markwon = "4.6.2"
 okhttp = "5.4.0"
 accompanist = "1.0.19"
@@ -188,6 +189,7 @@ pipepipe-extractor = { module = "com.github.maxrave-dev:PipePipeExtractor", vers
 brave-extractor = { module = "com.github.maxrave-dev:BravePipeExtractor", version.ref = "braveNewpipe" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
