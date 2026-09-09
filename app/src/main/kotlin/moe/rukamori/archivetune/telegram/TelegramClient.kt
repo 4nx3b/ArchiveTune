@@ -317,15 +317,24 @@ object TelegramClient {
         return true
     }
 
-    /** Joins a start failure with the recorded native death note for the UI. */
+    /** Joins a start failure with every piece of captured crash evidence for the UI. */
     private fun runtimeFailureDetail(
+        context: Context,
         base: String?,
         crashNote: String?,
-    ): String? =
-        listOfNotNull(
+    ): String? {
+        val logcatEvidence = NativeCrashReporter.summarize(context)
+        val stepTail =
+            TdStartTrace.tail(context, 6)?.let { tail ->
+                "last steps: " + tail.lines().joinToString(" | ") { it.substringAfter("] ") }
+            }
+        return listOfNotNull(
             base?.take(220),
             crashNote?.take(220)?.let { "last native crash: $it" },
+            logcatEvidence,
+            stepTail?.take(240),
         ).joinToString("; ").ifBlank { null }
+    }
 
     private suspend fun initialize(
         context: Context,
@@ -334,26 +343,13 @@ object TelegramClient {
         initMutex.withLock {
             if (TdEngine.isRunning || isReady) return true
 
-            if (TdLibNativeLibrary.needsDownload(context)) {
-                if (!allowEngineDownload) {
-                    // Boot restore or a settings peek without a session:
-                    // never pull the multi-MB engine in the background —
-                    // the login screen downloads it on demand with a
-                    // progress UI. Returning true keeps Telegram features
-                    // lazy instead of marking the runtime failed.
-                    return true
-                }
-                _nativeDownloadProgress.value = 0f
-                val downloaded =
-                    runCatching { TdLibNativeLibrary.download(context) { p -> _nativeDownloadProgress.value = p } }
-                        .getOrDefault(false)
-                _nativeDownloadProgress.value = null
-                if (!downloaded) {
-                    _authState.value =
-                        TelegramAuthState.RuntimeFailed("Could not download the Telegram engine")
-                    return false
-                }
-            }
+            // Black box first: when the PREVIOUS attempt died natively, the
+            // logcat ring buffer still holds that process's fatal lines
+            // (Android lets an app read only its own uid's logs, which is
+            // exactly the uid the dying process ran under). Capture them
+            // before this attempt can crash again.
+            NativeCrashReporter.maybeCapture(context)
+            TdStartTrace.attempt(context)
 
             // The fatal log line TDLib emitted right before it aborted the
             // process on a previous run (written by TdEngine's log recorder):
@@ -370,11 +366,13 @@ object TelegramClient {
             // A start that died natively last time leaves a stale marker; a
             // database written by an older engine (pre-marker builds) is
             // equally poison — TDLib's native layer aborts the whole process
-            // on either. Healed (or blocked) before the engine ever runs.
+            // on either. Healed (or blocked) before ANY engine code runs —
+            // including the library download below.
             if (!healCrashedEngineState(context)) {
                 _authState.value =
                     TelegramAuthState.RuntimeFailed(
                         runtimeFailureDetail(
+                            context,
                             "The Telegram engine crashed repeatedly on this device; " +
                                 "open the Telegram login screen to retry",
                             previousCrashNote,
@@ -385,11 +383,10 @@ object TelegramClient {
 
             var firstStateArrived = false
             try {
-                // Armed BEFORE any native code runs (TdEngine.start loads the
-                // library, sets log verbosity and creates the client): a
-                // native abort — uncatchable in Kotlin — leaves this marker
-                // behind, and the next start heals the database instead of
-                // crash-looping.
+                // Armed BEFORE the download and the library load (was: just
+                // before the engine start): a native abort inside
+                // System.load — which runs as the download's final step —
+                // now also leaves the healing/counting evidence behind.
                 runCatching {
                     engineStartMarker(context).apply {
                         parentFile?.mkdirs()
@@ -397,10 +394,42 @@ object TelegramClient {
                     }
                 }
 
+                if (TdLibNativeLibrary.needsDownload(context)) {
+                    if (!allowEngineDownload) {
+                        // Boot restore or a settings peek without a session:
+                        // never pull the multi-MB engine in the background —
+                        // the login screen downloads it on demand with a
+                        // progress UI. Returning true keeps Telegram features
+                        // lazy instead of marking the runtime failed.
+                        return true
+                    }
+                    _nativeDownloadProgress.value = 0f
+                    val downloaded =
+                        runCatching { TdLibNativeLibrary.download(context) { p -> _nativeDownloadProgress.value = p } }
+                            .getOrDefault(false)
+                    _nativeDownloadProgress.value = null
+                    if (!downloaded) {
+                        TdStartTrace.step(
+                            context,
+                            "download-failed",
+                            TdLibNativeLibrary.lastLoadError.orEmpty().take(160),
+                        )
+                        _authState.value =
+                            TelegramAuthState.RuntimeFailed(
+                                runtimeFailureDetail(
+                                    context,
+                                    "Could not download the Telegram engine",
+                                    previousCrashNote,
+                                ),
+                            )
+                        return false
+                    }
+                }
+
                 if (!TdEngine.start(context)) {
                     _authState.value =
                         TelegramAuthState.RuntimeFailed(
-                            runtimeFailureDetail(TdEngine.lastStartError?.take(220), previousCrashNote),
+                            runtimeFailureDetail(context, TdEngine.lastStartError?.take(220), previousCrashNote),
                         )
                     return false
                 }
@@ -416,6 +445,11 @@ object TelegramClient {
                         while (!arrived) {
                             val state = _authState.value
                             if (state !is TelegramAuthState.Idle && state !is TelegramAuthState.Connecting) {
+                                TdStartTrace.step(
+                                    context,
+                                    "first-state",
+                                    state.javaClass.simpleName,
+                                )
                                 arrived = true
                             } else {
                                 delay(100)
@@ -423,6 +457,9 @@ object TelegramClient {
                         }
                         arrived
                     } ?: false
+                if (!firstStateArrived) {
+                    TdStartTrace.step(context, "first-state-timeout")
+                }
                 if (firstStateArrived) {
                     runCatching {
                         engineHealthyMarker(context).apply {
