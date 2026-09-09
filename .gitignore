@@ -134,3 +134,6 @@ core.*
 
 # graphify knowledge-graph state (regenerable, ~60MB)
 .graphify/
+
+# tdlight local native-build workspace (scripts/tdlight)
+tdlight-work/

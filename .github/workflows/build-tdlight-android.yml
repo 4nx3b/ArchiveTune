@@ -1,0 +1,109 @@
+name: Build TDLight Android natives
+
+# Builds TDLight (tdlight-team/tdlight, pinned commit) for Android ABIs with
+# the generated org.drinkless.tdlib Java binding, then publishes everything
+# as a GitHub release (tag tdlight-<short-sha>) plus a workflow artifact.
+#
+# The APK stays slim: libtdjni.so is never bundled; the app downloads it from
+# this release on first login (digest-pinned in TdLibNativeLibrary.kt).
+# TDLight's example/android CMake builds cross targets with -Oz + thin LTO,
+# so the per-ABI .so (static OpenSSL + static libc++) is size-optimized.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tdlight_sha:
+        description: 'tdlight commit sha to build'
+        required: true
+        default: '2b51b33c8a905be96c40508e68485f8a719e26a3'
+  push:
+    branches: [ 'dev' ]
+    paths:
+      - '.github/workflows/build-tdlight-android.yml'
+      - 'scripts/tdlight/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build TDLight for Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      TDLIGHT_SHA: '2b51b33c8a905be96c40508e68485f8a719e26a3'
+    steps:
+      - name: Checkout ArchiveTune
+        uses: actions/checkout@v7
+
+      - name: Install native build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gperf php-cli php-xml
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -sfLo cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdtools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-34" \
+            "ndk;23.2.8568313" \
+            "cmake;3.22.1"
+
+      - name: Resolve TDLight sha
+        id: ref
+        run: |
+          SHA="${{ github.event.inputs.tdlight_sha || env.TDLIGHT_SHA }}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=tdlight-${SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build TDLight
+        env:
+          ANDROID_HOME: ${{ runner.temp }}/android-sdk
+        run: |
+          chmod +x scripts/tdlight/build-tdlight-android.sh
+          ./scripts/tdlight/build-tdlight-android.sh \
+            "${{ steps.ref.outputs.sha }}" \
+            "$ANDROID_HOME" \
+            "$RUNNER_TEMP/tdlight-out"
+
+      - name: Publish workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdlight-android
+          path: ${{ runner.temp }}/tdlight-out/
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.ref.outputs.tag }}"
+          OUT="$RUNNER_TEMP/tdlight-out"
+          cp "$OUT/digests.txt" "$OUT/libtdjni-digests.txt"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "TDLight natives ($TAG)" \
+            --notes "TDLight (tdlight-team/tdlight @ ${{ steps.ref.outputs.sha }}) Android build.
+          Static OpenSSL 1.1.1w + static libc++, -Oz + thin LTO, stripped.
+          SHA-256 digests in libtdjni-digests.txt. Generated Java binding:
+          java/org/drinkless/tdlib/{Client,TdApi}.java." \
+            "$OUT/libtdjni-arm64-v8a.so.gz" \
+            "$OUT/libtdjni-armeabi-v7a.so.gz" \
+            "$OUT/libtdjni-x86_64.so.gz" \
+            "$OUT/libtdjni-x86.so.gz" \
+            "$OUT/libtdjni-digests.txt" \
+            "$OUT/java/org/drinkless/tdlib/Client.java" \
+            "$OUT/java/org/drinkless/tdlib/TdApi.java"
