@@ -184,16 +184,46 @@ object TelegramClient {
     /**
      * App-boot entry: resumes an existing Telegram session from the already
      * cached engine (never downloads — the login screen owns the one-time
-     * engine download with its progress UI). Fails closed when the library
-     * is not cached yet; Telegram features come alive after the user's next
-     * visit to the login screen or an interactive settings start.
+     * engine download with its progress UI). Only runs when the PREVIOUS
+     * engine start completed on this device: a native TDLib abort kills the
+     * process instantly (no Java exception), so a start that never reached
+     * its first authorization state is treated as crashed — boot stays
+     * silent and the next interactive start heals the database instead of
+     * crash-looping at every app open.
      */
     fun startIfSessionExists(context: Context): Boolean {
         if (!runCatching { sessionDir(context).exists() }.getOrDefault(false)) return false
+        if (!runCatching { engineHealthyMarker(context).isFile }.getOrDefault(false)) return false
         return ensureStarted(context, allowEngineDownload = false)
     }
 
     private fun sessionDir(context: Context): File = File(File(context.filesDir, "telegram"), "db")
+
+    private fun engineStartMarker(context: Context): File =
+        File(File(context.filesDir, "tdlib-native"), "engine-starting")
+
+    private fun engineHealthyMarker(context: Context): File =
+        File(File(context.filesDir, "tdlib-native"), "engine-healthy")
+
+    /**
+     * A stale `engine-starting` marker (no healthy marker) means the process
+     * died mid-start — TDLib's database may be half-written and its native
+     * layer aborts on corrupted state. Reset the whole local Telegram
+     * database so the next start heals instead of crash-looping. Sessions
+     * cannot be trusted after an aborted start anyway.
+     */
+    private fun healCrashedEngineState(context: Context) {
+        val starting = engineStartMarker(context)
+        val healthy = engineHealthyMarker(context)
+        if (runCatching { healthy.isFile }.getOrDefault(false)) return
+        if (!runCatching { starting.isFile }.getOrDefault(false)) return
+        Timber.tag(TAG).w("Previous TDLib engine start crashed; resetting the local Telegram database")
+        runCatching {
+            File(context.filesDir, "telegram/db").deleteRecursively()
+            File(context.filesDir, "telegram/files").deleteRecursively()
+            starting.delete()
+        }
+    }
 
     private suspend fun initialize(
         context: Context,
@@ -223,27 +253,64 @@ object TelegramClient {
                 }
             }
 
-            if (!TdEngine.start(context)) {
-                _authState.value =
-                    TelegramAuthState.RuntimeFailed(TdEngine.lastStartError?.take(200))
-                return false
-            }
+            // A start that died mid-flight last time leaves a stale marker:
+            // TDLib may have left a half-written database behind, which its
+            // native layer can abort on — reset it before starting again.
+            healCrashedEngineState(context)
 
-            _authState.value = TelegramAuthState.Connecting
-
-            // TDLib reports its first authorization state locally (after
-            // SetTdlibParameters): WaitPhoneNumber for a fresh install, or
-            // WaitCode/WaitPassword/Ready when a session already exists.
-            withTimeoutOrNull(FIRST_AUTH_STATE_TIMEOUT_MS) {
-                while (true) {
-                    val state = _authState.value
-                    if (state !is TelegramAuthState.Idle && state !is TelegramAuthState.Connecting) {
-                        return@withTimeoutOrNull
-                    }
-                    delay(100)
+            var firstStateArrived = false
+            try {
+                if (!TdEngine.start(context)) {
+                    _authState.value =
+                        TelegramAuthState.RuntimeFailed(TdEngine.lastStartError?.take(200))
+                    return false
                 }
+
+                // Armed just before the first native RPCs: if the process is
+                // killed natively (TDLib aborts are not catchable Java
+                // exceptions), this marker survives and the next start
+                // resets the database instead of crash-looping.
+                runCatching {
+                    engineStartMarker(context).apply {
+                        parentFile?.mkdirs()
+                        writeText(System.currentTimeMillis().toString())
+                    }
+                }
+
+                _authState.value = TelegramAuthState.Connecting
+
+                // TDLib reports its first authorization state locally (after
+                // SetTdlibParameters): WaitPhoneNumber for a fresh install, or
+                // WaitCode/WaitPassword/Ready when a session already exists.
+                firstStateArrived =
+                    withTimeoutOrNull(FIRST_AUTH_STATE_TIMEOUT_MS) {
+                        var arrived = false
+                        while (!arrived) {
+                            val state = _authState.value
+                            if (state !is TelegramAuthState.Idle && state !is TelegramAuthState.Connecting) {
+                                arrived = true
+                            } else {
+                                delay(100)
+                            }
+                        }
+                        arrived
+                    } ?: false
+                if (firstStateArrived) {
+                    runCatching {
+                        engineHealthyMarker(context).apply {
+                            parentFile?.mkdirs()
+                            writeText(System.currentTimeMillis().toString())
+                        }
+                    }
+                }
+                true
+            } finally {
+                // Reaching here means the process survived the start (any
+                // failure was a catchable exception/timeout): clear the
+                // crash-detection marker so only real process deaths trigger
+                // the database reset.
+                runCatching { engineStartMarker(context).delete() }
             }
-            true
         }
 
     // ---------------------------------------------------------------------------
