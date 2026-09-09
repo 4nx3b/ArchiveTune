@@ -1482,3 +1482,87 @@ Stage Summary:
   reference; the .mjs ones remain local-only dev tools).
 - Next: user retests on-device phone -> OTP -> (2FA) login; TDLib swap
   request stays deferred while mtcute now demonstrably authorizes.
+
+---
+Task ID: 28
+Agent: main (Super Z)
+Task: User directive: "use https://github.com/tdlibx/td-ktx instead of
+mtproto and keep the size as less as you can" — replace the QuickJS+mtcute
+MTProto bridge (root cause of the unfixed OTP "never sends / always
+timeout" hang) with TDLib via td-ktx, minimizing APK size.
+
+Work Log:
+- Recovered the pre-swap TDLib-era code from f9ae45e99^ (the commit that
+  swapped TDLib -> mtcute): TelegramClient/BotClient/DataSource/
+  ThumbnailFetcher/TdLibNativeLibrary + the old build config, as the
+  blueprint for the port.
+- Verified td-ktx (tdlibx/td-ktx, tag 1.8.56, Apache-2.0): TelegramFlow
+  coroutine wrapper over com.github.tdlibx:td:1.8.56. Confirmed every
+  needed TdApi class + generic return type (LogOut->Ok, GetMe->User,
+  ReadFilePart->Data, ForwardMessages->Messages, ...) from the JitPack
+  AAR bytecode; CheckDatabaseEncryptionKey does NOT exist in this
+  binding (key is passed inside SetTdlibParameters).
+- Vendored the td-ktx core (TelegramFlow/ResultHandlerStateFlow/
+  TelegramException, package kotlinx.telegram.core, attribution headers)
+  instead of depending on the td-ktx AAR: its blanket consumer
+  "-keep class kotlinx.telegram.** { *; }" would exempt ~2 MB of
+  generated extension wrappers from R8; the td binding
+  (org.drinkless.tdlib) is kept whole anyway (JNI reflects classes by
+  name). Fixed .gitignore's bare "core" pattern that was hiding the
+  vendored directory.
+- New TdEngine: creates the TDLib Client with a channel-backed
+  ResultHandlerFlow (Channel.UNLIMITED -> single sequential collector;
+  no conflation/drops) attached to td-ktx's TelegramFlow; all RPCs via
+  TelegramFlow.sendFunctionAsync mapped to TelegramApiException; updates
+  routed to TelegramClient (auth state + chat cache) and TelegramBotClient
+  (new messages). Per-request responses bypass the update queue (no
+  deadlock when the auth-state handler sends SetTdlibParameters).
+- TelegramClient rewritten on the TDLib authorization state machine with
+  the same public API (authState incl. RuntimeFailed, WaitCode carries
+  codeInfo type/nextType/timeout, resendCode -> ResendAuthenticationCode,
+  search incl. invite links, fetchAudioPage -> SearchChatMessages with
+  audio/document filters, messageToTrack, file ops). Offline logOut now
+  sends Close, wipes filesDir/telegram and resets the engine.
+- TelegramBotClient ported (resolveBot via SearchPublicChat+GetUser,
+  prompts from ReplyMarkupInlineKeyboard, GetCallbackQueryAnswer,
+  ForwardMessages, GetCommands); TelegramDataSource restored to TDLib's
+  partial-download model (DownloadFile offset retargeting + ReadFilePart,
+  LRU-retained downloads) with v2-id message-based file resolution;
+  TelegramStreamCache deleted; PlayerConnection's format refiner now
+  uses TelegramClient.readyFilePath(chatId, messageId).
+- Size work: libtdjni.so (15-26 MB/ABI) never bundled — slimTdlib now
+  DEFAULTS to slim; TDLIB_NATIVE_BASE_URL points to this repo's own
+  release. Created GitHub release tdlib-1.8.56 on 4nx3B/ArchiveTune with
+  the 4 per-ABI .so assets extracted from the JitPack AAR (SHA-256
+  digests byte-identical to the old TdLibNativeLibrary pin — verified).
+  Login screen gained a one-time engine-download progress card; settings/
+  app boot only auto-download when a Telegram session already exists.
+  Net APK delta vs the mtcute build: roughly +1 MB (TDLib Java classes)
+  minus the removed 1.3 MB mtcute_host.js asset; quickjs-kt stays
+  (ytdlp cipher engine).
+- Deleted: TgJsRuntime/Crypto/Protocol/Storage, TelegramStreamCache,
+  assets/telegram/mtcute_host.js, scripts/telegram-js. Restored
+  extractTdLibNatives task, TDLIB_* buildConfig, jitpack filter entry,
+  proguard tdlib keep rules.
+- kotlin_balance_check OK on all changed files; no stale references to
+  removed symbols anywhere in app/src.
+
+Stage Summary:
+- Telegram engine is now TDLib 1.8.56 via td-ktx's TelegramFlow (vendored
+  core): OTP delivery runs on TDLib's native MTProto — the QuickJS/URL/
+  AES-IGE bridge bug class is eliminated entirely, matching the old
+  TDLib-era login that worked before the mtcute experiment.
+- APK stays minimal: no bundled .so (runtime download from the repo's own
+  tdlib-1.8.56 release, digest-pinned, progress UI in login), quickjs-kt
+  retained only for ytdlp.
+- Key files: telegram/TdEngine.kt (new), telegram/TdLibNativeLibrary.kt
+  (restored), kotlinx/telegram/core/* (vendored td-ktx),
+  telegram/{TelegramClient,TelegramBotClient,TelegramDataSource,
+  TelegramModels,TelegramThumbnailFetcher}.kt (ported),
+  ui/screens/settings/TelegramLoginScreen.kt (engine download card),
+  app/build.gradle.kts + settings.gradle.kts + proguard-rules.pro +
+  .gitignore (build/packaging).
+- Release hosted: 4nx3B/ArchiveTune release tdlib-1.8.56 with 4 per-ABI
+  libtdjni.so assets (digests pinned in code).
+- Next: user retests phone -> OTP -> (2FA) login on-device; mtcute-era
+  sessions require one re-login.
