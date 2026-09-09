@@ -63,7 +63,6 @@ extractor = "0.26.5"
 pipepipe = "f8982ca9e7"
 braveNewpipe = "0fcaf19ecc"
 graphicsShapes = "1.0.1"
-quickjsKt = "1.0.14"
 bouncyCastle = "1.85"
 translator = "1.1.1"
 rhino = "1.9.1"
@@ -188,7 +187,6 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 pipepipe-extractor = { module = "com.github.maxrave-dev:PipePipeExtractor", version.ref = "pipepipe" }
 brave-extractor = { module = "com.github.maxrave-dev:BravePipeExtractor", version.ref = "braveNewpipe" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
-quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 

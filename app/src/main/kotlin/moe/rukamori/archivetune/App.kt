@@ -74,7 +74,6 @@ import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import timber.log.Timber
-import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.net.Proxy

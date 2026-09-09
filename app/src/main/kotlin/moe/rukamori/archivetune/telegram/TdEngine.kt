@@ -4,13 +4,14 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * The TDLib engine singleton. Owns the td-ktx [TelegramFlow] (vendored from
- * tdlibx/td-ktx 1.8.56) on top of the TDLib native client
- * (org.drinkless.tdlib, com.github.tdlibx:td:1.8.56).
+ * The TDLight engine singleton. Owns the td-ktx [TelegramFlow] (vendored
+ * core) on top of the TDLight native client (tdlight-team/tdlight, TDLib
+ * 1.8.66 base; org.drinkless.tdlib binding vendored from the same commit
+ * under app/src/main/java).
  *
  * - Starts the native library through [TdLibNativeLibrary] (bundled or
- *   runtime-downloaded, digest-pinned — the APK itself never carries the
- *   20+ MB per-ABI .so).
+ *   runtime-downloaded from the tdlight release, digest-pinned — the APK
+ *   itself never carries the multi-MB per-ABI .so).
  * - Creates the [Client] with a channel-backed update handler: every TDLib
  *   update is buffered in an unlimited channel and dispatched sequentially
  *   by a single collector, so rapid bursts (bot albums, chat syncs) never

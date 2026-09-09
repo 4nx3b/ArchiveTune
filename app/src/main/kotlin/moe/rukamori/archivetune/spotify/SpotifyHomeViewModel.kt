@@ -37,10 +37,6 @@ import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedSection
-import moe.rukamori.archivetune.spotify.models.SpotifyImage
-import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
-import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistOwner
-import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
 import javax.inject.Inject
 
 sealed interface SpotifyRecentItem {

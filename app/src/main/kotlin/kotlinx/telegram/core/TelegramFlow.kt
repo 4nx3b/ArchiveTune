@@ -12,8 +12,11 @@
  * `com.github.tdlibx:td-ktx` artifact because the artifact's blanket
  * `-keep class kotlinx.telegram.** { *; }` consumer rule would exempt ~2 MB
  * of generated extension wrappers from R8 shrinking. Vendoring the three
- * core files keeps the APK minimal while still using td-ktx as the Telegram
- * API layer over `com.github.tdlibx:td:1.8.56` (TDLib JNI binding).
+ * core files keeps the APK minimal while still using td-ktx as the
+ * Telegram API layer. It runs unchanged on top of the TDLight engine: the
+ * org.drinkless.tdlib Client/TdApi binding (vendored under
+ * app/src/main/java) is generated from the same TDLight commit that builds
+ * the runtime-downloaded libtdjni.so, so the API always matches.
  * Only change vs upstream: this attribution header. Source is otherwise
  * kept verbatim to stay diffable against the upstream tag.
  * ---------------------------------------------------------------------------

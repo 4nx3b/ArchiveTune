@@ -142,8 +142,6 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.LocalAnimationsDisabled
-import moe.rukamori.archivetune.ui.player.MeshBackdrop
-import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
