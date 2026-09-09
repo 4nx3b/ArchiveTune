@@ -317,6 +317,16 @@ object TelegramClient {
         return true
     }
 
+    /** Joins a start failure with the recorded native death note for the UI. */
+    private fun runtimeFailureDetail(
+        base: String?,
+        crashNote: String?,
+    ): String? =
+        listOfNotNull(
+            base?.take(220),
+            crashNote?.take(220)?.let { "last native crash: $it" },
+        ).joinToString("; ").ifBlank { null }
+
     private suspend fun initialize(
         context: Context,
         allowEngineDownload: Boolean,
@@ -345,6 +355,18 @@ object TelegramClient {
                 }
             }
 
+            // The fatal log line TDLib emitted right before it aborted the
+            // process on a previous run (written by TdEngine's log recorder):
+            // a native abort is uncatchable in Kotlin, so this note is the
+            // only witness of *why* the engine died. Surface it in logs and
+            // attach it to any failure shown to the user.
+            val previousCrashNote = TdEngine.readPersistedCrashNote(context)
+            if (previousCrashNote != null) {
+                Timber
+                    .tag(TAG)
+                    .e("TDLib died natively on a previous engine start: %s", previousCrashNote)
+            }
+
             // A start that died natively last time leaves a stale marker; a
             // database written by an older engine (pre-marker builds) is
             // equally poison — TDLib's native layer aborts the whole process
@@ -352,8 +374,11 @@ object TelegramClient {
             if (!healCrashedEngineState(context)) {
                 _authState.value =
                     TelegramAuthState.RuntimeFailed(
-                        "The Telegram engine crashed repeatedly on this device; " +
-                            "open the Telegram login screen to retry",
+                        runtimeFailureDetail(
+                            "The Telegram engine crashed repeatedly on this device; " +
+                                "open the Telegram login screen to retry",
+                            previousCrashNote,
+                        ),
                     )
                 return false
             }
@@ -374,7 +399,9 @@ object TelegramClient {
 
                 if (!TdEngine.start(context)) {
                     _authState.value =
-                        TelegramAuthState.RuntimeFailed(TdEngine.lastStartError?.take(200))
+                        TelegramAuthState.RuntimeFailed(
+                            runtimeFailureDetail(TdEngine.lastStartError?.take(220), previousCrashNote),
+                        )
                     return false
                 }
 
@@ -403,8 +430,10 @@ object TelegramClient {
                             writeText(System.currentTimeMillis().toString())
                         }
                     }
-                    // A completed start clears the native-crash budget.
+                    // A completed start clears the native-crash budget and
+                    // the crash note from any earlier death.
                     writeCrashCounter(context, 0)
+                    TdEngine.clearPersistedCrashNote(context)
                 }
                 true
             } finally {

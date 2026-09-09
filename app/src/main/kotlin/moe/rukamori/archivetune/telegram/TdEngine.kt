@@ -41,6 +41,7 @@ import kotlinx.telegram.core.TelegramFlow
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -62,6 +63,58 @@ internal object TdEngine {
 
     val isRunning: Boolean
         get() = flow != null
+
+    // -----------------------------------------------------------------------
+    // Native crash black box
+    // -----------------------------------------------------------------------
+
+    private fun crashNoteFile(context: Context): File =
+        File(File(context.applicationContext.filesDir, "tdlib-native"), "last-crash.txt")
+
+    /**
+     * The fatal log line TDLib emitted right before it aborted the process
+     * on a previous run, or null. Written by [installFatalLogRecorder]; a
+     * native abort is uncatchable in Kotlin, so this file is the only
+     * surviving witness of *why* the engine died.
+     */
+    fun readPersistedCrashNote(context: Context): String? =
+        runCatching {
+            val file = crashNoteFile(context)
+            if (file.isFile) file.readText().trim().take(600) else null
+        }.getOrNull()
+
+    /** Called once an engine start completed and reached its first auth state. */
+    fun clearPersistedCrashNote(context: Context) {
+        runCatching { crashNoteFile(context).delete() }
+    }
+
+    /**
+     * TDLib routes its own fatal errors (the last message it logs before
+     * CHECK-failing and killing the process) through the log-message
+     * callback: "If 0, then TDLib will crash as soon as the callback
+     * returns." Persisting that message turns an opaque hard crash into a
+     * readable reason surfaced on the next engine start.
+     *
+     * Must be installed before any other TDLib call; no TDLib method may be
+     * called from the callback itself (file write + Timber only).
+     */
+    private fun installFatalLogRecorder(context: Context) {
+        val noteFile = crashNoteFile(context)
+        Client.setLogMessageHandler(
+            2,
+            Client.LogMessageHandler { level, message ->
+                if (level <= 0) {
+                    runCatching {
+                        noteFile.parentFile?.mkdirs()
+                        noteFile.writeText("[${System.currentTimeMillis()}] $message")
+                    }
+                    Timber.tag(TAG).e("TDLib fatal: %s", message)
+                } else {
+                    Timber.tag("TdLib").d("[%d] %s", level, message)
+                }
+            },
+        )
+    }
 
     /**
      * Channel-backed [TelegramFlow.ResultHandlerFlow]: TDLib pushes updates
@@ -102,7 +155,26 @@ internal object TdEngine {
                 return false
             }
 
+            // Installed before ANY other native call: a native abort is
+            // uncatchable in Kotlin, and TDLib's fatal log line is the only
+            // witness of why it died.
+            runCatching { installFatalLogRecorder(appContext) }
+                .onFailure { Timber.tag(TAG).w(it, "Installing the TDLib log recorder failed") }
+
+            // First real JNI round-trip (verbosity + full registration): a
+            // failure here means the downloaded library could not be bound
+            // to the Java interface — surface the actual exception (e.g. an
+            // UnsatisfiedLinkError naming the exact dlopen/namespace
+            // problem) instead of swallowing it.
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
+                .onFailure { failure ->
+                    Timber.tag(TAG).e(failure, "The TDLib native interface failed to come up")
+                    lastStartError =
+                        ("TDLib native interface failed to come up: " +
+                            "${failure.javaClass.simpleName}: ${failure.message.orEmpty()}")
+                            .take(300)
+                    return false
+                }
 
             val handler = ChannelResultHandler(updateChannel)
             val boot =
