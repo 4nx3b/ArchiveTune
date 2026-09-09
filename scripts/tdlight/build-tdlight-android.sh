@@ -69,7 +69,7 @@ cmake --build build-native --target tl_generate_java
 php AddIntDef.php org/drinkless/tdlib/TdApi.java
 
 mkdir -p "$OUT_DIR/java/org/drinkless/tdlib"
-cp -p java/org/drinkless/tdlib/Client.java "$OUT_DIR/java/org/drinkless/tdlib/Client.java"
+cp -p ../java/org/drinkless/tdlib/Client.java "$OUT_DIR/java/org/drinkless/tdlib/Client.java"
 cp -p org/drinkless/tdlib/TdApi.java "$OUT_DIR/java/org/drinkless/tdlib/TdApi.java"
 rm -rf org
 rm -rf build-native
