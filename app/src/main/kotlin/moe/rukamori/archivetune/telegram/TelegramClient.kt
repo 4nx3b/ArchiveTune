@@ -4,8 +4,9 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Kotlin face of the Telegram integration, backed by TDLib 1.8.56 through
- * td-ktx's TelegramFlow (see TdEngine + the vendored kotlinx.telegram.core).
+ * Kotlin face of the Telegram integration, backed by TDLight
+ * (tdlight-team/tdlight, TDLib 1.8.66 base) through td-ktx's TelegramFlow
+ * (see TdEngine + the vendored kotlinx.telegram.core).
  *
  * Account login (phone -> code -> optional 2FA password) runs on TDLib's own
  * authorization state machine: submitPhoneNumber/setAuthenticationPhoneNumber
@@ -19,13 +20,10 @@
  * (compiled in via BuildConfig); the session lives in TDLib's own database
  * under filesDir/telegram and survives restarts, so login is a one-time flow.
  *
- * The TDLib native library (~20 MB per ABI) is NOT bundled: slim builds
- * download it once from this repo's GitHub release (digest-pinned) the first
- * time the user opens the Telegram login, keeping the APK minimal. The
- * download progress is exposed through [nativeDownloadProgress].
- *
- * NOTE for mtcute-era users: mtcute sessions cannot be migrated to TDLib, so
- * accounts logged in with the mtcute build need one re-login after updating.
+ * The TDLight native library is NOT bundled: slim builds download it once
+ * from this repo's GitHub release (digest-pinned) the first time the user
+ * opens the Telegram login, keeping the APK minimal. The download progress
+ * is exposed through [nativeDownloadProgress].
  */
 
 package moe.rukamori.archivetune.telegram
@@ -411,7 +409,9 @@ object TelegramClient {
                     TdEngine.send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteLink))
                 val joinedChatId =
                     runCatching {
-                        TdEngine.send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteLink)).id
+                        val joinResult =
+                            TdEngine.send<TdApi.ChatJoinResult>(TdApi.JoinChatByInviteLink(inviteLink))
+                        (joinResult as? TdApi.ChatJoinResultSuccess)?.chatId
                     }.getOrNull()
                 val chatId = joinedChatId ?: inviteInfo.chatId
                 if (chatId != 0L) {
@@ -426,10 +426,12 @@ object TelegramClient {
             runCatching { TdEngine.send<TdApi.Chat>(TdApi.SearchPublicChat(username)) }
                 .onSuccess { chatIds += it.id }
         }
-        runCatching { TdEngine.send<TdApi.Chats>(TdApi.SearchPublicChats(trimmed)) }
+        runCatching { TdEngine.send<TdApi.Chats>(TdApi.SearchPublicChats(trimmed, null)) }
             .onSuccess { chatIds += it.chatIds.toList() }
 
-        runCatching { TdEngine.send<TdApi.Chats>(TdApi.SearchChats(trimmed, LOCAL_CHAT_SEARCH_LIMIT)) }
+        runCatching {
+            TdEngine.send<TdApi.Chats>(TdApi.SearchChats(trimmed, null, LOCAL_CHAT_SEARCH_LIMIT))
+        }
             .onSuccess { chatIds += it.chatIds.toList() }
 
         return chatIds.mapNotNull { chatId ->

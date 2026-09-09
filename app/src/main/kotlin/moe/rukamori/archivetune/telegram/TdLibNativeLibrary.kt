@@ -16,23 +16,28 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 
 object TdLibNativeLibrary {
     private const val TAG = "TdLibNative"
 
-    const val VERSION = "1.8.56"
+    /** TDLight build the digests below were computed from (tdlight-team/tdlight). */
+    const val VERSION = "tdlight-2b51b33"
 
     private const val LIB_NAME = "tdjni"
     private const val FILE_NAME = "libtdjni.so"
 
+    // SHA-256 of the decompressed libtdjni.so per ABI, published in the
+    // release's libtdjni-digests.txt asset next to the .so.gz downloads.
     private val DIGESTS =
         mapOf(
-            "arm64-v8a" to "7c1751197b35a64261e3b3f21764874c9ee8795e4b6118c23a74499426c44b91",
-            "armeabi-v7a" to "56bcd646dae3442a2aeefee3ce28b72c14dc257488d267d4ed76e7e01e08f158",
-            "x86" to "4c1d128b862a35c293dc96a20cb9f41ffa33144c80b9ded858028bc3f9ca93ec",
-            "x86_64" to "567bb5aaccdcc1d8280577f2f9fe8e82178908c72f513436972493fd6ad6dabd",
+            "arm64-v8a" to "29e0ffb1e99ef30f1ae6db1a9ffc76e4bb82f6a888f91999596de237d17ea110",
+            "armeabi-v7a" to "d30b446aa6906274655e68317460b485c41cac3c258a86fa99627add089bce12",
+            "x86_64" to "5b114899f4e0aeefb2580131c6d3d48a9135c008328fca94368ccccc2f3550e7",
+            "x86" to "3d3a67b2b0a924d3a2105fde12d852517cfd871371d94eddad9425e32622166e",
         )
 
     @Volatile
@@ -42,7 +47,7 @@ object TdLibNativeLibrary {
         OkHttpClient
             .Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
             .build()
 
     private val abi: String?
@@ -71,6 +76,7 @@ object TdLibNativeLibrary {
         if (!matchesDigest(file)) {
             Timber.tag(TAG).w("Cached %s failed its digest check; deleting", file.name)
             file.delete()
+            cleanupStaleVersions(context)
             return false
         }
         return runCatching {
@@ -83,6 +89,12 @@ object TdLibNativeLibrary {
         }
     }
 
+    /**
+     * Downloads the gzip-compressed libtdjni.so for this device's ABI,
+     * decompresses it, verifies the SHA-256 of the *decompressed* bytes and
+     * atomically moves it into place. [onProgress] reports 0..1 against the
+     * compressed transfer size.
+     */
     suspend fun download(
         context: Context,
         onProgress: (Float) -> Unit = {},
@@ -101,7 +113,7 @@ object TdLibNativeLibrary {
                 return@withContext false
             }
 
-            val url = "$base/libtdjni-$VERSION-$abi.so"
+            val url = "$base/libtdjni-$abi.so.gz"
             val destination = target(context)
             destination.parentFile?.mkdirs()
             val partial = File(destination.absolutePath + ".part")
@@ -117,17 +129,36 @@ object TdLibNativeLibrary {
                         val body = response.body ?: return@use false
                         val total = body.contentLength()
                         var read = 0L
-                        body.byteStream().use { input ->
-                            partial.outputStream().use { output ->
-                                val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
-                                while (true) {
-                                    val n = input.read(buffer)
-                                    if (n < 0) break
-                                    output.write(buffer, 0, n)
-                                    read += n
-                                    onProgress(if (total > 0) read.toFloat() / total else -1f)
+                        val computedDigest =
+                            GZIPInputStream(body.byteStream()).use { gunzip ->
+                                FileOutputStream(partial).use { output ->
+                                    val digest = MessageDigest.getInstance("SHA-256")
+                                    val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
+                                    while (true) {
+                                        val n = gunzip.read(buffer)
+                                        if (n < 0) break
+                                        output.write(buffer, 0, n)
+                                        digest.update(buffer, 0, n)
+                                        read += n
+                                        if (total > 0) {
+                                            onProgress((read.toFloat() / total).coerceAtMost(1f))
+                                        } else {
+                                            onProgress(-1f)
+                                        }
+                                    }
+                                    digest.digest().joinToString("") { "%02x".format(it) }
                                 }
                             }
+                        val expected = DIGESTS[abi]
+                        if (!computedDigest.equals(expected, ignoreCase = true)) {
+                            Timber.tag(TAG)
+                                .e(
+                                    "Downloaded %s digest mismatch: expected %s, got %s",
+                                    url,
+                                    expected,
+                                    computedDigest,
+                                )
+                            return@use false
                         }
                         true
                     }
@@ -136,8 +167,7 @@ object TdLibNativeLibrary {
                     false
                 }
 
-            if (!ok || !matchesDigest(partial)) {
-                if (ok) Timber.tag(TAG).e("Downloaded %s did not match its expected digest", url)
+            if (!ok) {
                 partial.delete()
                 return@withContext false
             }
@@ -147,8 +177,22 @@ object TdLibNativeLibrary {
                 partial.delete()
                 return@withContext false
             }
+            cleanupStaleVersions(context)
             ensureLoaded(context)
         }
+
+    /** Deletes libtdjni.so copies from other engine versions. */
+    private fun cleanupStaleVersions(context: Context) {
+        val dir = target(context).parentFile ?: return
+        val prefix = "$VERSION-"
+        runCatching {
+            dir.listFiles()?.forEach { file ->
+                if (file.isFile && !file.name.startsWith(prefix) && file.name.endsWith(FILE_NAME)) {
+                    file.delete()
+                }
+            }
+        }
+    }
 
     private fun matchesDigest(file: File): Boolean {
         val expected = DIGESTS[abi] ?: return false

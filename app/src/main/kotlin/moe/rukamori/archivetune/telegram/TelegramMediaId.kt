@@ -8,12 +8,13 @@
  * its chat + message (stable across sessions) plus a server-stable unique file
  * id ("<docId>:<dcId>").
  *
- * v2 format (mtcute era):  telegram://track/v2/<chatId>/<messageId>/<uniqueFileId>
- * v1 format (TDLib era):   telegram://track/<chatId>/<messageId>[/<tdlibFileId>[/<uniqueId>]]
+ * v2 format:  telegram://track/v2/<chatId>/<messageId>/<uniqueFileId>
+ * v1 format:  telegram://track/<chatId>/<messageId>[/<tdlibFileId>[/<uniqueId>]]
  *
- * v1 ids are still decoded: chat + message survive the TDLib -> mtcute swap,
- * while the TDLib-local file ids (only valid inside a TDLib database) are
- * ignored and re-resolved from the message when the track is played.
+ * v1 ids (written by the original TDLib build) are still decoded: chat +
+ * message survive engine swaps, while the TDLib-local file ids (only valid
+ * inside a TDLib database) are ignored and re-resolved from the message when
+ * the track is played.
  *
  * Kept free of Android imports so it can be covered by plain JVM unit tests.
  */

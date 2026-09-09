@@ -25,7 +25,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
-import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.aicontentfilter.FilterAiContentUseCase
 import moe.rukamori.archivetune.aicontentfilter.LoadAiContentFilterPolicyUseCase
@@ -550,7 +549,10 @@ class HomeViewModel
         }
 
         private fun refreshHeroPicks(pool: List<Song>) {
-            val source = if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
+            val source =
+                (
+                    if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
+                ).filterNot { song -> song.song.isMusicVideo }
             heroPicks.value =
                 if (source.isEmpty()) {
                     emptyList()
