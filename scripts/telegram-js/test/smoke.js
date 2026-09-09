@@ -114,6 +114,52 @@ const sandbox = {
   __tgOnClientEvent: (type, json) => {
     logLines.push(`[event][${type}] ${json}`)
   },
+
+  // ---- RPC bridge stubs (the TgJsRuntime main-loop protocol) ----
+  __tgSignalReady: () => {
+    hostReadySignalled = true
+    return null
+  },
+  __tgWaitRpc: () =>
+    new Promise((resolve) => {
+      if (rpcQueue.length) {
+        resolve(rpcQueue.shift())
+      } else {
+        rpcWaiter = () => resolve(rpcQueue.shift())
+      }
+    }),
+  __tgResolveRpc: (id, json) => {
+    // models TgJsRuntime: late resolutions for ids Kotlin no longer waits
+    // for (timed out) are dropped silently
+    if (pendingRpcIds.has(Number(id))) {
+      pendingRpcIds.delete(Number(id))
+      rpcResults.push(['json', Number(id), json])
+    }
+    return null
+  },
+  __tgResolveRpcBin: (id, err, bytes) => {
+    if (pendingRpcIds.has(Number(id))) {
+      pendingRpcIds.delete(Number(id))
+      rpcResults.push(['bin', Number(id), err, bytes])
+    }
+    return null
+  },
+}
+
+let hostReadySignalled = false
+const rpcQueue = []
+let rpcWaiter = null
+const rpcResults = []
+const pendingRpcIds = new Set()
+
+function enqueueRpc(req) {
+  pendingRpcIds.add(req[0])
+  rpcQueue.push(req)
+  if (rpcWaiter) {
+    const w = rpcWaiter
+    rpcWaiter = null
+    w()
+  }
 }
 
 vm.createContext(sandbox, { codeGeneration: { strings: true, wasm: false } })
@@ -212,7 +258,49 @@ async function main() {
   const reset = JSON.parse(await sandbox.__tgApiCall('resetSession', '{}'))
   check('resetSession returns ok without a client', reset.ok === true)
 
+  // -----------------------------------------------------------------------
+  // main loop: the RPC bridge protocol TgJsRuntime drives on device. The
+  // loop is appended AFTER the bundle inside the single root evaluation;
+  // it must signal readiness synchronously and then dispatch queued RPCs
+  // through __tgWaitRpc -> __tgApiCall[Bin] -> __tgResolveRpc[Bin].
+  // -----------------------------------------------------------------------
+  const mainloop = fs.readFileSync(path.join(here, '../host/mainloop.js'), 'utf8')
+  vm.runInContext(mainloop, sandbox, { filename: 'mainloop.js' })
+  check('main loop signalled readiness synchronously', hostReadySignalled === true)
 
+  enqueueRpc([1, 'resetSession', '{}', false])
+  await new Promise((r) => setTimeout(r, 100))
+  const jsonResult = rpcResults.find((entry) => entry[0] === 'json' && entry[1] === 1)
+  check(
+    'json RPC round-trips through the main loop',
+    jsonResult && JSON.parse(jsonResult[2]).ok === true,
+  )
+
+  enqueueRpc([2, 'readFilePart', '{}', true])
+  await new Promise((r) => setTimeout(r, 100))
+  const binResult = rpcResults.find((entry) => entry[0] === 'bin' && entry[1] === 2)
+  check(
+    'binary RPC failure round-trips as TGERR text',
+    binResult && typeof binResult[2] === 'string' && binResult[2].startsWith('TGERR:'),
+  )
+
+  enqueueRpc([3, 'nope', '{}', false])
+  await new Promise((r) => setTimeout(r, 100))
+  const unknownRpc = rpcResults.find((entry) => entry[0] === 'json' && entry[1] === 3)
+  check(
+    'unknown method RPC returns the __error envelope',
+    unknownRpc && JSON.parse(unknownRpc[2]).__error.code === -1,
+  )
+
+  // stale resolutions must be dropped silently (Kotlin timed the call out)
+  vm.runInContext('__tgResolveRpc(999, "{}")', sandbox)
+  check('stale RPC resolution is a no-op', rpcResults.every((entry) => entry[1] !== 999))
+
+  // the loop must still be alive after all of the above (queue drain works)
+  enqueueRpc([4, 'resetSession', '{}', false])
+  await new Promise((r) => setTimeout(r, 100))
+  const jsonResult2 = rpcResults.find((entry) => entry[0] === 'json' && entry[1] === 4)
+  check('main loop keeps serving RPCs', jsonResult2 && JSON.parse(jsonResult2[2]).ok === true)
 
   const failed = checks.filter(([, ok]) => !ok)
   console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`)
@@ -221,6 +309,9 @@ async function main() {
     for (const line of logLines.slice(-25)) console.log('  ' + line)
     process.exit(1)
   }
+  // mtcute's reconnection timers keep the Node event loop alive — exit
+  // explicitly once the suite is done
+  process.exit(0)
 }
 
 main().catch((e) => {
