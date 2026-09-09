@@ -43,26 +43,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 const val LASTFM_LIBREFM_LOGIN_ROUTE = "settings/lastfm/librefm-login"
 
-/**
- * (Task 4) WebView-based Libre.fm sign-in. Identical flow to [LastFmLoginScreen]
- * but pointing at libre.fm — Libre.fm is API-compatible with Last.fm, so the
- * same `auth.getSession` token exchange works against `https://libre.fm/2.0/`.
- *
- * Differences from the Last.fm flow:
- *   - Auth URL is `https://libre.fm/api/auth/?api_key=<KEY>&cb=<CALLBACK>`
- *     (Libre.fm's auth endpoint — note the no-`www` host and the slightly
- *     different path).
- *   - After login, the runtime endpoint is switched to
- *     [LastFM.LIBREFM_API_ENDPOINT] so subsequent scrobbles / now-playing
- *     updates go to libre.fm instead of last.fm.
- *   - `LastFMProviderKey` is pinned to [LastFmProvider.LIBREFM] so the
- *     service-config layer reads from the Libre.fm-scoped API key / secret
- *     keys (rather than the Last.fm-scoped ones) on next app start.
- *   - For now we reuse the same baked-in API key + secret (LastFmAppCredentials)
- *     because Libre.fm accepts any API key for read-only access. A user can
- *     register their own key at libre.fm/api/account/create if they want
- *     scrobble / now-playing writes authenticated under their own app identity.
- */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun LibreFmLoginScreen(navController: NavController) {
@@ -76,10 +56,7 @@ fun LibreFmLoginScreen(navController: NavController) {
 
     fun finishLogin(auth: Authentication) {
         scope.launch {
-            // Configure the runtime to talk to libre.fm — same baked-in
-            // api_key + secret work because libre.fm is API-compatible and
-            // accepts any api_key for read access. Scrobble / now-playing
-            // writes are signed with the secret, which libre.fm also accepts.
+
             LastFM.configure(
                 endpoint = LastFM.LIBREFM_API_ENDPOINT,
                 apiKey = LastFmAppCredentials.API_KEY,
@@ -89,14 +66,10 @@ fun LibreFmLoginScreen(navController: NavController) {
             context.dataStore.edit { prefs ->
                 prefs[LastFMProviderKey] = LastFmProvider.LIBREFM.name
                 prefs[LastFMCustomEndpointKey] = ""
-                // Pin the Libre.fm-scoped credential slots so the service-config
-                // layer reads them back correctly on next app start (the
-                // fromValues logic looks at LibreFMApiKeyOverrideKey when the
-                // provider is LIBREFM).
+
                 prefs[LibreFMApiKeyOverrideKey] = LastFmAppCredentials.API_KEY
                 prefs[LibreFMSecretOverrideKey] = LastFmAppCredentials.API_SECRET
-                // Also clear the Custom-scoped slots so a later switch to CUSTOM
-                // doesn't accidentally reuse the libre.fm credentials.
+
                 prefs[CustomScrobbleApiKeyOverrideKey] = ""
                 prefs[CustomScrobbleSecretOverrideKey] = ""
                 prefs[LastFMUsernameKey] = auth.session.name
@@ -126,10 +99,7 @@ fun LibreFmLoginScreen(navController: NavController) {
         }
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                // Configure against libre.fm BEFORE calling getSession — the
-                // auth.getSession signature uses the api_secret, so we need
-                // the runtime endpoint + secret set to libre.fm values for
-                // the call to sign + route correctly.
+
                 LastFM.configure(
                     endpoint = LastFM.LIBREFM_API_ENDPOINT,
                     apiKey = LastFmAppCredentials.API_KEY,
@@ -181,9 +151,7 @@ fun LibreFmLoginScreen(navController: NavController) {
                     displayZoomControls = false
                 }
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
-                    // Libre.fm's auth URL — same shape as Last.fm's but
-                    // pointing at libre.fm. Note the no-`www` host and the
-                    // slightly different path (no trailing slash before `?`).
+
                     loadUrl(libreFmAuthUrl())
                 }
             }

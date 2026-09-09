@@ -15,10 +15,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +39,8 @@ import moe.rukamori.archivetune.constants.SpotifyHiddenPlaylistIdsKey
 import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
+import moe.rukamori.archivetune.spotify.models.SpotifyPaging
+import moe.rukamori.archivetune.spotify.models.SpotifyPlayHistory
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
@@ -63,13 +69,12 @@ class SpotifyLibraryRepository
         private val _errorMessage = MutableStateFlow<String?>(null)
         val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-        // Per user report (2026-08-29): "If I hide a Spotify playlist it should be
-        // available in the hidden playlists section of the account page." Backed by
-        // a DataStore string-set so the hide survives process death AND is shared
-        // with the account-page "Hidden playlists" screen (which queries the same
-        // repository via this StateFlow rather than just the local Room DB).
         private val _hiddenPlaylistIds = MutableStateFlow<Set<String>>(emptySet())
         val hiddenPlaylistIds: StateFlow<Set<String>> = _hiddenPlaylistIds.asStateFlow()
+        internal val accountChanges = context.dataStore.data
+            .map { it[SpotifySpDcKey].orEmpty() }
+            .distinctUntilChanged()
+            .map { Unit }
 
         private val tokenRefreshMutex = Mutex()
         private data class CachedSearch(
@@ -92,7 +97,6 @@ class SpotifyLibraryRepository
                 override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedMetadata>?): Boolean =
                     size > METADATA_CACHE_MAX_SIZE
             }
-
 
         suspend fun restoreCachedPlaylists() {
             withContext(Dispatchers.IO) {
@@ -118,13 +122,6 @@ class SpotifyLibraryRepository
             }
         }
 
-        /**
-         * Restores the persisted set of hidden Spotify playlist IDs from DataStore
-         * into the in-memory [hiddenPlaylistIds] StateFlow. Called once from
-         * [SpotifyLibraryViewModel.init] so the LibrarySpotifyPlaylistsScreen's
-         * `visiblePlaylists` filter and the account-page "Hidden playlists"
-         * section both have the persisted set available immediately on launch.
-         */
         suspend fun restoreHiddenPlaylistIds() {
             withContext(Dispatchers.IO) {
                 if (_hiddenPlaylistIds.value.isNotEmpty()) return@withContext
@@ -136,13 +133,6 @@ class SpotifyLibraryRepository
             }
         }
 
-        /**
-         * Toggles a Spotify playlist's hidden state. Adds the id to the persisted
-         * set when hiding (so the playlist disappears from the Library page and
-         * appears on the account-page Hidden playlists section), removes it when
-         * unhiding. The change is reflected immediately in [hiddenPlaylistIds]
-         * and persisted to DataStore so it survives process death.
-         */
         suspend fun toggleHiddenPlaylist(playlistId: String) {
             withContext(Dispatchers.IO) {
                 val updated =
@@ -156,12 +146,6 @@ class SpotifyLibraryRepository
             }
         }
 
-        /**
-         * Returns the subset of currently-loaded Spotify playlists whose id is in
-         * [hiddenPlaylistIds]. Used by the account-page "Hidden playlists" section
-         * to render hidden Spotify playlists with metadata (name, cover, track
-         * count) that the persisted id-set alone doesn't carry.
-         */
         fun hiddenSpotifyPlaylists(): List<SpotifyPlaylist> =
             _playlists.value.filter { it.id in _hiddenPlaylistIds.value }
 
@@ -230,10 +214,7 @@ class SpotifyLibraryRepository
                 }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
-                // Do NOT clear _hiddenPlaylistIds here: the user's hidden-set is
-                // tied to their Spotify account identity, and connectWithCookies
-                // is typically called when re-connecting the SAME account after a
-                // token refresh. Clearing it would erase their hidden library.
+
                 refreshAccessToken(spDc = spDc, spKey = spKey).getOrThrow()
                 val prefs = context.dataStore.data.first()
                 SpotifyAccountSession(
@@ -334,15 +315,63 @@ class SpotifyLibraryRepository
                                     offset = offset,
                                 ).getOrThrow()
                         }
-                    if (page.items.isEmpty()) break
-                    val pageTracks = page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
-                    tracks += pageTracks
-                    offset += page.items.size
-                    if (offset >= page.total || page.items.size < limit) break
+                    currentCoroutineContext().ensureActive()
+                    tracks += page.items.mapNotNull { it.track?.takeUnless(SpotifyTrack::isLocal) }
+                    offset = page.nextOffset?.takeIf { it > offset } ?: break
                 }
 
                 tracks
             }
+
+        /**
+         * Every artist the user follows, paged out. Backs the Library's Artists section on the
+         * Spotify source — the same shape [likedSongs] has, and for the same reason: the Library
+         * shows one list, not one page of one.
+         */
+        suspend fun libraryArtists(): List<SpotifyArtist> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                collectPages { limit, offset ->
+                    spotifyCallWithTokenRetry { Spotify.myArtists(limit = limit, offset = offset).getOrThrow() }
+                }
+            }
+
+        /**
+         * The user's play history, most recent first. Not paged: Spotify caps this endpoint at the
+         * last 50 plays and offers no way further back, so [collectPages] would spin on one page.
+         */
+        suspend fun recentlyPlayed(): List<SpotifyPlayHistory> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                spotifyCallWithTokenRetry { Spotify.recentlyPlayed().getOrThrow() }.items
+            }
+
+        /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
+        suspend fun libraryAlbums(): List<SpotifyAlbum> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                collectPages { limit, offset ->
+                    spotifyCallWithTokenRetry { Spotify.myAlbums(limit = limit, offset = offset).getOrThrow() }
+                }
+            }
+
+        /**
+         * Drains a paged Spotify endpoint. Stops on an empty page, on reaching the reported total,
+         * or on a short page — the last of those matters because `total` is not always accurate on
+         * the libraryV3 responses, and without it the loop would spin on the final page.
+         */
+        private suspend fun <T> collectPages(page: suspend (limit: Int, offset: Int) -> SpotifyPaging<T>): List<T> {
+            val all = ArrayList<T>()
+            var offset = 0
+            val limit = 50
+            while (true) {
+                val result = page(limit, offset)
+                currentCoroutineContext().ensureActive()
+                all += result.items
+                offset = result.nextOffset?.takeIf { it > offset } ?: break
+            }
+            return all
+        }
 
         suspend fun likedSongs(): List<SpotifyTrack> =
             withContext(Dispatchers.IO) {
@@ -356,20 +385,14 @@ class SpotifyLibraryRepository
                         spotifyCallWithTokenRetry {
                             Spotify.likedSongs(limit = limit, offset = offset).getOrThrow()
                         }
-                    if (page.items.isEmpty()) break
+                    currentCoroutineContext().ensureActive()
                     tracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
-                    offset += page.items.size
-                    if (offset >= page.total || page.items.size < limit) break
+                    offset = page.nextOffset?.takeIf { it > offset } ?: break
                 }
 
                 tracks
             }
 
-        /**
-         * Searches Spotify's catalog after restoring/refreshing the persisted Web Player session.
-         * Results are cached briefly because the Search page and metadata enrichment can ask for
-         * the same query in quick succession.
-         */
         suspend fun search(
             query: String,
             types: List<String> = listOf("track", "album", "artist", "playlist"),
@@ -404,10 +427,6 @@ class SpotifyLibraryRepository
                 result
             }
 
-        /**
-         * Enriches YouTube-derived metadata with the closest Spotify catalog track. The returned
-         * media id remains the playable YouTube id; Spotify is only the metadata identity/source.
-         */
         suspend fun enrichMetadata(metadata: MediaMetadata): MediaMetadata? =
             withContext(Dispatchers.IO) {
                 if (metadata.spotifyTrackId != null) return@withContext metadata
@@ -477,20 +496,6 @@ class SpotifyLibraryRepository
             synchronized(metadataCache) { metadataCache.clear() }
         }
 
-
-        /**
-         * Returns a usable Spotify access token, minting one from the stored `sp_dc`
-         * cookie when the cached token is missing or expired, or null when the user has
-         * not connected a Spotify account.
-         *
-         * Exists because features outside the Spotify library screens need the session
-         * too. `SpotifyCanvasProvider` read the `Spotify.accessToken` global directly,
-         * which is only populated as a side effect of some *earlier* Spotify library
-         * call — so on a fresh launch the official Canvas endpoint was skipped for want
-         * of a token even though the user was connected, and canvas silently fell through
-         * to the (empty) community resolver. Going through the repository reuses the same
-         * mutex, DataStore cache and refresh logic as every other Spotify call.
-         */
         suspend fun ensureAccessToken(): String? =
             runCatching {
                 ensureAuthenticated()
@@ -580,14 +585,7 @@ class SpotifyLibraryRepository
                         Spotify.myPlaylists(limit = limit, offset = offset).getOrThrow()
                     }
                 if (page.items.isEmpty()) break
-                // Loading-perf fix (ported from 4nx3b batch-8, 2026-08-29): the libraryV3
-                // GraphQL response often omits `tracks.totalCount` for leaf playlists, and the
-                // previous implementation fetched each missing count SEQUENTIALLY — one extra
-                // HTTP round-trip per playlist, so N playlists meant N serial calls plus 429
-                // Retry-After backoffs (easily 4-5s for 100 playlists). Parallelize the count
-                // lookups with a bounded concurrency so the wall time is roughly
-                // ceil(N / 8) round-trips instead of N. The semaphore matters: without it
-                // Spotify 429s the burst and the backoff compounds the wall time.
+
                 val pageItems = page.items
                 val enriched =
                     coroutineScope {
@@ -657,10 +655,6 @@ class SpotifyLibraryRepository
             private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
             private const val METADATA_MATCH_THRESHOLD = 0.58
 
-            /**
-             * In-flight parallel track-count fetches in [fetchAllPlaylists]. 8 keeps the burst
-             * under Spotify's 429 threshold while cutting the wall time ~8x vs sequential.
-             */
             private const val COUNT_FETCH_CONCURRENCY = 8
             private val spotifyCacheJson =
                 Json {

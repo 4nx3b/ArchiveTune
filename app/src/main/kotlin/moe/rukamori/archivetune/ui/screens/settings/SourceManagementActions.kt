@@ -8,14 +8,12 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import androidx.compose.foundation.layout.WindowInsets
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import moe.rukamori.archivetune.R
 
-/** Copies [entries] to the clipboard as a newline-separated list and toasts the count. */
 fun copyToClipboard(
     context: Context,
     label: String,

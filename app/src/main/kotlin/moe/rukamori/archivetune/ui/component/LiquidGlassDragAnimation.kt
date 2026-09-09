@@ -53,29 +53,10 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.withFrameNanos
 import kotlin.math.abs
 
-/**
- * Suspends until the next frame. Used by [LiquidGlassDragAnimation.release] to
- * defer the press-release animation until AFTER the snap-to-target animation
- * has had a chance to start (so the pill doesn't shrink before it slides).
- */
 private suspend fun awaitFrame() {
     withFrameNanos { }
 }
 
-/**
- * Observe-only drag detector. Mirrors SukiSU-Ultra's `inspectDragGestures`:
- *   - Uses `PointerEventPass.Initial` so this fires BEFORE children's Main-pass
- *     handlers. This is what lets the drag detector coexist with the tab
- *     items' own `clickable` (a tap fires both, a drag only fires here).
- *   - Never consumes the event, so children still get it.
- *
- * NOTE: the canDrag gating (restricting drag STARTS to the bar's bounds while
- * allowing the drag to continue beyond the bounds once started) is handled
- * inside [LiquidGlassDragAnimation.modifier] via a `dragActive` flag, NOT
- * here. This keeps `inspectDragGestures` a simple observe-only detector
- * that always runs the full gesture lifecycle (down → drag → up), which
- * avoids deadlocking `awaitEachGesture`'s `do-while` loop.
- */
 suspend fun PointerInputScope.inspectDragGestures(
     onDragStart: (down: PointerInputChange) -> Unit = {},
     onDragEnd: (change: PointerInputChange) -> Unit = {},
@@ -147,35 +128,6 @@ private suspend inline fun AwaitPointerEventScope.awaitDragOrUp(
     }
 }
 
-/**
- * Drives the Liquid Glass nav bar's sliding pill. Holds five `Animatable`
- * channels (position, velocity, press-progress, scale-X, scale-Y) and exposes
- * a single [modifier] that detects drag gestures and feeds them into the
- * animation channels. The caller is responsible for:
- *   - Reading [value], [pressProgress], [scaleX], [scaleY], [velocity] each
- *     frame and applying them via `Modifier.graphicsLayer`.
- *   - Calling [animateToValue] when the selected index changes externally
- *     (e.g. user tapped a tab).
- *   - Calling [animateToValue] from [onDragStopped] (snap to nearest).
- *
- * @param animationScope A coroutine scope that lives as long as the bar
- *   (typically `rememberCoroutineScope()` in the composable).
- * @param initialValue Starting index (typically the initial selected index).
- * @param valueRange `0f..(tabsCount - 1).toFloat()`.
- * @param visibilityThreshold Spring visibility threshold for position.
- * @param initialScale Starting X/Y scale (typically `1f`).
- * @param pressedScale Scale reached on press. SukiSU uses `78f / 56f ≈ 1.393`
- *   because the pill grows from a 56dp tab width to a 78dp pressed width.
- * @param canDrag Predicate that receives the touch position (in the
- *   composable's local coords) and decides whether to accept the drag. Use
- *   this to keep the drag inside the bar's bounds.
- * @param onDragStarted Called when a drag begins (position is the down event's
- *   local coords).
- * @param onDragStopped Called when a drag ends or is cancelled. Use this to
- *   snap to the nearest integer index and call the host's `onSelected`.
- * @param onDrag Called for each drag delta. `dragAmount` is in pixels. Use
- *   this to feed the drag into [updateValue] and any rubber-band offset.
- */
 class LiquidGlassDragAnimation(
     private val animationScope: CoroutineScope,
     val initialValue: Float,
@@ -249,10 +201,7 @@ class LiquidGlassDragAnimation(
                 dragActive = false
             },
         ) { _, dragAmount ->
-            // No more isInside/wasInside check — once the drag has started
-            // (dragActive == true), the pill follows the finger regardless
-            // of position. The user can drag from anywhere on the screen
-            // (including the top) as long as their finger stays down.
+
             if (dragActive) {
                 onDrag(size, dragAmount)
             }

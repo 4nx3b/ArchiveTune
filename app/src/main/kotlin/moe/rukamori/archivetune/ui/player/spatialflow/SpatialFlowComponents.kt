@@ -90,10 +90,6 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 
-/**
- * Custom Compose extension to render a marquee with smooth horizontal alpha-faded edges.
- * Uses drawWithCache to avoid allocating Brush and List objects on every frame of the drawing phase.
- */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.basicMarqueeWithFadedEdges(
     edgeWidth: Dp = 12.dp,
@@ -102,7 +98,7 @@ fun Modifier.basicMarqueeWithFadedEdges(
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithCache {
             val edgeWidthPx = edgeWidth.toPx()
-            // Cache the brushes so they aren't recreated every frame
+
             val leftBrush =
                 Brush.horizontalGradient(
                     colors = listOf(Color.Transparent, Color.Black),
@@ -155,19 +151,6 @@ internal fun deriveArtworkSurfaceColor(
     return Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
 }
 
-/**
- * Full-screen blurred-artwork backdrop — the reference SpatialFlow player's
- * background treatment.
- *
- * A blurred copy of the current artwork fills the screen under a vertical
- * darkening scrim (lighter, more colourful at the top; darker at the bottom),
- * so the player reads as a washed-out version of the song's own colours
- * instead of a flat surface. On Android 12+ the blur is a RenderEffect on the
- * image layer; older devices bake the blur into a downscaled bitmap off the
- * main thread (the same pre-S strategy the Apple Music style's backdrop
- * uses). The caller's palette surface sits underneath, so a song with no
- * artwork still gets a themed screen.
- */
 @Composable
 internal fun SpatialFlowBlurredBackdrop(
     artUrl: String?,
@@ -177,8 +160,6 @@ internal fun SpatialFlowBlurredBackdrop(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
 
-    // Pre-S has no RenderEffect, so Modifier.blur is a no-op there — bake the
-    // blur into a bitmap off the main thread instead.
     val preBlurredBitmap by produceState<Bitmap?>(null, artUrl) {
         if (!isPreS || artUrl.isNullOrBlank()) {
             value = null
@@ -234,8 +215,6 @@ internal fun SpatialFlowBlurredBackdrop(
             }
         }
 
-        // Vertical scrim: keeps the top of the wash lighter and more saturated,
-        // deepens toward the bottom so the transport area stays high-contrast.
         Box(
             modifier =
                 Modifier
@@ -276,7 +255,7 @@ internal fun SplitLikeDislikeChip(
                 .background(backgroundColor),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Like Button
+
         Row(
             modifier =
                 Modifier
@@ -305,7 +284,6 @@ internal fun SplitLikeDislikeChip(
             )
         }
 
-        // Vertical Divider
         Spacer(
             modifier =
                 Modifier
@@ -314,7 +292,6 @@ internal fun SplitLikeDislikeChip(
                     .background(contentColor.copy(alpha = 0.15f)),
         )
 
-        // Dislike Button
         Box(
             modifier =
                 Modifier
@@ -475,8 +452,6 @@ internal fun WavySliderWithLabels(
                 color = contentSecondary,
             )
 
-            // The centered codec badge from the reference build (its "AAC"
-            // chip): the current stream's codec label in a small rounded pill.
             if (currentFormat != null) {
                 val label =
                     remember(currentFormat.mimeType, currentFormat.codecs) {
@@ -515,11 +490,6 @@ internal fun WavySliderWithLabels(
     }
 }
 
-/**
- * Footer showing song metadata at the bottom of lyrics.
- * Displays song name, artist, and lyrics provider — only when values are present.
- * Styled to look "always inactive" with small text and low opacity.
- */
 @Composable
 internal fun LyricsMetadataFooter(
     currentSong: MediaMetadata?,
@@ -545,17 +515,17 @@ internal fun LyricsMetadataFooter(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Song title
+
         if (currentSong.title.isNotBlank()) {
             Text(text = currentSong.title, style = metaStyle, maxLines = 1)
         }
-        // Artist
+
         if (currentSong.artists.isNotEmpty() &&
             !currentSong.artists.joinToString { it.name }.equals("Unknown Artist", ignoreCase = true)
         ) {
             Text(text = currentSong.artists.joinToString { it.name }, style = metaStyle, maxLines = 1)
         }
-        // Lyrics provider
+
         if (!selectedProvider.isNullOrBlank()) {
             Text(
                 text = "Lyrics by $selectedProvider",

@@ -45,7 +45,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -91,31 +90,17 @@ fun LibrarySpotifyPlaylistsScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val menuState = LocalMenuState.current
     val coroutineScope = rememberCoroutineScope()
-    // Sort mode for the Spotify list. Mirrors the Playlists page's
-    // PlaylistSortType but reduced to the options Spotify's API exposes
-    // (no Last Updated, no Custom order — Spotify returns its own ordering
-    // we can't reorder). Per user report (2026-08-29): "Also Add a sorting
-    // button below the number of playlists in Pink/red accent like history
-    // page which lets me sort playlists."
-    var sortByRecent by remember { mutableStateOf(true) }     // true = Recently added (default API order)
+
+    var sortByRecent by remember { mutableStateOf(true) }
     var sortByName by remember { mutableStateOf(false) }
     var sortByTrackCount by remember { mutableStateOf(false) }
     var sortDescending by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
-    // Per user report (2026-08-29): "The search button should search the
-    // Playlists available in Spotify. Right now it takes me to the normal
-    // song search." Tapping the search icon in the top-end pill now toggles
-    // an inline search field above the sort pill; typing a query filters the
-    // list by name (case-insensitive substring match) — the list never
-    // navigates away from this screen.
+
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showSearchField by rememberSaveable { mutableStateOf(false) }
-    // Persisted across sessions via DataStore so hiding a Spotify playlist
-    // survives process death AND is surfaced in the account-page
-    // "Hidden playlists" section. The repository exposes the set as a
-    // StateFlow so the screen re-renders when other screens (e.g.
-    // HiddenPlaylistsScreen) unhide a playlist.
+
     val hiddenPlaylistIds by viewModel.hiddenPlaylistIds.collectAsStateWithLifecycle()
     val visiblePlaylists =
         remember(playlists, sortByRecent, sortByName, sortByTrackCount, sortDescending, showHidden, hiddenPlaylistIds.size, searchQuery) {
@@ -128,7 +113,7 @@ fun LibrarySpotifyPlaylistsScreen(
                     when {
                         sortByName -> if (sortDescending) source.sortedByDescending { it.name.lowercase() } else source.sortedBy { it.name.lowercase() }
                         sortByTrackCount -> if (sortDescending) source.sortedByDescending { it.tracks?.total ?: 0 } else source.sortedBy { it.tracks?.total ?: 0 }
-                        else -> source // Recently added — keep Spotify's default API order
+                        else -> source
                     }
                 }
         }
@@ -143,55 +128,19 @@ fun LibrarySpotifyPlaylistsScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    // Stable system-bars top inset so the header pill stays anchored
-    // below the status bar even when the bar is transiently hidden.
-    // Matches the pattern used in LocalPlaylistScreen. Declared near
-    // the top so it can be referenced both by the LazyColumn
-    // contentPadding below and by the persistent header pill.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // Per user request (2026-08-29): "The liquid glass navigation buttons
-    // is not in liquid glass in playlist and Spotify page. Its just
-    // frosted. Use the exact same logic from playlist page for liquid
-    // glass buttons on the header".
-    //
-    // The playlist detail page (LocalPlaylistScreen / SpotifyPlaylistScreen)
-    // uses `LiquidGlassActionPill(backdrop = artworkBackdrop, interactive =
-    // true, ...) { back arrow + title text }` as the persistent top-start
-    // header, with `Modifier.layerBackdrop(artworkBackdrop)` applied to the
-    // scrolling LazyColumn to record the content the pill samples from.
-    // Mirroring that pattern here gives the Spotify Library page the same
-    // liquid glass header the user explicitly asked for.
-    //
-    // This screen is now a separate NavHost route (no longer a child of
-    // the Library HorizontalPager), so sampling the screen-local backdrop
-    // no longer risks the render-feedback loop documented in
-    // FrostedHeaderPill.kt — the backdrop is created and consumed inside
-    // the same composition boundary.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val surfaceColor = MaterialTheme.colorScheme.surface
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // BackHandler so the predictive back gesture always escapes the
-    // Spotify Library page. Per user report (2026-08-29). Same pattern
-    // as SpotifyPlaylistScreen.kt — popBackStack first, fall back to
-    // navigateUp, then navigate("library") so the gesture NEVER
-    // silently fails.
     BackHandler {
         try {
             if (!navController.popBackStack()) {
@@ -203,7 +152,7 @@ fun LibrarySpotifyPlaylistsScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-                // Last-resort: let the system handle the back press
+
             }
         }
     }
@@ -217,23 +166,10 @@ fun LibrarySpotifyPlaylistsScreen(
         ) {
             LazyColumn(
                 state = rememberLazyListState(),
-                // Per user request (2026-08-29 redesign): "The Playlist
-                // Detail page (source of truth) has NO visible divider
-                // lines between rows; spacing is clean and relies on
-                // whitespace to separate items." The hairline divider
-                // block has been removed and horizontal contentPadding
-                // is 0 so each shared `ListItem` row's internal 8dp +
-                // 8dp Box padding gives the row 16dp horizontal breathing
-                // room — exactly matching the Playlist Detail page's
-                // song rows.
+
                 contentPadding =
                     PaddingValues(
-                        // Per user report (2026-08-29): "Fix empty space in Spotify
-                        // page." The previous 150.dp top padding left a large empty
-                        // gap between the header pill and the first row. Reduced
-                        // to systemBarsTopPadding + 64.dp so the heading block
-                        // sits just below the persistent header pill — matching
-                        // the LocalPlaylistScreen / LibraryPlaylistsScreen spacing.
+
                         top = systemBarsTopPadding + 64.dp,
                         bottom = playerAwareBottomPadding,
                     ),
@@ -267,20 +203,7 @@ fun LibrarySpotifyPlaylistsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                         )
-                        // Per user report (2026-08-29): "Also Add a sorting
-                        // button below the number of playlists in Pink/red
-                        // accent like history page which lets me sort
-                        // playlists." Visual language mirrors the Playlists
-                        // page sort pill: pill-shaped with `accent.copy(0.12f)`
-                        // background, accent text, accent expand_more icon.
-                        // Sort options live in the DropdownMenu wired to
-                        // `showSortMenu` (also triggered by the more_vert
-                        // icon in the top-end liquid glass pill).
-                        // Inline search field — only visible when the user
-                        // taps the search icon in the top-end pill. Mirrors the
-                        // Playlists page's pill visual language so the
-                        // transition between collapsed and expanded search
-                        // doesn't shift the sort pill's position.
+
                         if (showSearchField) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(
@@ -306,7 +229,7 @@ fun LibrarySpotifyPlaylistsScreen(
                                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                                     cursorBrush = SolidColor(AppleMusicStyleAccentColor),
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                                    keyboardActions = KeyboardActions(onSearch = { /* no-op; live filter */ }),
+                                    keyboardActions = KeyboardActions(onSearch = {  }),
                                     modifier = Modifier.weight(1f),
                                 )
                                 if (searchQuery.isNotEmpty()) {
@@ -391,15 +314,7 @@ fun LibrarySpotifyPlaylistsScreen(
                                         showSortMenu = false
                                     },
                                 )
-                                // Hidden playlists toggle — mirrors the Playlists
-                                // page's "Hidden playlists" entry (same leadingIcon
-                                // + conditional check trailingIcon). Per user report:
-                                // "Also i should be able to hide Spotify playlists too."
-                                // Per user report (2026-08-29): "Also the hidden
-                                // playlist category from sort drop-down in Spotify
-                                // page doesn't do anything. Fix it" — now wired to
-                                // the persisted `hiddenPlaylistIds` set + has a
-                                // visual check indicator like the Playlists page.
+
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.hidden_playlists)) },
                                     onClick = {
@@ -441,24 +356,14 @@ fun LibrarySpotifyPlaylistsScreen(
                         playlist = playlist,
                         navController = navController,
                         onMenuClick = {
-                            // Per user report (2026-08-29): "There should also be
-                            // Overflow menu icon in liquid glass inside Spotify
-                            // Playlists. I've attached two images on how it should be
-                            // and what functions i should have. You can copy the exact
-                            // code for the functions from Normal playlists code." The
-                            // per-row 3-dot menu now opens a SpotifyPlaylistMenu
-                            // bottom sheet (mirrors PlaylistMenu's structure + actions
-                            // adapted for Spotify playlists).
+
                             menuState.show {
                                 SpotifyPlaylistMenu(
                                     playlist = playlist,
                                     coroutineScope = coroutineScope,
                                     onDismiss = menuState::dismiss,
                                     onHide = {
-                                        // Persisted via SpotifyLibraryRepository's
-                                        // DataStore-backed hidden-playlist-id set so
-                                        // the hide survives process death and surfaces
-                                        // on the account-page "Hidden playlists" section.
+
                                         viewModel.toggleHiddenPlaylist(playlist.id)
                                     },
                                 )
@@ -469,12 +374,6 @@ fun LibrarySpotifyPlaylistsScreen(
             }
         }
 
-        // Persistent header pill at top-start. Mirrors the playlist-detail
-        // page layout: `LiquidGlassActionPill(backdrop = artworkBackdrop,
-        // interactive = true, ...) { back arrow + sub-tab title text }` when
-        // liquid glass is active, falling back to `FrostedHeaderPill` (no
-        // backdrop) when the master toggle is off or the platform doesn't
-        // support the kyant RuntimeShader.
         if (layerBackdropActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
@@ -545,14 +444,6 @@ fun LibrarySpotifyPlaylistsScreen(
             }
         }
 
-        // Persistent header pill at top-end. Mirrors the Playlist Detail
-        // page (source of truth) layout which has a LiquidGlassActionPill
-        // at top-end with Search + More icon buttons. The Spotify Library
-        // page's equivalent right-side action is a Refresh button — same
-        // behavior as the existing pull-to-refresh, but reachable from
-        // the header without scrolling. Per user request (2026-08-29
-        // redesign): "The right-side controls should also follow the
-        // same visual language as the Playlist Detail page."
         if (layerBackdropActive) {
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
@@ -561,17 +452,7 @@ fun LibrarySpotifyPlaylistsScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                // Per user report (2026-08-29): "Remove the ... overflow
-                // liquid glass icon on the top right in Spotify page" — the
-                // more_vert overflow icon has been removed. The sort menu is
-                // still reachable via the sort pill in the heading block.
-                //
-                // Per user report (2026-08-29): "The search button should
-                // search the Playlists available in Spotify. Right now it
-                // takes me to the normal song search." The search icon now
-                // toggles an inline search field above the sort pill that
-                // filters `visiblePlaylists` by name (case-insensitive
-                // substring match). No navigation away from the screen.
+
                 Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.IconButton(onClick = {
                         showSearchField = !showSearchField

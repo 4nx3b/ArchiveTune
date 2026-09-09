@@ -53,52 +53,13 @@ import moe.rukamori.archivetune.ui.component.NewMenuContainer
 import moe.rukamori.archivetune.ui.component.NewMenuContent
 import moe.rukamori.archivetune.ui.component.NewMenuItem
 
-/**
- * Bottom-sheet overflow menu for a Spotify playlist row.
- *
- * Per user report (2026-08-29): "There should also be Overflow menu icon in
- * liquid glass inside Spotify Playlists. I've attached two images on how it
- * should be and what functions i should have. You can copy the exact code for
- * the functions from Normal playlists code."
- *
- * The two reference screenshots show the existing [PlaylistMenu] (for local /
- * YouTube playlists). This composable mirrors that menu's visual structure
- * (header card → primary action grid → secondary list items) and wires each
- * action to a Spotify-specific implementation:
- *
- *   - Play: enqueue the playlist via [SpotifyPlaylistQueue] (which fetches
- *     tracks in pages from the Spotify API and resolves each to a playable
- *     MediaItem via [SpotifyPlaybackResolver]).
- *   - Shuffle: same as Play but with a random startIndex within the first
- *     page so the queue starts at a non-deterministic position.
- *   - Share: open the system share sheet with the playlist's open.spotify.com
- *     URL.
- *   - Play next / Add to queue: fetch the first page of tracks (up to 50)
- *     and resolve them to MediaItems, then hand them to the player's
- *     playNext / addToQueue.
- *   - Hide playlist: invokes [onHide] which toggles the local
- *     `hiddenPlaylistIds` set on [LibrarySpotifyPlaylistsScreen].
- *
- * Items that don't apply to Spotify playlists (Start radio, Edit, Change
- * playlist cover, Manage Tags, Download, Sync playlist, Delete) are omitted
- * rather than shown as disabled — Spotify playlists are read-only with
- * respect to ArchiveTune's local edit / cover / tag / sync / delete
- * operations.
- */
 @Composable
 fun SpotifyPlaylistMenu(
     playlist: SpotifyPlaylist,
     coroutineScope: CoroutineScope,
     onDismiss: () -> Unit,
     onHide: () -> Unit,
-    // Per user report (2026-08-29): "Play, Shuffle, Play next, Add to queue
-    // button in Spotify's playlists overflow menu doesn't do anything." The
-    // SpotifyPlaylistQueue fetches tracks via Spotify.playlistTracks(...)
-    // directly, which requires Spotify.accessToken to be set, but the Library
-    // page doesn't auto-refresh the token on screen open. Calling
-    // viewModel.ensureAccessToken() before the queue / resolveFirstPage calls
-    // mints/refreshes the token via the repository's auth path so the queue
-    // can actually fetch tracks.
+
     viewModel: moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel =
         androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel(),
 ) {
@@ -110,7 +71,6 @@ fun SpotifyPlaylistMenu(
     val coverUrl = playlist.images.firstOrNull()?.url
     val accentColor = AppleMusicStyleAccentColor
 
-    // Pre-build the intent for the Share action so the click handler is cheap.
     val shareIntent = remember(playlistId) {
         Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -123,8 +83,7 @@ fun SpotifyPlaylistMenu(
     val onPlay: () -> Unit = {
         onDismiss()
         coroutineScope.launch {
-            // Ensure Spotify.accessToken is set before the queue tries to
-            // fetch tracks via Spotify.playlistTracks(...).
+
             viewModel.ensureAccessToken()
             playerConnection.playQueue(SpotifyPlaylistQueue(playlistId = playlistId, title = playlistName))
         }
@@ -133,9 +92,7 @@ fun SpotifyPlaylistMenu(
         onDismiss()
         coroutineScope.launch {
             viewModel.ensureAccessToken()
-            // Pick a random startIndex within the first page so the queue
-            // starts at a non-deterministic position without having to
-            // pre-fetch the entire playlist.
+
             val randomStart = kotlin.random.Random.nextInt(50)
             playerConnection.playQueue(
                 SpotifyPlaylistQueue(
@@ -271,15 +228,6 @@ fun SpotifyPlaylistMenu(
     )
 }
 
-/**
- * Fetches the first page (up to 50 tracks) of the given Spotify playlist,
- * resolves each to a playable [MediaItem] via [SpotifyPlaybackResolver], and
- * returns the resulting list. Used by the Play next / Add to queue actions so
- * the user gets immediate playback without waiting for the full playlist to
- * be resolved.
- *
- * Runs on [Dispatchers.IO] so the menu UI can dismiss immediately.
- */
 private suspend fun resolveFirstPageAsMediaItems(playlistId: String): List<MediaItem> =
     withContext(Dispatchers.IO) {
         val result = Spotify.playlistTracks(playlistId = playlistId, limit = 50, offset = 0).getOrNull() ?: return@withContext emptyList()

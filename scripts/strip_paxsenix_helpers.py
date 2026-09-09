@@ -26,7 +26,6 @@ from pathlib import Path
 PATH = Path("/home/z/my-project/ArchiveTune/app/src/main/kotlin/moe/rukamori/archivetune/ui/screens/settings/LyricsSettings.kt")
 src = PATH.read_text()
 
-# ─────────────────────── 1. Import line drops ──────────────────────────────
 IMPORT_DROPS = [
     "import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey\n",
     "import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey\n",
@@ -44,7 +43,6 @@ for line in IMPORT_DROPS:
         print(f"WARN: import not found: {line.strip()!r}", file=sys.stderr)
     src = src.replace(line, "")
 
-# ─────────────────── 2. The show-PaxsenixStatsDialog block ─────────────────
 PAXSENIK_DIALOG_BLOCK = """    var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
 
     if (showPaxsenixStatsDialog) {
@@ -74,7 +72,6 @@ if PAXSENIK_DIALOG_BLOCK not in src:
     sys.exit(1)
 src = src.replace(PAXSENIK_DIALOG_BLOCK, REPLACEMENT)
 
-# ─────────────── 3. The enablePaxsenix* rememberPreference calls ───────────
 PAXSENIK_PREFS = """    val (enablePaxsenixLyrics, onEnablePaxsenixLyricsChange) = rememberPreference(key = EnablePaxsenixLyricsKey, defaultValue = true)
     val (enablePaxsenixAppleMusicLyrics, onEnablePaxsenixAppleMusicLyricsChange) =
         rememberPreference(
@@ -102,7 +99,7 @@ PAXSENIK_PREFS = """    val (enablePaxsenixLyrics, onEnablePaxsenixLyricsChange)
             defaultValue = true,
         )
 """
-# Also widen the SimpMusic comment block to mention Paxsenix removal.
+
 SIMPMUSIC_COMMENT = """    val (enableSimpMusicLyrics, onEnableSimpMusicLyricsChange) = rememberPreference(key = EnableSimpMusicLyricsKey, defaultValue = true)
     // Megalobiz lyrics provider removed per user request (2026-08-28):
     // "Remove megalobiz lyrics provider". The MegalobizLyricsProvider
@@ -132,7 +129,6 @@ if PAXSENIK_PREFS not in src:
     sys.exit(1)
 src = src.replace(PAXSENIK_PREFS, "")
 
-# ─────────────────── 4. Remove the displayName SIMPMUSIC/BINI_LYRICS ─────────
 DISPLAY_PAXSENIK = """        PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
         PreferredLyricsProvider.BINI_LYRICS -> "BiniLyrics"
 """
@@ -143,10 +139,6 @@ if DISPLAY_PAXSENIK not in src:
     sys.exit(1)
 src = src.replace(DISPLAY_PAXSENIK, DISPLAY_REPLACEMENT)
 
-# ─────────── 5. Remove each top-level helper one at a time ──────────────────
-# Pattern: optional @Composable line, then `internal ...` declaration,
-# followed by balanced braces until the matching closing `}` at column 0.
-
 def strip_top_level_decl(src: str, signature_prefix: str) -> str:
     """Remove a top-level `internal` declaration with its @Composable
     annotation line if present. The declaration must end with a `}` at
@@ -154,7 +146,7 @@ def strip_top_level_decl(src: str, signature_prefix: str) -> str:
     """
     lines = src.split("\n")
     n = len(lines)
-    # Find the line where signature_prefix starts.
+
     sig_idx = None
     for i, ln in enumerate(lines):
         if ln.startswith(signature_prefix):
@@ -163,44 +155,38 @@ def strip_top_level_decl(src: str, signature_prefix: str) -> str:
     if sig_idx is None:
         print(f"  (skip) signature not found: {signature_prefix!r}", file=sys.stderr)
         return src
-    # Walk back to include a single preceding @Composable annotation if present.
+
     start = sig_idx
     while start > 0 and lines[start - 1].strip() == "@Composable":
         start -= 1
         break
-    # Find the matching closing brace at column 0.
+
     depth = 0
     end = sig_idx
     for i in range(sig_idx, n):
         ln = lines[i]
-        # Count braces, ignoring strings and line comments.
-        # Strip line comments.
+
         stripped_ln = re.sub(r'//.*$', '', ln)
-        # Strip string literals.
+
         clean = re.sub(r'"(?:\\.|[^"\\])*"', '""', stripped_ln)
         depth += clean.count("{") - clean.count("}")
         if depth == 0 and "{" in clean:
-            # The first line that opens AND closes the brace group, with
-            # depth returning to 0, ends the declaration.
+
             end = i
             break
         if depth == 0 and i > sig_idx and ln.strip() == "":
-            # Bare line after the declaration started — only happens for
-            # one-liner enum declarations. Skip.
+
             continue
-    # Move end forward to the first line whose content is exactly "}" at
-    # column 0 — this is the declaration's terminator.
+
     while end < n and lines[end].strip() != "}":
         end += 1
-    # Consume any trailing blank line(s) immediately after.
+
     after = end + 1
     while after < n and lines[after].strip() == "":
         after += 1
-    # Drop one trailing blank line if there's another blank line before the
-    # next declaration (preserves single-blank-line separation).
+
     new_lines = lines[:start] + lines[after:]
     return "\n".join(new_lines)
-
 
 for prefix in [
     "internal enum class PaxsenixServerStatus",
@@ -216,8 +202,6 @@ for prefix in [
     after = len(src.split("\n"))
     print(f"  stripped {prefix!r}: {before} -> {after} lines")
 
-# ─────────────────── 6. Write back ─────────────────────────────────────────
-# Ensure single trailing newline.
 while src.endswith("\n\n"):
     src = src[:-1]
 if not src.endswith("\n"):

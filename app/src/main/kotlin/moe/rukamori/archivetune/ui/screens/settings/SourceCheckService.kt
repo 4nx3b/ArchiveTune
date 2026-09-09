@@ -23,38 +23,13 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * Result of a "Check source" probe. The [summary] is shown in a Toast / dialog body;
- * [healthy] drives the icon (green check / red x) on the row.
- */
 data class SourceCheckResult(
     val healthy: Boolean,
     val summary: String,
 )
 
-/**
- * Per-source health probe for the "Check source" row in Source Settings.
- *
- * Each source has different infrastructure, so each has its own probe:
- *  - Tidal: refresh the source pool, count Tidal accounts, verify the first
- *    premium pool token against the official Tidal API (this is the path that
- *    actually streams), and report public instances as the optional fallback.
- *  - Qobuz: refresh the pool, count Qobuz accounts (premium first), then
- *    try a real user/get call on the first pool token to verify it works.
- *  - Qobuz backup: ping https://mlc.kouzu.in/api/stream?id=<test_id> with a
- *    HEAD request (the test id is a stable, well-known music video) and verify
- *    it returns an audio content type.
- *  - Deezer: refresh the pool, count both pooled and manually signed-in credentials, then verify
- *    the one the resolver would use first against the Deezer gateway.
- *  - JioSaavn: ping the JioSaavn public search API with a canned query and
- *    verify it returns at least one result.
- *
- * All probes run off the main thread and never throw — failures are caught
- * and reported in the [SourceCheckResult.summary] so the user sees what
- * went wrong.
- */
 object SourceCheckService {
-    /** Stable, well-known YouTube video id used to probe the kouzu.in backup. */
+
     private const val KOZU_PROBE_YT_ID = "dQw4w9WgXcQ"
 
     private val client by lazy {
@@ -65,11 +40,6 @@ object SourceCheckService {
             .build()
     }
 
-    /**
-     * Run the per-source health probe. Returns a [SourceCheckResult] — never throws.
-     * [context] is needed for the source pool refresh (which reads / writes the
-     * app's DataStore cache).
-     */
     suspend fun check(source: AudioSourceType, context: Context): SourceCheckResult =
         withContext(Dispatchers.IO) {
             when (source) {
@@ -87,7 +57,7 @@ object SourceCheckService {
         }
 
     private suspend fun checkTidal(context: Context): SourceCheckResult {
-        // Refresh the pool first so newly-added accounts are visible.
+
         PoolAccountManager.refresh(context, force = false)
         val accounts = PoolAccountManager.tidalAccounts()
         if (accounts.isEmpty()) {
@@ -99,11 +69,6 @@ object SourceCheckService {
         }
         val premium = accounts.count { it.premium }
 
-        // Probe the path that actually streams. LosslessStreamResolver.resolveTidal tries the
-        // official Tidal API with the pool's subscriber tokens FIRST and only falls back to public
-        // HiFi/QQDL instances if every account fails — so a valid premium token means Tidal works
-        // with zero instances. Reporting the instance count as the headline verdict (as this check
-        // used to) told users Tidal was broken while it was streaming fine.
         val probeAccount = accounts.firstOrNull { it.premium } ?: accounts.first()
         val session = runCatching { TidalAccountManager.buildSessionFromBearer(probeAccount.token) }.getOrNull()
         val subscription =
@@ -119,7 +84,6 @@ object SourceCheckService {
             }
         val accountPathReady = session != null && subscription != TidalAccountManager.Subscription.FREE
 
-        // Instances are the optional no-account fallback. Report them as such.
         val healthyInstances = runCatching {
             moe.rukamori.archivetune.tidal.TidalInstanceHealthManager.healthyUrls(context).size
         }.getOrDefault(0)
@@ -167,10 +131,7 @@ object SourceCheckService {
             )
         }
         val premium = accounts.count { it.premium }
-        // Take the first pool account and try a real Qobuz API call against it
-        // (user/get) — this verifies the token + app_id are valid. We can't
-        // verify app_secret without signing a stream URL, but user/get proves
-        // the account is alive.
+
         val first = accounts.first()
         val token = QobuzToken(
             token = first.token,
@@ -195,9 +156,7 @@ object SourceCheckService {
     }
 
     private fun checkQobuzBackup(): SourceCheckResult {
-        // The Qobuz backup is a two-step resolver: GET the resolver endpoint to
-        // get the actual stream URL on the CDN, then range-probe the CDN URL.
-        // NOTE: server addresses are intentionally hidden from the summary text.
+
         val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
@@ -229,9 +188,7 @@ object SourceCheckService {
                         summary = "Qobuz backup resolver returned a non-JSON response.",
                     )
                 }
-                // The resolver returns both a lossy `url` mirror and a `lossless`
-                // FLAC mirror. Report on the lossless one first, since that is the
-                // reason to use this source at all.
+
                 val losslessUrl = root.optString("lossless").takeIf { it.isNotBlank() }
                 val lossyUrl = root.optString("url").takeIf { it.isNotBlank() }
                 if (losslessUrl == null && lossyUrl == null) {
@@ -240,13 +197,7 @@ object SourceCheckService {
                         summary = "Qobuz backup resolver returned a JSON envelope with no stream URL.",
                     )
                 }
-                // Step 2: range-probe the resolved CDN URL.
-                //
-                // Deliberately a ranged GET, not HEAD: the CDN answers HEAD with
-                // `405 Method Not Allowed` (`allow: GET`) for every object, so the
-                // old HEAD probe always reported a scary "HEAD probe got HTTP 405"
-                // even when the stream was perfectly playable. `Range: bytes=0-1`
-                // downloads two bytes and returns the real Content-Type.
+
                 val losslessProbe = losslessUrl?.let { probeCdn(it) }
                 val lossyProbe = if (losslessProbe?.ok == true) null else lossyUrl?.let { probeCdn(it) }
                 when {
@@ -285,7 +236,6 @@ object SourceCheckService {
         }
     }
 
-    /** Outcome of a two-byte ranged GET against a Qobuz-backup CDN mirror. */
     private data class CdnProbe(
         val ok: Boolean,
         val code: Int,
@@ -367,17 +317,9 @@ object SourceCheckService {
     }
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
-        // force = true. The whole point of tapping "Check source" is to find out whether accounts
-        // can be obtained *now*, and a non-forced refresh is throttled — previously for a full 24h
-        // whenever any other service had accounts cached, so the message telling the user to refresh
-        // the pool was advice this very call had just declined to follow.
+
         PoolAccountManager.refresh(context, force = true)
 
-        // Ask the provider, not the pool. DeezerAudioProvider.accounts() merges the manually
-        // signed-in ARL (Integration → Deezer) with the pool's shared accounts; reading
-        // PoolAccountManager.deezerAccounts() directly skips the manual one entirely and reported
-        // "No Deezer accounts in the source pool" to users who had signed in successfully and whose
-        // playback was in fact resolving. Same defect 7ede13689 fixed in MusicService's resolver.
         val availability = DeezerAudioProvider.accountAvailability()
         if (availability.total == 0) {
             return SourceCheckResult(
@@ -397,9 +339,6 @@ object SourceCheckService {
                 }
             }.joinToString(" + ")
 
-        // Probe the credential resolve() would reach for first. A stored ARL says nothing about
-        // whether Deezer still accepts it — an expired cookie looks identical until playback
-        // silently falls through to the next source.
         val info = DeezerAudioProvider.verifyPreferredAccount()
         return if (info == null) {
             SourceCheckResult(
@@ -417,9 +356,7 @@ object SourceCheckService {
     }
 
     private fun checkJioSaavn(): SourceCheckResult {
-        // JioSaavn is unauthenticated — just probe the public search API with
-        // a canned query and verify it returns at least one result.
-        // NOTE: server addresses are intentionally hidden from the summary text.
+
         return runCatching {
             val result = kotlinx.coroutines.runBlocking {
                 SaavnService.searchSongs("test query").getOrDefault(emptyList())

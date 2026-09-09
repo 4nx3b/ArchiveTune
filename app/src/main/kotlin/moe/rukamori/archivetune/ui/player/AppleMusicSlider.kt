@@ -54,14 +54,6 @@ private val AppleMusicSliderIdleTrackHeight = 6.dp
 private val AppleMusicSliderPressedTrackHeight = 10.dp
 private val AppleMusicVolumeIconSize = 18.dp
 
-/**
- * Flat Apple-Music-style slider: rounded track, no thumb, tap or drag anywhere to set the value.
- *
- * The track grows while held and settles back when released, which is what gives the control its
- * "soft" feel. The fill is animated so a value arriving from outside (hardware volume keys, or
- * playback progress) glides instead of jumping, but it snaps to the finger while dragging — an
- * animated fill during a drag would lag behind the touch and feel broken.
- */
 @Composable
 internal fun AppleMusicFlatSlider(
     fraction: Float,
@@ -77,12 +69,6 @@ internal fun AppleMusicFlatSlider(
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(fraction) }
 
-    // The gesture blocks below are keyed on `enabled` alone, so anything they capture would
-    // otherwise be frozen at the composition that installed them. The seek bar's callback closes
-    // over the track duration, which changes on every song change -- a captured copy would keep
-    // converting taps against the previous song's length and seek to the wrong spot. Keying the
-    // pointerInput on the callbacks instead would cancel an in-flight drag whenever the position
-    // updated, so read them through rememberUpdatedState.
     val currentOnFractionChange by rememberUpdatedState(onFractionChange)
     val currentOnFractionChangeFinished by rememberUpdatedState(onFractionChangeFinished)
 
@@ -109,11 +95,7 @@ internal fun AppleMusicFlatSlider(
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectTapGestures { offset ->
-                        // Not setting `dragging` here: a tap has no press/release span to animate
-                        // over, so the fill should spring to the new value from wherever it is. It
-                        // reaches us through the caller's state on the next frame, so dragFraction
-                        // deliberately stays untouched -- writing it while dragging is false would
-                        // leave a stale value that the next real drag animates away from.
+
                         val tapped = (offset.x / size.width).coerceIn(0f, 1f)
                         currentOnFractionChange(tapped)
                         currentOnFractionChangeFinished()
@@ -147,24 +129,7 @@ internal fun AppleMusicFlatSlider(
                         size = Size(size.width, height),
                         cornerRadius = radius,
                     )
-                    // ─────────────────────────────────────────────────────────────────────────
-                    // Performance (user request 2026-08-30: "Reduce Gpu/cpu usage so that the
-                    // app is even more smooth without removing or sacrificing anything").
-                    //
-                    // Previously this allocated a fresh `fillColor.copy(alpha = fillColor.alpha * fillAlpha)`
-                    // Color instance per redraw frame during drag (and `dragFraction` /
-                    // `animatedFraction` change every drag frame). `Color.copy(...)` allocates a
-                    // new Color on every call, which is harmless for a one-shot draw but becomes
-                    // measurable during a slider drag (hundreds of frames).
-                    //
-                    // Now we pass the unmodified `fillColor` and let `drawRoundRect`'s `alpha`
-                    // parameter (a primitive Float) multiply it down. `drawRoundRect`'s `alpha`
-                    // multiplies the source color's alpha, so the resulting alpha is
-                    // `fillColor.alpha * fillAlpha` — visually identical to the previous
-                    // `fillColor.copy(alpha = fillColor.alpha * fillAlpha)`, but zero allocation
-                    // per frame. Same pattern the previous perf pass applied to `LiquidGlass`'s
-                    // `onDrawSurface`.
-                    // ─────────────────────────────────────────────────────────────────────────
+
                     drawRoundRect(
                         color = fillColor,
                         alpha = fillColor.alpha * fillAlpha,
@@ -176,12 +141,6 @@ internal fun AppleMusicFlatSlider(
     )
 }
 
-/**
- * Volume row used by both the Apple Music player and its lyrics screen.
- *
- * The left glyph switches to the muted speaker at zero so silence is visible at a glance; neither
- * screen used to indicate mute at all.
- */
 @Composable
 internal fun AppleMusicVolumeRow(
     volume: Float,

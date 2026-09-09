@@ -59,15 +59,6 @@ import moe.rukamori.archivetune.constants.VideoAspectRatio
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
-/**
- * Row/title spacing for the sheets in this file.
- *
- * In landscape — which is the orientation the fullscreen video overlay locks to — the whole screen
- * is only ~360dp tall, so a sheet laid out with the portrait metrics (24/12dp padding plus a
- * description line under every row) is taller than the space it has and ends up scrolling the
- * three quality modes. [compact] trades the descriptions and half the padding for fitting, which
- * is the right call there: the row titles already name the modes.
- */
 private data class SheetMetrics(
     val horizontalPadding: Dp,
     val rowVerticalPadding: Dp,
@@ -75,22 +66,14 @@ private data class SheetMetrics(
     val dividerVerticalPadding: Dp,
     val listMaxHeight: Dp,
     val showDescriptions: Boolean,
-    // Gap between two pills. Small enough that a run of pills still reads as one group, large
-    // enough that their rounded edges don't touch.
+
     val pillSpacing: Dp,
-    // Inset from a pill's own edge to its text, on top of [horizontalPadding], which insets the
-    // pill itself from the sheet edges.
+
     val pillInnerPadding: Dp,
-    // Floor on a pill's height so a title-only pill and a title+subtitle pill don't look like two
-    // different controls.
+
     val pillMinHeight: Dp,
 )
 
-/**
- * True when the sheet should use [SheetMetrics] compact spacing. Derived from the orientation
- * rather than passed in, so both the inline player and the fullscreen overlay get it without
- * either having to know about it.
- */
 @Composable
 private fun rememberSheetMetrics(): SheetMetrics {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -123,27 +106,6 @@ private fun rememberSheetMetrics(): SheetMetrics {
     }
 }
 
-/**
- * Video-quality picker, presented as a bottom sheet that slides up from the bottom of the screen.
- *
- * Replaces the [androidx.compose.material3.DropdownMenu] the quality button used to anchor. The
- * dropdown had two problems in the fullscreen overlay: it opened as a small popup pinned under the
- * button in the top-right corner (awkward to reach one-handed in landscape) and it listed every
- * raw resolution with no notion of intent, so "just give me the best" and "don't eat my data" both
- * required knowing which number to pick.
- *
- * The sheet has two pages:
- *  - the **main page** offers the three intents — Auto, Data saver, High quality — plus a row that
- *    opens Advanced,
- *  - the **Advanced page** lists every resolution this device can decode, so an exact pick
- *    (144p … 4320p) is still one tap away.
- *
- * @param preferredHeight current choice, encoded per [VideoQualityPreference].
- * @param availableHeights resolutions YouTube offered for this video that the device can decode,
- *   ascending. Drives the Advanced page.
- * @param selectedHeight the resolution actually playing, shown as a subtitle so the modes report
- *   what they resolved to.
- */
 @Composable
 internal fun VideoQualitySheet(
     preferredHeight: Int?,
@@ -158,7 +120,7 @@ internal fun VideoQualitySheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         VideoQualitySheetContent(
             preferredHeight = preferredHeight,
             availableHeights = availableHeights,
@@ -171,10 +133,6 @@ internal fun VideoQualitySheet(
     }
 }
 
-/**
- * Body of [VideoQualitySheet]. Split out so the two pages can swap in place without the sheet
- * itself being torn down and re-animated.
- */
 @Composable
 private fun VideoQualitySheetContent(
     preferredHeight: Int?,
@@ -188,7 +146,7 @@ private fun VideoQualitySheetContent(
     AnimatedContent(
         targetState = advancedOpen,
         transitionSpec = {
-            // Slide the way the navigation runs: forward into Advanced, backward out of it.
+
             val direction = if (targetState) 1 else -1
             (
                 slideInHorizontally(tween(220)) { width -> direction * width / 3 } +
@@ -229,7 +187,6 @@ private fun VideoQualitySheetContent(
     }
 }
 
-/** Auto / Data saver / High quality, plus the row that opens the Advanced page. */
 @Composable
 private fun MainQualityPage(
     preferredHeight: Int?,
@@ -238,10 +195,7 @@ private fun MainQualityPage(
     onSelect: (Int?) -> Unit,
     onOpenAdvanced: () -> Unit,
 ) {
-    // The resolved resolution is only worth showing next to the mode that produced it — repeating
-    // "Playing at 1080p" under all three rows would read as if all three were active. It survives
-    // the compact layout even though the static descriptions do not: it is the one subtitle that
-    // says something the row title cannot.
+
     val playingLabel = selectedHeight?.let { stringResource(R.string.video_quality_current, formatHeightLabel(it)) }
 
     fun subtitleFor(
@@ -285,17 +239,12 @@ private fun MainQualityPage(
         onClick = { onSelect(VideoQualityPreference.HIGH_QUALITY) },
     )
 
-    // The three modes and the Advanced row are different kinds of thing, so they used to be
-    // separated by a HorizontalDivider. A divider drawn across a column of pills cuts through the
-    // gap between two rounded shapes and reads as a stray line; extra breathing room says the same
-    // thing without fighting the pills.
     Spacer(modifier = Modifier.height(metrics.dividerVerticalPadding))
 
     val exactHeight = preferredHeight?.takeIf { VideoQualityPreference.isExactHeight(it) }
     QualityRow(
         title = stringResource(R.string.video_quality_advanced),
-        // The exact-height subtitle is the current selection, so it stays in the compact layout
-        // for the same reason playingLabel does.
+
         subtitle =
             when {
                 exactHeight != null -> formatHeightLabel(exactHeight)
@@ -305,13 +254,11 @@ private fun MainQualityPage(
         selected = exactHeight != null,
         metrics = metrics,
         onClick = onOpenAdvanced,
-        // A chevron rather than a checkmark: this row navigates, it does not itself apply a
-        // quality. The `selected` tint still marks it when an exact height is in force.
+
         trailingIcon = R.drawable.navigate_next,
     )
 }
 
-/** Every resolution the device can decode for this video, tallest first. */
 @Composable
 private fun AdvancedQualityPage(
     preferredHeight: Int?,
@@ -338,9 +285,7 @@ private fun AdvancedQualityPage(
     }
 
     if (availableHeights.isEmpty()) {
-        // Reached only if the device's decoders reject every format YouTube listed. The mode rows
-        // on the main page still work (they clamp to whatever plays), so say why the list is empty
-        // rather than showing a blank sheet.
+
         Text(
             text = stringResource(R.string.video_quality_unavailable_on_device),
             style = MaterialTheme.typography.bodyMedium,
@@ -352,8 +297,7 @@ private fun AdvancedQualityPage(
                 ),
         )
     } else {
-        // Capped height + scroll: an 8K video offers ~11 resolutions, which is taller than a
-        // landscape sheet can show.
+
         Column(
             modifier =
                 Modifier
@@ -374,14 +318,6 @@ private fun AdvancedQualityPage(
     }
 }
 
-/**
- * Aspect-ratio picker, presented as the same bottom sheet as [VideoQualitySheet].
- *
- * The fullscreen overlay used to anchor a [androidx.compose.material3.DropdownMenu] to the
- * aspect-ratio button in the top-right pill, which had the same two problems the quality dropdown
- * had: it opened in the corner furthest from the thumb in landscape, and it looked nothing like the
- * quality picker sitting next to it. Sharing this sheet makes the two controls behave alike.
- */
 @Composable
 internal fun VideoAspectRatioSheet(
     aspectRatio: VideoAspectRatio,
@@ -395,7 +331,7 @@ internal fun VideoAspectRatioSheet(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier
@@ -421,7 +357,6 @@ internal fun VideoAspectRatioSheet(
     }
 }
 
-/** Label for each aspect-ratio mode. Kept next to the sheet that renders them. */
 private val VideoAspectRatio.labelRes: Int
     get() =
         when (this) {
@@ -442,28 +377,16 @@ private fun SheetTitle(
         fontWeight = FontWeight.SemiBold,
         modifier =
             Modifier.padding(
-                // +8dp so the title sits between the sheet edge and the pill text rather than
-                // lining up with neither.
+
                 start = metrics.horizontalPadding + 8.dp,
                 end = metrics.horizontalPadding + 8.dp,
                 top = 4.dp,
-                // The parent Column already spaces its children by pillSpacing; subtract it so the
-                // title-to-first-pill gap stays what it was before the pills landed.
+
                 bottom = (metrics.titleBottomPadding - metrics.pillSpacing).coerceAtLeast(0.dp),
             ),
     )
 }
 
-/**
- * One selectable row, drawn as a rounded pill: title, optional subtitle, and a trailing checkmark
- * (or [trailingIcon]) when this row is the active choice.
- *
- * The pill matches `PreferenceSelectionOption` in `ui/component/Preference.kt`, which is what every
- * other option list in a bottom sheet uses — filled `surfaceContainerHigh` normally, filled
- * `primary` when selected, `shapes.extraLarge` corners. Before this the rows were flat, full-bleed
- * and separated only by a divider, which made these two sheets the odd ones out next to the video
- * overflow sheet raised from the same button.
- */
 @Composable
 private fun QualityRow(
     title: String,
@@ -501,8 +424,7 @@ private fun QualityRow(
                 .clip(MaterialTheme.shapes.extraLarge)
                 .background(containerColor)
                 .then(
-                    // A row that navigates (Advanced) is a button, not one of the choices, so it
-                    // must not announce itself as a radio button.
+
                     if (trailingIcon != null) {
                         Modifier.clickable(onClick = onClick)
                     } else {
@@ -553,13 +475,6 @@ private fun QualityRow(
     }
 }
 
-/**
- * Short label for the quality button in the control pill, so the pill itself reports the current
- * choice instead of only opening the sheet.
- *
- * Modes report the resolution they resolved to when it is known ("Auto" alone tells the user
- * nothing about what they are actually watching); an exact pick reports its own height.
- */
 @Composable
 internal fun videoQualityPillLabel(
     preferredHeight: Int?,

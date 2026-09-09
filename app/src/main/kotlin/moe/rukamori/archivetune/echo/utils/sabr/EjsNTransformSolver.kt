@@ -18,22 +18,11 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * Standalone EJS-based n-parameter transform solver for SABR URLs.
- *
- * Uses the same AST-based approach as yt-dlp's EJS solver (meriyah + astring +
- * yt.solver.core.js) to reliably extract and execute the n-transform function
- * from the YouTube player JS.
- */
 object EjsNTransformSolver {
     private const val TAG = "Metrolist_EjsNSolver"
 
     private var solverWebView: SolverWebView? = null
 
-    /**
-     * Transform the 'n' parameter in a SABR streaming URL.
-     * Returns the URL with the transformed 'n' value, or the original URL if transform fails.
-     */
     suspend fun transformNParamInUrl(url: String): String {
         val nMatch = Regex("[?&]n=([^&]+)").find(url)
         if (nMatch == null) {

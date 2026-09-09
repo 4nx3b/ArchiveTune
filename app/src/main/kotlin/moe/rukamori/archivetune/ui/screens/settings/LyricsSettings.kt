@@ -9,13 +9,16 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -25,23 +28,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,11 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -91,9 +87,7 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
-import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
@@ -101,6 +95,10 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.screens.ScreenHeaderHaze
+import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import sh.calvin.reorderable.ReorderableItem
@@ -113,27 +111,17 @@ fun LyricsSettings(
     viewModel: ContentSettingsViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
-    // PaxsenixStatsDialog and its state plumbing removed (2026-08-30) along
-    // with the PaxsenixLyrics backend that the dialog queried. The
-    // fetchPaxsenixStats / paxsenixStatsState surface has been removed from
-    // ContentSettingsViewModel, and the PaxsenixStatsContent /
-    // PaxsenixStatusBar / PaxsenixProviderRow / PaxsenixServerStatus /
-    // successRateToStatus helpers below have been deleted too.
 
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
-    // Restored (2026-09-04): the two control-preference reads behind the restored
-    // "Show player controls" / "Auto-hide controls" settings (see the items below).
+
     val (showPlayerControls, onShowPlayerControlsChange) =
         rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
-    // LyricsMode picker removed by user request — Enhanced is the only renderer now, so the
-    // "V2 Legacy / Enhanced" choice is no longer surfaced. The LyricsMode enum and LyricsModeKey
-    // preference are kept in PreferenceKeys.kt for backward compatibility with existing DataStore
-    // values (the player code reads the enum but only the ENHANCED branch is reachable now).
+
     val (enableLrclib, onEnableLrclibChange) = rememberPreference(key = EnableLrcLibKey, defaultValue = true)
     val (enableKugou, onEnableKugouChange) = rememberPreference(key = EnableKugouKey, defaultValue = true)
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
@@ -141,19 +129,7 @@ fun LyricsSettings(
         rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
     val (enableYouLyPlusLyrics, onEnableYouLyPlusLyricsChange) =
         rememberPreference(key = EnableYouLyPlusLyricsKey, defaultValue = true)
-    // SimpMusic / BiniLyrics lyrics providers removed per user request
-    // (2026-08-30): "Remove simpmusic and binilyrics lyrics provider and
-    // their entire code too". The provider files, settings toggles, enum
-    // entries, gradle module includes and the underlying :lyrics:simpmusic
-    // / :lyrics:paxsenix gradle modules have all been deleted.
-    //
-    // The Paxsenix* enable keys / rememberPreference calls below were also
-    // removed because the PaxsenixLyrics backend was the only consumer; the
-    // keys remain defined in PreferenceKeys.kt as no-ops for source compat.
-    // Megalobiz lyrics provider removed per user request (2026-08-28):
-    // "Remove megalobiz lyrics provider". The MegalobizLyricsProvider
-    // file was deleted; the PreferredLyricsProvider.MEGALOBIZ enum value
-    // and the DefaultLyricsProviderOrder entry are also gone.
+
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) = rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
         rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
@@ -197,13 +173,30 @@ fun LyricsSettings(
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
+    val headerHaze = rememberScreenHeaderHaze()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
+
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
+    val headerTopPadding =
+        LocalPlayerAwareWindowInsets.current
+            .asPaddingValues()
+            .calculateTopPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+
             .then(positions.containerModifier())
             .verticalScroll(scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .hazeSource(headerHaze)
+            .padding(top = headerTopPadding)
+            .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -339,9 +332,6 @@ fun LyricsSettings(
             }
         }
 
-        // Language packs entry moved here from the main settings page (Task 6).
-        // Sits above the display group so users can install/enable packs before
-        // toggling romanization for the relevant languages below.
         PreferenceGroup(
             modifier = positions.modifierFor("language_packs"),
             title = stringResource(R.string.language_packs),
@@ -356,9 +346,6 @@ fun LyricsSettings(
             }
         }
 
-        // "Providers" sub-page entry — opens the new LyricsProvidersSettings screen which
-        // houses all provider toggles + experimental lyrics (Task 2). The inline provider
-        // group that used to live below is moved there.
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_provider"),
             title = stringResource(R.string.providers),
@@ -374,8 +361,6 @@ fun LyricsSettings(
             }
         }
 
-        // "Romanisation" sub-page entry — opens the new LyricsRomanisationSettings screen
-        // which houses all per-language romanisation toggles (Task 3).
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_romanize"),
             title = stringResource(R.string.romanization),
@@ -395,13 +380,7 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_font_size"),
             title = stringResource(R.string.display),
         ) {
-            // ── Lyrics mode picker ("V2 Legacy" / "Enhanced") and "Lyrics animation style"
-            // entry removed by user request. Enhanced is the sole lyrics renderer now, so the
-            // mode selector was redundant, and the animation style page only adjusted V2-specific
-            // sliders (Bounce Amplitude / Glow Intensity / Fill Transition / Line Bounce Effect)
-            // that no longer have a renderer to affect. The navigation route
-            // "settings/appearance/lyrics_animations" and the LyricsAnimationSettings screen
-            // are also removed (see NavigationBuilder.kt and the deleted file). ──
+
 
             item {
                 SwitchPreference(
@@ -423,13 +402,6 @@ fun LyricsSettings(
                 )
             }
 
-            // ── Restored (2026-09-04) ──────────────────────────────────────────
-            // "Show player controls" / "Auto-hide controls" toggles, back by
-            // user request after the Sept 3→4 upstream port removed them together
-            // with the Apple Music five-second auto-hide. The keys kept their
-            // original names so previously-saved values continue to apply. The
-            // description matches the restored behaviour: fade after 5s, tap to
-            // bring back.
             item {
                 SwitchPreference(
                     modifier = positions.modifierFor("show_lyrics_player_controls"),
@@ -483,20 +455,11 @@ fun LyricsSettings(
             }
         }
 
-        // Provider toggles, experimental lyrics, and romanisation settings have been moved
-        // into dedicated sub-pages (see `settings/lyrics/providers` and
-        // `settings/lyrics/romanisation` routes, plus the new entries above that navigate
-        // to them). The inline groups that used to render them here are removed.
-
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_preload"),
             title = stringResource(R.string.queue),
         ) {
-            // The count value is the SOLE control: 0 = off, >0 = pre-load that
-            // many songs. The old master switch was removed because it was
-            // confusing — users would set the count but the switch was off,
-            // so nothing happened. Now the count picker is always visible and
-            // shows "Off" when 0.
+
             item {
                 NumberPickerPreference(
                     modifier = positions.modifierFor("preload_queue_lyrics"),
@@ -513,8 +476,18 @@ fun LyricsSettings(
 
     }
 
+    ScreenHeaderHaze(
+        hazeState = headerHaze,
+        systemBarsTopPadding = systemBarsTopPadding,
+    )
+
     TopAppBar(
         title = {},
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         navigationIcon = {
             FrostedHeaderPill(plain = true) {
                 IconButton(
@@ -536,6 +509,7 @@ fun LyricsSettings(
             }
         },
     )
+    }
 }
 
 internal fun PreferredLyricsProvider.displayName(): String =
@@ -545,10 +519,9 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO -> "BetterLyrics Portato"
         PreferredLyricsProvider.YOULY_PLUS -> "YouLyPlus"
-        // SIMPMUSIC and BINI_LYRICS cases removed per user request (2026-08-30).
+
         PreferredLyricsProvider.UNISON -> "Unison"
-        // Ported from upstream 2026-08-31 window: Apple Music account lyrics
-        // (via the logged-in Apple Music/pool account).
+
         PreferredLyricsProvider.APPLE_MUSIC -> "Apple Music (account)"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
@@ -654,4 +627,3 @@ internal fun LyricsProviderOrderDialog(
         }
     }
 }
-

@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -65,6 +64,7 @@ import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.constants.AppleMusicSourceEnabledKey
+import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
 import moe.rukamori.archivetune.constants.SaavnAudioQuality
 import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
@@ -89,10 +89,8 @@ import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
-import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -128,18 +126,6 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
-/**
- * Renders all streaming-source preference groups inline in the caller's scrolling Column. Called
- * from Settings → Sources, which is the one place per-source quality lives: Player Settings used to
- * carry a second, compact copy of the same pickers over the same preference keys, so the same
- * setting appeared in two screens and neither was obviously the real one. Emits, in order: the
- * common "Sources" group (preferred-source picker + YouTube history sync), then YouTube, Tidal and
- * Qobuz specific groups.
- *
- * [positions] belongs to the *host* screen: these rows are searchable, and settings search deep
- * links to them with `?scrollTo=<key>`, which only resolves if the anchors register against the
- * scroll state the host owns.
- */
 @Composable
 internal fun PlaybackSourceSections(
     navController: NavController,
@@ -152,7 +138,7 @@ internal fun PlaybackSourceSections(
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
-    val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, false)
+    val (appleMusicEnabled, onAppleMusicEnabledChangeRaw) = rememberPreference(AppleMusicSourceEnabledKey, true)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
@@ -163,13 +149,6 @@ internal fun PlaybackSourceSections(
     val (defaultSearchSource, onDefaultSearchSourceChange) =
         rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
 
-
-    // When the user enables a pool-backed source (Qobuz or Deezer), automatically
-    // trigger a pool refresh in the background. This ensures the latest pool
-    // accounts are loaded before the user tries to play a song through that
-    // source — fixing the "Qobuz server through the pool doesn't work even when
-    // accounts are already added" bug where the pool cache was stale or empty
-    // when the user enabled the source.
     val onQobuzEnabledChange: (Boolean) -> Unit = { enabled ->
         onQobuzEnabledChangeRaw(enabled)
         if (enabled && PoolAccountManager.isEnabled) {
@@ -199,7 +178,6 @@ internal fun PlaybackSourceSections(
     val (audioQuality, onAudioQualityChange) =
         rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
 
-    // YouTube-specific playback state
     val (ytAudioQuality, onYtAudioQualityChange) =
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
@@ -209,10 +187,7 @@ internal fun PlaybackSourceSections(
     val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, defaultValue = "")
     val (poTokenGvs, _) = rememberPreference(PoTokenGvsKey, defaultValue = "")
     val (poTokenPlayer, _) = rememberPreference(PoTokenPlayerKey, defaultValue = "")
-    // Ported from vossgraves/ArchiveTune: the ArchiveTune Extractor backend client
-    // needs a signed-in YouTube session (login cookie + both PO tokens) — the same
-    // inputs the backend forwards to YouTube — so it stays disabled until those
-    // exist and resets itself if they disappear.
+
     val isArchiveTuneExtractorEnabled =
         remember(innerTubeCookie, poTokenGvs, poTokenPlayer) {
             hasYouTubeLoginCookie(innerTubeCookie) &&
@@ -236,7 +211,7 @@ internal fun PlaybackSourceSections(
     val (qobuzBackupEnabled, onQobuzBackupEnabledChange) = rememberPreference(QobuzBackupEnabledKey, false)
     val (appleMusicQuality, onAppleMusicQualityChange) =
         rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
-    // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
+
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
 
@@ -312,6 +287,7 @@ internal fun PlaybackSourceSections(
                     when (it) {
                         SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
                         SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
+                        SearchProvider.APPLE_MUSIC -> stringResource(R.string.search_source_apple_music)
                     }
                 },
                 onValueSelected = onDefaultSearchSourceChange,
@@ -328,7 +304,6 @@ internal fun PlaybackSourceSections(
             )
         }
     }
-
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
         item {
@@ -366,7 +341,6 @@ internal fun PlaybackSourceSections(
             )
         }
 
-
         item {
             ListPreference(
                 modifier = positions.modifierFor("player_stream_client"),
@@ -377,15 +351,11 @@ internal fun PlaybackSourceSections(
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
                 isEnabled = !autoChoosePlaybackClient,
-                // Ported from vossgraves/ArchiveTune: the backend client needs a
-                // signed-in YouTube session — cookie + both PO tokens — before it
-                // can be picked.
+
                 isValueEnabled = { client ->
                     client != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR || isArchiveTuneExtractorEnabled
                 },
-                // Exhaustive on purpose: no `else` branch, so adding a client to
-                // PlayerStreamClient fails the build here instead of silently rendering
-                // every row with the Web Remix label.
+
                 valueText = {
                     when (it) {
                         PlayerStreamClient.ANDROID_VR ->
@@ -595,6 +565,10 @@ internal fun PlaybackSourceSections(
                 onClick = { navController.navigate("settings/applemusic") },
             )
         }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.APPLE)
+        }
     }
 
     PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
@@ -656,13 +630,6 @@ internal fun PlaybackSourceSections(
             )
         }
 
-        // Credit row — required by vivi-music's GPL-3.0 porting guidelines.
-        // Previously this lived on a separate JioSettings sub-page that was
-        // reached via an "Open JioSaavn settings" row below the quality picker.
-        // Per design feedback, that navigation row was removed and the credit
-        // was hoisted up to sit directly beneath the audio-quality selection
-        // (its standalone JioSettings.kt page is left in place but no longer
-        // linked from the Sources screen).
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.jiosaavn_credit)) },
@@ -678,20 +645,6 @@ internal fun PlaybackSourceSections(
     }
 }
 
-/**
- * "Check source" row — runs a per-source health probe via [SourceCheckService]
- * and shows the result in a dialog. Lets the user diagnose why a source isn't
- * working without having to look at logcat.
- *
- * The probe runs off the main thread. While it's running, the row shows a
- * spinner instead of the check icon. The result is shown in a [DefaultDialog]
- * with an OK button — closing the dialog dismisses it.
- *
- * Each source has its own probe logic — see [SourceCheckService] for details.
- * Sources that use the source pool (Tidal, Qobuz, Deezer) refresh the pool
- * before counting accounts; sources that don't (JioSaavn, Qobuz backup) just
- * ping their endpoint directly.
- */
 @Composable
 private fun SourceCheckRow(source: AudioSourceType) {
     val context = LocalContext.current

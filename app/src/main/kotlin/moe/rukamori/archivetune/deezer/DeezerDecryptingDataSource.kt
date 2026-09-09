@@ -25,14 +25,6 @@ import timber.log.Timber
 import java.io.IOException
 import kotlin.math.min
 
-/**
- * Wraps [upstreamFactory] (an HTTP source) and decrypts Deezer's chunked Blowfish stream.
- *
- * Reads are served out of a one-chunk buffer: a whole 2048-byte chunk is pulled from upstream,
- * decrypted if its absolute index says it is encrypted, and then drained to the caller across as many
- * [read] calls as it takes. Buffering a whole chunk is required rather than an optimisation — a chunk
- * cannot be decrypted until all of it has arrived.
- */
 internal class DeezerDecryptingDataSource(
     private val upstreamFactory: DataSource.Factory,
 ) : BaseDataSource(true) {
@@ -42,14 +34,11 @@ internal class DeezerDecryptingDataSource(
 
     private val chunk = ByteArray(DeezerCrypto.CHUNK_SIZE)
 
-    /** Valid decrypted bytes currently held in [chunk], and how far the caller has drained them. */
     private var chunkLength = 0
     private var chunkOffset = 0
 
-    /** Absolute index of the next chunk to fetch, which decides whether it is encrypted. */
     private var nextChunkIndex = 0L
 
-    /** Bytes still owed to the caller, or [C.LENGTH_UNSET] when the total length is unknown. */
     private var bytesRemaining = C.LENGTH_UNSET.toLong()
 
     private var opened = false
@@ -63,16 +52,11 @@ internal class DeezerDecryptingDataSource(
         key = DeezerCrypto.deriveKey(ref.trackId, ref.salt)
         currentUri = dataSpec.uri
 
-        // Snap the requested offset down to a chunk boundary. Encrypted chunks are only decryptable
-        // as whole chunks, so a seek landing mid-chunk has to re-fetch from that chunk's start and
-        // throw away the bytes before the target; without this, seeks decode garbage.
         val requestedPosition = dataSpec.position
         val alignedPosition = requestedPosition - (requestedPosition % DeezerCrypto.CHUNK_SIZE)
         val discardCount = (requestedPosition - alignedPosition).toInt()
         nextChunkIndex = alignedPosition / DeezerCrypto.CHUNK_SIZE
 
-        // Ask upstream for the discarded prefix too, otherwise a bounded request would come up short
-        // by exactly discardCount bytes at the end of the range.
         val upstreamLength =
             if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
                 C.LENGTH_UNSET.toLong()
@@ -80,9 +64,6 @@ internal class DeezerDecryptingDataSource(
                 dataSpec.length + discardCount
             }
 
-        // Deliberately not forwarding our transfer listeners to the upstream source: this class already
-        // reports every byte it hands out via bytesTransferred, and registering the same listeners
-        // downstream would count each byte twice in the bandwidth meter.
         val source = upstreamFactory.createDataSource()
         upstream = source
 
@@ -100,15 +81,13 @@ internal class DeezerDecryptingDataSource(
             when {
                 dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
                 upstreamLengthReported == C.LENGTH_UNSET.toLong() -> C.LENGTH_UNSET.toLong()
-                // Report the length the caller sees, which excludes the prefix we are about to drop.
+
                 else -> (upstreamLengthReported - discardCount).coerceAtLeast(0L)
             }
 
         opened = true
         transferStarted(dataSpec)
 
-        // Drop the pre-seek remainder of the first chunk before returning, so the very first read()
-        // already starts at the byte the caller asked for.
         if (discardCount > 0) discardFully(discardCount)
 
         return bytesRemaining
@@ -138,15 +117,10 @@ internal class DeezerDecryptingDataSource(
         return toCopy
     }
 
-    /**
-     * Pulls the next whole chunk from upstream and decrypts it when required. Returns false at
-     * end of stream.
-     */
     private fun fillChunk(): Boolean {
         val source = upstream ?: return false
         var filled = 0
-        // Loop because a single upstream read is free to return fewer bytes than asked, and a chunk
-        // that is short only because of a partial read must not be mistaken for the final chunk.
+
         while (filled < DeezerCrypto.CHUNK_SIZE) {
             val read = source.read(chunk, filled, DeezerCrypto.CHUNK_SIZE - filled)
             if (read == C.RESULT_END_OF_INPUT) break
@@ -154,14 +128,12 @@ internal class DeezerDecryptingDataSource(
         }
         if (filled == 0) return false
 
-        // A trailing partial chunk is stored plaintext, so only decrypt a chunk that came back whole.
         if (filled == DeezerCrypto.CHUNK_SIZE && DeezerCrypto.isEncryptedChunk(nextChunkIndex)) {
             val chunkKey = key ?: return false
             try {
                 DeezerCrypto.decryptChunk(chunk, filled, chunkKey)
             } catch (e: Exception) {
-                // Surface as an IOException so the player treats it as a source failure and can fall
-                // through to the next audio source, rather than crashing on a crypto exception.
+
                 throw IOException("Deezer chunk decryption failed at index $nextChunkIndex", e)
             }
         }
@@ -172,7 +144,6 @@ internal class DeezerDecryptingDataSource(
         return true
     }
 
-    /** Drops exactly [count] decrypted bytes, used to honour a mid-chunk seek offset. */
     private fun discardFully(count: Int) {
         var left = count
         while (left > 0) {

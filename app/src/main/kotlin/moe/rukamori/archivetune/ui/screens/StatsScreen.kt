@@ -73,7 +73,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -247,16 +246,6 @@ fun StatsScreen(
                 .toList()
         }
 
-    // Fixed (2026-09-04, user report: "Whole screen is not scrollable in LastFm
-    // and stats page in settings and because of that I don't see haze effect
-    // around the header"): the LargeFlexibleTopAppBar reserved its expanded
-    // height and the LazyColumn's top spacing was a STATIC modifier padding —
-    // the list's viewport started below the bar, so nothing ever scrolled
-    // under the header and the haze overlay had nothing to frost. The bar is
-    // now a pinned transparent TopAppBar (FrostedHeaderPill back + "Stats",
-    // year-picker action) and the bar height moved INTO the LazyColumn's
-    // contentPadding so it scrolls away — content flows under the header
-    // into the progressive top-fade blur, exactly like the other fixed screens.
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -299,22 +288,12 @@ fun StatsScreen(
             )
         },
     ) { scaffoldPadding ->
-        // Header haze (2026-09-04, user request: "Add the same haze effect
-        // in Account page and stats page in settings"): the LazyColumn is
-        // the haze source and scrolls under the now-transparent collapsing
-        // top bar into the progressive top-fade blur — the same material the
-        // Home route and the ported settings screens use. The overlay is a
-        // later sibling of the list so it draws on top of it.
+
         val headerHaze = rememberScreenHeaderHaze()
         val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
-                // Top spacing as contentPadding (2026-09-04 fix): a LazyColumn's
-                // contentPadding scrolls AWAY with the content, so the list
-                // starts under the transparent pinned header and its items
-                // flow through the header-haze zone — which the previous
-                // STATIC Modifier.padding(top = bar) could never do (it
-                // shifted the whole viewport below the bar instead).
+
                 contentPadding =
                     PaddingValues(
                         start = LocalPlayerAwareWindowInsets.current
@@ -338,7 +317,7 @@ fun StatsScreen(
                         .fillMaxHeight()
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        // Haze source for the header's top-fade blur.
+
                         .hazeSource(headerHaze),
             ) {
                 item(key = "rangeControls", contentType = "controls") {
@@ -636,8 +615,6 @@ fun StatsScreen(
                 )
             }
 
-            // Header haze overlay — later sibling of the list so it draws on
-            // top of the scrolling content, under the pinned top bar.
             ScreenHeaderHaze(
                 hazeState = headerHaze,
                 systemBarsTopPadding = systemBarsTopPadding,
@@ -655,9 +632,7 @@ private fun StatsStatusScreen(
 ) {
     Scaffold(
         topBar = {
-            // Pinned transparent single-row bar — same shape the main stats screen
-            // uses; the old LargeFlexibleTopAppBar reserved its full expanded height
-            // behind an empty title (dead band) and no longer exists in this fork.
+
             TopAppBar(
                 title = {},
                 navigationIcon = {
@@ -1011,7 +986,7 @@ private fun StatsYearPickerDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(onClick = onDismiss) {
                 Text(text = stringResource(R.string.dismiss))
             }

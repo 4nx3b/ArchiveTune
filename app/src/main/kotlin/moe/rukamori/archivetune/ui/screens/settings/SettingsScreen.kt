@@ -83,24 +83,6 @@ import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
-
-/**
- * Search-result children that are indexed under one page but physically live on another.
- *
- * The settings index grew section by section, so a number of children are still listed under the
- * page that *used* to own them — every Discord activity field under "Integration", every lyrics
- * provider toggle under "Lyrics", every streaming-source switch under "Playback". Navigating to
- * the indexed parent opens a screen that does not contain the row at all, so `?scrollTo=` has
- * nothing to find and the result silently lands at the top of the wrong page.
- *
- * Keyed by `"<indexedParent>/<scrollKey>"` rather than by the scroll key alone: several keys are
- * legitimately indexed twice (`qobuz_enable` under both "Playback" and "Qobuz"), and only the
- * out-of-place copy should be redirected.
- *
- * Fixing the index itself would be the deeper repair, but it would also change the result titles
- * users see; re-pointing the navigation keeps the search results as they are and simply sends
- * them somewhere the setting exists.
- */
 private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     buildMap {
         fun own(
@@ -109,7 +91,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             vararg keys: String,
         ) = keys.forEach { put("$parent/$it", owner) }
 
-        // Integration is a hub of links; the settings themselves live on the per-service screens.
         own(
             "discord", "integration",
             "discord_options", "discord_connection", "discord_activity", "discord_images",
@@ -133,30 +114,24 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
             "telegram_logout", "telegram_bots_title",
         )
 
-        // Lyrics was split into Providers / Romanisation / Animations sub-pages.
         own(
             "lyrics_providers", "lyrics",
             "first_lyrics_provider", "set_first_lyrics_provider", "prioritize_word_synced_lyrics",
             "enable_tidal_lyrics", "enable_deezer_lyrics", "enable_musixmatch_experimental",
             "betterlyrics", "betterlyrics_portato", "youlyplus_lyrics", "lrclib", "kugou",
             "unison_lyrics",
-            // "paxsenix_*" and "simpmusic_lyrics" anchor keys removed (2026-08-30) along
-            // with the providers + their settings rows + the :lyrics:paxsenix / :lyrics:simpmusic
-            // gradle modules.
+
         )
         own(
             "lyrics_romanisation", "lyrics",
             "lyrics_romanize_japanese", "lyrics_romanize_korean", "lyrics_romanize_chinese",
             "lyrics_romanize_hindi", "lyrics_romanize_other",
         )
-        // lyrics_animations entry removed — Enhanced is the sole renderer now and the
-        // animation style settings page only adjusted V2-specific sliders that no longer
-        // have a renderer to affect.
+
         own("appearance", "lyrics", "lyrics_background_style")
         // The lyrics translator shipped alongside the Discord experiments and still lives there.
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
 
-        // Source enable/quality switches moved from Playback to the dedicated Sources page.
         own(
             "sources", "playback",
             "preferred_sources", "auto_choose_playback_client", "player_stream_client",
@@ -170,7 +145,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         own("qobuz", "sources", "qobuz")
         own("tidal", "sources", "tidal")
 
-        // Appearance rows that were moved out to their own pages.
+
         own("navigation_bar", "appearance", "frosted_nav_bar", "liquid_glass_nav_bar", "hide_navigation_bar_labels")
         own("appearance_extras", "appearance", "show_home_category_chips")
         own("playback", "appearance", "swipe_sensitivity")
@@ -180,7 +155,7 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     }
 
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
-    // A child indexed under the wrong page is navigated to the page that actually holds it.
+
     val ownerKey = CROSS_PAGE_SCROLL_OWNERS["$parentKey/${scrollKey.orEmpty()}"] ?: parentKey
     val route =
         when (ownerKey) {
@@ -189,7 +164,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "appearance_extras" -> "settings/appearance/extras"
             "aod" -> "settings/appearance/aod_customized"
             "navigation_bar" -> "settings/appearance/navigation_bar"
-            // "lyrics_animations" route removed — Enhanced is the sole renderer now.
+
             "playback" -> "settings/player"
             "ytdlp" -> "settings/player/ytdlp"
             "sources" -> "settings/sources"
@@ -221,8 +196,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "po_token" -> PO_TOKEN_ROUTE
             else -> return null
         }
-    // About / developer-options screens intentionally don't participate in auto-scroll
-    // (their contents are mostly static links). All other screens honor ?scrollTo=.
+
     val supportsScroll =
         ownerKey !in
             setOf(
@@ -292,18 +266,7 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
-    // When searching, flatten all individual SettingsChildren across every
-    // category so each matching setting is shown as a separate row.
-    //
-    // Per product decision: settings that ship with an inline switch control
-    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
-    // Persistent queue, etc.) ARE included in search results — the switch is
-    // rendered inline so the user can toggle directly from the results.
-    // Switchless settings navigate to the parent screen and auto-scroll to
-    // the setting's position when tapped.
-    //
-    // The matching itself lives in [SettingsSearch] — see that file for why
-    // multi-word queries used to return nothing.
+
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
             emptyList()
@@ -321,27 +284,8 @@ fun SettingsScreen(
         }.filter { it.items.isNotEmpty() }
     }
 
-    // Material 3 Expressive: when any settings dialog (history duration,
-    // lyrics preload count, etc.) is showing, apply a backdrop blur to
-    // the entire settings screen for a "frosted glass" effect. The
-    // dialog composables signal show/dismiss via LocalSettingsDialogShowing.
     val settingsDialogShowing = rememberSettingsDialogHostState()
 
-    // ── Settings home redesign (2026-09-04) ──
-    // "Implement the same home page ui and behaviour for setting main page
-    // and library tab main page too. Just don't change the background color
-    // to that of gradience like home page in settings main page."
-    //
-    // The Home route's header recipe, applied here: a PINNED TRANSPARENT
-    // bar (back icon + centered bold "Settings" title + the scroll-time
-    // search pill) with the settings list scrolling UNDER it into the same
-    // progressive top-fade blur [ScreenHeaderHaze] the Home bar renders, the
-    // scrolling content recorded into a screen-scoped backdrop so the glass
-    // icons sample real vibrancy (the [GlassScreenHeader] kit). The bar no
-    // longer collapses — Home behaviour — so the collapsing
-    // LargeFlexibleTopAppBar + appBarScrollBehavior are gone. The page
-    // background stays EXACTLY as it was ([glassAwareSurface] — no Home
-    // atmosphere gradient), per the user's instruction.
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -351,11 +295,7 @@ fun SettingsScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        // Only blur when a dialog is showing. We use
-                        // `then(if ...) instead of `Modifier.blur(...)`
-                        // directly so the modifier chain is stable when
-                        // no dialog is open (avoids unnecessary
-                        // RenderEffect allocation on every recomposition).
+
                         if (settingsDialogShowing.value) {
                             Modifier.blur(10.dp)
                         } else {
@@ -366,12 +306,7 @@ fun SettingsScreen(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
         ) { _ ->
             Box(modifier = Modifier.fillMaxSize()) {
-                // Compute the player-aware bottom inset (nav bar + mini player + safe inset) so we can
-                // fold it into the LazyColumn's contentPadding. We do NOT apply it via windowInsetsPadding
-                // because that would reserve space ABOVE the nav bar — content would never scroll behind
-                // the floating nav bar. By putting it into contentPadding instead, the column extends to
-                // the very bottom of the screen (content visibly scrolls behind the nav bar) and the last
-                // items get a "minimum height" clearance so they aren't permanently hidden behind the bar.
+
                 val playerAwareBottomPadding =
                     LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Bottom)
@@ -382,9 +317,7 @@ fun SettingsScreen(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            // The haze source AND the liquid-glass backdrop source
-                            // for the pinned header — the scroll content must be a
-                            // SIBLING of the header overlay, never its parent.
+
                             .glassHeaderSource(glassHeader)
                             .windowInsetsPadding(
                                 LocalPlayerAwareWindowInsets.current.only(
@@ -393,11 +326,7 @@ fun SettingsScreen(
                             ),
                     contentPadding =
                         PaddingValues(
-                            // Scroll-under clearance: the pinned bar zone (status
-                            // bar + 64dp) + 8dp of breathing room — items scroll
-                            // THROUGH the zone into the progressive blur, exactly
-                            // the Home feed's pattern (the old collapsing bar
-                            // reserved this space via the Scaffold's innerPadding).
+
                             top = systemBarsTopPadding + AppBarHeight + 8.dp,
                             bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                         ),
@@ -539,12 +468,6 @@ fun SettingsScreen(
             }
         }
 
-                // ── The Home-style pinned header ──
-                // Drawn AFTER the LazyColumn (later sibling = on top): the
-                // progressive header haze plus the transparent bar row with
-                // the back icon, the centered bold "Settings" title and the
-                // scroll-time search pill — the exact composition of the Home
-                // route's top bar.
                 SettingsHomeStyleHeader(
                     glassHeader = glassHeader,
                     listState = listState,
@@ -561,22 +484,6 @@ fun SettingsScreen(
     }
 }
 
-/**
- * The Settings main page's Home-style pinned header (2026-09-04):
- *
- *  * [ScreenHeaderHaze] — the exact progressive top-fade blur material the
- *    Home route's top bar renders, sampling the settings list scrolling
- *    beneath it.
- *  * A transparent, always-pinned bar row carrying the back affordance
- *    (liquid-glass circular icon button while Liquid Glass is on, the plain
- *    app icon button otherwise), the CENTERED bold "Settings" title (the
- *    Home/Search header pattern — no app logo, no second pill), and the
- *    search pill that fades in once the list scrolls past the inline search
- *    field (user request 2026-08-28, behaviour kept).
- *
- * Back behaviour is unchanged: tap pops to the previous destination,
- * long-press jumps straight to the Home tab.
- */
 @Composable
 private fun BoxScope.SettingsHomeStyleHeader(
     glassHeader: GlassScreenHeader,
@@ -587,14 +494,11 @@ private fun BoxScope.SettingsHomeStyleHeader(
 ) {
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
-    // The header haze renders in BOTH modes — it only needs the (transparent)
-    // header zone, not the Liquid Glass toggle.
     ScreenHeaderHaze(
         hazeState = glassHeader.haze,
         systemBarsTopPadding = systemBarsTopPadding,
     )
 
-    // The transparent bar row — pinned, never collapsing (Home behaviour).
     Box(
         modifier =
             Modifier
@@ -603,9 +507,7 @@ private fun BoxScope.SettingsHomeStyleHeader(
                 .padding(top = systemBarsTopPadding)
                 .height(AppBarHeight),
     ) {
-        // Centered bold title — the Home/Search header pattern. Sits between
-        // the back affordance and the search pill exactly like Home's title
-        // sits between the avatar and the settings pill.
+
         Text(
             text = stringResource(R.string.settings),
             color = MaterialTheme.colorScheme.onBackground,
@@ -615,8 +517,6 @@ private fun BoxScope.SettingsHomeStyleHeader(
             modifier = Modifier.align(Alignment.Center),
         )
 
-        // Back affordance (leading edge): liquid-glass circular icon button
-        // while the screen glass is live, the plain app icon button otherwise.
         val backdrop = glassHeader.backdrop
         if (backdrop != null) {
             LiquidGlassIconButton(
@@ -645,9 +545,6 @@ private fun BoxScope.SettingsHomeStyleHeader(
             }
         }
 
-        // Trailing search pill — fades in only once the inline search field
-        // has scrolled out of view (user request 2026-08-28, kept). Tapping
-        // scrolls back to the search field.
         val isScrolling by remember {
             derivedStateOf {
                 listState.firstVisibleItemIndex > 0 ||

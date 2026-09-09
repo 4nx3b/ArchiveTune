@@ -11,31 +11,14 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/**
- * Top-level response returned by Last.fm's `user.getInfo` method.
- *
- * The actual profile is nested under `user`. Keeping that envelope is
- * important: decoding the response directly into [UserInfo] silently drops
- * the `user` property (because the client ignores unknown keys), leaving all
- * of the optional profile values null and displaying a zero scrobble count.
- */
 @Serializable
 data class UserInfoResponse(
     val user: UserInfo,
 )
 
-/**
- * Subset of the profile nested in a `user.getInfo` response — only the fields
- * surfaced on the in-app dashboard.
- *
- * See https://www.last.fm/api/show/user.getInfo
- */
 @Serializable
 data class UserInfo(
-    // Last.fm occasionally omits `name` from the user.getInfo response
-    // (rate-limited / partial responses). Make it optional so the entire
-    // response doesn't fail to deserialize — callers already handle null
-    // via the `?: "—"` fallback on the dashboard.
+
     val name: String? = null,
     val realname: String? = null,
     val url: String? = null,
@@ -63,9 +46,6 @@ data class UserRegistered(
     @SerialName("#text") val text: Int? = null,
 )
 
-/**
- * Wrapper for the `user.getRecentTracks` response.
- */
 @Serializable
 data class RecentTracksResponse(
     val recenttracks: RecentTracks,
@@ -122,9 +102,6 @@ data class RecentTrackDate(
     @SerialName("#text") val text: String? = null,
 )
 
-/**
- * Wrapper for the `user.getTopTracks` response.
- */
 @Serializable
 data class TopTracksResponse(
     val toptracks: TopTracks,
@@ -163,7 +140,6 @@ data class TopTrackAttr(
     val rank: String? = null,
 )
 
-/** Response returned by Last.fm's `track.getInfo` endpoint. */
 @Serializable
 data class TrackInfoResponse(
     val track: TrackInfo,
@@ -183,8 +159,6 @@ data class TopTags(
 data class LastFmTag(
     val name: String? = null,
 )
-
-// ── user.getTopArtists ──────────────────────────────────────────────────────
 
 @Serializable
 data class TopArtistsResponse(
@@ -216,8 +190,6 @@ data class TopArtist(
 ) {
     val playcount: Int? get() = _playcount?.toIntOrNull()
 }
-
-// ── user.getTopAlbums ──────────────────────────────────────────────────────
 
 @Serializable
 data class TopAlbumsResponse(
@@ -251,10 +223,6 @@ data class TopAlbum(
     val playcount: Int? get() = _playcount?.toIntOrNull()
 }
 
-/**
- * Fallback raw JSON element — used when we want to surface a parse
- * failure to the UI without losing the whole dashboard.
- */
 @Serializable
 data class RawJson(
     val raw: JsonElement? = null,

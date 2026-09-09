@@ -5,13 +5,13 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * One-on-one chat screen with a saved Telegram bot. The user pastes a song link, the app sends it
- * to the bot via [TdApi.SendMessage], then waits on [TelegramBotClient.messagesForChat] for audio
+ * to the bot via TDLib, then waits on [TelegramBotClient.messagesForChat] for audio
  * replies. Each reply is persisted as a Song + Format row so it can be played / downloaded /
  * added-to-playlist through the existing infrastructure.
  *
  * When the user adds a bot-fetched song to a Telegram-channel playlist (LPtg<chatId>) AND the
  * "Auto-forward to my channel" toggle is on, the original bot message is forwarded to that channel
- * via [TdApi.ForwardMessages] — matching the user's spec: "if I add it to my telegram playlist the
+ * via server-side message forwarding — matching the user's spec: "if I add it to my telegram playlist the
  * song should also get forwarded to my own channel automatically".
  *
  * "Streaming a lot of files": the collector returns every audio reply that arrives within the
@@ -20,7 +20,7 @@
  * Quality picker: many music bots reply with an inline keyboard ("Choose quality: ALAC / AAC /
  * Cancel") instead of the audio file directly. The screen surfaces those buttons as a row of
  * chips. When the user taps one, the screen calls [TelegramBotClient.clickInlineButton] (which
- * fires a [TdApi.GetCallbackQueryAnswer]) and then re-enters the collector with
+ * fires the callback answer) and then re-enters the collector with
  * `afterMessageId = prompt.messageId` so the bot's resulting audio reply is captured.
  */
 
@@ -133,33 +133,19 @@ fun TelegramBotChatScreen(
     var sending by remember { mutableStateOf(false) }
     var noReply by remember { mutableStateOf(false) }
     val results = remember { mutableStateListOf<TelegramTrack>() }
-    // Latest inline-keyboard prompt from the bot (e.g. "Choose quality: ALAC / AAC / Cancel").
-    // Replaced when the bot sends a newer prompt. Hidden once a track arrives from the chosen
-    // option so the result list takes the focus.
+
     var pendingPrompt by remember { mutableStateOf<TelegramBotPrompt?>(null) }
-    // Track the highest message id we've ever seen in this chat so the next collector cycle
-    // (e.g. after the user picks a quality) doesn't re-process old messages.
+
     var highestSeenMessageId by remember { mutableLongStateOf(0L) }
-    // Which prompt button the user just tapped (for showing a spinner on that chip while the
-    // bot processes the choice).
+
     var pendingChoiceText by remember { mutableStateOf<String?>(null) }
 
-    // Add-to-playlist dialog state. The "pending track" is the track the user wants to add; when
-    // set, the dialog is shown.
     var addToPlaylistTrack by remember { mutableStateOf<TelegramTrack?>(null) }
 
-    // Bot command picker state. Some music bots require slash commands (e.g. `/search <query>`,
-    // `/download <link>`) to search and download songs — pasting a bare URL doesn't work. We
-    // fetch the bot's advertised commands via TdApi.GetCommands and show them in a "/"-button
-    // dropdown so the user can discover and insert them. Common fallback commands are always
-    // shown (even if the bot hasn't registered any) because many bots accept standard commands
-    // without advertising them.
     var botCommands by remember { mutableStateOf<List<TelegramBotCommand>>(emptyList()) }
     var showCommandMenu by remember { mutableStateOf(false) }
     var commandsFetchedForChatId by remember { mutableLongStateOf(0L) }
 
-    // Fetch the bot's advertised commands once the chat id is known. The fetch is best-effort —
-    // if it fails (e.g. bot hasn't registered any commands), the common fallbacks still appear.
     LaunchedEffect(bot?.chatId) {
         val chatId = bot?.chatId ?: 0L
         if (chatId != 0L && chatId != commandsFetchedForChatId) {
@@ -169,7 +155,7 @@ fun TelegramBotChatScreen(
     }
 
     if (bot == null) {
-        // Bot not found — the user must have removed it from another device. Bounce back.
+
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             TextButton(onClick = { navController.navigateUp() }) {
                 Text("Bot not found — tap to go back")
@@ -186,24 +172,12 @@ fun TelegramBotChatScreen(
     suspend fun ensureBotChatId(): TelegramBot {
         if (bot.chatId != 0L) return bot
         val resolved = TelegramBotClient.resolveBot(bot.username) ?: return bot
-        val title = runCatching {
-            val type = resolved.type as org.drinkless.tdlib.TdApi.ChatTypePrivate
-            moe.rukamori.archivetune.telegram.TelegramClient.send(
-                org.drinkless.tdlib.TdApi.GetUser(type.userId),
-            ).firstName
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: bot.title
-        val updated = bot.copy(chatId = resolved.id, title = title.ifBlank { bot.title })
+        val title = resolved.firstName.takeIf { it.isNotBlank() } ?: bot.title
+        val updated = bot.copy(chatId = resolved.chatId, title = title.ifBlank { bot.title })
         persistBot(updated)
         return updated
     }
 
-    /**
-     * Persists each track as a song + format row (so playback / download / playlist-add work
-     * through the existing code paths) and surfaces them in the on-screen results list.
-     *
-     * Defined BEFORE collectAndApply because Kotlin local functions can only reference functions
-     * declared earlier in the same scope — collectAndApply calls this from inside its body.
-     */
     suspend fun persistTracks(tracks: List<TelegramTrack>, sourceTitle: String) {
         database.withTransaction {
             tracks.forEach { track ->
@@ -215,15 +189,6 @@ fun TelegramBotChatScreen(
         results.addAll(tracks)
     }
 
-    /**
-     * Collects every reply (tracks + inline prompts) that arrives on [chatId] within the timeout
-     * window, then returns the result so the caller can drive UI state from a coroutine scope.
-     * [afterMessageId] is the message id of either the user's just-sent link (initial send) or
-     * the prompt the user just answered (post-choice collection).
-     *
-     * Side-effect: bumps [highestSeenMessageId] so the next collector cycle starts after the
-     * highest id we've ever observed in this chat.
-     */
     suspend fun collectAndApply(
         chatId: Long,
         afterMessageId: Long,
@@ -233,7 +198,7 @@ fun TelegramBotChatScreen(
             chatId = chatId,
             afterMessageId = afterMessageId,
         )
-        // Track the highest message id we've seen so the next collector cycle starts after it.
+
         replies.maxOfOrNull { reply ->
             when (reply) {
                 is BotReply.Track -> reply.track.messageId
@@ -245,17 +210,15 @@ fun TelegramBotChatScreen(
         val latestPrompt = replies.filterIsInstance<BotReply.Prompt>().lastOrNull()?.prompt
 
         if (newTracks.isNotEmpty()) {
-            // We got audio — clear any pending prompt (the user's choice has been fulfilled) and
-            // surface the tracks in the results list.
+
             noReply = false
             pendingPrompt = null
             persistTracks(newTracks, sourceTitle)
         } else if (latestPrompt != null) {
-            // No audio yet, but the bot sent a new prompt — show it.
+
             pendingPrompt = latestPrompt
         } else {
-            // Nothing arrived (or only text messages we ignore). If we don't already have a prompt
-            // displayed, mark the request as having no reply so the UI shows the empty state.
+
             if (pendingPrompt == null) noReply = true
         }
     }
@@ -286,23 +249,19 @@ fun TelegramBotChatScreen(
                 ).show()
                 return@launch
             }
-            highestSeenMessageId = sent.id
+            highestSeenMessageId = sent
             collectAndApply(
                 chatId = activeBot.chatId,
-                afterMessageId = sent.id,
+                afterMessageId = sent,
                 sourceTitle = activeBot.title,
             )
             sending = false
         }
     }
 
-    /**
-     * User tapped a button on the bot's inline keyboard — fire the callback and collect the
-     * resulting audio reply.
-     */
     fun choosePromptOption(button: TelegramBotPromptButton) {
         val prompt = pendingPrompt ?: return
-        // URL buttons (e.g. "HQ Artwork") open an external link — don't fire a callback.
+
         if (button.callbackData == null) {
             button.url?.let { url ->
                 runCatching {
@@ -317,8 +276,7 @@ fun TelegramBotChatScreen(
         sending = true
         pendingChoiceText = button.text
         coroutineScope.launch {
-            // Cancel buttons: just clear the prompt and bail out — the bot's cancel handler may
-            // or may not send a follow-up message, but we don't want to keep the spinner spinning.
+
             if (prompt.isCancelButton(button)) {
                 pendingPrompt = null
                 pendingChoiceText = null
@@ -330,8 +288,7 @@ fun TelegramBotChatScreen(
                 messageId = prompt.messageId,
                 callbackData = button.callbackData,
             )
-            // Collect everything that arrives AFTER the prompt. The bot will typically send the
-            // audio file (or a download progress message followed by the audio file).
+
             collectAndApply(
                 chatId = prompt.chatId,
                 afterMessageId = prompt.messageId,
@@ -355,8 +312,7 @@ fun TelegramBotChatScreen(
     }
 
     fun downloadTrack(track: TelegramTrack) {
-        // DownloadRequest uses the song id as both the media id and the URI. The same
-        // SchemeRoutingDataSource that powers streaming also handles downloads for telegram:// URIs.
+
         runCatching { downloadUtil.downloadCache.removeResource(track.mediaId) }
         val request = DownloadRequest.Builder(track.mediaId, track.mediaId.toUri())
             .setCustomCacheKey(track.mediaId)
@@ -373,14 +329,9 @@ fun TelegramBotChatScreen(
         addToPlaylistTrack = track
     }
 
-    // After AddToPlaylistDialog closes, check whether the song was added to any Telegram-channel
-    // playlist (LPtg…) and forward the original bot message to those channels. This is the
-    // "auto-forward to my channel" behavior the user asked for.
     suspend fun maybeForwardToTelegramChannels(track: TelegramTrack) {
         if (!forwardToChannel) return
-        // playlistDuplicates returns the song ids present in the playlist, so a non-empty result
-        // means the song was added. Snapshot the playlist list once, then probe each Telegram-
-        // channel playlist (LPtg<chatId>) for the just-added song.
+
         val playlists = database.playlistsByCreateDateAsc().first()
         val tgPlaylists = playlists.filter { it.id.startsWith("LPtg") }
         for (playlist in tgPlaylists) {
@@ -413,8 +364,7 @@ fun TelegramBotChatScreen(
             onGetSong = { listOf(track.mediaId) },
             onDismiss = { addToPlaylistTrack = null },
             onAddComplete = { _, _ ->
-                // Auto-forward to Telegram-channel playlists if enabled. The dialog runs the add
-                // inside its own transaction; we re-snapshot on completion.
+
                 if (forwardToChannel) {
                     coroutineScope.launch { maybeForwardToTelegramChannels(track) }
                 }
@@ -471,8 +421,7 @@ fun TelegramBotChatScreen(
                                 expanded = showCommandMenu,
                                 onDismissRequest = { showCommandMenu = false },
                             ) {
-                                // Bot's advertised commands (from @BotFather registration) — shown
-                                // first so the user sees the bot's own command set at a glance.
+
                                 if (botCommands.isNotEmpty()) {
                                     botCommands.forEach { cmd ->
                                         DropdownMenuItem(
@@ -498,12 +447,10 @@ fun TelegramBotChatScreen(
                                             },
                                         )
                                     }
-                                    // Separator between advertised and fallback commands.
+
                                     androidx.compose.material3.HorizontalDivider()
                                 }
-                                // Common fallback commands that most music bots accept even
-                                // without @BotFather registration. These cover the typical
-                                // search/download/help flows the user needs.
+
                                 CommonBotCommands.forEach { cmd ->
                                     DropdownMenuItem(
                                         text = {
@@ -557,9 +504,6 @@ fun TelegramBotChatScreen(
                 }
             }
 
-            // Quality picker / inline keyboard prompt. Shown above the results list so the user
-            // picks the format before the audio arrives. Hidden when results.isEmpty() is false
-            // (the choice has been fulfilled) or when sending just started with no prompt yet.
             pendingPrompt?.let { prompt ->
                 PromptCard(
                     prompt = prompt,
@@ -615,11 +559,6 @@ fun TelegramBotChatScreen(
     }
 }
 
-/**
- * Renders an inline-keyboard prompt from the bot as a card with a text body (if any) and the
- * buttons laid out in [FlowRow] chips. Tracks the user's pending choice so the tapped chip
- * shows a spinner while the bot processes the callback.
- */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PromptCard(
@@ -643,8 +582,7 @@ private fun PromptCard(
                 modifier = Modifier.padding(bottom = 12.dp),
             )
         }
-        // Render each row of the original inline keyboard as its own FlowRow so multi-row
-        // keyboards (e.g. "[ALAC][AAC] / [LRC] / [Cancel]") keep their grouping.
+
         prompt.rows.forEach { row ->
             FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -683,13 +621,9 @@ private fun BotResultRow(
     onDownload: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
-    // Resolve the thumbnail URL the same way toMediaMetadata() does — this lets the bot-result
-    // row show artwork the moment a track arrives, instead of a static play-arrow placeholder.
-    // The tgart:// URI is handled by TelegramThumbnailFetcher (catalogue cover → embedded cover
-    // → minithumbnail fallback chain).
+
     val thumbModel = remember(track) {
-        val metadata = track.lookupMetadata
-        telegramArtworkModel(track.thumbnailFileId, metadata.title, metadata.artist)
+        telegramArtworkModel(track)
             ?: moe.rukamori.archivetune.telegram.TelegramClient.cacheArtwork(
                 uniqueKey = track.fileUniqueId.ifEmpty { "${track.chatId}-${track.messageId}" },
                 data = track.albumCoverMinithumbnail,
@@ -710,9 +644,7 @@ private fun BotResultRow(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            // Solar music-note placeholder shows behind the AsyncImage while the artwork loads
-            // (or if it fails to load — e.g. bot track has no embedded cover and no catalogue
-            // match). When the artwork loads it covers the placeholder completely.
+
             Icon(
                 painter = painterResource(R.drawable.solar_music_note_2_linear),
                 contentDescription = null,
@@ -769,13 +701,6 @@ private fun BotResultRow(
     }
 }
 
-/**
- * Common slash-commands that most Telegram music bots accept even without @BotFather registration.
- * Shown in the "/" command picker as fallbacks after the bot's own advertised commands. The
- * descriptions are generic hints — the bot may interpret them slightly differently.
- *
- * `command` does NOT include the leading `/` — [TelegramBotCommand.withSlash] adds it.
- */
 private val CommonBotCommands = listOf(
     TelegramBotCommand("start", "Initialize / restart the bot"),
     TelegramBotCommand("help", "Show the bot's help / usage guide"),

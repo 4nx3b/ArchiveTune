@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.minutes
 
 class SleepTimer(
     private val scope: CoroutineScope,
-    /** Re-pointed by the service when the active player is promoted (crossfade). */
+
     var player: Player,
     private val service: MusicService,
 ) : Player.Listener {

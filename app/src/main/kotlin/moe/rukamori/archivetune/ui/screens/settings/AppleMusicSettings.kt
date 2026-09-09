@@ -10,12 +10,9 @@ package moe.rukamori.archivetune.ui.screens.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,7 +27,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
@@ -38,14 +34,12 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -61,33 +55,20 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppleMusicDevTokenKey
 import moe.rukamori.archivetune.constants.AppleMusicMediaUserTokenKey
-import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
-/** JWT-ish shape check: three base64url segments. Good enough to catch paste errors. */
 private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
 
-/**
- * Media-user-token shape: Apple's iTunes-store token is NOT a JWT — it is a
- * short version prefix (`0.`) followed by standard base64 (may contain `+`, `/`,
- * `=`), e.g. `0.Ap7VmmO+s4RlV4F…==`. Accept either that or a JWT so panel-pasted
- * tokens pass; the old JWT-only check rejected every real media token.
- */
 private fun looksLikeMediaUserToken(value: String): Boolean =
     looksLikeJwt(value) || value.matches(Regex("^0\\.[A-Za-z0-9+/=]{40,}$"))
 
-/**
- * Apple Music sign-in — login-only by design: no pool, independent of Developer
- * Options. Full-track streaming engages once BOTH tokens are present.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppleMusicSettings(navController: NavController) {
@@ -216,19 +197,16 @@ private fun TokenSheet(
     var showDev by rememberSaveable { mutableStateOf(false) }
 
     val mediaValid = looksLikeMediaUserToken(mediaToken.trim())
-    // Tolerate a "Bearer " prefix and stray whitespace on the pasted dev JWT.
+
     val devClean = devToken.trim().removePrefix("Bearer ").removePrefix("bearer ").trim()
     val devValid = devClean.isEmpty() || looksLikeJwt(devClean)
-    // Developer token is optional — the app ships a fallback web-player JWT and can scrape a fresh one.
-    // The user's Media User Token (0.Ap...) alone is enough to resolve ES/STM etc catalog via their account.
-    // If they pasted both (Media User Token + Bearer JWT) we store both.
+
     val canSave = mediaValid && devValid && mediaToken.trim().isNotBlank()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
-            // Scrollable: two long credential fields push the save row below the sheet fold
-            // otherwise, which reads as "the submit button disappeared".
+
             Modifier
                 .padding(16.dp)
                 .padding(bottom = 24.dp)

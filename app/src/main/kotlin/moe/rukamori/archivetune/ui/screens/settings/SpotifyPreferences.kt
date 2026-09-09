@@ -27,7 +27,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,15 +78,6 @@ private val SpotifyAccountIconSize = 44.dp
 private const val SpotifyLoginUserAgent =
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
-/**
- * Renders the Spotify account / playlist preferences inside a [PreferenceGroupScope].
- *
- * Extracted from `BackupAndRestore.kt` so that the Spotify block can be hosted under the
- * "External Sources" header on the Integration page without dragging the rest of the
- * backup/restore UI along with it. The host screen owns the [SpotifyAccountViewModel] and
- * the `showSpotifyLogin` / error-dialog state; this function only renders the preference
- * rows and invokes the supplied callbacks.
- */
 internal fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,
     showPlaylists: Boolean,
@@ -273,7 +263,7 @@ internal fun SpotifyLoginSheet(
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier

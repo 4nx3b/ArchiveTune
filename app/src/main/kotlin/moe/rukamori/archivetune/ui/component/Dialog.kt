@@ -59,10 +59,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -78,34 +76,11 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.R
 
-/**
- * The app's REAL color scheme, provided by [BottomSheetMenu] around its glass
- * [MaterialTheme] overlay (2026-09-04, user report: "Restore the old source
- * picker popup. i never told you to add blur there").
- *
- * Compose dialogs open separate OS windows but still inherit the composition
- * locals of the scope that called them — including the glass overlay's
- * remapped `ColorScheme` (translucent `surfaceContainer*`, white ink, iOS-red
- * error). That made every dialog spawned from a glass menu — the per-song
- * "Play from" source picker in PlayerMenu being the one the user reported —
- * render with a see-through surface that showed the blurred menu glass behind
- * it, reading as "a dialog with blur".
- *
- * Dialogs read this local and re-wrap their content in the captured scheme,
- * restoring the pre-glass opaque Material dialog look. Null outside a glass
- * menu — dialogs then keep `MaterialTheme.colorScheme` as-is (a no-op wrap).
- */
 val LocalUnglassColorScheme: ProvidableCompositionLocal<ColorScheme?> =
     compositionLocalOf { null }
 
-/**
- * Wraps dialog content in the app's real (pre-glass) color scheme when the
- * dialog was spawned inside a glass menu's [MaterialTheme] overlay — see
- * [LocalUnglassColorScheme]. Outside a glass menu this is a no-op (the
- * current scheme is re-provided unchanged).
- */
 @Composable
-private fun UnglassedDialogTheme(content: @Composable () -> Unit) {
+fun UnglassedDialogTheme(content: @Composable () -> Unit) {
     val unglassed = LocalUnglassColorScheme.current
     MaterialTheme(
         colorScheme = unglassed ?: MaterialTheme.colorScheme,
@@ -125,10 +100,7 @@ fun DefaultDialog(
     constrainContentHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Signal "dialog showing" to the parent screen so it can apply a
-    // backdrop blur (Material 3 Expressive frosted-glass effect). The
-    // default value is a no-op MutableState, so this is a safe no-op
-    // when the dialog is shown outside of an opt-in screen.
+
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -139,15 +111,9 @@ fun DefaultDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Restore the app's real (opaque) color scheme when this dialog was
-        // spawned from inside a glass menu's theme overlay — see
-        // [LocalUnglassColorScheme]. No-op otherwise.
+
         UnglassedDialogTheme {
-            // Status bar must NEVER be visible — even while a dialog is showing
-            // (2026-09-01). Compose dialogs create their own OS window; when it
-            // takes focus, the system re-shows the status bar the app window had
-            // hidden, and the inset change shifts the app behind the dialog.
-            // Mirroring the hidden state onto the dialog's own window fixes both.
+
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(
@@ -161,8 +127,7 @@ fun DefaultDialog(
             ) {
                 Surface(
                     modifier = Modifier.heightIn(max = maxHeight),
-                    // Material 3 Expressive: extra-large rounded corners +
-                    // elevated tonal surface for a more modern dialog look.
+
                     shape = AlertDialogDefaults.shape,
                     color = AlertDialogDefaults.containerColor,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -247,10 +212,7 @@ fun ActionPromptDialog(
     onCancel: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    // Signal "dialog showing" to the parent screen so it can apply a
-    // backdrop blur (Material 3 Expressive frosted-glass effect). The
-    // default value is a no-op MutableState, so this is a safe no-op
-    // when the dialog is shown outside of an opt-in screen.
+
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -261,15 +223,9 @@ fun ActionPromptDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Restore the app's real (opaque) color scheme when this dialog was
-        // spawned from inside a glass menu's theme overlay — see
-        // [LocalUnglassColorScheme]. No-op otherwise.
+
         UnglassedDialogTheme {
-            // Status bar must NEVER be visible — even while a dialog is showing
-            // (2026-09-01). Compose dialogs create their own OS window; when it
-            // takes focus, the system re-shows the status bar the app window had
-            // hidden, and the inset change shifts the app behind the dialog.
-            // Mirroring the hidden state onto the dialog's own window fixes both.
+
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(
@@ -283,8 +239,7 @@ fun ActionPromptDialog(
             ) {
                 Surface(
                     modifier = Modifier.heightIn(max = maxHeight),
-                    // Material 3 Expressive: extra-large rounded corners +
-                    // elevated tonal surface for a more modern dialog look.
+
                     shape = AlertDialogDefaults.shape,
                     color = AlertDialogDefaults.containerColor,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -294,7 +249,7 @@ fun ActionPromptDialog(
                         modifier = Modifier.padding(24.dp),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            // title
+
                             if (titleBar != null) {
                                 Row {
                                     titleBar()
@@ -309,7 +264,7 @@ fun ActionPromptDialog(
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            content() // body
+                            content()
                         }
 
                         Row(
@@ -356,10 +311,7 @@ fun ListDialog(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
-    // Signal "dialog showing" to the parent screen so it can apply a
-    // backdrop blur (Material 3 Expressive frosted-glass effect). The
-    // default value is a no-op MutableState, so this is a safe no-op
-    // when the dialog is shown outside of an opt-in screen.
+
     val dialogShowingState = LocalSettingsDialogShowing.current
     DisposableEffect(Unit) {
         dialogShowingState.value = true
@@ -370,15 +322,9 @@ fun ListDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        // Restore the app's real (opaque) color scheme when this dialog was
-        // spawned from inside a glass menu's theme overlay — see
-        // [LocalUnglassColorScheme]. No-op otherwise.
+
         UnglassedDialogTheme {
-            // Status bar must NEVER be visible — even while a dialog is showing
-            // (2026-09-01). Compose dialogs create their own OS window; when it
-            // takes focus, the system re-shows the status bar the app window had
-            // hidden, and the inset change shifts the app behind the dialog.
-            // Mirroring the hidden state onto the dialog's own window fixes both.
+
             KeepStatusBarHiddenInDialog()
 
             BoxWithConstraints(
@@ -392,8 +338,7 @@ fun ListDialog(
             ) {
                 Surface(
                     modifier = Modifier.heightIn(max = maxHeight),
-                    // Material 3 Expressive: extra-large rounded corners +
-                    // elevated tonal surface for a more modern dialog look.
+
                     shape = AlertDialogDefaults.shape,
                     color = AlertDialogDefaults.containerColor,
                     tonalElevation = AlertDialogDefaults.TonalElevation,
@@ -435,7 +380,7 @@ fun TextFieldDialog(
     modifier: Modifier = Modifier,
     icon: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
-    initialTextFieldValue: TextFieldValue = TextFieldValue(), // legacy
+    initialTextFieldValue: TextFieldValue = TextFieldValue(),
     textFieldValue: String? = null,
     onTextFieldValueChange: ((String) -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null,
@@ -446,14 +391,10 @@ fun TextFieldDialog(
     maxLines: Int = if (singleLine) 1 else 10,
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
     isInputValid: (String) -> Boolean = { it.isNotEmpty() },
-    /**
-     * Masks the field, for dialogs that take a credential (a Tidal refresh token, an API
-     * key). Off by default so every existing caller is unchanged; opting in keeps a secret
-     * off the screen, out of screenshots and away from anyone glancing over.
-     */
+
     masked: Boolean = false,
     onDone: (String) -> Unit = {},
-    // new multi-field support
+
     textFields: List<Pair<String, TextFieldValue>>? = null,
     onTextFieldsChange: ((Int, TextFieldValue) -> Unit)? = null,
     onDoneMultiple: ((List<String>) -> Unit)? = null,

@@ -70,7 +70,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -101,17 +100,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-/**
- * The queue drawer's sleep-timer mode — SpatialFlow's SleepTimerMode mapped
- * onto ArchiveTune's SleepTimer (triggerTime / pauseWhenSongEnd).
- */
 enum class SpatialFlowSleepTimerMode {
     OFF,
     CUSTOM,
@@ -239,7 +231,6 @@ fun SlidingQueueDrawer(
                     onReorderQueue(from, to)
                 }
 
-            // Scroll active track into view on first open
             LaunchedEffect(isQueueExpanded) {
                 if (isQueueExpanded && currentSongIndex in queue.indices) {
                     val distance = abs(lazyListState.firstVisibleItemIndex - currentSongIndex)
@@ -264,7 +255,7 @@ fun SlidingQueueDrawer(
                             .padding(top = 16.dp, bottom = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Title Strip Row
+
                     Row(
                         modifier =
                             Modifier
@@ -273,7 +264,7 @@ fun SlidingQueueDrawer(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Left Side Grouping
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { onQueueExpandedChange(false) }) {
                                 Icon(
@@ -301,7 +292,6 @@ fun SlidingQueueDrawer(
                             }
                         }
 
-                        // Right Side
                         Text(
                             text = "${queue.size} tracks",
                             style = MaterialTheme.typography.labelMedium,
@@ -313,7 +303,6 @@ fun SlidingQueueDrawer(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
-                // Queue List
                 LazyColumn(
                     state = lazyListState,
                     modifier =
@@ -371,9 +360,8 @@ fun SlidingQueueDrawer(
                         }
                     }
                 }
-            } // Column (header + list)
+            }
 
-            // Connected ButtonGroup tray with curved top clip
             Surface(
                 modifier =
                     with(boxScope) {
@@ -400,7 +388,6 @@ fun SlidingQueueDrawer(
                     ) {
                         val scope = this
 
-                        // 1. Shuffle Button
                         customItem(
                             buttonGroupContent = {
                                 val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -445,7 +432,6 @@ fun SlidingQueueDrawer(
                             menuContent = {},
                         )
 
-                        // 2. Loop Button
                         customItem(
                             buttonGroupContent = {
                                 val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -497,7 +483,6 @@ fun SlidingQueueDrawer(
                             menuContent = {},
                         )
 
-                        // 3. Sleep Timer Button
                         customItem(
                             buttonGroupContent = {
                                 val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -601,8 +586,7 @@ fun SpatialFlowQueueListItem(
                 }
             }
         },
-        // material3 1.5: the headline is the trailing `content` lambda — the old
-        // `headlineContent` named parameter no longer exists in any overload.
+
         content = {
             Text(
                 text = song.title,
@@ -754,7 +738,6 @@ class DragDropState(
         val currentIndex = currentIndexOfDraggedItem ?: return
         val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
 
-        // Nearest item detection
         val targetItem =
             visibleItems.minByOrNull { item ->
                 abs((item.offset + item.size / 2f) - currentCenter)
@@ -770,19 +753,16 @@ class DragDropState(
             onMove(currentIndex, targetItem.index)
             currentIndexOfDraggedItem = targetItem.index
 
-            // Re-anchor Dragged Item
             initiallyDraggedElement =
                 lazyListState.layoutInfo.visibleItemsInfo
                     .firstOrNull { it.index == targetItem.index }
             draggedDistance = 0f
         }
 
-        // Use exact visible window limits to prevent jarring scrolling
         val viewportStart = lazyListState.layoutInfo.viewportStartOffset.toFloat()
         val viewportEnd = lazyListState.layoutInfo.viewportEndOffset.toFloat()
         val overscrollThreshold = 80f
 
-        // Smoother delta values
         val scrollDelta =
             when {
                 currentOffset < viewportStart + overscrollThreshold -> -20f
@@ -851,10 +831,3 @@ fun Modifier.dragContainer(
     )
 }
 
-// Keep the thumbnail-corner preference referenced so queue artwork can honor
-// the app-wide rounded-corner setting where SpatialFlow hardcodes 12dp.
-@Composable
-private fun rememberQueueArtworkCornerRadius(): androidx.compose.ui.unit.Dp {
-    val (cornerRadius, _) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
-    return cornerRadius.dp
-}

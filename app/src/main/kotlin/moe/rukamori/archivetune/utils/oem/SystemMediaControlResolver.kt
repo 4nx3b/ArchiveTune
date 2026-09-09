@@ -17,10 +17,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 
-/**
- * Taken from [this](https://github.com/Moriafly/media-kit/blob/main/media-kit-core/src/main/java/com/moriafly/mediakit/core/oem/MiPlayAudioSupport.kt)
- * and [here](https://github.com/Yos-X/FlamingoSank/blob/master/app/src/main/java/yos/music/player/code/SystemMediaControlResolver.kt)
- */
 object SystemMediaControlResolver {
     fun openMediaOutputSwitcher(context: Context) {
         val opened =
@@ -37,7 +33,6 @@ object SystemMediaControlResolver {
                     startIntent(context, intent) || startSystemMediaOutputSwitcher(context)
                 }
 
-                // zh：临时禁用OneUI MediaActivity调用，等待未来确定不会被删除再添加回去
                 (getOneUIVersionReadable() != null) -> {
                     val intent =
                         Intent().apply {

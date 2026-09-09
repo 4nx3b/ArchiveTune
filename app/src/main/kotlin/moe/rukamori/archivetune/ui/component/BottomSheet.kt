@@ -14,7 +14,6 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.VectorConverter
 import moe.rukamori.archivetune.ui.player.LocalRootOverlayActive
 import androidx.compose.animation.core.snap
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -58,37 +56,6 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
 
-/**
- * Bottom Sheet
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
- *
- * @param keepContentAlive When true, the [content] composable is kept in the
- *   composition tree even when the sheet is collapsed (it's hidden via
- *   alpha=0 instead of being unmounted). This is used by the player sheet
- *   to keep the [InlineVideoPlayer]'s ExoPlayer alive across collapse/expand
- *   cycles — without this, collapsing the player to the mini player would
- *   release the ExoPlayer, and expanding it again would require re-resolving
- *   the stream URL and re-buffering (causing the "video pauses, audio keeps
- *   playing" bug). Default is false to preserve the original behavior for
- *   other sheets (queue, etc.) that don't need this.
- * @param morphMode When true, the sheet fades + scales in place (0.94 → 1.0) over
- *   450ms with FastOutSlowInEasing instead of a plain slide on open. The sheet
- *   still slides vertically with the finger while dragging. This is used by the
- *   queue to add an in-place morph open transition on top of the normal
- *   bottom-sheet behavior. Default is false to preserve the original slide
- *   behavior for other sheets.
- * @param opaqueBackground When true, the sheet's outer background is rendered
- *   fully opaque (alpha = [backgroundColor].alpha) as soon as the sheet is
- *   visible, instead of fading in proportionally to [BottomSheetState.progress].
- *   This is needed by the queue sheet: non-Apple-Music player styles render a
- *   zoomed/gradient/blur artwork backdrop behind the player, and the default
- *   progress-based alpha fade let that artwork bleed through the queue sheet
- *   while dragging. With this flag set, the outer background is opaque from
- *   the very first pixel of drag, fully covering the player artwork, while
- *   the inner content (queue rows) still fades in via its own graphicsLayer
- *   alpha. Default is false to preserve the original behavior for the player
- *   sheet and any other callers.
- */
 @Composable
 fun BottomSheet(
     state: BottomSheetState,
@@ -107,13 +74,7 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                // Per audit (2026-08-30): `Modifier.offset { IntOffset(0, y) }` ran in
-                // the LAYOUT phase on every drag/animation frame of the player
-                // bottom sheet — re-measuring the sheet's content (which can be a
-                // large lyrics surface, queue, expanded player, etc.) every frame.
-                // Folding the Y translation into `graphicsLayer` moves the work to
-                // the DRAW phase; the layout pass stays cached while the user
-                // swipes the sheet up/down. No visual change.
+
                 .graphicsLayer {
                     val y =
                         (state.expandedBound - state.value)
@@ -127,31 +88,13 @@ fun BottomSheet(
                         topEnd = if (!state.isExpanded) 16.dp else 0.dp,
                     ),
                 ).then(
-                    // ─────────────────────────────────────────────────────────────────────────
-                    // Performance: replace `Modifier.background(color.copy(alpha = ...))` with a
-                    // draw-phase-only `drawBehind { drawRect(color, alpha = ...) }`.
-                    //
-                    // Previously, the second branch allocated a fresh `Color.copy(...)` instance per
-                    // drag frame (state.progress changes on every drag frame), which caused
-                    // `BackgroundElement.equals()` to return false → modifier chain re-installed →
-                    // update + invalidateDraw cascade on every drag frame. This is the dominant
-                    // per-frame cost of the player-sheet drag gesture (which is the largest subtree
-                    // in the app — hosts the entire player + lyrics + queue).
-                    //
-                    // The opaque-background branch already returned a stable `backgroundColor`
-                    // value (no per-frame Color.copy), so it was already a no-op for that case.
-                    // The new drawBehind implementation keeps both branches the same shape, just
-                    // moving the alpha-baking from a Color allocation into a primitive Float
-                    // parameter on `drawRoundRect`. No visual change.
-                    // ─────────────────────────────────────────────────────────────────────────
+
                     if (opaqueBackground) {
                         Modifier.drawBehind {
                             if (state.progress > 0f) {
                                 drawRect(color = backgroundColor)
                             }
-                            // else: transparent — when collapsed, no background is drawn so the
-                            // system navigation bar shows through. (See the previous comment block
-                            // above for the rationale — preserved verbatim.)
+
                         }
                     } else {
                         Modifier.drawBehind {
@@ -163,39 +106,20 @@ fun BottomSheet(
                     },
                 ),
     ) {
-        // Root-overlay back-priority guard (2026-09-04, third report): this
-        // sheet's collapse BackHandler is composed through the hosting
-        // Scaffold's subcomposition (bottomBar/bottomSheet slots), so it
-        // registers AFTER the root-level popup overlays (BottomSheetMenu,
-        // CastRoutePickerRootOverlay, BottomSheetPage) even though those are
-        // declared later in the tree — subcomposed slots measure after the
-        // direct children compose. LIFO dispatch therefore reached THIS
-        // handler first, so the back gesture collapsed the player out from
-        // under an open popup (user report: "Using back gesture while songs
-        // overflow popup or cast menu is open still minimises the player into
-        // mini player"). Gate it on LocalRootOverlayActive — while any root
-        // popup (overflow menu / Cast picker / details sheet, including the
-        // 260ms exit-fade tail) is showing, back must reach the popup's own
-        // dismissal handler, never the sheet.
+
         if (state.isExpandedOrExpanding && backHandlerEnabled && !LocalRootOverlayActive.current) {
             BackHandler(onBack = state::collapseSoft)
         }
 
         if (keepContentAlive) {
-            // Always compose the content, but hide it when collapsed.
-            // This keeps stateful composables (e.g. InlineVideoPlayer's
-            // ExoPlayer) alive across collapse/expand cycles.
+
             BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             if (morphMode) {
-                                // Morph: fade + scale (0.94 → 1.0) based on
-                                // expand progress, with a 25% dead-band so the
-                                // content stays opaque for the first part of a
-                                // drag. No offset — the offset is applied on
-                                // the sheet root so the whole sheet slides.
+
                                 val p = state.progress.coerceIn(0f, 1f)
                                 alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
                                 scaleX = 0.94f + 0.06f * p
@@ -383,62 +307,75 @@ class BottomSheetState(
         }
     }
 
-    val preUpPostDownNestedScrollConnection
-        get() =
-            object : NestedScrollConnection {
-                var isTopReached = false
+    /**
+     * One instance per sheet, deliberately — this used to be a `get()` that minted a fresh
+     * connection on every read.
+     *
+     * `isTopReached` is per-GESTURE state: it latches when the inner scrollable can give no more,
+     * and it is what lets the rest of that same drag pull the sheet down. Call sites write
+     * `Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)`, which re-reads the
+     * property on every recomposition — so a new object arrived mid-drag, `nestedScroll` swapped
+     * it in, and the latch reset to false. The drag then finished scrolling nothing and the sheet
+     * never collapsed. Only the SimpMusic style showed it, because it is the only player style
+     * with a full-page `verticalScroll` inside the sheet; everywhere else the drag reaches the
+     * sheet's own draggable without passing through here.
+     */
+    val preUpPostDownNestedScrollConnection: NestedScrollConnection by lazy {
+        object : NestedScrollConnection {
+            var isTopReached = false
 
-                override fun onPreScroll(
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (isExpanded && available.y < 0) {
-                        isTopReached = false
-                    }
-
-                    return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
-                        dispatchRawDelta(available.y)
-                        available
-                    } else {
-                        Offset.Zero
-                    }
-                }
-
-                override fun onPostScroll(
-                    consumed: Offset,
-                    available: Offset,
-                    source: NestedScrollSource,
-                ): Offset {
-                    if (!isTopReached) {
-                        isTopReached = consumed.y == 0f && available.y > 0
-                    }
-
-                    return if (isTopReached && source == NestedScrollSource.UserInput) {
-                        dispatchRawDelta(available.y)
-                        available
-                    } else {
-                        Offset.Zero
-                    }
-                }
-
-                override suspend fun onPreFling(available: Velocity): Velocity =
-                    if (isTopReached) {
-                        val velocity = -available.y
-                        performFling(velocity, null)
-
-                        available
-                    } else {
-                        Velocity.Zero
-                    }
-
-                override suspend fun onPostFling(
-                    consumed: Velocity,
-                    available: Velocity,
-                ): Velocity {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (isExpanded && available.y < 0) {
                     isTopReached = false
-                    return Velocity.Zero
+                }
+
+                return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
+                    dispatchRawDelta(available.y)
+                    available
+                } else {
+                    Offset.Zero
                 }
             }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (!isTopReached) {
+                    isTopReached = consumed.y == 0f && available.y > 0
+                }
+
+                return if (isTopReached && source == NestedScrollSource.UserInput) {
+                    dispatchRawDelta(available.y)
+                    available
+                } else {
+                    Offset.Zero
+                }
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity =
+                if (isTopReached) {
+                    val velocity = -available.y
+                    performFling(velocity, null)
+
+                    available
+                } else {
+                    Velocity.Zero
+                }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                isTopReached = false
+                return Velocity.Zero
+            }
+        }
+    }
 }
 
 const val EXPANDED_ANCHOR = 2

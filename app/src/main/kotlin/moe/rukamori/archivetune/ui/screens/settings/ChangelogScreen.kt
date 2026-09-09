@@ -38,11 +38,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -54,7 +51,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ToggleButton
@@ -70,7 +66,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -196,7 +191,7 @@ fun ChangelogScreen(
                     ),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Version selection chips (vivi-music style: segmented ToggleButtons in a horizontal scroll).
+
                 if (releases.isNotEmpty()) {
                     Row(
                         modifier =
@@ -300,7 +295,7 @@ fun ChangelogScreen(
                         ) {
                             currentRelease?.let { release ->
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    // Header row: version tag + formatted date (vivi-music layout).
+
                                     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
                                     val displayDateFormat = remember { SimpleDateFormat("MMMM d, yyyy", Locale.getDefault()) }
                                     val formattedDate =
@@ -331,8 +326,6 @@ fun ChangelogScreen(
                                         )
                                     }
 
-                                    // Render the release body as bullet-point lines with clickable URLs
-                                    // (mirrors vivi-music's ClickableText + buildAnnotatedString pattern).
                                     if (!release.body.isNullOrBlank()) {
                                         Spacer(modifier = Modifier.height(16.dp))
                                         val bodyLines =
@@ -397,7 +390,6 @@ fun ChangelogScreen(
                 }
             }
 
-            // Pull-to-refresh loading indicator at the top center.
             Box(
                 Modifier
                     .align(Alignment.TopCenter)
@@ -412,7 +404,6 @@ fun ChangelogScreen(
     }
 }
 
-/** URL extractor matching vivi-music's regex (http/https/www./pic. prefixes). */
 private val URL_REGEX =
     Regex("(?:^|[\\s])((https?://|www\\.|pic\\.)[\\w-]+(\\.[\\w-]+)+([/?].*)?)")
 

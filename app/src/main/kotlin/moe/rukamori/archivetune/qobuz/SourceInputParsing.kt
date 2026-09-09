@@ -2,19 +2,9 @@ package moe.rukamori.archivetune.qobuz
 
 import org.json.JSONObject
 
-/**
- * Shared parsers for bulk-adding streaming sources. Used by both Tidal and Qobuz instance managers
- * (URLs) and by the Qobuz token manager (pasted token blocks). Everything is tolerant of messy
- * copy/paste: mixed separators, decorative arrows, emoji, and label lines are all handled.
- */
 object SourceInputParsing {
     private val SEPARATORS = Regex("[\\s,;]+")
 
-    /**
-     * Splits a blob of pasted text into candidate instance URLs. Accepts newline/space/comma
-     * separated lists, strips surrounding junk, ensures an https scheme, and de-dupes while
-     * preserving order.
-     */
     fun parseUrls(input: String): List<String> {
         if (input.isBlank()) return emptyList()
         val seen = LinkedHashSet<String>()
@@ -31,25 +21,12 @@ object SourceInputParsing {
     private fun normalizeUrl(raw: String): String? {
         var url = raw
         if (!url.contains("://")) url = "https://$url"
-        // Must look like a host with a dot; otherwise it's probably a stray word.
+
         val host = url.substringAfter("://").substringBefore("/")
         if (!host.contains('.')) return null
         return url.trimEnd('/')
     }
 
-    /**
-     * Parses one or more Qobuz token blocks from pasted text. A block is delimited by a line
-     * carrying a token, and can be preceded by a label line (e.g. "Qobuz - JP"). Recognizes the
-     * common share format:
-     *
-     *   Qobuz - JP
-     *   Token ➠  BpfgA3...
-     *   User ID ➠ 13193690
-     *   Subscription ➠ Qobuz Studio
-     *   ⚠️ ... app_id: 312369995 & app_secret: e79f8b9be485692b0e5f9dd895826368
-     *
-     * A token is only emitted once it has a token string, app_id and app_secret.
-     */
     fun parseQobuzTokens(input: String): List<QobuzToken> {
         if (input.isBlank()) return emptyList()
         val blocks = mutableListOf<JSONObject>()
@@ -82,20 +59,12 @@ object SourceInputParsing {
                 }
                 userId != null -> current?.put("userId", userId)
                 subscription != null -> current?.put("subscription", subscription)
-                // A plain line with no field markers/separators becomes the label for the next block
-                // (e.g. "Qobuz - JP"). Lines like "Lossless Streaming ➠ ✅" carry a separator and are
-                // ignored so they don't get mistaken for a label.
-                // `current == null` used to guard this, which meant only the very first block
-                // could take a label: current is set by startBlock() and never cleared, so in the
-                // multi-account paste this parser exists for, accounts 2..N lost their names.
-                // startBlock() consumes pendingLabel, so each plain line simply labels the block
-                // that follows it.
+
                 !line.contains(FieldSeparatorRegex) && !line.contains("app_") ->
                     pendingLabel = line.take(40)
                 else -> {}
             }
 
-            // app_id / app_secret can share a line and apply to the current block.
             if (appId != null) current?.put("appId", appId)
             if (appSecret != null) current?.put("appSecret", appSecret)
         }
@@ -103,10 +72,6 @@ object SourceInputParsing {
         return blocks.mapNotNull { QobuzToken.fromJson(it) }
     }
 
-    /**
-     * Extracts the value after a "label ➠ value" / "label: value" style separator, matching any of
-     * the provided [names] (case-insensitive) as the field label.
-     */
     private fun matchField(
         line: String,
         vararg names: String,
@@ -121,8 +86,6 @@ object SourceInputParsing {
         return null
     }
 
-    // Hoisted out of the per-line loop: these were three Regex constructions — three
-    // Pattern.compile calls — for every line of a paste that is routinely hundreds of lines.
     private val AppIdRegex = Regex("app_id:?\\s*([0-9]+)", RegexOption.IGNORE_CASE)
     private val AppSecretRegex = Regex("app_secret:?\\s*([a-f0-9]{16,})", RegexOption.IGNORE_CASE)
     private val FieldSeparatorRegex = Regex("[➠→➔⇒:]")

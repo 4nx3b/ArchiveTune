@@ -118,7 +118,7 @@ fun TelegramBrowseScreen(navController: NavController) {
                 Toast.makeText(context, R.string.telegram_error_generic, Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            // Fill the playlist in the background; the playlist screen updates as songs arrive.
+
             TelegramChannelSync.syncAsync(database, channel.chatId, channel.title, losslessOnly)
             navController.navigate("local_playlist/$playlistId")
         }
@@ -221,7 +221,7 @@ private fun TelegramChannelRow(
     ) {
         TelegramChatAvatar(
             photoMinithumbnail = channel.photoMinithumbnail,
-            photoFileId = channel.photoFileId,
+            photoChatId = channel.chatId,
         )
 
         Spacer(Modifier.width(12.dp))

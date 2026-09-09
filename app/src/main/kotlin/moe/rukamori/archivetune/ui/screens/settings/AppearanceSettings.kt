@@ -70,8 +70,9 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
+import moe.rukamori.archivetune.constants.AppleMusicAnimatedArtworkKey
+import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
-import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
@@ -106,7 +107,8 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.SimpMusicLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -166,13 +168,31 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
         )
-    val (simpMusicLyrics, onSimpMusicLyricsChange) =
+    // The SimpMusic-lyrics switch, where main put it. The mechanism behind it changed on dev:
+    // the renderer choice is the LyricsModeKey enum now, so the switch drives that — SIMPMUSIC's
+    // own Classic renderer when on, the app's Enhanced renderer when off.
+    val (lyricsMode, onLyricsModeChange) =
+        rememberEnumPreference(
+            LyricsModeKey,
+            defaultValue = LyricsMode.ENHANCED,
+        )
+    // No value read needed here anymore: the Appearance row is gone (2026-09-08),
+    // so the only writer left is the style picker below, and the reader that
+    // matters is MediaDetailHero's rememberAppleMusicExperience(). The setter is
+    // kept so leaving the Apple Music style can end the experience.
+    val (_, onAppleMusicExperienceChange) =
         rememberPreference(
-            SimpMusicLyricsKey,
-            // Default flipped (2026-09-05): the SimpMusic player style's lyrics card now
-            // previews SimpMusic's own Classic renderer out of the box, like upstream.
+            AppleMusicExperienceKey,
+            defaultValue = false,
+        )
+    val (appleMusicAnimatedArtwork, onAppleMusicAnimatedArtworkChange) =
+        rememberPreference(
+            AppleMusicAnimatedArtworkKey,
             defaultValue = true,
         )
+    var showSfProFontPicker by rememberSaveable {
+        mutableStateOf(false)
+    }
     val (showPlayerVolumeBar, onShowPlayerVolumeBarChange) =
         rememberPreference(
             ShowPlayerVolumeBarKey,
@@ -243,8 +263,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (blurRadius, onBlurRadiusChange) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
     val (backdropEnabled, onBackdropEnabledChange) = rememberPreference(BackdropEnabledKey, defaultValue = true)
-    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
-        rememberPreference(AlbumCanvasEnabledKey, defaultValue = true)
+    // The album-page canvas toggle moved to Player Settings → Artwork.
     val (backdropBlurAmount, onBackdropBlurAmountChange) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (fontPreference, onFontPreferenceChange) =
         rememberEnumPreference(
@@ -446,6 +465,22 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
+    }
+
+    if (showSfProFontPicker) {
+        SfProFontPickerDialog(
+            onDismiss = { showSfProFontPicker = false },
+            onApply = { uri, name ->
+                onCustomFontUriChange(uri)
+                onCustomFontNameChange(name)
+                onFontPreferenceChange(AppFontPreference.CUSTOM)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.sf_pro_applied, name),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+        )
     }
 
     // Header haze (2026-09-04): the scrolling content is the haze
@@ -711,35 +746,41 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.album_backdrop)) },
-                        description = stringResource(R.string.album_backdrop_desc),
-                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                        checked = backdropEnabled,
-                        onCheckedChange = onBackdropEnabledChange,
-                    )
-                }
+                // The album backdrop and its blur slider do not apply under the
+                // Apple Music style (that style owns its own backdrop material),
+                // so the rows are hidden while it is selected — the preference
+                // code stays intact for the other styles.
+                if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.album_backdrop)) },
+                            description = stringResource(R.string.album_backdrop_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = backdropEnabled,
+                            onCheckedChange = onBackdropEnabledChange,
+                        )
+                    }
 
-                item {
-                    PreferenceEntry(
-                        modifier = positions.modifierFor("backdrop_blur_amount"),
-                        title = { Text(stringResource(R.string.backdrop_blur_amount)) },
-                        description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
-                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                        isEnabled = backdropEnabled,
-                        content = {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Slider(
-                                value = backdropBlurAmount.toFloat(),
-                                onValueChange = { onBackdropBlurAmountChange(it.roundToInt()) },
-                                valueRange = 0f..100f,
-                                steps = 19,
-                                enabled = backdropEnabled,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        },
-                    )
+                    item {
+                        PreferenceEntry(
+                            modifier = positions.modifierFor("backdrop_blur_amount"),
+                            title = { Text(stringResource(R.string.backdrop_blur_amount)) },
+                            description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            isEnabled = backdropEnabled,
+                            content = {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Slider(
+                                    value = backdropBlurAmount.toFloat(),
+                                    onValueChange = { onBackdropBlurAmountChange(it.roundToInt()) },
+                                    valueRange = 0f..100f,
+                                    steps = 19,
+                                    enabled = backdropEnabled,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 item {
@@ -779,19 +820,46 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         onClick = pickCustomFont,
                     )
                 }
+                item {
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("sf_pro_fonts"),
+                        title = { Text(stringResource(R.string.sf_pro_fonts)) },
+                        description = stringResource(R.string.sf_pro_fonts_desc),
+                        icon = { Icon(painterResource(R.drawable.solar_download_minimalistic_linear), null) },
+                        onClick = { showSfProFontPicker = true },
+                    )
+                }
             }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("disable_blur"),
                 title = stringResource(R.string.player),
             ) {
+                // The Apple Music experience row is gone from the UI (user request
+                // 2026-09-08): it was already hidden while APPLE_MUSIC was selected,
+                // and it is now removed for every other player style as well — the
+                // style picker is the single entry point into the Apple Music look,
+                // and a switch that hijacks a deliberately chosen other style back
+                // into Apple Music's has no business sitting under it. The
+                // preference and its plumbing stay intact: MediaDetailHero still
+                // swaps to the iOS header while the key is on, and leaving the
+                // Apple Music style (below) is what turns it off.
                 item {
                     Column(modifier = positions.modifierFor("player_design_style")) {
                         EnumListPreference(
                             title = { Text(stringResource(R.string.player_design_style)) },
                             icon = { Icon(painterResource(R.drawable.palette), null) },
                             selectedValue = playerDesignStyle,
-                            onValueSelected = onPlayerDesignStyleChange,
+                            onValueSelected = { style ->
+                                onPlayerDesignStyleChange(style)
+                                // With the experience row gone no switch remains to turn
+                                // the iOS detail headers off, so deliberately leaving the
+                                // Apple Music style ends the experience instead of
+                                // stranding it on over another player style.
+                                if (style != PlayerDesignStyle.APPLE_MUSIC) {
+                                    onAppleMusicExperienceChange(false)
+                                }
+                            },
                             valueText = {
                                 when (it) {
                                     PlayerDesignStyle.V4 -> stringResource(R.string.player_design_v4)
@@ -827,11 +895,20 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             title = { Text(stringResource(R.string.simpmusic_lyrics)) },
                             description = stringResource(R.string.simpmusic_lyrics_desc),
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = simpMusicLyrics,
-                            onCheckedChange = onSimpMusicLyricsChange,
+                            checked = lyricsMode == LyricsMode.SIMPMUSIC,
+                            onCheckedChange = { useSimpMusic ->
+                                onLyricsModeChange(
+                                    if (useSimpMusic) LyricsMode.SIMPMUSIC else LyricsMode.ENHANCED,
+                                )
+                            },
                         )
                     }
                 }
+
+                // The Apple Music animated-artwork row is removed from the UI
+                // (user request): the style's own behavior decides when the
+                // animated artwork plays. The preference and its plumbing stay
+                // intact — only the row is gone.
 
                 item {
                     SwitchPreference(
@@ -1086,21 +1163,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            PreferenceGroup(
-                modifier = positions.modifierFor("album_page"),
-                title = stringResource(R.string.album_page),
-            ) {
-                item {
-                    SwitchPreference(
-                        modifier = positions.modifierFor("album_canvas_enabled"),
-                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
-                        description = stringResource(R.string.album_canvas_enabled_desc),
-                        icon = { Icon(painterResource(R.drawable.album), null) },
-                        checked = albumCanvasEnabled,
-                        onCheckedChange = onAlbumCanvasEnabledChange,
-                    )
-                }
-            }
+            // The album-page group is gone — its only row (canvas in albums page)
+            // moved to Player Settings → Artwork.
 
             // The settings that decide what the Home tab shows were scattered through
             // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are

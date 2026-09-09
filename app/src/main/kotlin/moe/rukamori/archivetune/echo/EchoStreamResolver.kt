@@ -52,11 +52,6 @@ object EchoStreamResolver {
     private const val logTag = "EchoResolver"
     private const val TAG = "EchoResolver"
 
-    /**
-     * Which stream resolution engine to prefer. Echo's AUTO default: PoToken + cipher
-     * deobfuscation first, NewPipe harvest as the fallback for any URL the cipher path
-     * could not produce.
-     */
     @Volatile
     var playbackEngine: PlaybackEngine = PlaybackEngine.AUTO
 
@@ -72,48 +67,27 @@ object EchoStreamResolver {
 
     private val poTokenGenerator = PoTokenGenerator()
 
-    /**
-     * Size of the first media chunk ExoPlayer requests. Must stay in sync with
-     * `MusicService.CHUNK_LENGTH`; kept as a local copy so this object does not have to depend
-     * on the playback service. Used by [validateStatus] so the probe and the real request match.
-     */
     private const val VALIDATION_CHUNK_LENGTH = 512 * 1024L
 
     private val MAIN_CLIENT: YouTubeClient = WEB_REMIX
 
-    /**
-     * Echo's fallback cascade, ordered by *measured* ability to serve a whole file, not by
-     * theory. Copied verbatim (order and comments) from Echo's YTPlayerUtils:
-     *
-     * The decisive measurement: an IOS/IPADOS/ANDROID_VR(old) stream URL is a **~1 MiB preview**.
-     * googlevideo serves a fixed byte prefix and answers 403 to everything past it. VISIONOS is
-     * the exception and the reason it leads. IOS/IPADOS stay at the tail — a 1 MiB preview still
-     * beats no stream at all if everything above fails.
-     */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> =
         arrayOf(
-            VISIONOS,                        // only client measured to serve a complete file
-            ANDROID_VR_1_65_10,              // current yt-dlp/YouTube.js pin; whole-file capable
+            VISIONOS,
+            ANDROID_VR_1_65_10,
             TVHTML5,
-            ANDROID_VR_1_43_32,              // version-gated; kept as the control against 1.65.10
-            IPADOS,                          // ~1 MiB preview only — last resort
-            IOS,                             // ~1 MiB preview only — last resort
-            // The only client that answers OK for age-restricted / explicit tracks, because it is
-            // the only authenticated one left in the chain.
+            ANDROID_VR_1_43_32,
+            IPADOS,
+            IOS,
+
             WEB_CREATOR,
         )
 
-    /** Normal content skips the MAIN_CLIENT stream attempt — Echo's pinned index 0. */
     private val NORMAL_CONTENT_STREAM_START_INDEX: Int = 0
 
-    /** Privately-owned (uploaded) tracks need TVHTML5, resolved by identity. */
     private val PRIVATE_TRACK_STREAM_START_INDEX: Int =
         STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5).takeIf { it >= 0 } ?: 0
 
-    /**
-     * Compact, redacted description of a googlevideo stream URL, for logging (Echo's
-     * describeStreamUrl).
-     */
     private fun describeStreamUrl(url: String): String =
         try {
             val uri = Uri.parse(url)
@@ -137,10 +111,6 @@ object EchoStreamResolver {
             "unparseable url (${e.javaClass.simpleName})"
         }
 
-    /**
-     * Everything about a `/player` response that decides whether it can produce a playable
-     * stream (Echo's describeResponse) — including the SABR-only detection.
-     */
     private fun describeResponse(client: YouTubeClient, response: PlayerResponse?): String =
         try {
             if (response == null) {
@@ -170,10 +140,6 @@ object EchoStreamResolver {
             "describeResponse failed (${e.javaClass.simpleName}: ${e.message})"
         }
 
-    /**
-     * Echo's resolution entry point. Returns ArchiveTune's [YTPlayerUtils.PlaybackData] on
-     * success; on failure throws — the caller falls back to the existing chain.
-     */
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String? = null,
@@ -212,12 +178,10 @@ object EchoStreamResolver {
                 ),
             )
 
-            // Echo's signature timestamp: NewPipe's YoutubeJavaScriptPlayerManager.
             val signatureTimestamp = getSignatureTimestampOrNull(videoId)
             Timber.tag(logTag).d("Signature timestamp: $signatureTimestamp")
             Fix403.i(fx, "resolve.sts", Fix403.kv("sts" to signatureTimestamp, "source" to "NewPipeUtils"))
 
-            // Echo's PoToken: only minted when the main client needs one.
             var poToken: PoTokenResult? = null
             val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
             val mainClientNeedsPoToken = MAIN_CLIENT.useWebPoTokens
@@ -250,15 +214,13 @@ object EchoStreamResolver {
                     Fix403.fail(fx, "potoken.generate.failed", e)
                 }
             }
-            // If MAIN_CLIENT needs a PoToken but none could be minted, WEB_REMIX's streams would
-            // 403 on play — skip straight to the fallback chain (Echo's skipMainClient).
+
             val skipMainClient = mainClientNeedsPoToken && poToken == null
             if (skipMainClient) {
                 Timber.tag(TAG).w("PoToken unavailable — skipping MAIN_CLIENT and using fallback chain directly")
                 Fix403.w(fx, "mainClient.skipped", Fix403.kv("reason" to "poTokenUnavailable"))
             }
 
-            // Main (metadata) player response.
             var mainPlayerResponse =
                 Fix403.trapRethrow(fx, "mainClient.player") {
                     Fix403.timed(fx, "mainClient.request") {
@@ -356,7 +318,7 @@ object EchoStreamResolver {
                 }
 
                 Timber.tag(logTag).d("Fetching player response for fallback client: ${client.clientName}")
-                // Only pass poToken for clients that support it (Echo's rule).
+
                 val clientPoToken = if (client.useWebPoTokens) poToken?.playerRequestPoToken else null
                 val clientSigTimestamp = if (wasOriginallyAgeRestricted) null else signatureTimestamp
                 Fix403.i(
@@ -390,12 +352,11 @@ object EchoStreamResolver {
                 if (streamPlayerResponse?.playabilityStatus?.status == "OK") {
                     Timber.tag(logTag).d("Player response status OK for client: ${client.clientName}")
 
-                    // Skip NewPipe for age-restricted content (NewPipe doesn't use our auth).
                     val responseToUse =
                         if (wasOriginallyAgeRestricted) {
                             streamPlayerResponse
                         } else {
-                            // Echo's newPipePlayer substitution.
+
                             val newPipeResponse = YouTube.newPipePlayer(videoId, streamPlayerResponse)
                             newPipeResponse ?: streamPlayerResponse
                         }
@@ -453,7 +414,6 @@ object EchoStreamResolver {
                     val isPrivatelyOwnedTrack =
                         streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-                    // Apply n-transform and PoToken for web clients OR for private tracks.
                     val needsNTransform =
                         currentClient.useWebPoTokens ||
                             currentClient.clientName in listOf("WEB", "WEB_REMIX", "WEB_CREATOR", "TVHTML5") ||
@@ -475,7 +435,7 @@ object EchoStreamResolver {
                             }
                         } catch (e: Exception) {
                             Timber.tag(TAG).e(e, "N-transform or pot append failed: ${e.message}")
-                            // Continue with original URL (Echo's behaviour).
+
                         }
                     }
 
@@ -494,7 +454,7 @@ object EchoStreamResolver {
                     }
 
                     if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwnedTrack) {
-                        // Skip [validateStatus] for the last client or private tracks.
+
                         Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwnedTrack")
                         cascade += "${currentClient.clientName}=ACCEPTED(unvalidated)"
                         Fix403.i(
@@ -631,11 +591,6 @@ object EchoStreamResolver {
         return format
     }
 
-    /**
-     * Echo's stream validation. The probe must mirror the request ExoPlayer actually issues
-     * (`Range: bytes=0-524287`) AND reach past the ~1 MiB preview window — so when the
-     * format's `contentLength` is known we probe the LAST byte of the file instead.
-     */
     private fun validateStatus(
         url: String,
         contentLength: Long? = null,
@@ -674,8 +629,7 @@ object EchoStreamResolver {
             }
             accepted
         } catch (e: java.io.IOException) {
-            // Network timeout / reset while HEAD-probing. The stream URL itself may still be
-            // fine — let ExoPlayer attempt GET rather than burning a fallback client.
+
             Timber.tag(logTag).w(e, "Stream URL HEAD probe failed (IO); accepting optimistically")
             true
         } catch (e: Exception) {
@@ -695,11 +649,6 @@ object EchoStreamResolver {
             }.getOrNull()
     }
 
-    /**
-     * Echo's findUrlOrNull: the format's own URL, then the cipher path (Echo's
-     * CipherDeobfuscator) for POTOKEN/AUTO engines, then the NewPipe deobfuscation + StreamInfo
-     * harvest for BRAVEPIPE/AUTO engines.
-     */
     private suspend fun findUrlOrNull(
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
@@ -709,13 +658,11 @@ object EchoStreamResolver {
         val engine = playbackEngine
         Timber.tag(logTag).d("Finding stream URL for format: ${format.mimeType}, videoId: $videoId, engine: $engine, skipNewPipe: $skipNewPipe")
 
-        // First check if format already has a URL
         if (!format.url.isNullOrEmpty()) {
             Timber.tag(logTag).d("Using URL from format directly")
             return format.url
         }
 
-        // --- PoToken / CipherDeobfuscator path ---
         val useCipher = engine == PlaybackEngine.POTOKEN || engine == PlaybackEngine.AUTO
         if (useCipher) {
             val signatureCipher = format.signatureCipher ?: format.cipher
@@ -734,13 +681,12 @@ object EchoStreamResolver {
             }
         }
 
-        // --- NewPipe path ---
         val useBravePipe = engine == PlaybackEngine.BRAVEPIPE || engine == PlaybackEngine.AUTO
         if (useBravePipe) {
             if (skipNewPipe) {
                 Timber.tag(logTag).d("Skipping NewPipe methods for age-restricted content")
             } else {
-                // NewPipe's own signature + throttle deobfuscation (core's NewPipeUtils).
+
                 try {
                     val deobfuscatedUrl =
                         NewPipeUtils
@@ -754,7 +700,6 @@ object EchoStreamResolver {
                     Timber.tag(logTag).e(e, "NewPipe deobfuscation failed")
                 }
 
-                // Fallback: the StreamInfo harvest, matched by itag.
                 Timber.tag(logTag).d("Trying StreamInfo fallback for URL")
                 try {
                     val streamUrls = YouTube.getNewPipeStreamUrls(videoId)

@@ -11,7 +11,9 @@
  * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
  * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
  * background is the artwork palette colour bleeding into black through a slowly wandering
- * five-stop linear gradient (angle ±45° over 6 s, offsets ±1500/±1000 over 8 s, the stops
+ * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — the
+ * original 6 s / 8 s sweeps read as a fast strobe on a phone screen and were slowed 4x
+ * 2026-09-05, user report: "the background changes at extremely fast speed" — the stops
  * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
  * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
  * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
@@ -87,6 +89,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -101,26 +105,37 @@ import kotlin.math.cos
 import kotlin.math.sin
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.hilt.navigation.compose.hiltViewModel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.BottomSheetMenu
+import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import android.os.Build
 import androidx.media3.common.Player
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.Locale
 
-/** SimpMusic's fullscreen-lyrics side gutter (its FULLSCREEN_LYRICS_GUTTER). */
 private val LyricsGutter = 50.dp
 
-/** How long the bottom controls stay up before auto-hiding (SimpMusic: 4 s). */
 private const val CONTROLS_AUTO_HIDE_MS = 4_000L
 
 @Composable
@@ -129,13 +144,24 @@ internal fun SimpMusicFullscreenLyricsSheet(
     playerConnection: PlayerConnection,
     navController: NavController,
     bottomSheetPageState: BottomSheetPageState,
-    playerBottomSheetState: BottomSheetState,
     color: Color,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val menuState = LocalMenuState.current
+
+    var showAnchoredLyricsMenu by remember { mutableStateOf(false) }
+    var moreIconBounds by remember {
+        mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
+    }
+
+    val popupBackdrop: PlatformBackdrop? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rememberBackdrop(Color.Transparent)
+        } else {
+            null
+        }
 
     val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val liked = currentSong?.song?.liked == true
@@ -146,16 +172,56 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+
+    val (autoTranslateExcludedLanguages) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyricsEntity?.lyrics,
+        currentLyricsEntity?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+        autoTranslateExcludedLanguages,
+        translationDismissedMediaIds,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyricsEntity ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LYRICS_NOT_FOUND) return@LaunchedEffect
+
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
+
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(
+                lyrics = text,
+                targetLanguage = translatorTargetLang,
+                excludedLanguageCodes = autoTranslateExcludedLanguages,
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
+
     val hasLyrics = currentLyricsEntity?.lyrics
         ?.let { it.isNotBlank() && it != LYRICS_NOT_FOUND } == true
 
-    // Keep the screen awake while a lyrics page is on (SimpMusic's KeepScreenOn()).
     DisposableEffect(view, hasLyrics) {
         if (hasLyrics) view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
     }
 
-    // ── Auto-hide controls state (SimpMusic's showControlButtons) ────────────────────
     var showControlButtons by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(showControlButtons) {
         if (showControlButtons) {
@@ -164,24 +230,20 @@ internal fun SimpMusicFullscreenLyricsSheet(
         }
     }
 
-    // ── Position polling for the slider ───────────────────────────────────────────────
     var sliderPosition by remember { mutableLongStateOf(-1L) }
+    var isScrubbing by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(mediaMetadata.id, isPlaying) {
         while (isActive) {
             val d = playerConnection.player.duration
             if (d > 0) duration = d
-            if (sliderPosition < 0) {
+            if (!isScrubbing) {
                 sliderPosition = playerConnection.player.currentPosition.coerceAtLeast(0L)
             }
             delay(200L)
         }
     }
 
-    // ── Animated gradient background (SimpMusic's five-stop wander) ───────────────────
-    // animateColorAsState instead of Animatable<Color>: the single-argument Animatable
-    // factory only exists for Float, and the colours here only ever ease toward the
-    // current palette anyway.
     val startColor by animateColorAsState(color, tween(1200, easing = FastOutSlowInEasing))
     val midColor1 by animateColorAsState(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
     val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
@@ -192,7 +254,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 45f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 6000, easing = LinearEasing),
+
+                animation = tween(durationMillis = 24_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientAngle",
@@ -202,7 +265,8 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1500f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetX",
@@ -212,14 +276,12 @@ internal fun SimpMusicFullscreenLyricsSheet(
         targetValue = 1000f,
         animationSpec =
             infiniteRepeatable(
-                animation = tween(durationMillis = 8000, easing = LinearEasing),
+                animation = tween(durationMillis = 32_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse,
             ),
         label = "lyricsGradientOffsetY",
     )
 
-    // Nested sheets the header's buttons can open (SimpMusic opens its own queue / info
-    // sheets from here the same way).
     var queueOpen by rememberSaveable { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -241,7 +303,12 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+
+            menuState.dismiss()
+            bottomSheetPageState.dismiss()
+            onDismiss()
+        },
         sheetState = sheetState,
         containerColor = Color.Black,
         contentColor = Color.Transparent,
@@ -255,13 +322,24 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 ) {
-                    // Show controls on tap — SimpMusic's tap-anywhere reveal.
+
                     showControlButtons = true
                 },
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Animated gradient background.
+
+            Box(
+                modifier =
+                    Modifier.fillMaxSize().let { base ->
+                        if (popupBackdrop != null && showAnchoredLyricsMenu) {
+                            base.layerBackdrop(popupBackdrop)
+                        } else {
+                            base
+                        }
+                    },
+            ) {
+
             Box(
                 modifier =
                     Modifier
@@ -294,15 +372,13 @@ internal fun SimpMusicFullscreenLyricsSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        // Notch-safe insets: the top floors with the cached status-bar inset
-                        // (LocalStableSystemBarsTopPadding) so a hidden status bar can't drop
-                        // the header under the cutout; the bottom uses the nav bar.
+
                         .padding(
                             top = LocalStableSystemBarsTopPadding.current,
                             bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
                         ),
             ) {
-                // ── Header: sleeve + title/artist + like + share + more ────────────────
+
                 Row(
                     modifier =
                         Modifier
@@ -387,19 +463,23 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
 
                     IconButton(
-                        onClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
+                        onClick = { showAnchoredLyricsMenu = true },
+                        modifier =
+                            Modifier
+                                .onGloballyPositioned { coords ->
+
+                                    val pos = coords.positionInRoot()
+                                    val sz = coords.size
+                                    moreIconBounds =
+                                        androidx.compose.ui.geometry.Rect(
+                                            offset = pos,
+                                            size =
+                                                androidx.compose.ui.geometry.Size(
+                                                    width = sz.width.toFloat(),
+                                                    height = sz.height.toFloat(),
+                                                ),
+                                        )
+                                },
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.simpmusic_more_vert),
@@ -410,7 +490,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
                 }
 
-                // ── Lyrics — expands across the remaining height ─────────────────────
                 Box(
                     modifier =
                         Modifier
@@ -419,11 +498,10 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             .padding(horizontal = LyricsGutter),
                 ) {
                     if (hasLyrics) {
-                        // The provider is null unless the user is scrubbing the sheet's own
-                        // slider, so SimpMusicLyrics self-polls the player — the same contract
-                        // the lyrics card uses.
+
                         SimpMusicLyrics(
-                            sliderPositionProvider = { if (sliderPosition >= 0) sliderPosition else null },
+
+                            sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -442,16 +520,18 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     }
                 }
 
-                // ── Slider + time row — always visible ───────────────────────────────
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp)) {
                     val safeDuration = if (duration > 0) duration else 1L
                     val shown = sliderPosition.coerceIn(0L, safeDuration)
                     Slider(
                         value = shown.toFloat() / safeDuration.toFloat(),
-                        onValueChange = { sliderPosition = (it * safeDuration).toLong() },
+                        onValueChange = {
+                            isScrubbing = true
+                            sliderPosition = (it * safeDuration).toLong()
+                        },
                         onValueChangeFinished = {
                             playerConnection.player.seekTo(sliderPosition)
-                            sliderPosition = -1L
+                            isScrubbing = false
                         },
                         track = { sliderState ->
                             SliderDefaults.Track(
@@ -503,7 +583,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     Spacer(modifier = Modifier.height(5.dp))
                 }
 
-                // ── Transport + bottom buttons — auto-hide after 4 s ─────────────────
                 AnimatedVisibility(
                     visible = showControlButtons,
                     enter = expandVertically(tween(300)),
@@ -616,6 +695,25 @@ internal fun SimpMusicFullscreenLyricsSheet(
                     Spacer(modifier = Modifier.height(20.dp))
                 }
             }
+
+            BottomSheetMenu(
+                state = menuState,
+                background = Color(0xF01C1C1E),
+            )
+            BottomSheetPage(state = bottomSheetPageState)
+            }
+
+            if (showAnchoredLyricsMenu) {
+                AnchoredLyricsOverflowMenu(
+                    iconBoundsInRoot = moreIconBounds,
+                    lyricsProvider = { currentLyricsEntity },
+                    mediaMetadataProvider = { mediaMetadata },
+                    lyricsSyncOffset = 0,
+                    onLyricsSyncOffsetChange = {},
+                    onDismiss = { showAnchoredLyricsMenu = false },
+                    backdrop = popupBackdrop,
+                )
+            }
         }
     }
 
@@ -628,7 +726,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
     }
 }
 
-/** One transport control: a circular ripple cell holding a centred glyph (SimpMusicControl's shape). */
 @Composable
 private fun RowScope.LyricsTransportIcon(
     painter: androidx.compose.ui.graphics.painter.Painter,
@@ -656,7 +753,6 @@ private fun RowScope.LyricsTransportIcon(
     }
 }
 
-/** `mm:ss`, zero-padded, the way SimpMusic's formatDuration writes it. */
 private fun clockTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0L)
     return String.format(Locale.getDefault(), "%02d:%02d", total / 60, total % 60)

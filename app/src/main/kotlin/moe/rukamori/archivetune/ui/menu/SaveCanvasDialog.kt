@@ -19,13 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,28 +50,6 @@ import moe.rukamori.archivetune.utils.CanvasSaver
 import moe.rukamori.archivetune.utils.CanvasSaveResult
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
-/**
- * Dialog that lists every available canvas source for a song and lets the
- * user save any of them to internal storage (Movies/ArchiveTune Canvas/).
- *
- * On open, it launches a coroutine to query every canvas source
- * (Spotify Canvas via mlc.kouzu.in, Apple Music via AMP) in parallel via
- * [fetchAllCanvasSourcesForSong]. While loading, a spinner is shown. Once
- * results arrive, each source is rendered as a row with:
- * - source name (Spotify Canvas / Apple Music)
- * - the regular canvas URL (or "Unavailable" if not present)
- * - the vertical canvas URL (or "Unavailable")
- * - a "Save regular" and "Save vertical" button for each available variant
- *
- * Tapping a Save button downloads the video via [CanvasSaver.saveCanvasVideo]
- * and toasts the result. HLS `.m3u8` URLs (typically Apple Music) are
- * rejected up-front with a toast explaining they can't be saved.
- *
- * NOTE: The codebase currently has no Tidal canvas implementation —
- * only Spotify Canvas + Apple Music. When/if Tidal canvas is added,
- * it should be queried in [fetchAllCanvasSourcesForSong] and will
- * automatically appear here.
- */
 @Composable
 fun SaveCanvasDialog(
     mediaId: String,
@@ -117,14 +92,7 @@ fun SaveCanvasDialog(
 
     AlertDialog(
         onDismissRequest = { onDismiss() },
-        // Restored opaque container (2026-09-04, user report: "Restore the old
-        // opaque Save Canvas popup. Right now it's transparent"): this dialog is
-        // composed inside PlayerMenu, which renders inside BottomSheetMenu's
-        // glass MaterialTheme overlay — where AlertDialog's default container
-        // (surfaceContainerHigh) is remapped to an ~8%-alpha translucent glass
-        // tint. An explicit opaque surface color bypasses the overlay so the
-        // dialog reads as a solid card again, exactly as it did before the
-        // glass theming landed.
+
         containerColor = MaterialTheme.colorScheme.surface,
         title = { Text(text = stringResource(R.string.save_canvas_dialog_title)) },
         text = {
@@ -227,7 +195,7 @@ fun SaveCanvasDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             TextButton(onClick = onDismiss) {
                 Text(text = stringResource(android.R.string.cancel))
             }

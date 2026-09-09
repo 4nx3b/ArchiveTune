@@ -164,7 +164,6 @@ class LocalPlaylistViewModel
         private val viewCountsInFlight = mutableSetOf<String>()
         private val viewCountsSemaphore = Semaphore(permits = 4)
 
-        // Playlist Suggestions State
         private val _playlistSuggestions = MutableStateFlow<PlaylistSuggestion?>(null)
         val playlistSuggestions =
             combine(_playlistSuggestions, playlistSongs) { suggestions, songs ->
@@ -183,10 +182,8 @@ class LocalPlaylistViewModel
         private val suggestionsCacheTimestamp = MutableStateFlow(0L)
         private val suggestedSongIds = MutableStateFlow<Set<String>>(emptySet())
 
-        // Mutex to prevent concurrent suggestion loading
         private val suggestionLoadMutex = Mutex()
 
-        // Cache for current suggestion page
         private var currentSuggestionPage: PlaylistSuggestionPage? = null
 
         private val _isRefreshing = MutableStateFlow(false)
@@ -228,7 +225,6 @@ class LocalPlaylistViewModel
                 }
             }
 
-            // Auto-load suggestions when playlist or songs change
             viewModelScope.launch {
                 combine(playlist, playlistSongs) { playlist, songs ->
                     Pair(playlist, songs)
@@ -239,7 +235,6 @@ class LocalPlaylistViewModel
                 }
             }
 
-            // Auto-refresh suggestions when they become empty
             viewModelScope.launch {
                 playlistSuggestions.collect { suggestions ->
                     if (suggestions != null && suggestions.items.isEmpty() && suggestions.hasMore && !_isLoadingSuggestions.value) {
@@ -329,8 +324,6 @@ class LocalPlaylistViewModel
                 }
         }
 
-        // Playlist Suggestions Functions
-
         fun loadPlaylistSuggestions(forceReset: Boolean = false) {
             viewModelScope.launch {
                 suggestionLoadMutex.withLock {
@@ -344,16 +337,14 @@ class LocalPlaylistViewModel
                             )
 
                     if (!shouldRefresh && _playlistSuggestions.value != null) {
-                        return@withLock // Use cached suggestions
+                        return@withLock
                     }
 
                     _isLoadingSuggestions.value = true
 
-                    // Clear state for refresh
                     _playlistSuggestions.value = null
                     currentSuggestionQueryIndex.value = 0
-                    // Keep previously suggested IDs to avoid showing them again on refresh
-                    // but ensure songs already in playlist are always included in the filter
+
                     suggestedSongIds.value = suggestedSongIds.value + currentSongs.map { it.song.id }.toSet()
                     suggestionsCacheTimestamp.value = 0L
                     currentSuggestionPage = null
@@ -364,7 +355,6 @@ class LocalPlaylistViewModel
                                 .first()[PlaylistSuggestionSourceKey]
                                 .toEnum(PlaylistSuggestionSource.BOTH)
 
-                        // Build suggestion queries
                         val queries =
                             PlaylistSuggestionQueryBuilder.buildSuggestionQueries(
                                 playlistName = currentPlaylist.playlist.name,
@@ -387,7 +377,6 @@ class LocalPlaylistViewModel
                             return@withLock
                         }
 
-                        // Load first page of suggestions
                         loadNextSuggestionPage()
                     } catch (e: Exception) {
                         reportException(e)
@@ -418,21 +407,20 @@ class LocalPlaylistViewModel
                     val queries = suggestionQueries.value
 
                     try {
-                        // If we have a continuation, load more from current query
+
                         currentSuggestionPage?.continuation?.let { continuation ->
                             _isLoadingSuggestions.value = true
                             loadMoreFromContinuation(continuation)
                             return@withLock
                         }
 
-                        // Otherwise, move to next query
                         val nextIndex = currentSuggestionQueryIndex.value + 1
                         if (nextIndex < queries.size) {
                             _isLoadingSuggestions.value = true
                             currentSuggestionQueryIndex.value = nextIndex
                             loadNextSuggestionPage()
                         } else {
-                            // No more queries and no continuation
+
                             _playlistSuggestions.value = currentSuggestions.copy(hasMore = false)
                         }
                     } finally {
@@ -446,13 +434,9 @@ class LocalPlaylistViewModel
             loadPlaylistSuggestions(forceReset = true)
         }
 
-        /**
-         * Mark a suggested song as added to prevent it from appearing again
-         */
         fun markSuggestionAsAdded(songId: String) {
             suggestedSongIds.value = suggestedSongIds.value + songId
 
-            // Also remove from current suggestions list
             val currentSuggestions = _playlistSuggestions.value
             if (currentSuggestions != null) {
                 _playlistSuggestions.value =
@@ -478,11 +462,10 @@ class LocalPlaylistViewModel
 
                 val added =
                     database.withTransaction {
-                        // Ensure playlist exists in local database (it should, but just in case)
+
                         val p = getPlaylistById(playlistId)
                         if (p == null) {
-                            // If not found, we can't add to it.
-                            // This might happen if it's a special playlist that hasn't been created yet.
+
                             if (playlistId == moe.rukamori.archivetune.db.entities.PlaylistEntity.LIKED_PLAYLIST_ID) {
                                 insert(
                                     moe.rukamori.archivetune.db.entities.PlaylistEntity(
@@ -497,10 +480,8 @@ class LocalPlaylistViewModel
                             }
                         }
 
-                        // First, ensure the song and its artists are in the database
                         insert(song.toMediaMetadata())
 
-                        // Add to local playlist
                         val maxPosition = maxPlaylistSongPosition(playlistId)
                         val position = (maxPosition ?: -1) + 1
                         insert(
@@ -518,7 +499,6 @@ class LocalPlaylistViewModel
                     return false
                 }
 
-                // Update suggested song IDs to avoid duplicates
                 suggestedSongIds.value = suggestedSongIds.value + song.id
 
                 true
@@ -550,7 +530,6 @@ class LocalPlaylistViewModel
 
                 val filteredItems = filterSuggestionItems(result.items).shuffled().take(10)
 
-                // If we got no new items after filtering, try to load more if available
                 if (filteredItems.isEmpty() && (result.continuation != null || currentIndex < queries.size - 1)) {
                     result.continuation?.let { continuationValue ->
                         loadMoreFromContinuation(continuationValue)
@@ -567,11 +546,9 @@ class LocalPlaylistViewModel
                         continuation = result.continuation,
                     )
 
-                // Update suggested song IDs to avoid duplicates
                 val newIds = filteredItems.map { item: YTItem -> item.id }.toSet()
                 suggestedSongIds.value = suggestedSongIds.value + newIds
 
-                // Update suggestions state
                 val currentSuggestions = _playlistSuggestions.value
                 val newSuggestions =
                     if (currentSuggestions == null) {
@@ -606,7 +583,6 @@ class LocalPlaylistViewModel
 
                 val filteredItems = filterSuggestionItems(result.items).shuffled().take(10)
 
-                // If we got no new items after filtering, try to move to next query if available
                 if (filteredItems.isEmpty()) {
                     val currentSuggestions = _playlistSuggestions.value
                     val queries = suggestionQueries.value
@@ -619,7 +595,7 @@ class LocalPlaylistViewModel
                             currentSuggestionQueryIndex.value = currentIndex + 1
                             loadNextSuggestionPage()
                         } else {
-                            // No more items and no more queries
+
                             if (currentSuggestions != null) {
                                 _playlistSuggestions.value = currentSuggestions.copy(hasMore = false)
                             }
@@ -634,11 +610,9 @@ class LocalPlaylistViewModel
                         continuation = result.continuation,
                     )
 
-                // Update suggested song IDs to avoid duplicates
                 val moreIds = filteredItems.map { item: YTItem -> item.id }.toSet()
                 suggestedSongIds.value = suggestedSongIds.value + moreIds
 
-                // Update suggestions state
                 val currentSuggestions = _playlistSuggestions.value
                 if (currentSuggestions == null) {
                     _playlistSuggestions.value =

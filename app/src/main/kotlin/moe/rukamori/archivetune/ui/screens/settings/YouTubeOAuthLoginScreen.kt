@@ -85,18 +85,9 @@ private sealed interface DeviceCodeUiState {
 
     data class Waiting(val code: YouTubeOAuthRepository.DeviceCode) : DeviceCodeUiState
 
-    /** [reason] is the raw OAuth error code; it is mapped to a message at render time. */
     data class Failed(val reason: String) : DeviceCodeUiState
 }
 
-/**
- * OAuth2 device-code sign-in: ArchiveTune asks Google for a short code, the user types it at
- * google.com/device on whatever device is convenient, and the poll here finishes the grant.
- *
- * This is an alternative to — not a replacement for — the WebView cookie login. The token
- * authenticates as the YouTube VR client, so it only ever signs `/player` requests; library,
- * playlists and browse still need the browser sign-in. [YouTubeOAuthRepository] documents why.
- */
 @Composable
 fun YouTubeOAuthLoginScreen(navController: NavController) {
     val context = LocalContext.current
@@ -104,8 +95,7 @@ fun YouTubeOAuthLoginScreen(navController: NavController) {
     val scrollBehavior = appBarScrollBehavior()
 
     var state by remember { mutableStateOf<DeviceCodeUiState>(DeviceCodeUiState.Requesting) }
-    // Bumping this restarts the request/poll effect. Retrying needs a brand new device code — the
-    // old one is either expired or already refused, so re-polling it would fail identically.
+
     var attempt by remember { mutableIntStateOf(0) }
 
     val codeCopiedMessage = stringResource(R.string.yt_oauth_code_copied)
@@ -128,7 +118,7 @@ fun YouTubeOAuthLoginScreen(navController: NavController) {
                 navController.navigateUp()
             }
             is YouTubeOAuthRepository.PollResult.Failed -> state = DeviceCodeUiState.Failed(result.reason)
-            // pollForToken only produces Pending inside its own loop, never as a return value.
+
             YouTubeOAuthRepository.PollResult.Pending -> Unit
         }
     }
@@ -228,8 +218,7 @@ fun YouTubeOAuthLoginScreen(navController: NavController) {
                                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                         )
                                     }.isSuccess
-                                // No browser, or a profile that blocks the handoff: the code still
-                                // works on another device, so say that instead of failing the flow.
+
                                 if (!opened) toast(noBrowserMessage)
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -259,10 +248,6 @@ fun YouTubeOAuthLoginScreen(navController: NavController) {
     }
 }
 
-/**
- * Maps the OAuth error code to something the user can act on. An unrecognised code is shown raw
- * rather than swallowed — that is exactly what a bug report needs.
- */
 @Composable
 private fun deviceCodeFailureMessage(reason: String): String =
     when (reason) {

@@ -54,7 +54,7 @@ internal class MusicServiceWidgetUpdater(
     private val scope: CoroutineScope,
     private val loadWidgetInsights: LoadWidgetInsightsUseCase,
 ) {
-    // Always read through the service: the active player may be promoted (crossfade).
+
     private val player: Player
         get() = service.player
 

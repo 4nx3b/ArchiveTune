@@ -405,7 +405,7 @@ private fun ViewNewsFullImageDialog(
                 decorFitsSystemWindows = false,
             ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         val context = LocalContext.current
         val model =
             remember(context, imageUrl) {

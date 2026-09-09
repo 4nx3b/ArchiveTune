@@ -118,26 +118,8 @@ object YTPlayerUtils {
         val reason: String?,
     )
 
-    /**
-     * The main client is used for metadata and initial streams.
-     * Do not use other clients for this because it can result in inconsistent metadata.
-     * For example other clients can have different normalization targets (loudnessDb).
-     *
-     * [moe.rukamori.archivetune.innertube.models.YouTubeClient.WEB_REMIX] should be preferred here because currently it is the only client which provides:
-     * - the correct metadata (like loudnessDb)
-     * - premium formats
-     */
     private val MAIN_CLIENT: YouTubeClient = WEB_REMIX
 
-    /**
-     * Clients used for fallback streams in case the streams of the main client do not work.
-     *
-     * Ported verbatim from vossgraves/ArchiveTune (upstream/main): the 13-client
-     * recovery chain. When the primary client fails (403 / bot detection / age
-     * gate), resolution walks this list in cookie-aware order — see
-     * [buildStreamClientOrder]. The previous fork chain (6 clients) is what made
-     * a single blocked client end playback with "No stream available".
-     */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> =
         arrayOf(
             WEB_REMIX,
@@ -157,26 +139,6 @@ object YTPlayerUtils {
             WEB_CREATOR,
         )
 
-    /**
-     * Embedded-player clients used to play age-restricted tracks, appended to the client order only
-     * while Content Settings → "Allow age-restricted content" is on.
-     *
-     * YouTube serves age-gated videos to its embedded players without an adult-verified session,
-     * which is what makes them playable at all: every non-embedded client answers the player
-     * request with `LOGIN_REQUIRED` / "Sign in to confirm your age" instead of streaming data.
-     *
-     * Both profiles are copied with cookie auth and the login requirement stripped:
-     *  - `TVHTML5_SIMPLY_EMBEDDED_PLAYER` is catalogued as `loginRequired = true`, which would make
-     *    [buildStreamClientOrder]'s callers skip it outright (it has no cookie support, so the
-     *    `loginRequired && !usesCookieAuthentication` guard always fires). The embedded endpoint
-     *    does not actually need a session — it needs the signature timestamp, which the profile
-     *    already requests.
-     *  - `WEB_EMBEDDED` must go out anonymously: attaching the signed-in user's cookie reinstates
-     *    the account's age gate and defeats the point.
-     *
-     * They are appended LAST so nothing about normal playback changes — they are only reached once
-     * every regular client has failed, which for an age-gated track is exactly the gate.
-     */
     private val AGE_GATE_BYPASS_CLIENTS: Array<YouTubeClient> =
         arrayOf(
             TVHTML5_SIMPLY_EMBEDDED_PLAYER.copy(
@@ -193,20 +155,8 @@ object YTPlayerUtils {
             ),
         )
 
-    /**
-     * True while the user has opted in to age-restricted playback (Content Settings). Read fresh on
-     * every client-order build so toggling it takes effect on the next track without a restart.
-     */
     private fun ageRestrictedPlaybackAllowed(): Boolean = PreferenceStore.get(AllowAgeRestrictedKey) == true
 
-    /**
-     * True when [failure] is an age-gate rejection *and* the user has opted in to age-restricted
-     * playback, meaning the native resolver's embedded-player clients (see [AGE_GATE_BYPASS_CLIENTS])
-     * are worth trying instead of surfacing a sign-in prompt.
-     *
-     * Deliberately narrower than [isLoginRecoveryError]: a genuine expired-session failure must
-     * still reach the user as "sign in again", because no embedded client can fix that.
-     */
     fun isAgeRestrictedPlaybackFallbackAllowed(failure: LoginRequiredForPlaybackException): Boolean {
         if (!ageRestrictedPlaybackAllowed()) return false
         val lower = failure.message.orEmpty().lowercase(Locale.US)
@@ -228,6 +178,10 @@ object YTPlayerUtils {
         val audioQuality: AudioQuality,
         val networkMetered: Boolean,
         val authFingerprint: String,
+        // Download resolutions (preferM4A=true) must not be served from a
+        // playback-cached OPUS entry — that turned every download taken right
+        // after playing a song into an un-exportable .webm file.
+        val preferM4A: Boolean = false,
     )
 
     private data class CachedPlaybackData(
@@ -240,13 +194,10 @@ object YTPlayerUtils {
     private val playbackDataResolutionMutexes = Array(PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT) { Mutex() }
     private val failedStreamClientsUntil = ConcurrentHashMap<String, Long>()
 
-    /** Per-video backoff for the SimpMusic resolution (see simpMusicStreamResolution). */
     private val simpMusicFailedUntil = ConcurrentHashMap<String, Long>()
 
     init {
-        // Bridge :core's simpstream logger (a pure JVM module — no Timber there,
-        // it only publishes an Android AAR) into Timber so the SimpMusic
-        // resolution's logs show up with the rest of the playback logs.
+
         SimpStreamLog.sink =
             SimpStreamLog.Sink { level, tag, message, error ->
                 when (level) {
@@ -417,14 +368,6 @@ object YTPlayerUtils {
         authState.webClientPoTokenEnabled &&
             !authState.resolveGvsPoToken(WEB_CREATOR, videoId).isNullOrBlank()
 
-    /**
-     * Ported from vossgraves/ArchiveTune: the "complete web PO token" gate that the
-     * upstream client ordering and bot-detection repair both key off — both the Web
-     * Remix player token AND the GVS token must resolve. Adapted to this fork's
-     * video-scoped token fields: when [videoId] is known it is passed through so
-     * freshly minted per-video tokens count; without it the session-level fallback
-     * decides (client ordering runs before any videoId exists).
-     */
     private fun hasCompleteWebPlaybackPoToken(
         authState: PlaybackAuthState,
         videoId: String? = null,
@@ -665,11 +608,6 @@ object YTPlayerUtils {
                 WEB_REMIX
             }
 
-            // Ported from vossgraves/ArchiveTune: the ARCHIVETUNE_EXTRACTOR
-            // playback client resolves through the moriextractor backend, but
-            // the *metadata* pass still runs over InnerTube — upstream picks the
-            // signed-in ANDROID_MUSIC profile for that, falling back to WEB_REMIX
-            // for anonymous sessions.
             PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
                 if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
             }
@@ -706,11 +644,6 @@ object YTPlayerUtils {
                 STREAM_FALLBACK_CLIENTS.find { StreamClientUtils.buildClientKey(it) == key }
             }
 
-        // Ported from vossgraves/ArchiveTune: order the whole recovery chain by
-        // cookie support — cookie-authenticated clients first while a signed-in
-        // session with complete PO tokens exists (they carry premium formats and
-        // survive anonymous-traffic throttling), anonymous clients first otherwise
-        // (a signed-in request without tokens is the one YouTube 403s).
         val orderedFallbackClients =
             if (authState.hasPlaybackLoginContext && hasCompleteWebPoTokens) {
                 STREAM_FALLBACK_CLIENTS.filter { it.supportsCookieAuthentication } +
@@ -730,14 +663,11 @@ object YTPlayerUtils {
             }
             addAll(orderedFallbackClients)
             if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
-            // Ported from vossgraves/ArchiveTune: with the Web Remix client selected,
-            // give the full chain a second pass — a WEB_REMIX-only failure is usually
-            // a transient rejection, not a dead client.
+
             if (preferredStreamClient == PlayerStreamClient.WEB_REMIX) {
                 addAll(STREAM_FALLBACK_CLIENTS)
             }
-            // Last resort, opt-in only: the embedded players are the only clients YouTube will
-            // serve an age-gated track to. See [AGE_GATE_BYPASS_CLIENTS].
+
             if (ageRestrictedPlaybackAllowed()) addAll(AGE_GATE_BYPASS_CLIENTS)
         }.distinct()
     }
@@ -752,21 +682,15 @@ object YTPlayerUtils {
         val authFingerprint: String,
     )
 
-    /**
-     * Custom player response intended to use for playback.
-     * Metadata like audioConfig and videoDetails are from [MAIN_CLIENT].
-     * Format & stream can be from [MAIN_CLIENT] or [STREAM_FALLBACK_CLIENTS].
-     */
     suspend fun playerResponseForPlayback(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         preferredStreamClient: PlayerStreamClient = PlayerStreamClient.WEB_REMIX,
-        // if provided, this preference overrides ConnectivityManager.isActiveNetworkMetered
+
         networkMetered: Boolean? = null,
-        // Ported from vossgraves/ArchiveTune: downloads pass true so the format
-        // selector ranks AAC/M4A above Opus (jaudiotagger can only tag .m4a).
+
         preferM4A: Boolean = false,
     ): Result<PlaybackData> {
         val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
@@ -776,6 +700,7 @@ object YTPlayerUtils {
                 audioQuality = audioQuality,
                 networkMetered = isMetered,
                 authFingerprint = YouTube.currentPlaybackAuthState().streamCacheFingerprint,
+                preferM4A = preferM4A,
             )
         getCachedPlaybackData(initialKey)?.let { return Result.success(it) }
         val resolutionMutex =
@@ -787,6 +712,7 @@ object YTPlayerUtils {
                     audioQuality = audioQuality,
                     networkMetered = isMetered,
                     authFingerprint = YouTube.currentPlaybackAuthState().streamCacheFingerprint,
+                    preferM4A = preferM4A,
                 )
             getCachedPlaybackData(currentKey)?.let { return@withLock Result.success(it) }
             resolvePlaybackData(
@@ -829,9 +755,7 @@ object YTPlayerUtils {
                 }.distinct()
 
             var lastError: Throwable? = null
-            // Ported from vossgraves/ArchiveTune: one IP-rotation refresh per
-            // resolution — bot detection is often per-egress-IP, so rotating the
-            // proxy pool and retrying once beats failing the whole chain.
+
             var didRefreshIpRotationAfterBotDetection = false
             for (attempt in attempts) {
                 val attemptResult =
@@ -880,12 +804,14 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         networkMetered: Boolean,
         authFingerprint: String,
+        preferM4A: Boolean = false,
     ): PlaybackDataCacheKey =
         PlaybackDataCacheKey(
             videoId = videoId,
             audioQuality = audioQuality,
             networkMetered = networkMetered,
             authFingerprint = authFingerprint,
+            preferM4A = preferM4A,
         )
 
     private fun getCachedPlaybackData(key: PlaybackDataCacheKey): PlaybackData? {
@@ -918,18 +844,6 @@ object YTPlayerUtils {
         }
     }
 
-    /**
-     * Resolves a YouTube Music player response specifically for offline downloads.
-     *
-     * Ported from vossgraves/ArchiveTune: when [preferM4A] is true (the default),
-     * the format selector prefers AAC/M4A streams (itag 140 / 141) over
-     * Opus/WebM (itag 251 / 250) — codec rank is compared BEFORE bitrate.
-     * This is critical for downloads because:
-     *   1. jaudiotagger has no WebM/Matroska reader — Opus-in-WebM files cannot
-     *      be tagged, leaving exported songs with no metadata.
-     *   2. The .m4a extension is universally recognized by external players.
-     *   3. AAC at 128 kbps (itag 140) is perceptually transparent for most music.
-     */
     suspend fun playerResponseForDownload(
         videoId: String,
         playlistId: String? = null,
@@ -977,12 +891,6 @@ object YTPlayerUtils {
             PlayerStreamClient.ANDROID_MUSIC,
         )
 
-    /**
-     * Ported from vossgraves/ArchiveTune: after YouTube bot-detection blocks the
-     * client chain, rotate the rotating-proxy egress IP (when one is configured)
-     * and drop the cached playback auth so the next attempt leaves with a fresh
-     * identity. Returns true when the rotation actually happened.
-     */
     private suspend fun refreshIpRotationForBotDetection(
         videoId: String,
         failure: BotDetectionPlaybackException?,
@@ -1004,24 +912,12 @@ object YTPlayerUtils {
         }.isSuccess
     }
 
-    /**
-     * The ported SimpMusic resolution + format selection.
-     *
-     * `SimpMusicPlayer.player` is SimpMusic's `YouTube.player` — InnerTube WEB_REMIX request
-     * + 3-tier NewPipe extraction + itag merge (see core simpstream/SimpMusicPlayer.kt).
-     * Everything below the call is SimpMusic's `StreamRepositoryImpl.getStream` selection:
-     * pick the format by the quality's itag, fall back to the high-quality twin, then to any
-     * audio stream, then to any stream at all; append the CPN (playback tracking) and the
-     * `range=0-…` window the way SimpMusic emits its URLs.
-     *
-     * Returns null on any failure so [playerResponseForPlaybackOnce] falls back to the
-     * existing multi-client resolution.
-     */
     private suspend fun simpMusicStreamResolution(
         videoId: String,
         playlistId: String?,
         audioQuality: AudioQuality,
         networkMetered: Boolean,
+        preferM4A: Boolean = false,
     ): PlaybackData? {
         val authState = YouTube.currentPlaybackAuthState()
         val result =
@@ -1035,10 +931,7 @@ object YTPlayerUtils {
         val (cpn, response, mediaType) =
             result.getOrNull()
                 ?: run {
-                    // Back the SimpMusic path off for a minute so the quality-fallback
-                    // loop (and the next few plays of this track) go straight to the
-                    // proven multi-client resolution instead of repeating a failing
-                    // extraction.
+
                     simpMusicFailedUntil[videoId] = System.currentTimeMillis() + SIMP_MUSIC_FAILURE_BACKOFF_MS
                     Timber.tag(logTag).w(
                         result.exceptionOrNull(),
@@ -1056,7 +949,6 @@ object YTPlayerUtils {
             SimpMusicPlayer.getExtractSource(videoId) ?: "unknown",
         )
 
-        // ── SimpMusic getStream: format selection by itag ──
         val formatList = mutableListOf<PlayerResponse.StreamingData.Format>()
         formatList.addAll(response.streamingData?.formats?.filter { it.url.isNullOrEmpty().not() } ?: emptyList())
         formatList.addAll(
@@ -1070,12 +962,30 @@ object YTPlayerUtils {
 
         val itag = simpMusicItagForQuality(audioQuality, networkMetered)
         val audioTwinItag = ITAG.highQualityTwinOf(itag)
-        val audioFormat =
-            formatList.find { it.itag == itag } ?: if (audioTwinItag != null) {
-                formatList.find { it.itag == audioTwinItag }
+        val preferM4AFormat: PlayerResponse.StreamingData.Format? =
+            if (preferM4A) {
+                // Downloads need a jaudiotagger-readable container (.m4a), not
+                // .webm — pick the best AAC/MP4 audio format when one exists,
+                // mirroring codecRankPreferM4A in the native resolver path.
+                formatList
+                    .filter { it.isAudio && it.url.isNullOrEmpty().not() }
+                    .maxWithOrNull(
+                        compareByDescending<PlayerResponse.StreamingData.Format> {
+                            codecRankPreferM4A(extractCodec(it.mimeType))
+                        }.thenByDescending { it.bitrate }
+                            .thenByDescending { it.audioSampleRate ?: 0 },
+                    )
             } else {
-                formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
+                null
             }
+        val audioFormat =
+            preferM4AFormat
+                ?: formatList.find { it.itag == itag }
+                ?: if (audioTwinItag != null) {
+                    formatList.find { it.itag == audioTwinItag }
+                } else {
+                    formatList.find { it.isAudio && it.url.isNullOrEmpty().not() }
+                }
         var format = audioFormat
         if (format == null) {
             format = formatList.lastOrNull { it.url.isNullOrEmpty().not() }
@@ -1095,10 +1005,6 @@ object YTPlayerUtils {
             "SimpMusic selected format: itag=${format.itag}, ${format.mimeType}, bitrate: ${format.bitrate}",
         )
 
-        // ── SimpMusic getStream: URL emission (cpn + range window) ──
-        // SimpMusic branches on whether the CPN came back: with a CPN both the
-        // tracking param and the range window are appended; without it only the
-        // range window (manifest URLs only ever get the CPN).
         val url = requireNotNull(format.url)
         val finalUrl =
             if (SimpMusicPlayer.isManifestUrl(url)) {
@@ -1126,15 +1032,10 @@ object YTPlayerUtils {
         )
     }
 
-    /**
-     * SimpMusic's StreamRepositoryImpl rewrites the tracking baseUrls from s.youtube.com to
-     * music.youtube.com before persisting them; copy that so watch-time reporting matches.
-     */
     private fun withSimpMusicTrackingHosts(
         tracking: PlayerResponse.PlaybackTracking,
     ): PlayerResponse.PlaybackTracking {
-        // Locals first: the URL objects are cross-module properties, which Kotlin
-        // cannot smart-cast inside the ?.copy() chains.
+
         val videostatsPlayback = tracking.videostatsPlaybackUrl
         val atr = tracking.atrUrl
         val watchtime = tracking.videostatsWatchtimeUrl
@@ -1154,13 +1055,6 @@ object YTPlayerUtils {
         )
     }
 
-    /**
-     * ArchiveTune's AudioQuality -> SimpMusic's QUALITY itag.
-     *
-     * SimpMusic's own items are Low(66k)=250 / Medium(129k)=251 / High Opus(256k)=774 /
-     * High AAC(256k)=141. AUTO behaves like the existing selectAudioFormatCandidates:
-     * metered -> medium, unmetered -> high (Opus, twin AAC fallback handled by the caller).
-     */
     private fun simpMusicItagForQuality(
         audioQuality: AudioQuality,
         networkMetered: Boolean,
@@ -1183,37 +1077,16 @@ object YTPlayerUtils {
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
 
-        // ── SimpMusic stream resolution (ported 2026-09-05) ──────────────────
-        // This is the PRIMARY path, copied from how maxrave-dev/SimpMusic
-        // resolves YouTube Music streams: one InnerTube WEB_REMIX player
-        // request (with a random CPN and the days-since-epoch signature
-        // timestamp), then a 3-tier NewPipe extraction (PipePipe with a local
-        // QuickJS cipher decoder -> PipePipe with remote decoding at
-        // api.pipepipe.dev -> BravePipe) whose resolved URLs replace the
-        // response's URLs matched by itag. The format is then selected by
-        // SimpMusic's itag mapping for the requested quality.
-        // On failure we simply fall through to Echo's cascade and then to
-        // ArchiveTune's existing multi-client chain below, so no existing
-        // behaviour is lost. A 60s per-video backoff keeps the quality-fallback
-        // loop from re-running the full extraction three times for the same
-        // track.
         if (simpMusicFailedUntil[videoId]?.let { it > System.currentTimeMillis() } != true) {
             simpMusicStreamResolution(
                 videoId = videoId,
                 playlistId = playlistId,
                 audioQuality = audioQuality,
                 networkMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+                preferM4A = preferM4A,
             )?.let { return it }
         }
-        // ─────────────────────────────────────────────────────────────────────
 
-        // Echo-Music resolution port (2026-09-05): Echo's cascade runs second —
-        // after the SimpMusic resolution above, before the local chain — the
-        // VISIONOS-first client order, NewPipe StreamInfo URL substitution and the
-        // last-byte HEAD+Range validation probe (see EchoStreamResolver). Everything
-        // below (the 13-client chain, po-token minting, auth repair, bot-detection
-        // rotation) remains the fallback, so a failure here costs one cascade and
-        // loses nothing that previously worked.
         try {
             val echoPlaybackData =
                 moe.rukamori.archivetune.echo.EchoStreamResolver
@@ -1255,9 +1128,7 @@ object YTPlayerUtils {
                     reason = if (hasLoginCookie) "cookie-only playback fallback" else "anonymous playback bootstrap",
                 )
         }
-        // Ported from vossgraves/ArchiveTune: no blanket upfront token mint — tokens
-        // are minted lazily per request family (metadata below, stream clients in
-        // the loop) and only for clients that actually use web PO tokens.
+
         val sessionId = authState.sessionId
         val authStatus =
             when {
@@ -1277,9 +1148,6 @@ object YTPlayerUtils {
         val failedPlayerClients = linkedSetOf<String>()
         val playerRequestFailures = mutableListOf<Throwable>()
 
-        // Ported from vossgraves/ArchiveTune: metadata always goes through the main
-        // client with login enabled — the WEB_PRIMARY metadata detour this fork
-        // carried is gone; minting happens only when the client uses web PO tokens.
         var metadataClient = MAIN_CLIENT
 
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
@@ -1472,10 +1340,6 @@ object YTPlayerUtils {
                 var isLoginRecovery = isLoginRecoveryResponse(playabilityStatus.status, reason)
                 var isBotDetection = isBotDetectionError(reason)
 
-                // Ported from vossgraves/ArchiveTune: when a logged-in request comes
-                // back LOGIN_REQUIRED, the account context itself was rejected —
-                // strip it (once) and retry the same client anonymously instead of
-                // burning the whole chain on a session YouTube has decided to gate.
                 if (isLoginRecovery && requestUsesCookieAuthentication && !didRetryWithoutRejectedLoginContext) {
                     didRetryWithoutRejectedLoginContext = true
                     authState =
@@ -1790,10 +1654,6 @@ object YTPlayerUtils {
         )
     }
 
-    /**
-     * Simple player response intended to use for metadata only.
-     * Stream URLs of this response might not work so don't use them.
-     */
     suspend fun playerResponseForMetadata(
         videoId: String,
         playlistId: String? = null,
@@ -1832,7 +1692,7 @@ object YTPlayerUtils {
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
-        // optional override from user preference; if non-null, use this instead of ConnectivityManager
+
         networkMetered: Boolean? = null,
         preferM4A: Boolean = false,
     ): PlayerResponse.StreamingData.Format? {
@@ -1878,15 +1738,6 @@ object YTPlayerUtils {
                 AudioQuality.AUTO -> null
             }
 
-        // Ported from vossgraves/ArchiveTune: when preferM4A is true (downloads),
-        // prefer MP4A/AAC over OPUS so the resulting file is .m4a (which jaudiotagger
-        // can tag) instead of .webm (which jaudiotagger cannot read, leaving the
-        // exported file untagged). The codec rank is compared BEFORE bitrate —
-        // YouTube Music typically serves OPUS at 150-160 kbps inside .webm and
-        // MP4A/AAC at 128 kbps inside .m4a, so a bitrate-first ranking would always
-        // pick OPUS for downloads. Playback (preferM4A=false) keeps the original
-        // order (bitrate first, codec second) because ExoPlayer handles both
-        // containers and the highest bitrate should win live playback.
         val resolvedCodecRank: (String?) -> Int = { codec ->
             if (preferM4A) codecRankPreferM4A(codec) else codecRank(codec)
         }

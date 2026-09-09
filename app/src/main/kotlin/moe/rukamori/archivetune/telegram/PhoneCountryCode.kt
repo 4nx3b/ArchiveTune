@@ -34,7 +34,6 @@ private val CALLING_CODES: Map<String, String> =
         "bd" to "880", "np" to "977",
     )
 
-/** Returns the E.164 calling code (digits only, no "+") for the device's country, or "". */
 fun defaultCallingCode(context: Context): String {
     val iso =
         runCatching {
@@ -48,7 +47,6 @@ fun defaultCallingCode(context: Context): String {
     return CALLING_CODES[iso].orEmpty()
 }
 
-/** Combines a country calling code and a national number into an E.164 "+<cc><number>" string. */
 fun composeE164(
     callingCode: String,
     nationalNumber: String,

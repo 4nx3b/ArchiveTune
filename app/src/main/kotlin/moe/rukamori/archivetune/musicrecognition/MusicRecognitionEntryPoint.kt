@@ -44,4 +44,3 @@ fun decodeRecognizedTrack(encodedTrack: String): RecognizedTrack {
     val jsonString = String(decodedBytes, Charsets.UTF_8)
     return Json.decodeFromString(RecognizedTrack.serializer(), jsonString)
 }
-

@@ -155,8 +155,6 @@ fun LyricsShareImageDialog(
     var options by remember { mutableStateOf(LyricsShareImageOptions()) }
     var areAdvancedOptionsVisible by remember { mutableStateOf(false) }
 
-    
-    
     var customTextColor by remember { mutableStateOf<Color?>(null) }
 
     LaunchedEffect(selectedGlassStyle) { customTextColor = null }
@@ -206,8 +204,6 @@ fun LyricsShareImageDialog(
             scope.launch {
                 try {
 
-                    
-                    
                     val image =
                         if (options.vinylMode) {
                             ComposeToImage.createVinylImage(
@@ -313,7 +309,7 @@ private fun LyricsShareStudioDialog(
                 usePlatformDefaultWidth = false,
             ),
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+        KeepStatusBarHiddenInDialog()
         BoxWithConstraints(
             modifier =
                 Modifier
@@ -527,8 +523,6 @@ private fun LyricsShareHeader(
                 .orEmpty()
         }
 
-    
-
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -694,11 +688,6 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            
-
-            
-
-            
             Row(
                 modifier =
                     Modifier
@@ -751,11 +740,6 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            
-
-            
-
-            
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -798,11 +782,6 @@ private fun ControlsSection(
                         valueRange = 0.6f..1.6f,
                     )
 
-                    
-
-                    
-
-                    
                     Row(
                         modifier =
                             Modifier
@@ -837,7 +816,6 @@ private fun ControlsSection(
                 }
             } else {
 
-                
                 TextButton(
                     onClick = onShowAdvancedOptions,
                     modifier =
@@ -992,7 +970,6 @@ private fun LyricsStyleOption(
         label = "lyricsStyleContainer",
     )
 
-    
     Surface(
         modifier =
             modifier
@@ -1084,7 +1061,7 @@ private fun ActionsSection(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    
+
     val actionModifier = Modifier.height(48.dp)
     val contentPadding =
         Modifier.padding(
@@ -1225,8 +1202,6 @@ private fun LyricsTextColorSwatch(
         animationSpec = motionScheme.defaultEffectsSpec(),
         label = "lyricsTextSwatchScale",
     )
-
-    
 
     Box(
         modifier =

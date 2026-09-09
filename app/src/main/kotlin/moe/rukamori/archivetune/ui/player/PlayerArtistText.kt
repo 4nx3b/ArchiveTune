@@ -31,19 +31,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.models.MediaMetadata
 
-/**
- * Renders a comma-separated artist line where **each artist name is individually tappable**.
- *
- * This is a generic, single-purpose leaf primitive (think "a smarter Text") — it owns the only
- * tricky bit of the artist line: mapping a tap position back to the artist span underneath it.
- * It carries no style opinions of its own, so every player style can reuse it without this file
- * ever needing changes when a new style is added.
- *
- * Note on marquee: callers typically apply [androidx.compose.foundation.basicMarquee] via
- * [modifier]. Hit-testing uses the static [TextLayoutResult], so a tap landing during the marquee
- * scroll resolves against the un-scrolled layout. This matches the pre-existing behavior of the
- * classic player and is acceptable for the short, rarely-scrolling artist line.
- */
 @Composable
 fun ClickableArtists(
     artists: List<MediaMetadata.Artist>,
@@ -68,11 +55,6 @@ fun ClickableArtists(
             }
         }
 
-    // Shared layout state: also drives tap detection. Fade lives on the BOX
-    // viewport, not the Text, so the gradient stays fixed at the box edges while
-    // the marquee scrolls underneath. Fade shows ONLY while actually scrolling:
-    // basicMarquee measures its child with unbounded width so hasVisualOverflow
-    // never fires — compare laid-out text width vs the box (viewport) width.
     val layoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
     val layoutResult = layoutState.value
     val viewportWidth = remember { mutableStateOf(0) }

@@ -7,36 +7,15 @@
 
 package moe.rukamori.archivetune.ui.player
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.text.TextLayoutResult
-import moe.rukamori.archivetune.constants.PlayerDesignStyle
-import moe.rukamori.archivetune.ui.player.PlayerFadeConfig
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -46,33 +25,23 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -83,27 +52,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.animateFloatAsState
-import moe.rukamori.archivetune.ui.component.LocalMenuState
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
@@ -114,9 +73,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.MaterialShapes
@@ -124,46 +81,23 @@ import kotlin.math.abs
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.Player.STATE_ENDED
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import me.saket.squiggles.SquigglySlider
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
-import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
-import moe.rukamori.archivetune.constants.PlayerHorizontalPadding
-import moe.rukamori.archivetune.constants.SliderStyle
-import moe.rukamori.archivetune.db.entities.FormatEntity
-import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
-import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
-import moe.rukamori.archivetune.ui.component.MenuState
-import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
-import moe.rukamori.archivetune.ui.component.ResizableIconButton
-import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
-import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
-import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -258,15 +192,11 @@ fun V10PlayerContent(
     val liked = currentSong?.song?.liked == true
     val onToggleLike = playerConnection::toggleLike
 
-    // The two-tone contract: field + accent, nothing else.
-    // textBackgroundColor = accent (text/icon color), textButtonColor = field (fill color)
     val accent = textBackgroundColor
     val field = textButtonColor
 
-    // ========== MAIN LAYOUT (EditorialNowPlayingView) ==========
     Column(modifier = modifier.fillMaxSize()) {
 
-        // ========== TOP BAR (No statusBarsPadding to give breathing space/hide status bar) ==========
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -342,7 +272,6 @@ fun V10PlayerContent(
             }
         }
 
-        // ========== DIE-CUT ART ==========
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -363,7 +292,6 @@ fun V10PlayerContent(
             )
         }
 
-        // ========== HEADLINE ==========
         val title = mediaMetadata.title
         val headlineBase = when {
             title.length <= 12 -> MaterialTheme.typography.displayLarge
@@ -430,13 +358,12 @@ fun V10PlayerContent(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ========== CONTROL CLUSTER (asymmetric bento) ==========
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
         ) {
-            // Row 1: word pill + next circle
+
             val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
             Row(
                 modifier = Modifier
@@ -496,7 +423,6 @@ fun V10PlayerContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Row 2: previous circle + progress line with times
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -582,7 +508,6 @@ fun V10PlayerContent(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // ========== CHIPS ROW ==========
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -595,7 +520,7 @@ fun V10PlayerContent(
                             }
                         }
                     },
-                horizontalArrangement = Arrangement.SpaceAround // Spread the buttons wider apart
+                horizontalArrangement = Arrangement.SpaceAround
             ) {
                 EditorialChip(
                     checked = liked,
@@ -655,8 +580,6 @@ fun V10PlayerContent(
         )
     }
 }
-
-// ========== HELPERS ==========
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -727,8 +650,7 @@ private fun EditorialDieCutArt(
         val (enableHapticFeedback) = rememberPreference(moe.rukamori.archivetune.constants.EnableHapticFeedbackKey, true)
         val coroutineScope = rememberCoroutineScope()
 
-        // Visual feedback variables
-        var skipIndicator by remember { mutableStateOf<String?>(null) } // "prev", "next", or "play_pause"
+        var skipIndicator by remember { mutableStateOf<String?>(null) }
         val skipIndicatorAlpha = remember { Animatable(0f) }
 
         Box(

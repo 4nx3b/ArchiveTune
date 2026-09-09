@@ -174,11 +174,11 @@ fun PreferenceEntry(
 ) {
     val inGroup = LocalPreferenceInGroup.current
     val groupPosition = LocalPreferenceGroupPosition.current
-    val preferenceIconShape = rememberPreferenceIconShape()
     val preferenceItemShape =
         remember(groupPosition) {
             preferenceItemShapeForPosition(groupPosition)
         }
+    val preferenceIconShape = rememberPreferenceIconShape()
     val resolvedShape = shape ?: preferenceItemShape
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -468,7 +468,7 @@ private fun <T> PreferenceSelectionBottomSheet(
             )
         },
     ) {
-        KeepStatusBarHiddenInDialog() // status bar stays hidden while this sheet window is focused
+        KeepStatusBarHiddenInDialog()
         Column(
             modifier =
                 Modifier
@@ -1001,13 +1001,6 @@ fun NumberPickerPreference(
         mutableStateOf(false)
     }
 
-    // KEY the remember on `value` (the persisted value) so that opening the
-    // dialog always starts the slider at the persisted value, and so that
-    // recompositions triggered while the dialog is open (e.g. from a parent
-    // recomposing on drag-tick) do NOT reset `sliderValue` back to the
-    // initial value of 1. This mirrors the fix already applied to
-    // `SliderPreference` (Preference.kt:771) when HistoryDuration migrated
-    // Float→Int, and was simply never applied here.
     var sliderValue by remember(value) {
         mutableFloatStateOf(value.toFloat())
     }
@@ -1045,12 +1038,6 @@ fun NumberPickerPreference(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Read the slider state ONCE per dialog open (keyed on
-                    // `value`), then never overwrite `pickerSliderState.value`
-                    // from `sliderValue` again on subsequent recompositions —
-                    // doing so caused the slider to snap back to 1 mid-drag
-                    // because the recomposition ran before `sliderValue` was
-                    // committed by the gesture handler.
                     val pickerSliderState =
                         rememberSliderState(
                             value = sliderValue,

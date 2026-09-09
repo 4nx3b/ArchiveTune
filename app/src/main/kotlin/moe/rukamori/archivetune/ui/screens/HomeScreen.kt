@@ -39,6 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import moe.rukamori.archivetune.playback.queues.Queue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -73,7 +76,6 @@ import dev.chrisbanes.haze.hazeSource
 
 private val HomeFeedMaxWidth = 1_200.dp
 
-/** Gap between the end of one shelf and the header of the next (BitChord: 26dp). */
 private val HomeSectionSpacing = 26.dp
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -84,13 +86,24 @@ fun HomeScreen(
     listState: LazyListState? = null,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val playerConnection = LocalPlayerConnection.current ?: return
+    val playerConnection = LocalPlayerConnection.current
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
 
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
-    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val isPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value ?: false
+    val mediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    var pendingQueue by remember { mutableStateOf<Queue?>(null) }
+    val onPlayQueue: (Queue) -> Unit = { queue ->
+        if (playerConnection == null) pendingQueue = queue else playerConnection.playQueue(queue)
+    }
+    LaunchedEffect(playerConnection, pendingQueue) {
+        val connection = playerConnection ?: return@LaunchedEffect
+        val queue = pendingQueue ?: return@LaunchedEffect
+        pendingQueue = null
+        connection.playQueue(queue)
+    }
+    androidx.activity.compose.ReportDrawnWhen { screenState !is HomeScreenState.Loading }
 
     val lazyListState = listState ?: rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -137,14 +150,6 @@ fun HomeScreen(
         }
     }
 
-    // Attach the shell's floating-header connection inside this screen (Step 2b) so
-    // Home's scroll/fling writes Home's own header state and can't leak into another
-    // route's header. Bubbling reaches this ancestor Box before any shell connection.
-    //
-    // The same Box is the haze source for the BitChord-style progressive top-fade
-    // blur the shell renders over the Home route (see LocalHomeHazeState): it covers
-    // the full window area including the strip under the pinned top bar, which is
-    // exactly what the blur samples.
     val homeHazeState = LocalHomeHazeState.current
     Box(
         modifier =
@@ -159,19 +164,11 @@ fun HomeScreen(
                     },
                 ),
     ) {
-        // ── Muzo atmospheric backdrop (2026-09-04 redesign) ──
-        // The deep, softly-lit background the reference's glass cards float
-        // on: a near-black base with violet/teal/blue radial glows, drawn in
-        // a single cached pass. Sits behind every home state (skeleton,
-        // panes, feed) and inside the haze source so the pinned top bar's
-        // progressive blur samples it too.
+
         HomeAtmosphereBackground()
         when (val state = screenState) {
             HomeScreenState.Loading -> {
-                // BitChord behaviour (2026-09-03 redesign): the first page of shelves
-                // is stood in for by shimmer skeletons laid out to the real metrics,
-                // rather than a centered spinner that throws the layout away and
-                // snaps everything down when the data lands.
+
                 HomeSkeletonFeed()
             }
 
@@ -200,6 +197,7 @@ fun HomeScreen(
                     isPlaying = isPlaying,
                     navController = navController,
                     playerConnection = playerConnection,
+                    onPlayQueue = onPlayQueue,
                     menuState = menuState,
                     haptic = haptic,
                     scope = scope,
@@ -273,7 +271,8 @@ private fun HomeContent(
     mediaMetadata: MediaMetadata?,
     isPlaying: Boolean,
     navController: NavController,
-    playerConnection: PlayerConnection,
+    playerConnection: PlayerConnection?,
+    onPlayQueue: (Queue) -> Unit,
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
@@ -286,20 +285,7 @@ private fun HomeContent(
             .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
             ?.remoteQuickPicks
     Box(modifier = modifier.fillMaxSize()) {
-        // ── Tonal backdrop gradient (fade effect) removed ───────────────────
-        // Per user request (2026-08-28): "Remove the home liquid glass buttons
-        // and fade effect". The 430dp verticalGradient that lived here (fed by
-        // `uiState.showTonalBackdrop`) is the "fade effect" being removed —
-        // the home page now sits on a flat surface colour so the hero cards
-        // and section headers are the only visual rhythm at the top of the
-        // screen, matching the rest of the redesigned pages.
-        //
-        // ── BitChord pull-to-refresh (2026-09-03 redesign) ──────────────────
-        // The usual circular puck is suppressed; the drag feedback is the
-        // loader line along the bottom edge of the top bar instead (rendered
-        // as an overlay below, at the bar's bottom edge = the content's top
-        // inset). It fills left-to-right as the pull approaches the threshold,
-        // then sweeps indefinitely once the refresh is away.
+
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
@@ -310,19 +296,6 @@ private fun HomeContent(
         ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
 
-                // Partition remote sections into Live-performance and other.
-                // Hoisted outside the LazyColumn content lambda (which is NOT a
-                // @Composable scope) so `remember` is valid here. Without this,
-                // the two `.filter` calls would allocate fresh lists on every
-                // recomposition of HomeContent even when the sections hadn't
-                // changed — a measurable contributor to home-screen jank.
-                //
-                // Sections whose items were all filtered out (Hide Videos,
-                // Hide Explicit, blocked artists/songs, the AI-content filter)
-                // are dropped ENTIRELY here — header included (user request
-                // 2026-09-04: "There's some sections headers that stay on the
-                // home page even when there's nothing in them. If any section
-                // is empty it should get completely hidden").
                 val allRemoteSections = uiState.homePage?.sections.orEmpty()
                 val (livePerformanceSections, otherRemoteSections) =
                     remember(allRemoteSections) {
@@ -339,15 +312,6 @@ private fun HomeContent(
                         live to other
                     }
 
-                // ── Catalogue switch (2026-09-04) ──
-                // Hoisted OUT of the LazyColumn scope (LazyListScope is not
-                // a composable scope, so the preference read has to happen
-                // here). The YouTube ⇄ Spotify
-                // home switcher no longer renders on the page by default
-                // (user request: "remove the switch text between youtube and
-                // Spotify catalogue on the home page"). It comes back only
-                // when the user turns on "Enable Catalogue switch" in
-                // Settings → Content.
                 val (homeCatalogueSwitchEnabled, _) =
                     rememberPreference(HomeCatalogueSwitchKey, defaultValue = false)
 
@@ -360,11 +324,7 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
-                    // ── Big in-list page title (BitChord displayLarge) ──────────
-                    // The greeting owns the page title at rest; once the list
-                    // scrolls, the shell's top-bar title fades in over the blur
-                    // (BitChord's Apple Music behaviour — the two never fight
-                    // because the bar's title only exists while scrolled).
+
                     item(
                         key = "home_greeting_title",
                         contentType = "greeting_title",
@@ -375,45 +335,12 @@ private fun HomeContent(
                         )
                     }
 
-                    // ── Catalogue switch (2026-09-04, revised) ──
-                    // The preference itself is read above the LazyColumn
-                    // (see homeCatalogueSwitchEnabled); this is only the
-                    // placement decision. Only renders once there is a
-                    // Spotify session to switch to; see HomeSourceSwitcher.
-                    // Sits DIRECTLY below the "Listen to Your Favourite
-                    // Music" welcome headline (user request 2026-09-04:
-                    // "when I turn on Catalogue switch the switch pills
-                    // should appear below the listen to your favourite music
-                    // text"), above the Jump Back In hero.
                     if (homeCatalogueSwitchEnabled) {
                         item(
                             key = "home_source_switcher",
                             contentType = "source_switcher",
                         ) {
                             HomeSourceSwitcher(modifier = Modifier.animateItem())
-                        }
-                    }
-
-                    // ── Jump back in (moved below the catalogue switch) ──
-                    // Sits directly below the welcome headline / the catalogue
-                    // switch pills (2026-09-04). Skipped entirely if the user
-                    // has no listening history yet (e.g. fresh install).
-                    // PERSISTENT — renders in both full and minimal modes.
-                    if (uiState.heroPicks.isNotEmpty()) {
-                        item(
-                            key = "home_jump_back_in",
-                            contentType = "jump_back_in",
-                        ) {
-                            JumpBackInHeroSection(
-                                recentlyPlayed = uiState.heroPicks,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
                         }
                     }
 
@@ -462,8 +389,27 @@ private fun HomeContent(
                     // Uses `heroPicks` (3 random songs from listening-preference
                     // based quickPicks) instead of the last-played 3, so the hero
                     // rotates fresh picks each visit. Mirrors the Apple Music /
-                    // (Moved to the top of the feed, directly below the welcome
-                    // header — see the item above.)
+                    // Muzo home hero. Skipped entirely if the user has no
+                    // listening history yet (e.g. fresh install). PERSISTENT —
+                    // renders in both full and minimal modes.
+                    if (uiState.heroPicks.isNotEmpty()) {
+                        item(
+                            key = "home_jump_back_in",
+                            contentType = "jump_back_in",
+                        ) {
+                            JumpBackInHeroSection(
+                                recentlyPlayed = uiState.heroPicks,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
 
                     if (!minimalMode && uiState.showCategoryChips) {
                         item(
@@ -504,6 +450,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -511,20 +458,9 @@ private fun HomeContent(
                                 )
                             }
                         }
-                        // Note: the local "Quick Picks" shelf (driven by
-                        // `uiState.quickPicks` and rendered by upstream's
-                        // `QuickPicksSection` composable) was intentionally
-                        // removed from this fork in commit 9bf3c6bd2 in favour
-                        // of the "Jump back in" hero (which is built from the
-                        // same listening-preference-based picks) plus the
-                        // remote YouTube Music "Quick picks" shelf above.
-                        // Restoring upstream's `QuickPicksSection` would
-                        // require porting back the composable and its
-                        // carousel dependencies — out of scope for this fix.
+
                     }
 
-                    // "Recently Played" — horizontal square-card row with a
-                    // clock-icon header. Renders in both full and minimal modes.
                     if (uiState.recentlyPlayed.size > 1) {
                         sectionSpacer("recently_played")
                         item(
@@ -549,6 +485,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
@@ -556,12 +493,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // In FULL mode, Speed Dial sits above Keep Listening (matches
-                    // upstream rukamori/ArchiveTune order). In MINIMAL mode, it is
-                    // relocated to sit directly below Keep Listening — the user
-                    // explicitly requested Speed Dial stay visible in minimal mode,
-                    // placed right under Keep Listening so they keep one-tap access
-                    // to their pinned items without re-enabling the full feed.
                     if (!minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial")
                         item(
@@ -586,6 +517,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -594,7 +526,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // Keep Listening — renders in both full and minimal modes.
                     if (uiState.keepListening.isNotEmpty()) {
                         sectionSpacer("keep_listening")
                         item(
@@ -619,6 +550,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -627,10 +559,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // MINIMAL-mode-only Speed Dial placement: directly below
-                    // Keep Listening. Uses distinct item keys (`_minimal`
-                    // suffix) so LazyColumn doesn't try to reuse the full-mode
-                    // Speed Dial items when the toggle flips.
                     if (minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial_minimal")
                         item(
@@ -655,6 +583,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -663,11 +592,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // Live Performances — extracted from the remote homePage
-                    // sections and rendered as a dedicated block IMMEDIATELY
-                    // after Speed Dial in BOTH modes. This guarantees Live
-                    // Performances always stays below Speed Dial whether
-                    // Minimal Mode is on or off (user-requested invariant).
                     livePerformanceSections.forEachIndexed { index, section ->
                         val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
                         sectionSpacer("live_performances_$sectionKey")
@@ -691,6 +615,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 scope = scope,
@@ -716,7 +641,6 @@ private fun HomeContent(
                                     mediaMetadata = mediaMetadata,
                                     isPlaying = isPlaying,
                                     navController = navController,
-                                    playerConnection = playerConnection,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -749,6 +673,7 @@ private fun HomeContent(
                                 isPlaying = isPlaying,
                                 navController = navController,
                                 playerConnection = playerConnection,
+                                onPlayQueue = onPlayQueue,
                                 menuState = menuState,
                                 haptic = haptic,
                                 modifier = Modifier.animateItem(),
@@ -778,7 +703,6 @@ private fun HomeContent(
                                     mediaMetadata = mediaMetadata,
                                     isPlaying = isPlaying,
                                     navController = navController,
-                                    playerConnection = playerConnection,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -788,16 +712,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // Other Remote homePage sections (non-Live-performance).
-                    //
-                    //  * Minimal mode: HIDDEN — Live performances are already
-                    //    rendered above (right after Speed Dial). All other
-                    //    remote shelves are filtered out in minimal mode.
-                    //
-                    //  * Full mode: render ALL non-Live remote shelves (e.g.
-                    //    "Fresh finds", "Old favourites", and any other
-                    //    algorithmic shelves YouTube Music returns) — matches
-                    //    upstream rukamori/ArchiveTune.
                     if (!minimalMode) {
                         otherRemoteSections.forEachIndexed { index, section ->
                             val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
@@ -822,6 +736,7 @@ private fun HomeContent(
                                     isPlaying = isPlaying,
                                     navController = navController,
                                     playerConnection = playerConnection,
+                                    onPlayQueue = onPlayQueue,
                                     menuState = menuState,
                                     haptic = haptic,
                                     scope = scope,
@@ -831,9 +746,6 @@ private fun HomeContent(
                         }
                     }
 
-                    // BitChord load-more behaviour (2026-09-03): another page of
-                    // shelves is stood in for by a single shelf-shaped skeleton at the
-                    // tail rather than a spinner block.
                     if (uiState.isLoadingMore) {
                         homeFeedMoreSkeleton()
                     }
@@ -841,9 +753,6 @@ private fun HomeContent(
         }
         }
 
-        // The loader line at the bottom edge of the pinned top bar (BitChord
-        // RefreshLine). The home content's top inset is exactly the bar's height,
-        // so offsetting the line by that lands it on the bar's bottom edge.
         HomePullRefreshLine(
             refreshing = uiState.isRefreshing,
             distanceFraction = { pullState.distanceFraction },
@@ -864,16 +773,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sectionSpacer(key: St
     }
 }
 
-/**
- * The home feed while the first page is still loading (BitChord behaviour,
- * 2026-09-03): the greeting is stood in for by a title-shaped block and the
- * shelves by skeleton cards laid out to the real metrics, so nothing jumps
- * when the data lands.
- */
 @Composable
-private fun HomeSkeletonFeed(modifier: Modifier = Modifier) {
+internal fun HomeSkeletonFeed(
+    modifier: Modifier = Modifier,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+) {
     LazyColumn(
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        contentPadding = contentPadding,
         modifier =
             modifier
                 .widthIn(max = HomeFeedMaxWidth)

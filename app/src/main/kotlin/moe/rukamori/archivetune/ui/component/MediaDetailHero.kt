@@ -9,11 +9,9 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -44,7 +42,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -65,6 +62,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
@@ -91,15 +90,38 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
-    // When false, the canvas TextureView is not rendered (the ExoPlayer is
-    // kept alive but paused). Forwarded to CanvasArtworkPlayer.visible.
-    // AlbumScreen passes `!lyricsFullScreen` so the canvas's Modifier.blur(72.dp)
-    // RenderEffect doesn't keep re-applying every frame while the full-screen
-    // lyrics overlay is open on top — freeing the GPU frame budget for the
-    // 60 Hz karaoke lyrics sweep.
+
     canvasVisible: Boolean = true,
     useBlurredPlayButton: Boolean = false,
 ) {
+    // The Apple Music Experience swaps every one of these headers at once. Seven screens call
+    // MediaDetailHero — playlists local and online, albums, top/auto/cache playlists, Spotify
+    // playlists — so the switch belongs here rather than repeated at each of them, and a screen
+    // added later gets it for free.
+    //
+    // The artwork backdrop is what goes: the iOS-style header is a large left-aligned title over
+    // the plain page surface with pink accent pills, so the thumbnail, canvas video, description
+    // and metadata block below it have nowhere to sit and are deliberately dropped rather than
+    // wedged in.
+    if (rememberAppleMusicExperience()) {
+        AppleMusicPlaylistHero(
+            sectionLabel = null,
+            title = title,
+            subtitle = metadata ?: subtitle?.text,
+            onPlay = onPlay,
+            onShuffle = onShuffle,
+            onPrimaryTrailing = onToggleAdd,
+            primaryTrailingIcon = if (isAdded) R.drawable.done else R.drawable.add,
+            primaryTrailingDescription = if (isAdded) removeContentDescription else addContentDescription,
+            additionalActions =
+                additionalPrimaryActions?.let { actions ->
+                    { Row(verticalAlignment = Alignment.CenterVertically) { actions(heroActionAccent()) } }
+                },
+            modifier = modifier.padding(top = systemBarsTopPadding),
+        )
+        return
+    }
+
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
     val heroContentColor =
@@ -187,9 +209,7 @@ public fun MediaDetailHero(
                     ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Title — use a tighter lineHeight than headlineLarge's default
-            // 40sp to avoid the "weird spacing" the user reported when a
-            // playlist title wraps to two lines.
+
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge.copy(lineHeight = 36.sp),
@@ -329,9 +349,7 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    // The hero artwork URL. Used for the main hero artwork above. (Previously
-    // also used as the backdrop source for the liquid-glass play button — that
-    // sampling has been removed; see useBlurredPlayButton below.)
+
     thumbnailUrl: String? = null,
     useBlurredPlayButton: Boolean = false,
 ) {
@@ -402,11 +420,7 @@ public fun MediaDetailPrimaryActions(
                 }
 
                 onPlay?.let { play ->
-                    // Play button — always uses a solid color pill. The liquid-glass layered
-                    // Box variant (smoked-glass veil + top-highlight gradient) was REMOVED at
-                    // the user's request: "Remove the liquid glass effect from all play buttons
-                    // in playlists or anywhere else". The same solid-color path now runs whether
-                    // or not a LiquidGlassBackdrop is active upstream.
+
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
                     val playShape = RoundedCornerShape(percent = 50)
                     val playPadding =
@@ -654,14 +668,9 @@ private val MediaDetailHeroMinHeight = 560.dp
 private val MediaDetailHorizontalPadding = 24.dp
 private val MediaDetailContentMaxWidth = 720.dp
 private val MediaDetailActionSpacing = 12.dp
-// Reduced from 20.dp — the previous fade was aggressive enough to make the
-// rightmost action (Radio on the artist page) look partially cut off even
-// when it was technically within the viewport. 8.dp preserves the visual
-// cue that more actions are scrollable without obscuring the edge icon.
+
 private val MediaDetailActionEdgeFade = 8.dp
-// Horizontal padding inside the scrollable Row so the first and last actions
-// have visible margin from the screen edge. Without this the balanced layout
-// can place the rightmost action flush against the viewport boundary.
+
 private val MediaDetailActionHorizontalPadding = 12.dp
 private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp
@@ -671,3 +680,23 @@ private enum class MediaDetailActionLayoutId {
     Play,
     ToggleAdd,
 }
+
+/**
+ * True when the Apple Music Experience is on.
+ *
+ * A read helper rather than the raw preference so the call sites — this file today, the Appearance
+ * toggle, anything that grows one later — cannot disagree about the key or the default.
+ */
+@Composable
+fun rememberAppleMusicExperience(): Boolean {
+    val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
+    return enabled
+}
+
+/**
+ * The colour [MediaDetailHero] hands to its `additionalPrimaryActions` slot under the Apple Music
+ * Experience. The normal hero derives one from the artwork backdrop it is drawn over; the iOS
+ * header has no backdrop, so the actions take the same pink accent as the pills beside them.
+ */
+@Composable
+private fun heroActionAccent(): Color = AppleMusicStyleAccentColor

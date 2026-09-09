@@ -67,37 +67,14 @@ object TidalAudioProvider {
     private const val MIN_MATCH_SCORE = 90
     private const val ARTWORK_MAX_SCORE = 220
 
-    // How long a failing instance is skipped before it is retried again.
-    private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L // transient errors (HTTP 5xx, timeouts)
-    private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L // unreachable host / DNS failure
+    private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L
+    private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L
     private const val STRONG_MATCH_SCORE = 150
     private const val REJECT_SCORE = -1_000_000
     private val AMAZON_DATE = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'", Locale.US)
-    // No pre-built/bundled public instances are shipped anymore. The user must add their own
-    // HiFi/QQDL instance(s) in Tidal settings; if they add none (or remove them all) the public
-    // streaming path simply stays empty and playback falls through to the next audio source.
-    // This list is intentionally empty so nothing is ever baked into the app or silently used.
+
     private val DEFAULT_DOWNLOAD_API_ENDPOINTS = emptyList<TidalDownloadEndpoint>()
 
-    // Nor are any public HiFi/QQDL hostnames seeded into the startup health scan. A
-    // SEED_INSTANCE_CANDIDATES list used to hold ten well-known monochrome.tf / qqdl.site hosts
-    // so the scan had something to probe when the Source Pool discovery feed came back empty. In
-    // practice they were all dead — a real scan resolved them as two PREVIEW_ONLY and eight
-    // UNREACHABLE — so they bought nothing, cost ~10s of probing on every launch, and made an
-    // install that never asked for those hosts look like it was "fetching instances from
-    // monochrome". Instances now come only from the user's own Tidal settings entries and the
-    // Source Pool discovery feed ($SOURCE_PROVIDER_URL/api/discovery/tidal).
-
-    // Live uptime feed used by the official monochrome.tf frontend to discover currently-healthy
-    // instances. Best-effort only: it rotates and may be unreachable, so discovery is allowed to
-    // fail and callers keep the manual/default list. The payload is a JSON object of the form
-    // { "api": [{ "url", "version" }, ...], "streaming": [...], "qobuz": [...] }.
-    // (tidal-uptime.geeked.wtf now NXDOMAINs; left empty until a live feed URL is confirmed.)
-    //
-    // The community Source Pool website (configured via BuildConfig.SOURCE_PROVIDER_URL) exposes a
-    // health-checked feed in this exact { streaming, api } shape at /api/discovery/tidal. When the
-    // URL is set at build time, it becomes the discovery source so the app auto-pulls verified
-    // instances contributed by the community. When blank, discovery stays disabled.
     private val INSTANCE_DISCOVERY_SOURCES: List<String> =
         BuildConfig.SOURCE_PROVIDER_URL
             .trim()
@@ -106,32 +83,18 @@ object TidalAudioProvider {
             ?.let { listOf("$it/api/discovery/tidal") }
             ?: emptyList()
 
-    /**
-     * User-configured instance list (base URLs), applied via [setInstances]. When empty there are
-     * no public instances at all — the provider does NOT fall back to any bundled defaults, so
-     * clearing the list in settings truly disables the public streaming path.
-     */
     @Volatile
     private var customEndpoints: List<TidalDownloadEndpoint> = emptyList()
 
     private val activeEndpoints: List<TidalDownloadEndpoint>
         get() = customEndpoints
 
-    /**
-     * Base URLs of the built-in default instances. Now always empty — no instances are bundled —
-     * kept so the settings UI "reset" action still compiles/behaves (reset == clear).
-     */
     val defaultInstanceUrls: List<String>
         get() = DEFAULT_DOWNLOAD_API_ENDPOINTS.map { it.baseUrl }
 
-    /** Base URLs currently in effect (the user's configured list, or empty). */
     val activeInstanceUrls: List<String>
         get() = activeEndpoints.map { it.baseUrl }
 
-    /**
-     * Replaces the active instance list. Invalid or duplicate URLs are dropped. An empty result
-     * stays empty — the provider never reverts to bundled defaults.
-     */
     fun setInstances(baseUrls: List<String>) {
         val seen = LinkedHashSet<String>()
         customEndpoints =
@@ -142,7 +105,6 @@ object TidalAudioProvider {
             }
     }
 
-    /** Normalizes an instance URL to `scheme://host[:port]` form, or null if it is not valid. */
     fun normalizeInstanceUrl(raw: String): String? {
         val trimmed = raw.trim().trimEnd('/')
         if (trimmed.isEmpty()) return null
@@ -155,11 +117,6 @@ object TidalAudioProvider {
     private fun instanceLabel(baseUrl: String): String =
         baseUrl.toHttpUrlOrNull()?.host ?: baseUrl
 
-    /**
-     * Lightweight reachability probe for a single instance. Returns the round-trip latency in
-     * milliseconds when the instance responds, or null when it is unreachable. Runs a blocking
-     * network call, so callers must invoke it off the main thread.
-     */
     fun checkInstance(baseUrl: String): Long? {
         val normalized = normalizeInstanceUrl(baseUrl) ?: return null
         val request =
@@ -177,34 +134,25 @@ object TidalAudioProvider {
         }.getOrNull()
     }
 
-    /** Result of a deep instance health probe (see [verifyInstance]). */
     enum class InstanceHealth {
-        /** Reachable and served a FULL (non-preview) lossless manifest for the probe track. */
+
         HEALTHY,
 
-        /** Reachable, but its backing account is unsubscribed so it only serves 30s previews. */
         PREVIEW_ONLY,
 
-        /** Unreachable (DNS/timeout/5xx) or did not return a usable response. */
         UNREACHABLE,
     }
 
-    /** The last Tidal track id that resolved successfully, usable as a health-probe track. */
     @Volatile
     var lastResolvedTrackId: String? = null
         private set
 
-    /**
-     * Seeds the health-probe track from persisted storage on startup, without overwriting a track
-     * that has already resolved this session.
-     */
     fun seedProbeTrack(trackId: String) {
         if (lastResolvedTrackId.isNullOrBlank() && trackId.isNotBlank()) {
             lastResolvedTrackId = trackId
         }
     }
 
-    /** Finds a real catalog track for a first-run health check when no successful stream is cached. */
     fun findHealthProbeTrackId(): String? =
         if (activeEndpoints.isEmpty()) {
             null
@@ -217,19 +165,6 @@ object TidalAudioProvider {
             }.getOrNull()
         }
 
-    /**
-     * Deep health probe for a single instance. Unlike [checkInstance] (reachability only), this
-     * resolves an actual [probeTrackId] manifest and inspects whether the instance serves a FULL
-     * track or only a PREVIEW (unsubscribed backing account). When [probeTrackId] is blank it
-     * degrades to a reachability check (HEALTHY/UNREACHABLE). Runs blocking network I/O, so callers
-     * must invoke it off the main thread.
-     *
-     * Both API dialects are probed, newest first — `/trackManifests/` (HiFi-RestAPI 3.x /
-     * Monochrome) and then `/track/` (HiFi-RestAPI 2.x), mirroring the fallback in
-     * [requestDirectFlacFromEndpoint]. Probing only the newer path classified every 2.x instance as
-     * UNREACHABLE even when it streamed fine, which is what left the instance list permanently at
-     * "0 healthy".
-     */
     fun verifyInstance(
         baseUrl: String,
         probeTrackId: String?,
@@ -247,14 +182,11 @@ object TidalAudioProvider {
         val manifestFormats = qualityString.tidalManifestFormats()
             ?: return probeTrackDialect(normalized, trackId, qualityString)
         val viaManifests = probeTrackManifestsDialect(normalized, trackId, manifestFormats)
-        // Only a hard "this instance doesn't speak that dialect" result is worth a second probe. A
-        // PREVIEW_ONLY answer is authoritative (the backing account has no subscription), so the
-        // older endpoint would report the same thing.
+
         if (viaManifests != InstanceHealth.UNREACHABLE) return viaManifests
         return probeTrackDialect(normalized, trackId, qualityString)
     }
 
-    /** Probes `/trackManifests/` (HiFi-RestAPI 3.x / Monochrome). */
     private fun probeTrackManifestsDialect(
         normalized: String,
         trackId: String,
@@ -295,10 +227,6 @@ object TidalAudioProvider {
         }.getOrElse { InstanceHealth.UNREACHABLE }
     }
 
-    /**
-     * Probes `/track/?id=&quality=` (HiFi-RestAPI 2.x), which returns the base64 manifest inline
-     * under `data.manifest` rather than a manifest document URL.
-     */
     private fun probeTrackDialect(
         normalized: String,
         trackId: String,
@@ -321,8 +249,7 @@ object TidalAudioProvider {
                 if (data.optString("assetPresentation").equals("PREVIEW", ignoreCase = true)) {
                     return@use InstanceHealth.PREVIEW_ONLY
                 }
-                // No inline manifest means the instance answered but cannot actually stream (e.g.
-                // its backing Tidal account is dead and it returns an upstream error payload).
+
                 if (data.stringOrNull("manifest").isNullOrBlank()) {
                     InstanceHealth.UNREACHABLE
                 } else {
@@ -341,11 +268,6 @@ object TidalAudioProvider {
             .header("User-Agent", DOWNLOAD_USER_AGENT)
             .build()
 
-    /**
-     * Feeds an externally-obtained health result (e.g. from the startup scan) into the same runtime
-     * cooldown map the resolver uses, so verified-healthy instances are tried first and
-     * dead/preview-only ones are skipped without re-probing them on the next play.
-     */
     fun applyHealthResult(
         baseUrl: String,
         healthy: Boolean,
@@ -354,12 +276,6 @@ object TidalAudioProvider {
         if (healthy) markInstanceHealthy(normalized) else markInstanceFailed(normalized, hardFailure = true)
     }
 
-    /**
-     * Best-effort auto-discovery of additional public instances from community sources. Returns
-     * the list of newly discovered, valid base URLs (may be empty). Never throws; on failure it
-     * simply returns an empty list so the caller can keep the manual list. Runs blocking network
-     * calls, so invoke it off the main thread.
-     */
     fun discoverInstances(): List<String> {
         val discovered = LinkedHashSet<String>()
         for (source in INSTANCE_DISCOVERY_SOURCES) {
@@ -369,16 +285,14 @@ object TidalAudioProvider {
                         .Builder()
                         .url(source)
                         .header("User-Agent", DOWNLOAD_USER_AGENT)
-                // Present the per-app read key when the pool has gating enabled.
+
                 if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
                     builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
                 }
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        // Make 401 visible: the pool rejects unauthenticated reads with HTTP 401
-                        // and an empty body, which otherwise looks identical to a healthy pool
-                        // with no instances contributed.
+
                         if (response.code == 401) {
                             Timber
                                 .tag("TidalHealth")
@@ -400,24 +314,14 @@ object TidalAudioProvider {
         return discovered.toList()
     }
 
-    /**
-     * Parses a discovery payload. Supports:
-     *  - a JSON object whose values are arrays of URLs, e.g. Monochrome's
-     *    `{ "api": [...], "streaming": [...] }` (streaming instances are preferred);
-     *  - a JSON array of URL strings or objects with a "url"/"host" field;
-     *  - plain newline / whitespace separated URLs.
-     */
     private fun parseDiscoveredInstances(body: String): List<String> {
         val trimmed = body.trim()
         if (trimmed.isEmpty()) return emptyList()
 
-        // JSON object with array-valued fields (Monochrome/tidal-uptime format). "streaming"
-        // instances serve audio and are listed first, then "api". We deliberately ignore "qobuz"
-        // (a different backend) and, like the official frontend, drop dead ".squid.wtf" hosts.
         runCatching {
             val obj = JSONObject(trimmed)
             val result = LinkedHashSet<String>()
-            // Only Tidal-serving categories; qobuz is a separate backend and must not be mixed in.
+
             val keys = listOf("streaming", "instances", "api")
             for (key in keys) {
                 val arr = obj.optJSONArray(key) ?: continue
@@ -427,14 +331,12 @@ object TidalAudioProvider {
             if (filtered.isNotEmpty()) return filtered
         }
 
-        // JSON array of strings or objects with a "url"/"host" field.
         runCatching {
             val result = LinkedHashSet<String>()
             collectStringsFromArray(JSONArray(trimmed), result)
             if (result.isNotEmpty()) return result.toList()
         }
 
-        // Plain newline / whitespace separated URLs.
         return trimmed
             .split('\n', '\r', ' ', ',')
             .map { it.trim() }
@@ -478,7 +380,7 @@ object TidalAudioProvider {
         val expiresAtMs: Long,
         val losslessDowngradedBitrateKbps: Int? = null,
         val isLiveManifest: Boolean = false,
-        /** Title of the matched track, used by the playback layer to gate on title-match accuracy. */
+
         val matchedTitle: String? = null,
         val matchedArtist: String? = null,
         val matchedAlbum: String? = null,
@@ -501,11 +403,6 @@ object TidalAudioProvider {
         val retryAfterMs: Long,
     ) : TidalAudioResolutionException("TIDAL FLAC resolver is rate limited; cooling down for ${retryAfterMs / 1000L}s")
 
-    /**
-     * An instance answered 404 for the requested API dialect (i.e. it does not implement
-     * `/trackManifests/`). Internal signal only: [requestDirectFlacFromEndpoint] catches it and
-     * retries the same instance on the older `/track/` dialect, so it never reaches callers.
-     */
     private class TidalDialectUnsupportedException(message: String) : TidalAudioResolutionException(message)
 
     private data class CachedTrack(
@@ -621,14 +518,12 @@ object TidalAudioProvider {
     private val client =
         OkHttpClient
             .Builder()
-            .dns(TidalDns) // DoH fallback so streaming works on ISPs that DNS-block tidal.com
+            .dns(TidalDns)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .callTimeout(25, TimeUnit.SECONDS)
             .build()
 
-    // Short-timeout client used for instance health checks and discovery so a dead instance
-    // fails fast instead of blocking on the long streaming timeouts above.
     private val healthClient =
         OkHttpClient
             .Builder()
@@ -646,9 +541,6 @@ object TidalAudioProvider {
     @Volatile
     private var resolverRateLimitedUntilMs = 0L
 
-    // Runtime health of each instance (keyed by base URL). When an instance fails during
-    // resolution it is put on a cooldown and skipped while healthy instances remain, so dead
-    // mirrors like a vanished domain do not slow every playback attempt.
     private val instanceCooldownUntilMs = ConcurrentHashMap<String, Long>()
 
     private fun markInstanceHealthy(baseUrl: String) {
@@ -659,7 +551,7 @@ object TidalAudioProvider {
         baseUrl: String,
         hardFailure: Boolean,
     ) {
-        // Unreachable hosts get a longer cooldown than transient 5xx errors.
+
         val cooldownMs = if (hardFailure) INSTANCE_HARD_COOLDOWN_MS else INSTANCE_SOFT_COOLDOWN_MS
         instanceCooldownUntilMs[baseUrl] = System.currentTimeMillis() + cooldownMs
     }
@@ -669,10 +561,6 @@ object TidalAudioProvider {
         now: Long,
     ): Boolean = (instanceCooldownUntilMs[baseUrl] ?: 0L) > now
 
-    /**
-     * Orders endpoints so healthy ones are tried first and instances on cooldown are tried last
-     * (only reached if every instance is currently cooling down).
-     */
     private fun orderedEndpoints(): List<TidalDownloadEndpoint> {
         val now = System.currentTimeMillis()
         return activeEndpoints.sortedBy { if (isInstanceCoolingDown(it.baseUrl, now)) 1 else 0 }
@@ -685,8 +573,7 @@ object TidalAudioProvider {
         preferLiveDash: Boolean = true,
         audioQuality: TidalAudioQuality = TidalAudioQuality.AAC_320,
     ): Resolved {
-        // The public catalog search endpoint is not a playback backend. Avoid a needless network
-        // lookup (and song.link fallback) when no configured/discovered instance can serve audio.
+
         if (activeEndpoints.isEmpty()) {
             throw TidalAudioResolutionException("TIDAL playback has no configured instance")
         }
@@ -768,7 +655,7 @@ object TidalAudioProvider {
                 }
 
                 streamAttempt.getOrNull()?.let { rawResolved ->
-                    // Carry catalog metadata into the cross-provider playback safety gate.
+
                     val resolved =
                         rawResolved.copy(
                             matchedTitle = track.title,
@@ -863,9 +750,7 @@ object TidalAudioProvider {
         findCandidateTracks(query)
             .take(limit.coerceAtLeast(1))
             .map { track ->
-                // Build Tidal cover art URL from albumCoverId.
-                // Tidal's image URL format: https://resources.tidal.com/images/{id}/{w}x{h}.jpg
-                // where {id} is the coverId with hyphens instead of slashes.
+
                 val thumbUrl = track.albumCoverId?.let { coverId ->
                     val normalized = coverId.replace("-", "/")
                     "https://resources.tidal.com/images/$normalized/320x320.jpg"
@@ -881,8 +766,6 @@ object TidalAudioProvider {
                 )
             }
 
-    // region Artwork search (cover art only; shares the audio matching heuristics)
-
     data class ArtworkSearchResult(
         val trackId: String,
         val releaseId: String?,
@@ -890,19 +773,13 @@ object TidalAudioProvider {
         val score: Int,
         val exactIsrc: Boolean,
     ) {
-        /** 0f..1f confidence derived from the content-only match score (quality boosts removed). */
+
         val confidence: Float
             get() =
                 ((score - MIN_MATCH_SCORE).toFloat() / (ARTWORK_MAX_SCORE - MIN_MATCH_SCORE))
                     .coerceIn(0f, 1f)
     }
 
-    /**
-     * Finds Tidal cover art for [query]. Match priority: exact ISRC, then a known Tidal track id,
-     * then normalized artist/album/title search. Only tracks with a usable album cover are
-     * returned; audio-quality boosts are stripped from the score so confidence reflects pure
-     * metadata agreement.
-     */
     fun resolveArtwork(query: Query): ArtworkSearchResult? {
         val wantedIsrc = normalizeIsrc(query.isrc)
         if (wantedIsrc != null) {
@@ -938,24 +815,11 @@ object TidalAudioProvider {
         return best
     }
 
-    /**
-     * Real catalog-search probe for the Settings → Playback → Artwork →
-     * "Canvas Check" diagnostic (2026-09-04, user request: "in the canvas
-     * check there's no tidal option"). Performs the exact search the Tidal
-     * artwork path performs — the user's own HiFi/QQDL instances first,
-     * falling back to the public tidal.com/v1 catalog API — so the reported
-     * state is what Tidal artwork resolution would actually experience
-     * right now.
-     *
-     * Returns null when every endpoint failed at the network level, and the
-     * (possibly empty) result array when the catalog answered.
-     */
     fun probeCatalogSearch(
         term: String,
         exactIsrc: Boolean = false,
     ): JSONArray? = searchTracks(term, exactIsrc)
 
-    /** How many user-configured Tidal download instances are live candidates right now. */
     fun configuredInstanceCount(): Int = orderedEndpoints().size
 
     private fun contentArtworkScore(
@@ -1001,13 +865,6 @@ object TidalAudioProvider {
         return candidates.sortedByDescending { it.score }
     }
 
-    // endregion
-
-    /**
-     * Builds a private URI consumed by [TidalProgressiveDashDataSource]. The manifest remains in the
-     * app cache; only its path is carried in the URI so playback can fetch FLAC media segments lazily
-     * instead of downloading the complete track before ExoPlayer starts.
-     */
     internal fun progressiveDashUri(manifestFile: File): String =
         Uri.Builder()
             .scheme(PROGRESSIVE_DASH_SCHEME)
@@ -1016,15 +873,12 @@ object TidalAudioProvider {
             .build()
             .toString()
 
-    /** Reads the segment list used by the progressive FLAC data source. */
     internal fun progressiveDashSegmentUrls(manifestText: String): List<String> =
         runCatching { extractDashSegmentUrls(manifestText.sanitizeXmlEntities()) }
             .getOrDefault(emptyList())
 
-    /** Converts the fMP4 initialization segment into a normal FLAC header. */
     internal fun progressiveDashFlacMetadata(initBytes: ByteArray): ByteArray = extractFlacMetadataBlocks(initBytes)
 
-    /** Extracts FLAC frames from one fMP4 media segment without buffering the rest of the track. */
     internal fun progressiveDashAudioPayload(segmentBytes: ByteArray): ByteArray =
         java.io.ByteArrayOutputStream(segmentBytes.size).use { output ->
             writeMdatPayloads(segmentBytes, output)
@@ -1324,13 +1178,9 @@ object TidalAudioProvider {
         val errors = mutableListOf<String>()
         var rateLimitCount = 0
         var longestRetryAfterMs = 0L
-        // Healthy instances first; instances on cooldown are only reached if all are down.
+
         val endpoints = orderedEndpoints()
-        
-        // Race all instances concurrently. A successful full-quality result returns immediately;
-        // waiting for every mirror here made one dead endpoint delay playback even when another
-        // mirror had already produced a valid stream. Downgraded AAC results are retained while we
-        // wait for a possible full-quality result from another mirror.
+
         return runBlocking(Dispatchers.IO) {
             supervisorScope {
                 val results = Channel<Pair<TidalDownloadEndpoint, Result<Resolved>>>(endpoints.size.coerceAtLeast(1))
@@ -1398,7 +1248,6 @@ object TidalAudioProvider {
 
                 deferredAacFallback?.let { return@supervisorScope it }
 
-            // All failed; check if rate-limited.
                 if (rateLimitCount == endpoints.size && longestRetryAfterMs > 0L) {
                     resolverRateLimitedUntilMs = System.currentTimeMillis() + longestRetryAfterMs
                     throw TidalRateLimitedException(longestRetryAfterMs)
@@ -1410,19 +1259,6 @@ object TidalAudioProvider {
         }
     }
 
-    /**
-     * Requests a direct stream from one instance, transparently retrying on the older API dialect.
-     *
-     * Public HiFi/QQDL instances come in two flavours:
-     *  - **HiFi-RestAPI 3.x / Monochrome** expose `/trackManifests/`, which returns a manifest
-     *    *document URL* under `data.data.attributes.uri`.
-     *  - **HiFi-RestAPI 2.x** only expose `/track/?id=&quality=`, which returns the base64 manifest
-     *    inline under `data.manifest`.
-     *
-     * The 2.x instances answer `/trackManifests/` with HTTP 404. Before this fallback existed, every
-     * such instance was written off as broken for lossless playback even though `/track/` would have
-     * served the exact same FLAC — which is why perfectly working mirrors reported as unusable.
-     */
     private fun requestDirectFlacFromEndpoint(
         endpoint: TidalDownloadEndpoint,
         isAtmosRequest: Boolean,
@@ -1457,7 +1293,7 @@ object TidalAudioProvider {
             requestDirectFlacFromEndpointDialect(
                 endpoint = endpoint,
                 isAtmosRequest = isAtmosRequest,
-                // null selects the `/track/?id=&quality=` request shape below.
+
                 manifestFormats = null,
                 track = track,
                 quality = quality,
@@ -1481,10 +1317,7 @@ object TidalAudioProvider {
         preferLiveDash: Boolean,
         audioQuality: TidalAudioQuality,
     ): Resolved {
-        // The Monochrome/hifi API is FastAPI with redirect_slashes, so endpoints require a TRAILING
-        // SLASH (`/trackManifests/`, `/track/`). Omitting it yields a 307 that some instances (and
-        // the official api.monochrome.tf) turn into a 404. We append an empty trailing segment to
-        // match the official frontend's request shape exactly.
+
         val url = if (manifestFormats != null) {
             endpoint.baseUrl
                 .toHttpUrl()
@@ -1541,9 +1374,7 @@ object TidalAudioProvider {
             }
             if (!response.isSuccessful) {
                 val detail = "TIDAL ${endpoint.name} HTTP ${response.code}: ${responseBody.take(180)}"
-                // HiFi-RestAPI 2.x instances only implement `/track/`; they answer
-                // `/trackManifests/` with 404. Signal the caller so it retries this same
-                // instance on the older dialect rather than marking it failed.
+
                 if (response.code == 404 && manifestFormats != null) {
                     throw TidalDialectUnsupportedException(detail)
                 }
@@ -1562,9 +1393,7 @@ object TidalAudioProvider {
                     .optJSONObject("data")
                     ?.optJSONObject("attributes")
                     ?: throw TidalAudioResolutionException("TIDAL manifest payload missing attributes")
-                // Unsubscribed/expired instance accounts return a 30s PREVIEW instead of the full
-                // track (trackPresentation=PREVIEW, previewReason=FULL_REQUIRES_SUBSCRIPTION). Reject
-                // it so playback falls through to the next instance/source instead of serving a clip.
+
                 val presentation = attributes.stringOrNull("trackPresentation")
                     ?: attributes.stringOrNull("assetPresentation")
                 if (presentation.equals("PREVIEW", ignoreCase = true)) {
@@ -1629,8 +1458,7 @@ object TidalAudioProvider {
             }
 
             val progressiveDashFile = if (preferLiveDash && manifest.isDash && manifestLooksFlac && cacheDir != null) {
-                // Keep only the manifest for playback; the progressive DataSource fetches FLAC
-                // segments on demand and can start after the init segment arrives.
+
                 writeDashManifestToTempFile(track.trackId, quality, manifest, cacheDir)
             } else {
                 null
@@ -1783,16 +1611,6 @@ object TidalAudioProvider {
         equals("HIGH", ignoreCase = true) ||
             equals("LOW", ignoreCase = true)
 
-    /**
-     * Resolves a directly-playable [DirectStream] from an official-API `playbackinfopostpaywall`
-     * manifest, reusing the same BTS/DASH handling as the public-instance path. This is what makes
-     * the signed-in account path work for lossless/HiRes: Tidal returns a segmented DASH manifest
-     * there (not a BTS direct URL), so playback can use the progressive FLAC data source while
-     * downloads still stitch the segments into a temp file in [cacheDir].
-     *
-     * Returns null if the manifest can't be turned into a playable stream, so the caller can fall
-     * back to the public instances and then YouTube.
-     */
     fun resolveAccountManifest(
         manifestB64: String,
         declaredMimeType: String?,
@@ -1805,7 +1623,7 @@ object TidalAudioProvider {
         runCatching {
             val manifest = parseManifest(manifestB64, declaredMimeType, durationMs)
             if (!manifest.isDash) {
-                // BTS manifest: a single directly-playable URL (AAC, or a single-file FLAC).
+
                 return@runCatching DirectStream(
                     uri = manifest.url,
                     mimeType = manifest.mimeType,
@@ -1815,15 +1633,12 @@ object TidalAudioProvider {
                     source = AudioSourceType.TIDAL,
                 )
             }
-            // Segmented DASH (typical for lossless/HiRes): stitch to a local temp file so ExoPlayer
-            // can play it as a single progressive stream (the DataSpec path can't do multi-segment).
+
             val looksFlac =
                 manifest.mimeType.contains("flac", ignoreCase = true) ||
                     manifest.codecs.contains("flac", ignoreCase = true)
             if (preferLiveDash && looksFlac) {
-                // Do not make playback wait for a complete FLAC download. The progressive data
-                // source writes the FLAC header from the init segment and fetches media segments as
-                // ExoPlayer consumes them. Downloads keep using the full remux below.
+
                 val manifestFile = writeDashManifestToTempFile(trackId, quality, manifest, cacheDir)
                 return@runCatching DirectStream(
                     uri = progressiveDashUri(manifestFile),

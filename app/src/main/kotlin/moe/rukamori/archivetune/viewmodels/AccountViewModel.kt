@@ -34,7 +34,6 @@ class AccountViewModel
         val albums = MutableStateFlow<List<AlbumItem>?>(null)
         val artists = MutableStateFlow<List<ArtistItem>?>(null)
 
-        // Selected content type for chips
         val selectedContentType = MutableStateFlow(AccountContentType.PLAYLISTS)
 
         init {

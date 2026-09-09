@@ -43,13 +43,11 @@ fun <T : Any> List<T>.mergeNearbyElements(
     return mergedList
 }
 
-// Extension function to filter explicit content for local Song entities
 fun List<Song>.filterExplicit(enabled: Boolean = true) =
     filter { song ->
         song.artists.none { it.blockedAt != null } && (!enabled || !song.song.explicit)
     }
 
-// Extension function to filter explicit content for local Album entities
 fun List<Album>.filterExplicitAlbums(enabled: Boolean = true) =
     filter { album ->
         album.artists.none { it.blockedAt != null } && (!enabled || !album.album.explicit)

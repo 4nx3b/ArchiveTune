@@ -4,12 +4,17 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Coil fetcher for Telegram artwork. Artwork is addressed by a `tgart://<fileId>?t=<title>&a=<artist>`
- * model so cover art is resolved lazily and only for images actually shown. Resolution order:
- *   1. a high-resolution catalogue cover looked up online by title/artist (TelegramCoverProvider),
- *   2. the full album cover embedded in the Telegram file (downloaded from TDLib),
+ * Coil fetcher for Telegram artwork. Artwork is addressed by a
+ * `tgart://track/<chatId>/<messageId>?t=<title>&a=<artist>&thumb=1` model so
+ * cover art is resolved lazily and only for images actually shown.
+ * Resolution order:
+ *   1. a high-resolution catalogue cover looked up online by title/artist
+ *      (TelegramCoverProvider),
+ *   2. the album-cover thumbnail embedded in the Telegram document (downloaded
+ *      through TDLib),
  *   3. nothing (Coil shows the placeholder).
- * This keeps the player art crisp without eagerly downloading covers for the whole queue.
+ * This keeps the player art crisp without eagerly downloading covers for the
+ * whole queue.
  */
 
 package moe.rukamori.archivetune.telegram
@@ -28,26 +33,45 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.Buffer
-import okio.Path.Companion.toPath
 import java.util.concurrent.TimeUnit
 
 private const val TELEGRAM_ART_SCHEME = "tgart"
+private const val TELEGRAM_ART_TRACK_AUTHORITY = "track"
 
 /**
- * Builds the Coil model string for a Telegram track's artwork. [title]/[artist] drive the online
- * lookup; [fileId] is the embedded-cover fallback. Returns null when there is nothing to show.
+ * Artwork model for a Telegram track. Addressed by chat + message so the
+ * document thumbnail can be fetched through TDLib on demand.
  */
 fun telegramArtworkModel(
-    fileId: Int,
+    chatId: Long,
+    messageId: Long,
     title: String?,
     artist: String?,
+    hasThumb: Boolean,
 ): String? {
-    if (fileId <= 0 && title.isNullOrBlank()) return null
-    val builder = AndroidUri.Builder().scheme(TELEGRAM_ART_SCHEME).authority(fileId.coerceAtLeast(0).toString())
+    if (chatId == 0L || messageId == 0L) return null
+    if (!hasThumb && title.isNullOrBlank()) return null
+    val builder =
+        AndroidUri
+            .Builder()
+            .scheme(TELEGRAM_ART_SCHEME)
+            .authority(TELEGRAM_ART_TRACK_AUTHORITY)
+            .appendPath(chatId.toString())
+            .appendPath(messageId.toString())
+    if (hasThumb) builder.appendQueryParameter("thumb", "1")
     if (!title.isNullOrBlank()) builder.appendQueryParameter("t", title)
     if (!artist.isNullOrBlank()) builder.appendQueryParameter("a", artist)
     return builder.build().toString()
 }
+
+fun telegramArtworkModel(track: TelegramTrack): String? =
+    telegramArtworkModel(
+        chatId = track.chatId,
+        messageId = track.messageId,
+        title = track.lookupMetadata.title,
+        artist = track.lookupMetadata.artist,
+        hasThumb = track.hasThumbnail,
+    )
 
 class TelegramThumbnailFetcher(
     private val data: Uri,
@@ -55,11 +79,14 @@ class TelegramThumbnailFetcher(
 ) : Fetcher {
     override suspend fun fetch(): FetchResult? {
         val parsed = AndroidUri.parse(data.toString())
-        val fileId = parsed.authority?.toIntOrNull() ?: 0
+        val isTrackModel = parsed.authority == TELEGRAM_ART_TRACK_AUTHORITY
+        val segments = parsed.pathSegments
+        val chatId = if (isTrackModel) segments.getOrNull(0)?.toLongOrNull() ?: 0L else 0L
+        val messageId = if (isTrackModel) segments.getOrNull(1)?.toLongOrNull() ?: 0L else 0L
+        val wantThumb = parsed.getQueryParameter("thumb") == "1"
         val title = parsed.getQueryParameter("t")
         val artist = parsed.getQueryParameter("a")
 
-        // 1. High-resolution catalogue cover from the internet.
         if (!title.isNullOrBlank()) {
             val coverUrl = withContext(Dispatchers.IO) { TelegramCoverProvider.coverUrl(title, artist) }
             if (coverUrl != null) {
@@ -68,19 +95,10 @@ class TelegramThumbnailFetcher(
             }
         }
 
-        // 2. Embedded album cover from the Telegram file.
-        // We read the TDLib-downloaded file into a Buffer and return it as
-        // DataSource.NETWORK so Coil writes it to its own disk cache. Without
-        // this, the TDLib file is treated as already-on-disk (DataSource.DISK)
-        // and never enters Coil's cache — so the next time the same track's
-        // artwork is requested, we'd re-download from TDLib (and possibly
-        // re-fetch the embedded cover) every time.
-        if (fileId > 0) {
-            val path = TelegramClient.downloadFileBlocking(fileId) ?: return null
+        if (wantThumb && chatId != 0L && messageId != 0L) {
+            val bytes = TelegramClient.downloadFullFile(chatId, messageId, thumb = true) ?: return null
             return withContext(Dispatchers.IO) {
                 runCatching {
-                    val source = java.io.File(path)
-                    val bytes = source.readBytes()
                     SourceFetchResult(
                         source =
                             ImageSource(
@@ -88,8 +106,6 @@ class TelegramThumbnailFetcher(
                                 fileSystem = options.fileSystem,
                             ),
                         mimeType = null,
-                        // Mark as NETWORK so Coil persists the bytes into its
-                        // disk cache for future lookups.
                         dataSource = DataSource.NETWORK,
                     )
                 }.getOrNull()

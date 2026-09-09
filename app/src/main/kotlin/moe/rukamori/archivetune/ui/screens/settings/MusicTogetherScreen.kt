@@ -171,9 +171,6 @@ fun MusicTogetherScreen(
         MusicTogetherDialogs(model = model, viewModel = viewModel)
     }
 
-    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
-    // back pill pinned over the scrolling content, plus the header haze —
-    // replaces the normal top bar while Liquid Glass is on.
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -231,10 +228,7 @@ fun MusicTogetherScreen(
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
-        // Glass-header mode: the topBar is empty so innerPadding's top is just
-        // the status bar — drop it entirely and let the inner LazyColumn's
-        // content padding carry the pill zone instead, so the cards scroll
-        // under the pills/haze exactly like the History page.
+
         val contentTopPadding =
             if (glassHeader.liquidGlassActive) {
                 0.dp
@@ -243,21 +237,12 @@ fun MusicTogetherScreen(
             }
         val glassTopContentPadding =
             if (glassHeader.liquidGlassActive) {
-                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
-            // pills so the glass actually samples it (2026-09-04 fix)
+                systemBarsTopPadding + 72.dp
+
             } else {
                 0.dp
             }
-        // CRASH FIX (2026-09-04, user report: "Opening music recognition or
-        // Listen Together crashes the app"): the overlay used to be composed
-        // INSIDE the Box that carried glassHeaderSource — a descendant of the
-        // haze/backdrop source. Nested sampling (a backdrop sampler drawn
-        // inside the layer that records it, plus the haze effect inside its
-        // own source) crashes the RuntimeShader the moment the screen opens
-        // with Liquid Glass on. Restructured to the kit's required shape:
-        // the OUTER Box carries no source, the CONTENT box alone is the
-        // source, and the pills/haze overlay is its SIBLING — the same
-        // structure as NewReleaseScreen / NewsScreen / LastFmDashboard.
+
         Box(
             modifier =
                 Modifier
@@ -299,8 +284,6 @@ fun MusicTogetherScreen(
             }
             }
 
-            // Persistent glass back pill + header haze (History-page
-            // behaviour). TRUE sibling of the source box, drawn on top.
             if (glassHeader.liquidGlassActive) {
                 GlassScreenHeaderOverlay(
                     header = glassHeader,
@@ -1489,7 +1472,7 @@ private fun WelcomeDialog(
             }
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             Button(
                 onClick = onGotIt,
                 shapes = ButtonDefaults.shapes(),
@@ -1556,7 +1539,7 @@ private fun ConfirmParticipantDialog(
             )
         },
         confirmButton = {
-            KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+            KeepStatusBarHiddenInDialog()
             Button(
                 onClick = onConfirm,
                 colors =

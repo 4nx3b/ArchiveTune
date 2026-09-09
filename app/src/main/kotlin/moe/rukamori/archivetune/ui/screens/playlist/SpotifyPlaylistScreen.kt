@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.screens.playlist
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -70,7 +69,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,10 +96,9 @@ import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
-import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
+import moe.rukamori.archivetune.ui.component.GlassPillTitleText
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
-import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
@@ -151,13 +148,6 @@ fun SpotifyPlaylistScreen(
     val downloadActionFailedMessage = stringResource(R.string.download_action_failed)
     val latestDownloads by rememberUpdatedState(downloads)
 
-    // Save scroll position when entering search, restore when leaving.
-    // The header item collapses to height 0 when isSearching becomes true, which
-    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
-    // BEFORE the collapse and restoring them AFTER the expand, the visible
-    // position is preserved across open/close search.
-    // (The LaunchedEffect that uses these is declared further below, AFTER
-    // isSearching is created — Kotlin requires vals to be declared before use.)
     var savedScrollIndex by remember { mutableIntStateOf(0) }
     var savedScrollOffset by remember { mutableIntStateOf(0) }
 
@@ -214,8 +204,7 @@ fun SpotifyPlaylistScreen(
             }
 
             is HeaderDownloadState.Partial -> {
-                // Pause/Resume (2026-09-05): pending-only, the
-                // already-downloaded songs stay untouched.
+
                 if (headerState.paused) {
                     sendResumePausedDownloads(
                         context = navController.context,
@@ -304,13 +293,12 @@ fun SpotifyPlaylistScreen(
 
     LaunchedEffect(isSearching) {
         if (isSearching) {
-            // Save scroll position BEFORE the header collapses, then focus the search field.
+
             savedScrollIndex = lazyListState.firstVisibleItemIndex
             savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
         } else {
-            // Restore scroll position AFTER the header has expanded back. A single
-            // frame delay lets the LazyColumn re-measure with the header at full height.
+
             withFrameNanos {}
             lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
@@ -339,20 +327,7 @@ fun SpotifyPlaylistScreen(
             query = TextFieldValue()
         }
     } else {
-        // BackHandler so the predictive back gesture always escapes the
-        // Spotify playlist page. Per user report (2026-08-29): "I'm in the
-        // playlist but I can't get back using the navigation gesture." The
-        // previous implementation called `navController.navigate("library") {
-        // popUpTo(navController.graph.startDestinationId) ... }` which could
-        // fail silently when `navController.graph` was momentarily null
-        // during fast back-to-back navigation or when the start destination
-        // ID was the same as the target.
-        //
-        // New approach: call `popBackStack()` directly first — this is the
-        // most primitive NavController operation and reliably pops the
-        // current entry to reveal the previous one. If `popBackStack()`
-        // returns false (no previous entry), fall back to navigating to
-        // the Library route. Wrapped in try/catch as defense-in-depth.
+
         BackHandler {
             try {
                 if (!navController.popBackStack()) {
@@ -366,7 +341,7 @@ fun SpotifyPlaylistScreen(
                         navController.navigate("library") { launchSingleTop = true }
                     }
                 } catch (_: Exception) {
-                    // Last-resort: let the system handle the back press.
+
                 }
             }
         }
@@ -402,51 +377,17 @@ fun SpotifyPlaylistScreen(
         }
     }
 
-    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
-    // handle). The actual content recording happens when
-    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below.
-    // This matches the LocalPlaylistScreen pattern: the backdrop captures the entire
-    // scrolling content, and the floating Liquid Glass header buttons are siblings of
-    // the LazyColumn (not nested inside its first item) so they sample the backdrop
-    // without being recorded into it — and, critically, their click handlers are not
-    // competing with any LazyColumn-item pointer-input stack.
-    //
-    // Gating: layerBackdrop recording + LiquidGlass header pills are suspended when
-    // (a) the LiquidGlass master toggle is off, or (b) the full-screen lyrics
-    // overlay is open on top of this screen. The overlay is opaque, so this
-    // screen's pixels are never visible — but the kyant layerBackdrop would keep
-    // recording every frame and the LiquidGlass pills would keep sampling it via
-    // RuntimeShader, starving the 60 Hz karaoke lyrics sweep of GPU budget.
-    // HomeScreen has no LiquidGlass, which is why the same lyrics path doesn't
-    // lag from home.
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
-    // Use the theme surface color (not Color.Black) so the initial frame, before
-    // any scrolling content is recorded into the backdrop, blends with the page
-    // background instead of flashing solid black. Matches the LocalPlaylistScreen
-    // / AutoPlaylistScreen / CachePlaylistScreen fix from stage-6.
+
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Header haze (2026-09-04, revised): the home page's blurred top haze,
-    // ported to this screen. The haze SOURCE is the scrolling LazyColumn, the
-    // overlay renders ON TOP of it (a later sibling, beneath the pinned
-    // Liquid Glass pills) — the overlay was previously the FIRST child under
-    // the list, so the list drew straight over it and the haze was never
-    // visible (user report 2026-09-04: "I don't see the haze effect").
     val headerHaze = rememberScreenHeaderHaze()
     ExpressivePullToRefreshBox(
         isRefreshing = state.isLoading && tracks.isNotEmpty(),
@@ -460,10 +401,7 @@ fun SpotifyPlaylistScreen(
             state = lazyListState,
             contentPadding =
                 PaddingValues(
-                    // When searching, the header item collapses to zero height and the
-                    // TopAppBar (which renders the search field) is overlaid on top of
-                    // the LazyColumn. Reserve top space so the first songs aren't hidden
-                    // behind the TopAppBar + status bar.
+
                     top = if (isSearching) systemBarsTopPadding + 64.dp else 0.dp,
                     bottom =
                         LocalPlayerAwareWindowInsets.current
@@ -495,20 +433,6 @@ fun SpotifyPlaylistScreen(
                                     ?.let(::makeTimeString),
                             ).joinToString(MediaDetailMetadataSeparator)
 
-                        // SimpMusic-style liquid glass backdrop source: the
-                        // LazyColumn itself carries Modifier.layerBackdrop
-                        // (see the LazyColumn definition above), so the entire
-                        // scrolling content is recorded into the backdrop. The
-                        // floating Liquid Glass back button (top-start) and
-                        // search pill (top-end) are siblings of the LazyColumn
-                        // (declared after the LazyColumn below), so they sample
-                        // the backdrop without being recorded into it. This
-                        // matches the LocalPlaylistScreen pattern and ensures
-                        // the buttons are clickable (no LazyColumn-item
-                        // pointer-input interference).
-                        //
-                        // The hero item itself just renders the MediaDetailHero;
-                        // no inner Box / layerBackdrop wrapper is needed here.
                         MediaDetailHero(
                             title = currentPlaylist.name,
                             thumbnailUrl = thumbnailUrl,
@@ -691,41 +615,13 @@ fun SpotifyPlaylistScreen(
             headerItems = if (!isSearching && playlist != null) 1 else 0,
         )
 
-        // ── Header haze overlay (2026-09-04, revised) ──
-        // Progressive top-fade blur over the list — declared AFTER the
-        // LazyColumn so it draws on top of it, BEFORE the pinned pills so
-        // they stay crisp above the frosted strip.
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
         )
 
-        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
-        // (children of the ExpressivePullToRefreshBox), positioned at top-start
-        // and top-end. They sample the artworkBackdrop (which captures the
-        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
-        // to render the frosted-glass effect. PERSISTENT — stay at the top no
-        // matter how far the user scrolls.
-        //
-        // This matches the LocalPlaylistScreen pattern exactly: the buttons are
-        // NOT nested inside the LazyColumn's first item (which caused click
-        // interception issues on some devices), but are direct siblings of the
-        // LazyColumn inside the ExpressivePullToRefreshBox.
-        //
-        // Shown only when:
-        //  - Not searching
-        //  - Playlist is loaded
         if (layerBackdropActive && !isSearching && playlist != null) {
-            // iOS-inspired back pill: persistent translucent liquid-glass
-            // capsule containing a left-pointing chevron followed by the
-            // text "Library", matching the user's reference screenshot and
-            // the LocalPlaylistScreen / AutoPlaylistScreen / HistoryScreen
-            // layout. Previously this was a single LiquidGlassIconButton
-            // (just the arrow_back icon with no "Library" label), which
-            // the user reported as not matching the history-page layout.
-            // Tapping it pops back to the previous destination (or pops
-            // back to the Library tab if no previous destination exists);
-            // long-pressing it jumps straight to the Home tab.
+
             LiquidGlassActionPill(
                 backdrop = artworkBackdrop,
                 interactive = true,
@@ -737,10 +633,7 @@ fun SpotifyPlaylistScreen(
                 IconButton(
                     onClick = {
                         if (!navController.navigateUp()) {
-                            // No previous back-stack entry — fall back to the
-                            // Library tab so the back gesture always lands on
-                            // Library (not Home) when the user entered this
-                            // screen directly (e.g. via a deep link).
+
                             navController.navigate("library") {
                                 launchSingleTop = true
                                 restoreState = true
@@ -756,13 +649,8 @@ fun SpotifyPlaylistScreen(
                         tint = liquidGlassContentColor(),
                     )
                 }
-                Text(
+                GlassPillTitleText(
                     text = playlist?.name ?: stringResource(R.string.spotify),
-                    color = liquidGlassContentColor(),
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 12.dp),
                 )
             }
             LiquidGlassActionPill(
@@ -772,7 +660,7 @@ fun SpotifyPlaylistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                // Search
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -788,14 +676,6 @@ fun SpotifyPlaylistScreen(
             }
         }
 
-        // Top App Bar — hidden when the Liquid Glass header buttons are visible
-        // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
-        // search pill handle navigation when the hero is visible. The TopAppBar is
-        // only rendered during search mode (search TextField) and loading state
-        // (back navigation while playlist loads). Rendering the TopAppBar on top of
-        // the Liquid Glass buttons (even when transparent and with empty actions)
-        // causes it to intercept pointer events in the top area, making the Liquid
-        // Glass buttons unclickable.
         if (isSearching || playlist == null) {
         TopAppBar(
             colors = topAppBarColors,
@@ -838,9 +718,7 @@ fun SpotifyPlaylistScreen(
                 }
             },
             navigationIcon = {
-                // Hide the back arrow when the SimpMusic-style floating liquid
-                // glass back button is visible (artwork shown, not searching,
-                // not scrolled).
+
                 if (isSearching || showTopBarTitle) {
                     IconButton(
                         onClick = {
@@ -880,7 +758,7 @@ fun SpotifyPlaylistScreen(
             },
             scrollBehavior = scrollBehavior,
         )
-        } // end if (isSearching || playlist == null)
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,

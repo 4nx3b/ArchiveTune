@@ -66,7 +66,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -89,8 +88,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -146,6 +143,8 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
+import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
@@ -154,9 +153,10 @@ import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.utils.ImageBlurUtils
-import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.makeTimeString
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -173,27 +173,9 @@ private val AppleMusicFallbackGradient =
 
 private val LyricsSwipeStartRegion = 144.dp
 
-// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus the
-// 64dp blur — and, because the walk rotates, must do so out to the container's furthest corner
-// rather than its nearest edge. Kept in sync with AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
-// Was 1.9x, which was sized for an older, smaller drift and let the blur sample transparent pixels
-// at full offset — a dark band along the trailing edge.
-//
-// Scaling alone does NOT make the rotation safe: the layer Modifier.blur produces is clipped to the
-// composable's bounds, so a rotated *screen-shaped* rectangle only covers a circle of
-// 2.4 * min(W, H) / 2. blurBackdropFootprint is what closes that gap; see its docs.
 private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
-/**
- * Plumbs the lyrics-scroll signal up from [LyricsEnhanced] / [LyricsV2] (which own the
- * LazyListState internally) to [LyricsScreen] without changing every signature along the way.
- *
- * Default value is a no-op. [LyricsScreen] supplies a real setter that flips
- * `isUserScrollingLyrics`, which the controls no longer consume — they are always visible now.
- * bottom controls slide in when the user scrolls lyrics — even when the
- * "Show lyrics player controls" preference is OFF.
- */
 val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
 
 @Suppress("UNUSED_PARAMETER")
@@ -229,11 +211,9 @@ fun LyricsScreen(
     val currentSongLiked = currentSong?.song?.liked == true
 
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
-    // LyricsMode preference removed from the settings UI by user request — Enhanced is the
-    // sole renderer now. The LyricsModeKey + LyricsMode enum remain in PreferenceKeys.kt
-    // for backward compatibility with existing DataStore values, but the value is no longer
-    // read here. AppleMusicLyricsPane / LyricsContent below are hardcoded to Enhanced.
+
     val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
     val configuredLyricsBackground by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
     val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
     val disableBlur by rememberPreference(DisableBlurKey, false)
@@ -246,12 +226,7 @@ fun LyricsScreen(
     val density = LocalDensity.current
     val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
     val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
-    // The lyrics controls used to hide themselves after five seconds and be re-summoned by a
-    // tap, behind two preferences. They no longer hide at all: the bar carries the scrubber, the
-    // quality badge and the lyrics provider, none of which is worth playing hide-and-seek with,
-    // and a control you have to poke the screen to see is worse than one that is simply there.
-    // isUserScrollingLyrics is still collected because LyricsEnhanced / LyricsV2 report it through
-    // LocalLyricsScrollListener; nothing downstream needs it now.
+
     var isUserScrollingLyrics by remember { mutableStateOf(false) }
 
     val hapticClick =
@@ -320,27 +295,13 @@ fun LyricsScreen(
         }
     }
 
-    // ─── Automatic AI translation ───────────────────────────────────────
-    // When the user has enabled "Automatic translation" in AI Integration
-    // settings, we kick off a background AI translation as soon as lyrics
-    // arrive in a foreign script. Detection is conservative: only lyrics
-    // with a meaningful run of non-Latin characters (CJK, Cyrillic, Arabic,
-    // Devanagari, etc.) trigger auto-translation, so Spanish-to-English
-    // and other Latin-to-Latin cases don't waste API calls. Lyrics that
-    // are already an AI translation are skipped to avoid re-translating
-    // the same song on every visit. The success toast is suppressed
-    // inside the ViewModel when this pref is on (see LyricsMenuViewModel).
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
-    // "Don't auto translate these languages". Read here and passed explicitly below — leaving it to
-    // shouldAutoTranslate's old default was exactly how this setting came to do nothing.
+
     val (autoTranslateExcludedLanguages) =
         rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
-    // Observe the set of media IDs the user has dismissed translation for.
-    // When a user clicks "Undo Translation", the mediaId is added to this set;
-    // auto-translate is suppressed for dismissed songs until the user manually
-    // triggers translation again (which clears the dismissal in the ViewModel).
+
     val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
         .collectAsStateWithLifecycle()
     LaunchedEffect(
@@ -349,8 +310,7 @@ fun LyricsScreen(
         currentLyrics?.source,
         autoTranslateLyrics,
         translatorTargetLang,
-        // In the key list so unticking a language re-evaluates the current track instead of waiting
-        // for the next one.
+
         autoTranslateExcludedLanguages,
         translationDismissedMediaIds,
     ) {
@@ -358,21 +318,11 @@ fun LyricsScreen(
         val snapshot = currentLyrics ?: return@LaunchedEffect
         val text = snapshot.lyrics ?: return@LaunchedEffect
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
-        // Skip if these lyrics were already AI-translated AND actually contain
-        // translation content. The `hasTranslation` guard is important: a previous
-        // translation attempt may have no-op'd (AI returned the same text — a
-        // common failure mode for CJK lyrics that were previously mangled by the
-        // span-joining bug in AiLyricsDocument.readTtmlLineText). Without this
-        // check, those songs would be blocked from retrying forever even after
-        // the parser is fixed.
+
         if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
 
-        // Skip auto-translate if the user has dismissed translation for this
-        // song. The user clicked "Undo Translation" — they explicitly do not
-        // want the translation back. Auto-translate will resume only after the
-        // user manually triggers translation (which clears the dismissal).
         if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
 
         if (!LyricsUtils.shouldAutoTranslate(
@@ -403,12 +353,6 @@ fun LyricsScreen(
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
 
-        
-
-        
-
-        
-        
         kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
             lyricsBackground != LyricsBackgroundStyle.COLORING &&
@@ -479,7 +423,6 @@ fun LyricsScreen(
                 null
             }
 
-        
         if (extractedColors != null) {
             val stillCurrent =
                 mediaMetadata.thumbnailUrl == thumbnailUrl
@@ -502,15 +445,6 @@ fun LyricsScreen(
         }
     }
 
-    // ── Lyrics overflow menu ──
-    // The standalone LyricsScreen is invoked from the legacy/non-Apple-Music
-    // BottomSheetPlayer (see Player.kt:2679). Per user request (2026-08-30)
-    // batch-11: "i wanted you to redesign the popup in only apple music player
-    // style. Not the non apple music player styles. ... revert the redesign for
-    // only non apple music player styles" — this screen uses the original
-    // ModalBottomSheet (`menuState.show { LyricsMenu(...) }`) slide-up popup
-    // that was used before the batch-10 anchored-popup redesign. The Apple
-    // Music-style inline player (AppleMusicPlayer.kt) keeps the anchored popup.
     val showLyricsMenu = {
         menuState.show {
             LyricsMenu(
@@ -523,13 +457,11 @@ fun LyricsScreen(
         }
     }
 
-    // Feeds the quality badge in the controls bar, the same source the players read.
     val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
-    // Reveal the bottom controls when the user is scrolling lyrics, regardless of the
-    // Always shown, always expanded — see the note where the old visibility state used to live.
+
     val controlsVisible = true
     val controlsExpanded = true
     val onControlsPositionChange: (Long) -> Unit = {
@@ -564,12 +496,7 @@ fun LyricsScreen(
         modifier =
             modifier
                 .fillMaxSize()
-                // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music lyrics
-                // behaviour). This handler sits on the ROOT container so it is an ancestor of
-                // every hit path: Compose delivers pointer events to the hit node and its
-                // ancestors, so taps land here even when the lyrics LazyColumn consumes them
-                // for scrolling. It used to also re-summon the auto-hiding controls; those no
-                // longer hide, so all that remains is the edge-swipe dismiss.
+
                 .pointerInput(
                     swipeStartRegionPx,
                     swipeDismissThresholdPx,
@@ -608,8 +535,6 @@ fun LyricsScreen(
             playerCustomBrightness = playerCustomBrightness,
         )
 
-        // Keeps unconsumed taps from falling through to whatever is layered below the
-        // lyrics screen (e.g. the player behind it).
         Box(
             modifier =
                 Modifier
@@ -661,6 +586,7 @@ fun LyricsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AppleMusicLyricsPane(
+                                lyricsMode = lyricsMode,
                                 foregroundColor = foregroundColor,
                                 sliderPositionProvider = { sliderPosition },
                                 lyricsSyncOffset = lyricsSyncOffset,
@@ -705,6 +631,7 @@ fun LyricsScreen(
                         }
                     } else {
                         AppleMusicLyricsPane(
+                            lyricsMode = lyricsMode,
                             foregroundColor = foregroundColor,
                             sliderPositionProvider = { sliderPosition },
                             lyricsSyncOffset = lyricsSyncOffset,
@@ -717,6 +644,7 @@ fun LyricsScreen(
                 }
             } else {
                 AppleMusicLyricsPane(
+                    lyricsMode = lyricsMode,
                     foregroundColor = foregroundColor,
                     sliderPositionProvider = { sliderPosition },
                     lyricsSyncOffset = lyricsSyncOffset,
@@ -847,9 +775,7 @@ private fun MovingBlurBackground(
         remember(colors) {
             Brush.verticalGradient(
                 listOf(
-                    // Vibrancy bump (was 0.42 / 0.34 / 0.54): pull these in line with the static
-                    // AppleMusicBackground alphas (0.88 / 0.76 / 0.96) so the moving-blur lyrics
-                    // page reads just as vivid as the player itself, not as a dimmed-afterthought.
+
                     colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.85f),
                     colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.75f),
                     colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.95f),
@@ -866,14 +792,6 @@ private fun MovingBlurBackground(
             )
         }
 
-    // Vibrancy ColorFilter applied ONLY to the moving-blur lyrics background — does not touch
-    // the shared PlayerColorExtractor palette (which other screens consume). 1.6× saturation
-    // gives Apple-Music-style vivid artwork colors that punch through the 64-dp blur.
-    // ColorMatrix is built manually because androidx.compose.ui.graphics.ColorMatrix doesn't
-    // expose setSaturation() (unlike android.graphics.ColorMatrix). The matrix below is the
-    // standard saturation matrix: R' = αR + βG + βB, G' = βR + αG + βB, B' = βR + βG + αB,
-    // where α = 0.213 + 0.787*sat and β = 0.715 - 0.715*sat (Rec. 709 luma coefficients),
-    // and the existing gamma is preserved (sat=1 → identity).
     val vibrancyColorFilter = remember {
         val sat = 1.6f
         val alpha = 0.213f + 0.787f * sat
@@ -895,32 +813,6 @@ private fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
-    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
-    // once with ImageBlurUtils, render via Image. The drift animation is NOT applied on pre-S —
-    // the pre-S fallback uses a single pre-blurred bitmap, and animating its offset every frame
-    // caused visible glitches and tearing on older devices (and the moving-blur effect relies
-    // on per-frame Modifier.blur re-evaluation that pre-S simply cannot do). Instead the pre-S
-    // path renders the blurred bitmap statically at a fixed scale that covers the screen with
-    // no black bars, giving a clean static blurred background. The drift animation runs only on
-    // Android 12+ where Modifier.blur is hardware-accelerated and re-blurs every frame.
-    //
-    // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
-    // no-op and the bitmap stays pinned.
-    // Wandering backdrop, shared with the Apple-Music-style player — see [BlurWanderDrift] for
-    // the path. It walks between random waypoints with eased legs, so the artwork always finishes
-    // the leg it is on and comes to rest before setting off in a new, randomly chosen direction.
-    // Neither of the earlier versions did that: a pair of RepeatMode.Reverse tweens turned around
-    // at full speed at ±160 / ±120 (the backdrop "whipping around"), and the Lissajous path that
-    // replaced them still spent half of every cycle retracing its way back, which reads as the
-    // colours suddenly travelling the other way.
-    //
-    // The offsets are deliberately left inside FloatState and read only from the graphicsLayer
-    // lambda below, which is a draw-phase read. Unwrapping them here would invalidate this whole
-    // composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every animation
-    // frame, competing with the lyric scroll and the karaoke sweep for frame budget.
-    //
-    // Pre-S doesn't drift at all (see below), so the frame loop is not started there.
     val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
@@ -940,20 +832,12 @@ private fun MovingBlurBackground(
                 MovingBlurDriftScale
             }
 
-        // Footprint of the drifting layer. NOT the screen: the layer Modifier.blur creates is
-        // clipped to its own bounds, so a screen-shaped rectangle rotated by the walk only covers a
-        // circle of MovingBlurDriftScale * min(W, H) / 2 = 432dp on a 360x800 phone, against the
-        // 559dp the furthest corner plus the drift needs — the missing wedge is what read as black
-        // artefacts rotating through the corners. Widening the short side fixes it without changing
-        // the look, because max(W, H) — and so ContentScale.Crop's scale factor — is untouched.
-        // See blurBackdropFootprint.
         val driftFootprint =
             remember(maxWidth, maxHeight) {
                 blurBackdropFootprint(
                     width = maxWidth,
                     height = maxHeight,
-                    // No ramp here: this backdrop is only ever composed with lyrics open, so it
-                    // sits at the drifting scale the whole time.
+
                     restScale = MovingBlurDriftScale,
                     driftScale = MovingBlurDriftScale,
                 )
@@ -1000,16 +884,12 @@ private fun MovingBlurBackground(
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
                                 }
-                                // No offset: the pre-S fallback pins its single pre-blurred
-                                // bitmap (see above), so there is nothing to animate here.
+
                                 .alpha(0.95f),
                         )
                     }
                 } else {
-                    // Centred inside a full-size box rather than filling it: the image is
-                    // deliberately larger than the screen (see driftFootprint) and requiredSize is
-                    // what lets it ignore the incoming constraints. The overflow is clipped by the
-                    // clipToBounds on the BoxWithConstraints above.
+
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -1021,25 +901,14 @@ private fun MovingBlurBackground(
                             colorFilter = vibrancyColorFilter,
                             modifier = Modifier
                                 .requiredSize(driftFootprint)
-                                // graphicsLayer OUTSIDE blur: the blur is applied to the
-                                // centered image (inside graphicsLayer), then the scale +
-                                // translation is applied to the blurred result. This prevents
-                                // the blur from sampling transparent areas at the translated
-                                // image's trailing edge — the root cause of the corner flicker.
-                                // The flip side is that the blur clips its result to this
-                                // element's bounds, which is why those bounds are the
-                                // driftFootprint and not the screen.
+
                                 .graphicsLayer {
                                     scaleX = MovingBlurDriftScale
                                     scaleY = MovingBlurDriftScale
-                                    // Deferred read — see blurWander above.
+
                                     translationX = blurWander.xDp.floatValue.dp.toPx()
                                     translationY = blurWander.yDp.floatValue.dp.toPx()
-                                    // Rotation is the only part of the walk that can
-                                    // carry a colour across the whole surface;
-                                    // translation moves every colour by the same
-                                    // vector, so on its own it leaves the top the top.
-                                    // See BlurWanderDrift.
+
                                     rotationZ = blurWander.rotationDeg.floatValue
                                     compositingStrategy = CompositingStrategy.Offscreen
                                 }
@@ -1109,8 +978,6 @@ private fun AppleMusicBackground(
             if (thumbnailUrl != null) {
                 if (isPreS) {
 
-                    
-                    
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
@@ -1267,10 +1134,6 @@ private fun AppleMusicTrackHeader(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Close (cross) button — required so users can dismiss the lyrics sheet
-        // without relying on the system back gesture. Sits to the left of the
-        // overflow menu icon (and to the left of the heart button). Matches
-        // upstream rukamori/ArchiveTune's lyrics top bar layout.
         AppleMusicHeaderIconButton(
             iconRes = R.drawable.close,
             contentDescription = stringResource(R.string.close),
@@ -1280,9 +1143,6 @@ private fun AppleMusicTrackHeader(
 
         Spacer(modifier = Modifier.width(4.dp))
 
-        // Favourite (heart) button — matches Apple Music's lyrics page where the
-        // heart icon sits to the right of the song title/artist. Tapping toggles
-        // the like state on the current song.
         AppleMusicHeaderIconButton(
             iconRes = if (isLiked) R.drawable.player_favorite else R.drawable.player_favorite_border,
             contentDescription = stringResource(
@@ -1342,12 +1202,14 @@ private fun AppleMusicHeaderIconButton(
 
 @Composable
 private fun AppleMusicLyricsPane(
+    lyricsMode: LyricsMode,
     foregroundColor: Color,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     modifier: Modifier = Modifier,
 ) {
     LyricsContent(
+        lyricsMode = lyricsMode,
         sliderPositionProvider = sliderPositionProvider,
         lyricsSyncOffset = lyricsSyncOffset,
         modifier =
@@ -1429,9 +1291,7 @@ private fun AppleMusicControls(
                     color = foregroundColor.copy(alpha = 0.54f),
                 )
             }
-            // Centred on the row rather than placed between the two timestamps: that gap changes
-            // width by a digit every time a minute rolls over, and a badge that shifts with the
-            // clock reads as a glitch.
+
             LosslessOrStats(
                 isLoading = isLoading,
                 format = currentFormat,
@@ -1537,9 +1397,6 @@ private fun AppleMusicControls(
                     )
                 }
 
-                // The credit, and beside it the way out. Ported from the BitChord style, where
-                // this row already sat under the scrubber, so every lyrics style now names its
-                // provider and offers the lyric actions in the same place.
                 Row(
                     modifier = Modifier.padding(top = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1653,27 +1510,56 @@ private fun AppleMusicSlider(
                 trackHeight = trackHeight,
             )
         },
-        // NOTE: do NOT constrain the Slider's height. The Material3 Slider's
-        // internal touch target is 48dp tall; forcing a smaller height clips
-        // the touch area and makes the slider impossible to drag.
+
         modifier = modifier,
     )
 }
 
 @Composable
 private fun LyricsContent(
+    lyricsMode: LyricsMode,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    // LyricsMode picker removed — Enhanced is the sole renderer. The LyricsMode enum and
-    // LyricsModeKey preference are kept in PreferenceKeys.kt for backward compatibility
-    // with existing DataStore values, but the V2 branch is no longer reachable here.
-    LyricsEnhanced(
-        sliderPositionProvider = sliderPositionProvider,
-        lyricsSyncOffset = lyricsSyncOffset,
-        modifier = modifier,
-        textColorOverride = textColor,
-    )
+
+    when (lyricsMode) {
+        LyricsMode.V2 -> {
+            LyricsV2(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+
+        LyricsMode.ENHANCED -> {
+            LyricsEnhanced(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+
+        LyricsMode.SPOTIFY -> {
+            LyricsV2(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+                spotifyStyle = true,
+            )
+        }
+
+        LyricsMode.SIMPMUSIC -> {
+            SimpMusicLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                lyricsSyncOffset = lyricsSyncOffset,
+                modifier = modifier,
+                textColorOverride = textColor,
+            )
+        }
+    }
 }

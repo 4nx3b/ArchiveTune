@@ -30,38 +30,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 
-// ============================================================================
-// Muzo-style home atmosphere + welcome header (2026-09-04 redesign).
-//
-// The "Trending Playlist" carousel and the "Popular Albums" shelf that used to
-// live here were removed per user requests (2026-09-04: "Remove the Trending
-// playlist section from home page" / "Remove Popular albums section
-// entirely") — their composables and all supporting constants were dead code
-// and have been deleted.
-// ============================================================================
-
-/** Page gutter the welcome header aligns to (reference: 20px margins). */
 private val MuzoGutter = 20.dp
 
-// ----------------------------------------------------------------------------
-// Atmosphere — the deep, softly-lit background the reference floats on.
-// ----------------------------------------------------------------------------
-
-/**
- * Full-screen atmospheric backdrop: a near-black (light: surface) base with
- * violet, teal and blue radial glows bleeding through, deepest at the edges
- * and softly lit where content sits. Drawn once per size change into a
- * `drawWithCache` (no blur passes, no per-frame work), so the whole effect
- * costs a single pre-built shader list per layout.
- */
 @Composable
 fun HomeAtmosphereBackground(
     modifier: Modifier = Modifier,
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val base = if (dark) Color(0xFF0D0E12) else MaterialTheme.colorScheme.surface
-    // Glow strength: vivid enough to read on the deep dark base, soft enough
-    // to stay premium on the light surface.
+
     val glow = if (dark) 0.17f else 0.12f
     Box(
         modifier =
@@ -123,10 +100,6 @@ fun HomeAtmosphereBackground(
     )
 }
 
-// ----------------------------------------------------------------------------
-// Welcome header — the reference's greeting + hero headline.
-// ----------------------------------------------------------------------------
-
 @Composable
 fun HomeWelcomeHeader(
     accountName: String,
@@ -154,7 +127,7 @@ fun HomeWelcomeHeader(
             color = small,
         )
         Spacer(Modifier.height(4.dp))
-        // The reference headline: two lines, large, clean, tight leading.
+
         Text(
             text = stringResource(R.string.home_headline_line1),
             fontSize = 32.sp,

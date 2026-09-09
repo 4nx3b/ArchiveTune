@@ -23,23 +23,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
-/**
- * Streaming/playback provider for user-provided Qobuz-DL proxy instances (squid.wtf / kennyy /
- * arcod-style). ArchiveTune bundles NO endpoints — the user pastes their own instance base URLs in
- * settings; when the list is empty the provider resolves nothing and playback falls through to the
- * next audio source.
- *
- * Proxy API shape (common across the squid.wtf family):
- *  - GET {instance}/api/get-music?q={query}&offset=0
- *      -> { success, data: { tracks: { items: [ {id,title,performer:{name},album:{title},
- *           duration, maximum_bit_depth, maximum_sampling_rate, isrc}, ... ] } } }
- *  - GET {instance}/api/download-music?track_id={id}&quality={formatId}
- *      -> { success, data: { url: "https://.../file.flac?...&etsp=<expiry>" } }
- *
- * Parsing is intentionally defensive (multiple key shapes) because the proxies differ slightly.
- * This mirrors [TidalAudioProvider] but is leaner: it reuses [TidalAudioProvider.InstanceHealth]
- * so the settings status chips are shared, and there is no account/OAuth path (proxies are anon).
- */
 object QobuzAudioProvider {
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_LIMIT = 10
@@ -60,7 +43,6 @@ object QobuzAudioProvider {
 
     private const val QOBUZ_API_BASE = "https://www.qobuz.com/api.json/0.2"
 
-    /** A single configured proxy instance. */
     private data class Instance(
         val label: String,
         val baseUrl: String,
@@ -75,16 +57,11 @@ object QobuzAudioProvider {
     val activeInstanceUrls: List<String>
         get() = instances.map { it.baseUrl }
 
-    /** Replaces the active direct-API token list. Duplicates (by token string) are dropped. */
     fun setTokens(newTokens: List<QobuzToken>) {
         val seen = LinkedHashSet<String>()
         tokens = newTokens.filter { it.token.isNotBlank() && seen.add(it.token) }
     }
 
-    /**
-     * A resolution backend: either a direct Qobuz API token or a proxy instance. Both expose the same
-     * search + download surface so the matching/scoring pipeline is shared.
-     */
     private class Backend(
         val id: String,
         val label: String,
@@ -95,7 +72,6 @@ object QobuzAudioProvider {
         val isPoolPremium: Boolean = false,
     )
 
-    /** The last Qobuz track id that resolved successfully, usable as a health-probe track. */
     @Volatile
     var lastResolvedTrackId: String? = null
         private set
@@ -124,7 +100,6 @@ object QobuzAudioProvider {
 
     private data class CachedSearch(val match: Match?, val expiresAt: Long)
 
-    /** Search metadata carried through to the final cross-provider safety gate. */
     private data class Match(
         val id: String,
         val title: String,
@@ -133,20 +108,15 @@ object QobuzAudioProvider {
         val durationMs: Long?,
     )
 
-    /**
-     * Public search candidate metadata — used by the Source chooser's search popup
-     * to show Qobuz track results the user can pick from. Mirrors
-     * [moe.rukamori.archivetune.tidal.TidalAudioProvider.CandidateMetadata].
-     */
     data class CandidateMetadata(
         val trackId: String,
         val title: String,
         val artist: String?,
         val album: String?,
         val durationMs: Long?,
-        /** Album artwork URL from the Qobuz search response (if available). */
+
         val thumbnailUrl: String? = null,
-        /** The backend label that produced this candidate (for diagnostics). */
+
         val backendLabel: String,
     )
 
@@ -157,7 +127,6 @@ object QobuzAudioProvider {
     private val failureCache = ConcurrentHashMap<String, Long>()
     private val instanceCooldownUntilMs = ConcurrentHashMap<String, Long>()
 
-    /** Replaces the active instance list. Invalid/duplicate URLs are dropped. Empty stays empty. */
     fun setInstances(baseUrls: List<String>) {
         val seen = LinkedHashSet<String>()
         instances =
@@ -168,8 +137,6 @@ object QobuzAudioProvider {
             }
     }
 
-    // Community Source Pool discovery feed ({ streaming, api } shape) for Qobuz, derived from the
-    // build-time SOURCE_PROVIDER_URL. Empty when no provider is configured.
     private val instanceDiscoverySources: List<String> =
         BuildConfig.SOURCE_PROVIDER_URL
             .trim()
@@ -178,11 +145,6 @@ object QobuzAudioProvider {
             ?.let { listOf("$it/api/discovery/qobuz") }
             ?: emptyList()
 
-    /**
-     * Best-effort discovery of community Qobuz proxy instances from the Source Pool website. Returns
-     * newly discovered valid base URLs (may be empty). Never throws; blocking network I/O, so call
-     * off the main thread.
-     */
     @Volatile
     private var discoveryCache: List<String> = emptyList()
 
@@ -203,16 +165,14 @@ object QobuzAudioProvider {
                         .Builder()
                         .url(source)
                         .header("User-Agent", USER_AGENT)
-                // Present the per-app read key when the pool has gating enabled.
+
                 if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
                     builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
                 }
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        // A rejected read and a healthy pool with nothing contributed both end up
-                        // as zero instances here, so say which one happened — this is the whole
-                        // difference between "no Qobuz accounts" and "this build's key is wrong".
+
                         if (response.code == 401) {
                             Timber
                                 .tag("QobuzDiscovery")
@@ -250,7 +210,6 @@ object QobuzAudioProvider {
         return result
     }
 
-    /** Normalizes an instance URL to `scheme://host[:port]` form, or null when invalid. */
     fun normalizeInstanceUrl(raw: String): String? {
         val trimmed = raw.trim().trimEnd('/')
         if (trimmed.isEmpty()) return null
@@ -281,10 +240,6 @@ object QobuzAudioProvider {
         now: Long,
     ): Boolean = (instanceCooldownUntilMs[baseUrl] ?: 0L) > now
 
-    /**
-     * Lightweight reachability probe. Returns round-trip latency in ms, or null when unreachable.
-     * Runs blocking network I/O — call off the main thread.
-     */
     fun checkInstance(baseUrl: String): Long? {
         val normalized = normalizeInstanceUrl(baseUrl) ?: return null
         val request =
@@ -302,11 +257,6 @@ object QobuzAudioProvider {
         }.getOrNull()
     }
 
-    /**
-     * Deep health probe: runs an actual search + download for [probeTrackId] (or a canned query when
-     * blank) and inspects whether the instance returns a real lossless URL or only a preview/sample.
-     * Runs blocking network I/O — call off the main thread.
-     */
     fun verifyInstance(
         baseUrl: String,
         probeTrackId: String?,
@@ -318,8 +268,7 @@ object QobuzAudioProvider {
                 ?.trim()
                 .orEmpty()
                 .ifBlank {
-                    // A search response only proves that the API is reachable. Resolve a real sample
-                    // id so the download call below can also verify the backing account entitlement.
+
                     runCatching { searchTrackId(normalized, "adele hello") }.getOrNull().orEmpty()
                 }
         if (trackId.isEmpty()) return TidalAudioProvider.InstanceHealth.UNREACHABLE
@@ -335,7 +284,6 @@ object QobuzAudioProvider {
         }.getOrElse { TidalAudioProvider.InstanceHealth.UNREACHABLE }
     }
 
-    /** Feeds an external health result into the runtime cooldown map used by the resolver. */
     fun applyHealthResult(
         baseUrl: String,
         healthy: Boolean,
@@ -344,30 +292,16 @@ object QobuzAudioProvider {
         if (healthy) markInstanceHealthy(normalized) else markInstanceFailed(normalized, hardFailure = true)
     }
 
-    /** Lookup metadata for a track, matching Tidal's [TidalAudioProvider.Query] shape. */
     data class Query(
         val mediaId: String,
         val title: String,
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
-        /**
-         * When non-null, [resolve] skips the title/artist search ([resolveTrackId] /
-         * [bestMatch]) and goes straight to [backend.download] with this trackId.
-         * This is set when the user picks a specific Qobuz track from the
-         * "Play from" source-search popup — the trackId comes directly from
-         * the Qobuz search API, so there's no ambiguity. Without this, the
-         * resolver would re-search by title+artist and might match a
-         * different Qobuz track (different master, deluxe edition, etc.).
-         */
+
         val directTrackId: String? = null,
     )
 
-    /**
-     * Resolves a direct-playable lossless stream for [query] at the requested Qobuz [formatId]
-     * (6=CD, 7=hi-res ≤96kHz, 27=max). Returns null when no instance can serve a full track. Runs
-     * blocking network I/O — call off the main thread.
-     */
     fun resolve(
         query: Query,
         formatId: Int,
@@ -386,17 +320,22 @@ object QobuzAudioProvider {
             }
             streamCache.remove(cacheKey)
         }
-        failureCache[cacheKey]?.let { failedUntil ->
-            if (failedUntil > now) return null
-            failureCache.remove(cacheKey)
+        if (query.directTrackId == null) {
+            // A failed METADATA SEARCH must not block a later direct-track
+            // resolution for the same song: the search is flaky (rate limits,
+            // catalog hiccups) while the direct id resolves deterministically.
+            // Without this guard the 10-minute failure cache made downloads of
+            // songs the user had explicitly pinned to Qobuz silently fall back
+            // to YouTube.
+            failureCache[cacheKey]?.let { failedUntil ->
+                if (failedUntil > now) return null
+                failureCache.remove(cacheKey)
+            }
         }
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
         for (backend in available) {
-            // When directTrackId is set (user clicked a specific Qobuz search
-            // result), skip the title/artist search entirely and download the
-            // exact track. This prevents the resolver from matching a different
-            // Qobuz track (different master, deluxe edition, etc.).
+
             val match = if (query.directTrackId != null) {
                 Match(
                     id = query.directTrackId,
@@ -420,11 +359,9 @@ object QobuzAudioProvider {
                 continue
             }
             if (download.isPreview) {
-                // Unsubscribed/expired backing account: skip this backend for a while, try the next.
+
                 Timber.tag("Qobuz").w("%s returned preview-only; skipping", backend.label)
-                // Report not_premium to the pool, but only for accounts we advertised as premium.
-                // Qobuz returns "sample":true for both lapsed subscriptions and unavailable-at-quality tracks,
-                // so only marking definitely wrong claims prevents disabling healthy accounts.
+
                 if (backend.isToken && backend.isPoolPremium && backend.poolId != null) {
                     moe.rukamori.archivetune.utils.PoolAccountManager.report("qobuz", "account", backend.poolId, "not_premium")
                 }
@@ -454,36 +391,11 @@ object QobuzAudioProvider {
         return null
     }
 
-    /**
-     * Public search — used by the Source chooser's "Play from" search popup to show
-     * Qobuz track results the user can pick from. Mirrors
-     * [moe.rukamori.archivetune.tidal.TidalAudioProvider.searchCandidates].
-     *
-     * Searches every configured backend (direct API tokens + community proxy
-     * instances) and returns up to [limit] candidates total. The first backend
-     * that returns results wins; we don't merge across backends because the
-     * same track id can resolve differently across proxies (squid.wtf-style
-     * proxies use their own internal ids).
-     *
-     * AUTO-POPULATES tokens/instances: if [tokens] or [instances] are empty,
-     * pulls from [PoolAccountManager.qobuzAccounts] (community source pool) and
-     * [QobuzAudioProvider.discoverInstances] (community proxy discovery) before
-     * searching. This fixes the bug where the Source chooser's search popup
-     * showed "No results yet" for Qobuz even when the user had pool accounts
-     * loaded — the popup's `searchCandidates` call was hitting `orderedBackends`
-     * before MusicService.resolveQobuzStream had a chance to call setTokens.
-     *
-     * Returns an empty list when no backends are configured or every backend
-     * fails — callers should treat that as "no Qobuz results for this query",
-     * not a hard error.
-     */
     fun searchCandidates(
         query: String,
         limit: Int = 8,
     ): List<CandidateMetadata> {
-        // Auto-populate tokens/instances if they're empty. This matches the
-        // logic in MusicService.resolveQobuzStream so the search popup works
-        // without the user having to play a Qobuz song first.
+
         if (tokens.isEmpty()) {
             val poolTokens = runCatching {
                 moe.rukamori.archivetune.utils.PoolAccountManager.qobuzAccounts().map {
@@ -533,14 +445,7 @@ object QobuzAudioProvider {
                             ?: ""
                     val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
                     val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
-                    // Extract thumbnail from the album image field.
-                    // The Qobuz API returns album art in multiple possible formats:
-                    // 1. album.image as a JSONArray of {size, url} objects
-                    // 2. album.image as a JSONObject with small/large/thumbnail keys
-                    // 3. album.image as a direct URL string
-                    // 4. album.cover_url / album.thumbnail_url as direct strings
-                    // 5. item.thumbnail / item.cover as direct strings
-                    // We try all of these in order of likelihood.
+
                     val albumObj = item.optJSONObject("album")
                     val candidateThumbnail = extractQobuzThumbnail(albumObj, item)
                     out.add(
@@ -558,14 +463,12 @@ object QobuzAudioProvider {
             }.onFailure { error ->
                 Timber.tag("Qobuz").w(error, "Search backend %s failed for query \"%s\"", backend.label, query)
             }
-            // If this backend returned results, stop — we don't merge across backends
-            // because the same track id can resolve differently across proxies.
+
             if (out.isNotEmpty()) break
         }
         return out
     }
 
-    /** Builds the ordered backend list: direct API tokens first (highest fidelity), then proxies. */
     private fun orderedBackends(): List<Backend> {
         val tokenBackends =
             tokens.map { token ->
@@ -600,14 +503,6 @@ object QobuzAudioProvider {
             else -> "FLAC"
         }
 
-    /**
-     * Drops any cached stream/failure entry for [query], forcing the next [resolve] to hit the
-     * network.
-     *
-     * Needed by the download path: proxy URLs are signed with a short `etsp` expiry, so a cached URL
-     * can be syntactically fine but already dead. Without this, retrying a download would keep
-     * replaying the same expired link until the cache aged out on its own.
-     */
     fun invalidate(
         query: Query,
         formatId: Int,
@@ -617,35 +512,11 @@ object QobuzAudioProvider {
         failureCache.remove(key)
     }
 
-    /**
-     * Clears the transient (process-lived) failure cache and per-instance
-     * cooldowns. Called on app foreground (MainActivity.onStart) so that
-     * stale failure entries from a previous session don't prevent Qobuz
-     * from being retried.
-     *
-     * Root cause of the "Qobuz not available until force-stop" bug:
-     * [failureCache] has a 10-minute TTL, and [instanceCooldownUntilMs]
-     * can last up to 10 minutes for hard cooldowns. When the user
-     * backgrounded the app and came back, these caches were still live,
-     * so Qobuz resolution returned null immediately without retrying.
-     * Force-stop cleared the process and all in-memory caches, which is
-     * why re-opening the app fixed it. This function provides the same
-     * cache-clearing effect without requiring a force-stop.
-     *
-     * Does NOT clear [streamCache] (successful stream resolutions) or
-     * [searchCache] (successful search results) — those are positive
-     * caches and clearing them would just cause unnecessary re-fetches.
-     */
     fun clearTransientCaches() {
         failureCache.clear()
         instanceCooldownUntilMs.clear()
     }
 
-    // -------------------------------------------------------------------------
-    // Search + download
-    // -------------------------------------------------------------------------
-
-    /** Resolves the best-matching Qobuz track id for [query] against a single backend. */
     private fun resolveTrackId(
         backend: Backend,
         query: Query,
@@ -666,7 +537,6 @@ object QobuzAudioProvider {
         return match
     }
 
-    /** Runs search and scores results against [query], returning the best match above threshold. */
     private fun bestMatch(
         backend: Backend,
         searchQuery: String,
@@ -719,7 +589,6 @@ object QobuzAudioProvider {
         }
     }
 
-    /** Health-only search helper: returns any track id for a canned query (or null). */
     private fun searchTrackId(
         baseUrl: String,
         searchQuery: String,
@@ -768,7 +637,6 @@ object QobuzAudioProvider {
         val isPreview: Boolean,
     )
 
-    /** Calls download-music and extracts the direct URL + a best-effort preview flag. */
     private fun fetchDownload(
         baseUrl: String,
         trackId: String,
@@ -809,10 +677,6 @@ object QobuzAudioProvider {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Direct Qobuz API (token) — www.qobuz.com/api.json/0.2 with MD5 request signature
-    // -------------------------------------------------------------------------
-
     private fun searchItemsDirect(
         token: QobuzToken,
         searchQuery: String,
@@ -837,11 +701,6 @@ object QobuzAudioProvider {
         }
     }
 
-    /**
-     * Calls track/getFileUrl with the Qobuz MD5 request signature. The signed payload is the
-     * concatenation (no separators) of the sorted call params + a unix timestamp + the app secret:
-     *   md5("trackgetFileUrl" + "format_id"+fmt + "intent"+"stream" + "track_id"+id + ts + secret)
-     */
     private fun fetchDownloadDirect(
         token: QobuzToken,
         trackId: String,
@@ -885,7 +744,7 @@ object QobuzAudioProvider {
             root.stringOrNull("url")?.takeIf { it.startsWith("http") }
                 ?: root.findStreamUrl()
                 ?: return null
-        // Qobuz sets "sample":true for 30s previews (unsubscribed, or track unavailable at quality).
+
         val isPreview = root.optBoolean("sample", false) || root.looksLikePreview()
         val apiMime = root.stringOrNull("mime_type")
         val mime =
@@ -919,11 +778,6 @@ object QobuzAudioProvider {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
-    /**
-     * Deep health probe for a direct-API token. This mirrors ArchivePool's account validation:
-     * user/get proves the token and reports subscription capabilities, then a subscription-neutral
-     * MP3 request proves the app secret can sign stream URLs. Runs blocking I/O off the main thread.
-     */
     @Suppress("UNUSED_PARAMETER")
     fun verifyToken(
         token: QobuzToken,
@@ -980,11 +834,6 @@ object QobuzAudioProvider {
             }
     }
 
-    // -------------------------------------------------------------------------
-    // Defensive JSON extraction (proxy responses vary slightly)
-    // -------------------------------------------------------------------------
-
-    /** Finds the track item array across the common response shapes. */
     private fun JSONObject.findTrackItems(): JSONArray? {
         val data = optJSONObject("data") ?: this
         data.optJSONObject("tracks")?.optJSONArray("items")?.let { return it }
@@ -995,7 +844,6 @@ object QobuzAudioProvider {
         return null
     }
 
-    /** Recursively searches for the first plausible stream URL field. */
     private fun JSONObject.findStreamUrl(): String? {
         for (key in listOf("url", "downloadUrl", "download_url", "stream_url", "streamUrl", "link")) {
             stringOrNull(key)?.takeIf { it.startsWith("http") }?.let { return it }
@@ -1012,12 +860,11 @@ object QobuzAudioProvider {
         return null
     }
 
-    /** Best-effort preview/sample detection from the download payload. */
     private fun JSONObject.looksLikePreview(): Boolean {
         val data = optJSONObject("data") ?: this
         if (data.optBoolean("sample", false)) return true
         if (data.optBoolean("preview", false)) return true
-        // Some proxies signal an unsubscribed account via a short duration or an explicit flag.
+
         data.stringOrNull("type")?.let { if (it.equals("preview", true) || it.equals("sample", true)) return true }
         return false
     }
@@ -1025,21 +872,12 @@ object QobuzAudioProvider {
     private fun JSONObject.trackId(): String? =
         stringOrNull("id") ?: longOrNull("id")?.toString() ?: stringOrNull("track_id")
 
-    /**
-     * Extracts a thumbnail URL from a Qobuz search result's album object.
-     * Handles all known Qobuz API image formats:
-     * - album.image as JSONArray of {size, url} objects (direct API)
-     * - album.image as JSONObject with small/large/thumbnail keys (proxy)
-     * - album.image as a direct URL string
-     * - album.cover_url / album.thumbnail_url as strings
-     * - item.thumbnail / item.cover as strings
-     */
     private fun extractQobuzThumbnail(albumObj: JSONObject?, item: JSONObject): String? {
         if (albumObj != null) {
-            // Try album.image
+
             val imageVal = albumObj.opt("image")
             if (imageVal != null) {
-                // Case 1: JSONArray of {size, url} objects
+
                 if (imageVal is org.json.JSONArray) {
                     for (i in 0 until imageVal.length()) {
                         val imgObj = imageVal.optJSONObject(i)
@@ -1047,7 +885,7 @@ object QobuzAudioProvider {
                         if (!url.isNullOrBlank()) return url
                     }
                 }
-                // Case 2: JSONObject with small/large/thumbnail keys
+
                 if (imageVal is JSONObject) {
                     imageVal.stringOrNull("large")?.let { return it }
                     imageVal.stringOrNull("medium")?.let { return it }
@@ -1055,15 +893,15 @@ object QobuzAudioProvider {
                     imageVal.stringOrNull("thumbnail")?.let { return it }
                     imageVal.stringOrNull("url")?.let { return it }
                 }
-                // Case 3: direct URL string
+
                 if (imageVal is String && imageVal.startsWith("http")) return imageVal
             }
-            // Try album.cover_url / album.thumbnail_url
+
             albumObj.stringOrNull("cover_url")?.let { return it }
             albumObj.stringOrNull("thumbnail_url")?.let { return it }
             albumObj.stringOrNull("cover")?.let { return it }
         }
-        // Try item-level fields
+
         item.stringOrNull("thumbnail")?.let { return it }
         item.stringOrNull("cover")?.let { return it }
         return null
@@ -1075,10 +913,6 @@ object QobuzAudioProvider {
     private fun JSONObject.longOrNull(key: String): Long? =
         if (has(key)) optLong(key).takeIf { it > 0L } else null
 
-    // -------------------------------------------------------------------------
-    // Matching (self-contained; mirrors Tidal's heuristics)
-    // -------------------------------------------------------------------------
-
     private fun scoreMatch(
         wantedTitle: String,
         wantedArtists: List<String>,
@@ -1088,7 +922,7 @@ object QobuzAudioProvider {
         candidateDurationMs: Long?,
     ): Int {
         if (wantedTitle.isBlank() || candidateTitle.isBlank()) return Int.MIN_VALUE
-        // Reject clear version mismatches (live vs studio, remix, instrumental, ...).
+
         if (hasVersionMismatch(" $wantedTitle ", " $candidateTitle ")) return Int.MIN_VALUE
         val titleOverlap = tokenOverlap(significantTokens(wantedTitle), significantTokens(candidateTitle))
         if (titleOverlap < 0.5) return Int.MIN_VALUE

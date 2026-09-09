@@ -195,9 +195,6 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
             else -> stringResource(R.string.ip_rotation_desc)
         }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -249,7 +246,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -277,49 +274,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             }
                         },
                         onValueSelected = { newValue ->
-                            // Apply immediately — `gl` is in the JSON body of every YT Music
-                            // request (browse/search/player/next/suggestions/queue), so the
-                            // next call will use the new region. `SYSTEM_DEFAULT` falls back
-                            // to the device locale (or, if that's not in CountryCodeToName,
-                            // to "US"), matching the App.kt startup logic.
-                            //
-                            // We also clear visitorData: that token is minted by YouTube with
-                            // an implicit region baked in (derived from the IP/locale at the
-                            // time of the sw.js_data scrape). Without rotation, YouTube can
-                            // keep serving content pinned to the *old* region for personalized
-                            // endpoints like FEmusic_home, even though context.client.gl says
-                            // otherwise. Setting it to null forces the next request to re-fetch
-                            // a fresh, region-pinned token.
-                            //
-                            // The regionSpooferActive flag forces region-sensitive endpoints
-                            // (home, search, charts, trending, new releases, moods & genres,
-                            // explore) to go ANONYMOUS — no cookie, no dataSyncId, no
-                            // visitorData in the body or X-Goog-Visitor-Id header. Without
-                            // this, a logged-in user's account region overrides `gl` and
-                            // YouTube keeps serving content from the account's home country,
-                            // defeating the spoofer. Login-required endpoints (library,
-                            // playlists, history) are unaffected and keep using the session.
-                            //
-                            // The locale assignment emits YouTube.localeChanges, which
-                            // HomeViewModel collects to trigger an immediate home-feed refresh
-                            // (no manual pull-to-refresh required).
-                            //
-                            // === App restart ===
-                            // The user explicitly requested that changing the region
-                            // automatically restarts the app. The reason: even though the
-                            // in-process YouTube state is updated synchronously above, a
-                            // bunch of long-lived caches and view-models (HomeViewModel's
-                            // queued home-feed refresh, BrowseViewModel's mood/genre chips,
-                            // SearchDiscoveryViewModel's suggestion cache, the Coil image
-                            // cache for region-pinned thumbnails, the queued
-                            // `YouTube.localeChanges` collection, etc.) hold snapshots from
-                            // the *old* region and only refresh on the next manual pull.
-                            // Restarting the process guarantees every region-sensitive
-                            // subsystem comes back cold against the new region — which is
-                            // exactly what users expect when they pick "Japan" in the
-                            // region picker: a Japan home feed, Japan search, Japan recs,
-                            // all at once, with no stale US/EU content lingering in any
-                            // tab.
+
                             val deviceLocale = Locale.getDefault()
                             val resolvedGl =
                                 newValue.takeIf { it != SYSTEM_DEFAULT }
@@ -331,17 +286,8 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
                             onYtMusicRegionChange(newValue)
 
-                            // Schedule a process restart on a background coroutine so the
-                            // preference write (above) and the Toast land before we kill
-                            // the process. 400ms is enough for DataStore to flush and for
-                            // the Toast to animate in.
                             scope.launch {
-                                // Drop the persisted visitorData too, not just the in-memory copy
-                                // above: App.kt restores YouTube.authState from DataStore on every
-                                // start, so an in-memory null was undone by the very restart this
-                                // handler schedules and the old region-pinned token came straight
-                                // back. Removing the key makes App.kt mint a fresh one against the
-                                // new region. The login cookie and dataSyncId are untouched.
+
                                 withContext(Dispatchers.IO) {
                                     context.dataStore.edit { it.remove(VisitorDataKey) }
                                 }
@@ -589,10 +535,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                                     loadingIpRotation = true
                                     try {
                                         YouTube.enableIpRotation()
-                                        // enableIpRotation() succeeds even when every candidate
-                                        // proxy failed validation, which used to leave the switch
-                                        // on and the description stuck at "0 active proxies" with
-                                        // no explanation. Revert and say what happened instead.
+
                                         if (YouTube.ipRotationActiveCount.value == 0) {
                                             YouTube.disableIpRotation()
                                             onIpRotationEnabledChange(false)
@@ -628,9 +571,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

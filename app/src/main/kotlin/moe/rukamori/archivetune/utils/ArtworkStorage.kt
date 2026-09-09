@@ -60,7 +60,7 @@ object ArtworkStorage {
             if (idx >= 0) list[idx] = artwork else list.add(artwork)
             fileFor(context).writeText(json.encodeToString(list))
         } catch (_: Exception) {
-            // ignore write errors
+
         }
     }
 

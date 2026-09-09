@@ -11,14 +11,19 @@ package moe.rukamori.archivetune.ui.screens
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +46,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,17 +63,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,6 +92,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -97,7 +110,10 @@ import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.utils.backToMain
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
+import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.viewmodels.NewReleaseContent
 import moe.rukamori.archivetune.viewmodels.NewReleaseUiState
 import moe.rukamori.archivetune.viewmodels.NewReleaseViewModel
@@ -109,40 +125,35 @@ fun NewReleaseScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     viewModel: NewReleaseViewModel = hiltViewModel(),
 ) {
-    val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val menuState = LocalMenuState.current
+
+    val showMarkedAsReadToast: () -> Unit = {
+        Toast.makeText(context, R.string.marked_as_read, Toast.LENGTH_SHORT).show()
+    }
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     var selectedTab by rememberSaveable { mutableStateOf(NewReleaseTab.All) }
-    // Local search state — filters releases by album/artist name. The search
-    // icon in the top app bar toggles a search field; typing filters the
-    // visible grid in-place. Empty query = show all releases.
+
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
-    // Persistent Liquid Glass header (2026-09-04): the History-page pattern —
-    // back pill + search pill pinned over the scrolling content, plus the
-    // header haze — replaces the normal top bar while Liquid Glass is on.
+    var isSelectionMode by rememberSaveable { mutableStateOf(false) }
+    val selectedReleaseIds = remember { mutableStateSetOf<String>() }
+
     val glassHeader = rememberGlassScreenHeader()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            // While the glass pills own the header, the normal bar (and the
-            // in-bar search mode) is hidden — search moves to the trailing
-            // glass pill. In search mode the SearchBar still renders in the
-            // topBar slot so it stays reachable.
+
             if (isSearchActive || !glassHeader.liquidGlassActive) {
-            // Switch between the normal top app bar and a Material3 SearchBar
-            // when the user taps the search icon. Rendering the search bar in
-            // the topBar slot (instead of as a grid item below the top app bar)
-            // ensures it is always visible when search is active — even if the
-            // grid has been scrolled down. Matches the pattern used by
-            // NewsScreen and HistoryScreen.
+
             AnimatedContent(
                 targetState = isSearchActive,
                 transitionSpec = {
@@ -202,7 +213,7 @@ fun NewReleaseScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    // Plain top bar — no frosted pills. Modern, minimal.
+
                     LargeFlexibleTopAppBar(
                         title = {
                             Text(
@@ -223,12 +234,32 @@ fun NewReleaseScreen(
                             }
                         },
                         actions = {
-                            // Using Material3's standard IconButton here (not the
-                            // custom AppIconButton) because the custom one uses
-                            // combinedClickable which can fail to register taps in
-                            // the LargeFlexibleTopAppBar actions slot on some
-                            // Material3 1.5.0-alpha builds. The standard IconButton
-                            // uses a plain clickable and is more reliable here.
+
+                            IconButton(
+                                onClick = {
+                                    isSelectionMode = !isSelectionMode
+                                    selectedReleaseIds.clear()
+                                },
+                            ) {
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (isSelectionMode) {
+                                                R.drawable.solar_close_circle_linear
+                                            } else {
+                                                R.drawable.solar_pen_linear
+                                            },
+                                        ),
+                                    contentDescription = stringResource(R.string.select_releases),
+                                    tint =
+                                        if (isSelectionMode) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                )
+                            }
+
                             IconButton(
                                 onClick = { isSearchActive = true },
                             ) {
@@ -250,14 +281,11 @@ fun NewReleaseScreen(
         },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current,
     ) { paddingValues ->
-        // In glass-header mode the topBar is empty, so the Scaffold's top
-        // padding is 0 — the grid instead gets the pill zone (status bar +
-        // pills + breathing room) as its content top padding, and the items
-        // scroll under the pills/haze exactly like the History page.
+
         val contentTopPadding =
             if (glassHeader.liquidGlassActive && !isSearchActive) {
-                systemBarsTopPadding + 72.dp // History pattern: content sits 12dp under the
-            // pills so the glass actually samples it (2026-09-04 fix)
+                systemBarsTopPadding + 72.dp
+
             } else {
                 paddingValues.calculateTopPadding()
             }
@@ -302,8 +330,23 @@ fun NewReleaseScreen(
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
                         searchQuery = searchQuery,
-                        onReleaseClick = { album -> navController.navigate("album/${album.id}") },
+                        isSelectionMode = isSelectionMode,
+                        selectedIds = selectedReleaseIds,
+                        onReleaseClick = { album ->
+                            if (isSelectionMode) {
+
+                                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                if (album.id in selectedReleaseIds) {
+                                    selectedReleaseIds.remove(album.id)
+                                } else {
+                                    selectedReleaseIds.add(album.id)
+                                }
+                            } else {
+                                navController.navigate("album/${album.id}")
+                            }
+                        },
                         onReleaseLongClick = { album ->
+
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuState.show {
                                 YouTubeAlbumMenu(
@@ -387,17 +430,165 @@ fun NewReleaseScreen(
             }
         }
 
-        // Persistent glass pills + header haze (History-page behaviour). The
-        // search pill activates the same in-bar SearchBar flow the normal
-        // top bar's search icon used, so the feature is fully preserved.
         if (glassHeader.liquidGlassActive && !isSearchActive) {
             GlassScreenHeaderOverlay(
                 header = glassHeader,
                 title = stringResource(R.string.new_releases),
                 onBack = navController::navigateUp,
                 onBackLongClick = navController::backToMain,
-                onSearch = { isSearchActive = true },
+
+                trailing = {
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = {
+                                isSelectionMode = !isSelectionMode
+                                selectedReleaseIds.clear()
+                            },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (isSelectionMode) {
+                                            R.drawable.solar_close_circle_linear
+                                        } else {
+                                            R.drawable.solar_pen_linear
+                                        },
+                                    ),
+                                contentDescription = stringResource(R.string.select_releases),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AppIconButton(
+                            onClick = { isSearchActive = true },
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = stringResource(R.string.search),
+                                tint = liquidGlassContentColor(),
+                            )
+                        }
+                    }
+                },
             )
+        }
+
+        AnimatedVisibility(
+            visible = isSelectionMode && selectedReleaseIds.isNotEmpty(),
+            enter =
+                slideInVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 2 } +
+                    fadeIn(tween(200)),
+            exit =
+                slideOutVertically(spring(stiffness = Spring.StiffnessMediumLow)) { it / 2 } +
+                    fadeOut(tween(150)),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 3.dp,
+                shadowElevation = 6.dp,
+                border =
+                    BorderStroke(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    ),
+                modifier =
+                    Modifier
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        // Player-aware bottom inset (same source as the grid's
+                        // contentPadding): when the mini player is visible the
+                        // controls lift above it instead of being overlapped.
+                        // The Scaffold content's bottom padding already folds
+                        // in nav bar + mini player height.
+                        .padding(bottom = paddingValues.calculateBottomPadding())
+                        .fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    // Weight + ellipsis: when the row runs out of room the
+                    // count shrinks ("2 selec…"), the buttons never wrap —
+                    // the mark-as-read pill keeps its single-line height
+                    // instead of stacking its label into a tall column.
+                    Text(
+                        text = stringResource(R.string.selected_count, selectedReleaseIds.size),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                        modifier =
+                            Modifier
+                                .weight(1f, fill = false)
+                                .padding(horizontal = 12.dp),
+                    )
+                    TextButton(
+                        onClick = {
+                            val state = uiState
+                            if (state is NewReleaseUiState.Success) {
+                                selectedReleaseIds.addAll(
+                                    (state.content.albums + state.content.singles + state.content.eps)
+                                        .map { it.id },
+                                )
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.select_all),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            isSelectionMode = false
+                            selectedReleaseIds.clear()
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.cancel),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.markAsRead(selectedReleaseIds.toSet())
+                            showMarkedAsReadToast()
+                            selectedReleaseIds.clear()
+                            isSelectionMode = false
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_check_circle_linear),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(R.string.mark_as_read),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
         }
         }
     }
@@ -448,6 +639,8 @@ private fun NewReleaseGridContent(
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
     searchQuery: String,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     onRefresh: () -> Unit,
@@ -461,8 +654,6 @@ private fun NewReleaseGridContent(
             if (selectedTab == NewReleaseTab.All) emptyList() else content.releasesFor(selectedTab)
         }
 
-    // Apply search filter to releases — matches album title OR artist name,
-    // case-insensitive. Empty query = no filtering.
     val query = searchQuery.trim()
     fun matchesQuery(album: AlbumItem): Boolean {
         if (query.isEmpty()) return true
@@ -478,7 +669,29 @@ private fun NewReleaseGridContent(
         else allSections.map { it.copy(releases = it.releases.filter(::matchesQuery)) }.filter { it.releases.isNotEmpty() }
     }
 
+    val gridState = rememberLazyGridState()
+    var visibleCount by rememberSaveable(selectedTab) { mutableStateOf(NewReleaseVisibleBatchSize) }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val info = gridState.layoutInfo
+            val lastVisibleIndex = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val total = info.totalItemsCount
+            total > 0 && lastVisibleIndex >= total - NewReleasePrefetchDistance
+        }
+    }
+    LaunchedEffect(shouldLoadMore, filteredReleases.size) {
+        if (shouldLoadMore && visibleCount < filteredReleases.size) {
+            visibleCount += NewReleaseVisibleBatchSize
+        }
+    }
+
+    val visibleReleases = remember(filteredReleases, visibleCount) {
+        filteredReleases.take(visibleCount)
+    }
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
         contentPadding = paddingValues,
         modifier = Modifier.fillMaxSize(),
@@ -528,6 +741,8 @@ private fun NewReleaseGridContent(
                         activeAlbumId = activeAlbumId,
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
+                        isSelectionMode = isSelectionMode,
+                        selectedIds = selectedIds,
                         onReleaseClick = onReleaseClick,
                         onReleaseLongClick = onReleaseLongClick,
                     )
@@ -543,25 +758,132 @@ private fun NewReleaseGridContent(
             }
         } else {
             items(
-                items = filteredReleases,
+                items = visibleReleases,
                 key = { it.id },
                 contentType = { selectedTab.contentType },
             ) { album ->
-                YouTubeGridItem(
-                    item = album,
-                    isActive = activeAlbumId == album.id,
-                    isPlaying = isPlaying,
+                SelectableReleaseItem(
+                    album = album,
                     fillMaxWidth = true,
+                    isSelectionMode = isSelectionMode,
+                    selectedIds = selectedIds,
+                    activeAlbumId = activeAlbumId,
+                    isPlaying = isPlaying,
                     coroutineScope = coroutineScope,
-                    modifier =
-                        Modifier
-                            .animateItem()
-                            .combinedClickable(
-                                onClick = { onReleaseClick(album) },
-                                onLongClick = { onReleaseLongClick(album) },
-                            ),
+                    onReleaseClick = onReleaseClick,
+                    onReleaseLongClick = onReleaseLongClick,
+
+                    itemModifier = Modifier.animateItem(),
                 )
             }
+        }
+    }
+}
+
+private const val NewReleaseVisibleBatchSize = 24
+
+private const val NewReleasePrefetchDistance = 8
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SelectableReleaseItem(
+    album: AlbumItem,
+    fillMaxWidth: Boolean,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
+    activeAlbumId: String?,
+    isPlaying: Boolean,
+    coroutineScope: CoroutineScope,
+    onReleaseClick: (AlbumItem) -> Unit,
+    onReleaseLongClick: (AlbumItem) -> Unit,
+    itemModifier: Modifier = Modifier,
+) {
+    val selected = album.id in selectedIds
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier =
+            itemModifier
+                .let { if (fillMaxWidth) it.fillMaxWidth() else it },
+    ) {
+        YouTubeGridItem(
+            item = album,
+            isActive = activeAlbumId == album.id,
+            isPlaying = isPlaying,
+            fillMaxWidth = fillMaxWidth,
+            coroutineScope = coroutineScope,
+            // Edit mode: the thumbnail play affordance disappears — the tile's
+            // click now toggles selection, so a play glyph would read as a
+            // playable control and fight the selection checkbox.
+            showPlayOverlay = !isSelectionMode,
+            modifier =
+                Modifier.combinedClickable(
+                    onClick = { onReleaseClick(album) },
+                    onLongClick = { onReleaseLongClick(album) },
+                ),
+        )
+        if (isSelectionMode) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .clip(shape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                            } else {
+                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f)
+                            },
+                        ),
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+                            },
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_check_circle_linear),
+                    contentDescription = null,
+                    tint =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        },
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            // Selection border — drawn LAST (over the scrim) as an INSET
+            // overlay (2dp from the cell edges) instead of a modifier on the
+            // container, so the content never re-flows when edit mode toggles
+            // and adjacent cells' borders keep a 4dp gap between them instead
+            // of colliding into one merged 2dp line.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .padding(2.dp)
+                        .border(
+                            width = if (selected) 2.dp else 1.dp,
+                            color =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                                },
+                            shape = shape,
+                        ),
+            )
         }
     }
 }
@@ -581,10 +903,7 @@ private fun NewReleaseSectionHeader(
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Leading icon in a circular container — matches the Home page's
-            // HomeSectionLeadingIcon pattern (e.g. clock for Recently Played,
-            // bolt for Speed Dial) so every section header across the app has
-            // a recognisable affordance before its title.
+
             if (leadingIcon != null) {
                 Box(
                     modifier = Modifier
@@ -609,7 +928,7 @@ private fun NewReleaseSectionHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.width(8.dp))
-            // Compact count chip — small rounded background with the count.
+
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -635,6 +954,8 @@ private fun NewReleaseHorizontalSection(
     activeAlbumId: String?,
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
+    isSelectionMode: Boolean,
+    selectedIds: SnapshotStateSet<String>,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
 ) {
@@ -652,37 +973,22 @@ private fun NewReleaseHorizontalSection(
             key = { it.id },
             contentType = { contentType },
         ) { album ->
-            YouTubeGridItem(
-                item = album,
-                isActive = activeAlbumId == album.id,
-                isPlaying = isPlaying,
+            SelectableReleaseItem(
+                album = album,
                 fillMaxWidth = false,
+                isSelectionMode = isSelectionMode,
+                selectedIds = selectedIds,
+                activeAlbumId = activeAlbumId,
+                isPlaying = isPlaying,
                 coroutineScope = coroutineScope,
-                modifier =
-                    Modifier
-                        .animateItem()
-                        .combinedClickable(
-                            onClick = { onReleaseClick(album) },
-                            onLongClick = { onReleaseLongClick(album) },
-                        ),
+                onReleaseClick = onReleaseClick,
+                onReleaseLongClick = onReleaseLongClick,
+                itemModifier = Modifier.animateItem(),
             )
         }
     }
 }
 
-/**
- * Modern summary header — replaces the old frosted-glass summary card.
- *
- * Layout:
- *  - Top row: "Total releases" label + count number grouped together on the
- *    left (so the number sits beside the label, not floating at the right
- *    edge — user-requested fix), with a search affordance icon on the right
- *  - Bottom: tab strip as a horizontally-scrollable row of clean tonal chips
- *    (scrollable so 4 tabs never truncate "Albums" → "Albu" on narrow screens)
- *
- * No frosted glass, no oversized rounded container — just typography +
- * a clean tab strip.
- */
 @Composable
 private fun NewReleaseSummaryHeader(
     content: NewReleaseContent,
@@ -695,18 +1001,13 @@ private fun NewReleaseSummaryHeader(
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-        // Total releases — label and count grouped together on the LEFT so
-        // the count number reads as part of the label (e.g. "Total releases 200")
-        // rather than floating alone at the right edge of the screen. The
-        // search affordance icon is rendered by the top app bar instead.
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            // Small leading icon — matches the section header pattern so the
-            // summary header has the same visual language as the per-section
-            // headers below it.
+
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -727,7 +1028,7 @@ private fun NewReleaseSummaryHeader(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // Count number — bold and prominent, immediately after the label.
+
             Text(
                 text = content.totalReleases.toString(),
                 style = MaterialTheme.typography.headlineMedium,
@@ -738,9 +1039,6 @@ private fun NewReleaseSummaryHeader(
 
         Spacer(Modifier.height(16.dp))
 
-        // Modern tab strip — clean chips with no frosted pill background.
-        // Horizontally scrollable so all 4 tab labels ("All", "Albums",
-        // "Singles", "EP") are fully visible regardless of screen width.
         NewReleaseTabs(
             selectedTab = selectedTab,
             onTabSelected = onTabSelected,

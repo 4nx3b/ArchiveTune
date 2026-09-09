@@ -11,7 +11,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -96,19 +95,6 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LibraryMixViewModel
 
-/**
- * Builds a sized, cache-enabled [ImageRequest] for a thumbnail that will be
- * displayed at [widthDp] × [heightDp]. Without an explicit `.size()` Coil
- * downloads the original full-resolution image (often 1280×720+ for YT
- * thumbnails, 640×640 for Spotify playlist covers) and downsamples on the
- * fly — slow on cold start, especially when the Library tab fires 10+
- * parallel requests at once.
- *
- * Passing an explicit size lets the CDN serve the smallest bucket it has
- * (YT `mqdefault` is 320×180, Spotify `image` URLs honour `=w300-h300`),
- * which combined with the tuned OkHttp pool in [moe.rukamori.archivetune.App.newImageLoader]
- * makes thumbnails load near-instantly after the first cache miss.
- */
 @Composable
 private fun rememberSizedImageRequest(
     url: String?,
@@ -132,12 +118,6 @@ private fun rememberSizedImageRequest(
     }
 }
 
-// ── Visual constants ─────────────────────────────────────────────────────────────
-//
-// Tuned against the reference Apple Music Library screenshot. Sizes are kept in
-// dp so density scaling still works on tablets / narrow phones; the overall
-// rhythm of the screen (header height, row height, divider gaps, grid columns)
-// matches the reference, not Material 3 defaults.
 private val LibraryHeaderTopPadding = 12.dp
 private val LibraryHeaderHorizontalPadding = 20.dp
 private val LibraryCategoryRowHeight = 56.dp
@@ -146,15 +126,6 @@ private val LibraryGridSpacing = 14.dp
 private val LibraryGridHorizontalPadding = 20.dp
 private val LibraryArtworkCornerRadius = 10.dp
 
-/**
- * The pink/magenta accent used throughout the redesigned Library overview.
- *
- * Matches Apple Music's pink (#FF375F) used for the active tab indicator, the
- * line-style category icons, and the inline-play affordance on artwork tiles.
- * Picked as a saturated brand pink that has acceptable WCAG AA contrast on
- * both the dark mode (near-black) and light mode (off-white) page surfaces so
- * the icons read cleanly regardless of theme.
- */
 private val LibraryAccentColor: Color = Color(0xFFFF375F)
 
 @Composable
@@ -172,23 +143,8 @@ fun LibraryMixScreen(
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
 
-    // ── Existing data sources retained ────────────────────────────────────────
-    // The redesign is presentation-only. Every row in the new layout pulls from
-    // the same database / viewmodel flows the old layout did, so all existing
-    // behaviour (playlists tap-through, artists tap-through, favourites count,
-    // downloads count, history count, recently-added grid) is preserved.
     val likedSongsCount by database.likedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
-    // Real downloaded-songs count: counts only songs whose Media3 Download
-    // state is `STATE_COMPLETED`. The previous implementation called
-    // `database.downloadedSongsCount()` which queries
-    // `SELECT COUNT(1) FROM song WHERE dateDownload IS NOT NULL` — but
-    // `SongEntity.dateDownload` defaults to `LocalDateTime.now()` on every
-    // newly-inserted song (see SongEntity.kt:49), so that query returns the
-    // total number of songs in the DB (e.g. 13406 for the user's full
-    // synced library) instead of the actual downloaded count. Reading
-    // from `downloadUtil.downloads` mirrors what
-    // `MediaLibrarySessionCallback.downloadedSongs()` does and returns
-    // the true "songs actually on disk" count.
+
     val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
     val downloadedSongsCount = remember(downloadsMap) {
         downloadsMap.values.count { it.state == androidx.media3.exoplayer.offline.Download.STATE_COMPLETED }
@@ -198,52 +154,25 @@ fun LibraryMixScreen(
         .localSongs()
         .map { it.size }
         .collectAsStateWithLifecycle(initialValue = 0)
-    // Recently liked songs in sequential order (most recent first). Used by the
-    // newly-added "Recently Liked" subsection of the Recently Added block so
-    // the user sees songs they have liked alongside their recently added
-    // playlists. Pulled from `likedSongs(SongSortType.CREATE_DATE, descending=true)`
-    // which delegates to `likedSongsByCreateDateAsc().asReversed()`.
+
     val recentlyLikedSongs by database
         .likedSongs(SongSortType.CREATE_DATE, descending = true)
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    // ── Per-card visibility toggles (Extras section) ──────────────────────────
-    // The user can hide each quick-access card from Appearance → Extras. These
-    // toggles previously only affected the OLD ShortcutCard grid; the
-    // redesigned category rows now honour them so hiding Offline, Cached,
-    // Local Files, My top 50, or Liked Songs in Extras removes the
-    // corresponding row from this screen too. The default value for each
-    // toggle is false (visible).
     val (hideLikedSongsCard) = rememberPreference(HideLikedSongsCardKey, false)
     val (hideOfflineCard) = rememberPreference(HideOfflineCardKey, false)
     val (hideCachedCard) = rememberPreference(HideCachedCardKey, false)
     val (hideLocalFilesCard) = rememberPreference(HideLocalFilesCardKey, false)
     val (hideTop50Card) = rememberPreference(HideTop50CardKey, false)
-    // Top playlist size (Content settings). "My top 50" routes to
-    // `top_playlist/{topSize}` — the route argument is read by
-    // TopPlaylistViewModel from SavedStateHandle.
+
     val (topSize) = rememberPreference(TopSize, "50")
 
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-    // Spotify playlist count is surfaced on the new Spotify category row
-    // (visible only when `showSpotify` is on). `SpotifyLibraryViewModel` is
-    // already injected above so the Spotify sync service keeps running; we
-    // additionally collect its `playlists` flow here to power the row's
-    // count badge.
-    val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
-    // `spotifyLibraryViewModel` is still injected as a parameter so the
-    // Spotify playlist sync service keeps running (its init block watches
-    // the showSpotifyPlaylists preference and pushes playlists into the
-    // SpotifyLibraryViewModel state). We no longer render a Spotify row on
-    // this redesigned Library overview (the reference doesn't have one),
-    // but the view-model remains alive and the Spotify tab in the bottom
-    // chip row remains the access point for Spotify playlists.
 
-    // Filter playlists by selected tag (existing behaviour, retained verbatim).
-    // Additionally exclude hidden playlists so they don't appear in the
-    // Recently Added grid even when the user has tagged or bookmarked them.
+    val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
+
     val filteredPlaylistIds by database
         .playlistIdsByTags(
             if (selectedTagIds.isEmpty()) emptyList() else selectedTagIds.toList(),
@@ -266,14 +195,6 @@ fun LibraryMixScreen(
             .asPaddingValues()
             .calculateBottomPadding() + 12.dp
 
-    // ── Scroll-under clearance (2026-09-04 library redesign) ──
-    // The Library tab now scrolls under its pinned top bar into the
-    // progressive top-fade blur (the Home behaviour). The bar zone
-    // (status bar + 64dp app bar) moves from the screen root's
-    // windowInsetsPadding into this LazyColumn's contentPadding so items
-    // scroll THROUGH the zone instead of starting below it — the exact
-    // pattern HomeScreen uses (`contentPadding =
-    // LocalPlayerAwareWindowInsets.current.asPaddingValues()`).
     val playerAwareTopPadding =
         LocalPlayerAwareWindowInsets.current
             .asPaddingValues()
@@ -286,10 +207,7 @@ fun LibraryMixScreen(
             isRefreshing = isRefreshing,
             onRefresh = { viewModel.syncAllLibrary() },
             modifier = Modifier.fillMaxSize(),
-            // indicatorOffset intentionally omitted: the default (status bar +
-            // app bar, from LocalPlayerAwareWindowInsets) now that the box
-            // spans the full window — the indicator no longer hides under the
-            // pinned bar the way the old explicit 0dp offset would.
+
         ) {
             LazyColumn(
                 state = listState,
@@ -301,23 +219,11 @@ fun LibraryMixScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-                // ── Header: "Library" ─────────────────────────
-                // "+" affordance removed per user request (2026-08-28).
-                // The big bold "Library" title now lives in the
-                // MainActivity shared TopAppBar's title slot for the
-                // Library route (per user request 2026-08-28: "The Big
-                // library text should be the header of the page. The
-                // size should prevail and not become any smaller. And
-                // since it'll be the header, there should be no empty
-                // space either"). The empty `LibraryHeaderRow` below
-                // still reserves its 8.dp vertical padding slot for
-                // breathing room between the TopAppBar and the first
-                // category row, but no longer renders any text.
+
                 item(key = "library_header", contentType = "header") {
                     LibraryHeaderRow()
                 }
 
-                // ── Category rows (Playlists / Spotify / Artists / Favorites / Offline / Cached / Local Files / My Top 50 / History)
                 item(key = "library_category_list", contentType = "category_list") {
                     LibraryCategoryList(
                         playlistsCount = visiblePlaylists.size,
@@ -346,7 +252,6 @@ fun LibraryMixScreen(
                     )
                 }
 
-                // ── "Recently Added" section header + 2-column grid + "Recently Liked" row ────────────────
                 item(key = "recently_added_section", contentType = "recently_added") {
                     RecentlyAddedSection(
                         playlists = visiblePlaylists,
@@ -363,27 +268,9 @@ fun LibraryMixScreen(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header row: "Library" title + circular "+" action
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun LibraryHeaderRow() {
-    // The big bold "Library" title has moved to the MainActivity shared
-    // TopAppBar's title slot for the Library route (per user request
-    // 2026-08-28: "The Big library text should be the header of the page.
-    // The size should prevail and not become any smaller. And since it'll
-    // be the header, there should be no empty space either"). The
-    // TopAppBar is pinned for the Library route (scrollBehavior is `null`,
-    // see MainActivity.kt) so the 38sp title stays at full size through
-    // scroll — it does not collapse or shrink.
-    //
-    // This composable is now an empty spacer: it reserves a small vertical
-    // padding slot for breathing room between the (now-empty) TopAppBar
-    // title's bottom inset and the first category row, but renders no text
-    // itself. Keeping the call site (rather than deleting the item
-    // entirely) preserves the LazyColumn item keys used for
-    // scroll-position restoration across recompositions.
+
     Row(
         modifier =
             Modifier
@@ -395,27 +282,9 @@ private fun LibraryHeaderRow() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Intentionally empty — the title is in the TopAppBar now.
+
     }
 }
-
-// `LibraryAddCircleButton` was removed per user request (2026-08-28):
-// the "+" affordance in the Library header was redundant and visually
-// competed with the bold "Library" title. The composable is deleted
-// rather than left as dead code so the unused imports below it (Box,
-// border, CircleShape, R.drawable.add, R.string.add, clickable,
-// MutableInteractionSource, collectIsPressedAsState, animateFloatAsState,
-// spring, Spring) get cleaned up by IDE inspection on next refactor.
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Category list: Playlists / Spotify / Artists / Favorites / Offline / Cached /
-// Local Files / My Top 50 / History. Each row's visibility is gated by the
-// corresponding `Hide*CardKey` preference from Appearance → Extras so the
-// user can curate which quick-access categories appear on their Library
-// overview. Hidden rows are filtered out of `categories` BEFORE the
-// divider logic so we never emit a dangling divider after the last visible
-// row.
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun LibraryCategoryList(
@@ -443,14 +312,7 @@ private fun LibraryCategoryList(
     onTop50Click: () -> Unit,
     onHistoryClick: () -> Unit,
 ) {
-    // The Spotify row is injected between Playlists and Artists when the
-    // user has enabled "Show Spotify playlists" in settings. It mirrors
-    // the existing category rows (pink line icon + title + chevron) and
-    // routes to the Spotify pager tab via [onSpotifyClick].
-    //
-    // Order matches the original Apple Music reference plus the user's
-    // request to surface Offline / Cached / Local Files / My Top 50 as
-    // first-class list rows (not just cards in the old grid).
+
     val categories =
         buildList {
             add(
@@ -467,10 +329,7 @@ private fun LibraryCategoryList(
                         title = stringResource(R.string.spotify),
                         count = spotifyCount,
                         iconRes = R.drawable.spotify_icon,
-                        // Spotify brand green (#1DB954) so the logo reads in
-                        // its own colour, matching how the existing
-                        // ExpressiveTabChip pill on the Library tab rendered
-                        // the Spotify logo in brand colour (not pink-tinted).
+
                         iconTint = Color(0xFF1DB954),
                         onClick = onSpotifyClick,
                     ),
@@ -484,7 +343,7 @@ private fun LibraryCategoryList(
                     onClick = onArtistsClick,
                 ),
             )
-            // Favorites ↔ "Liked Songs" card from the old design.
+
             if (!hideLikedSongs) {
                 add(
                     LibraryCategory(
@@ -495,10 +354,7 @@ private fun LibraryCategoryList(
                     ),
                 )
             }
-            // Offline ↔ "Offline / Downloaded" card from the old design.
-            // Routes to the same `auto_playlist/downloaded` page as the old
-            // card. The label uses `R.string.offline_shortcut` ("Offline")
-            // to match the card's title in the prior design.
+
             if (!hideOffline) {
                 add(
                     LibraryCategory(
@@ -509,15 +365,7 @@ private fun LibraryCategoryList(
                     ),
                 )
             }
-            // Cached ↔ "Cached (Instant playback)" card from the old design.
-            // Routes to the cache playlist screen which shows songs that
-            // have been streamed enough to be cached for instant playback.
-            // No count badge is shown — the count is not directly available
-            // from the database (it's computed by the CachePlaylistViewModel
-            // from the player cache + download cache) and the original card
-            // just showed "Instant playback" as the subtitle. We omit the
-            // badge here for the same reason — an empty Cached library
-            // stays blank, matching History's empty-state.
+
             if (!hideCached) {
                 add(
                     LibraryCategory(
@@ -528,9 +376,7 @@ private fun LibraryCategoryList(
                     ),
                 )
             }
-            // Local Files ↔ "Local Files (On device)" card from the old
-            // design. Routes to the local song browser which lists songs
-            // the user has imported from device storage.
+
             if (!hideLocalFiles) {
                 add(
                     LibraryCategory(
@@ -541,10 +387,7 @@ private fun LibraryCategoryList(
                     ),
                 )
             }
-            // My Top 50 ↔ "My top 50 (All time)" card from the old design.
-            // Routes to the TopPlaylistScreen which shows the user's most
-            // played songs for the configured period (default All time).
-            // Count badge shows the configured top size (e.g. "50").
+
             if (!hideTop50) {
                 add(
                     LibraryCategory(
@@ -574,8 +417,7 @@ private fun LibraryCategoryList(
     ) {
         categories.forEachIndexed { index, category ->
             LibraryCategoryRow(category = category)
-            // Subtle divider between rows, but NOT after the last row (matches
-            // reference: dividers sit BETWEEN rows, not above/below the list).
+
             if (index < categories.lastIndex) {
                 Box(
                     modifier =
@@ -597,11 +439,7 @@ private data class LibraryCategory(
     val count: Int,
     val iconRes: Int,
     val onClick: () -> Unit,
-    // Optional override for the icon's tint. Defaults to null, which keeps
-    // the pink [LibraryAccentColor]. The Spotify row passes the brand green
-    // so the Spotify logo reads in its own colour rather than pink-tinted —
-    // matching how the existing pill (ExpressiveTabChip) showed the Spotify
-    // logo in its brand colour on the Library tab.
+
     val iconTint: Color? = null,
 )
 
@@ -655,8 +493,7 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Count badge — only meaningful counts are shown (matches the
-            // reference: an empty History stays blank, not "0").
+
             if (category.count > 0) {
                 Text(
                     text = category.count.toString(),
@@ -675,22 +512,6 @@ private fun LibraryCategoryRow(category: LibraryCategory) {
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Recently Added section: header with chevron + 2-column playlist artwork
-// grid + Recently Liked horizontal song row.
-//
-// Per user request (2026-08-28): the section now shows BOTH recently added
-// playlists AND recently liked songs in sequential order (most recent first).
-// The liked songs render as a horizontal scroller of compact song tiles
-// below the playlist grid — same horizontal padding rhythm so it visually
-// belongs to the same "Recently Added" block. Tapping a liked song tile
-// plays it from the user's liked-songs queue starting at that index.
-//
-// Hidden playlists are filtered upstream in `LibraryMixScreen.visiblePlaylists`
-// so they never reach this composable — the previous bug where hidden
-// playlists still showed in Recently Added is fixed at the data layer.
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun RecentlyAddedSection(
@@ -716,10 +537,7 @@ private fun RecentlyAddedSection(
             coroutineScope = coroutineScope,
             database = database,
         )
-        // Only render the Recently Liked row when the user actually has
-        // liked songs. An empty list means the section would just show a
-        // header with no content — better to omit it entirely so the
-        // Recently Added block ends cleanly at the playlist grid.
+
         if (recentlyLikedSongs.isNotEmpty()) {
             RecentlyLikedList(
                 songs = recentlyLikedSongs,
@@ -773,10 +591,7 @@ private fun RecentlyAddedGrid(
     coroutineScope: CoroutineScope,
     database: MusicDatabase,
 ) {
-    // Two-column grid using rows of two items each, exactly matching the
-    // reference. Empty / no-artwork playlists fall back to a dark
-    // placeholder tile with a centered muted music-note icon (also matching
-    // the reference's "no artwork" placeholder).
+
     val rows: List<List<Playlist>> = playlists.take(8).chunked(2)
     Column(
         modifier =
@@ -800,10 +615,7 @@ private fun RecentlyAddedGrid(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                // Pad the trailing row with a transparent spacer so the
-                // single-tile row still aligns with the grid column width
-                // (matches the reference where an odd-tail row's lone tile
-                // keeps the same column width as paired tiles).
+
                 if (rowItems.size == 1) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
@@ -857,8 +669,7 @@ private fun RecentlyAddedGridItem(
         ) {
             val thumbnailUrl = playlist.thumbnails.getOrNull(0)
             if (thumbnailUrl.isNullOrBlank()) {
-                // Dark placeholder + muted music-note icon, matching the
-                // reference's empty-artwork tile (e.g. "Anime" in the screenshot).
+
                 Box(
                     modifier =
                         Modifier
@@ -885,10 +696,7 @@ private fun RecentlyAddedGridItem(
                             .clip(RoundedCornerShape(LibraryArtworkCornerRadius)),
                 )
             }
-            // Inline play affordance, kept compact and pinned to the bottom-end
-            // so it doesn't cover the artwork's focal point (matches the
-            // reference where present-playlist tiles have a small circular play
-            // button at bottom-right).
+
             if (playlist.songCount > 0) {
                 Box(
                     modifier =
@@ -946,18 +754,6 @@ private fun RecentlyAddedGridItem(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Recently Liked horizontal scroller — compact song tiles.
-//
-// Rendered below the playlist grid in the "Recently Added" block. Each tile
-// shows the song's thumbnail, title, and a one-line artist list. Tapping
-// a tile plays the entire liked-songs queue starting at that song so the
-// user can pick up exactly where they want in their recently-liked
-// sequence. The play affordance matches the playlist grid tiles (pink
-// circular play button pinned to the bottom-end of the artwork) so the
-// visual rhythm of the Recently Added block stays consistent.
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun RecentlyLikedList(
     songs: List<Song>,
@@ -965,9 +761,7 @@ private fun RecentlyLikedList(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        // Sub-header, visually quieter than the main "Recently Added"
-        // header so the parent block remains the dominant section title
-        // while the liked-songs scroller reads as a sub-section.
+
         Text(
             text = stringResource(R.string.recently_liked),
             color = MaterialTheme.colorScheme.onBackground,
@@ -1004,11 +798,6 @@ private fun RecentlyLikedList(
     }
 }
 
-// Each liked-song tile is a fixed-width column. Width is sized to mirror
-// the playlist grid's half-width (screen_half - grid_padding) so the
-// horizontal rhythm matches the grid above; 160dp is a comfortable min
-// for two-line titles on most densities and matches the sized image
-// request we already pass for playlist thumbnails.
 private val RecentlyLikedTileWidth = 160.dp
 private val RecentlyLikedArtworkSize = 160.dp
 
@@ -1082,9 +871,7 @@ private fun RecentlyLikedItem(
                             .clip(RoundedCornerShape(LibraryArtworkCornerRadius)),
                 )
             }
-            // Inline play affordance pinned to bottom-end, matching the
-            // playlist grid tile aesthetic so the two sub-sections read as
-            // one coherent "Recently Added" block.
+
             Box(
                 modifier =
                     Modifier

@@ -94,7 +94,6 @@ fun SpatialFlowSleepTimerSheet(
     var sliderValue by remember { mutableFloatStateOf(1f) }
     var showTimePicker by remember { mutableStateOf(false) }
 
-    // Live countdown calculations
     var remainingMinutes by remember { mutableLongStateOf(0L) }
     var remainingSeconds by remember { mutableLongStateOf(0L) }
 
@@ -195,7 +194,6 @@ fun SpatialFlowSleepTimerSheet(
                 }
             }
 
-            // Grouped Options using ListItems
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors =
@@ -208,7 +206,7 @@ fun SpatialFlowSleepTimerSheet(
                         .animateContentSize(animationSpec = spring()),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // 1. Hours Slider Section (Hides when END_OF_SONG is toggled)
+
                     AnimatedVisibility(
                         visible = sleepTimerMode != SpatialFlowSleepTimerMode.END_OF_SONG,
                         enter = fadeIn() + expandVertically(),
@@ -301,7 +299,6 @@ fun SpatialFlowSleepTimerSheet(
                         }
                     }
 
-                    // 2. End of Track Toggle Section
                     ListItem(
                         leadingContent = {
                             Box(
@@ -342,7 +339,6 @@ fun SpatialFlowSleepTimerSheet(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Connected buttons
             Row(
                 modifier =
                     Modifier
@@ -350,7 +346,7 @@ fun SpatialFlowSleepTimerSheet(
                         .padding(bottom = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Cancel button on left
+
                 Button(
                     onClick = {
                         onCancelTimer()
@@ -380,7 +376,6 @@ fun SpatialFlowSleepTimerSheet(
 
                 Spacer(modifier = Modifier.width(2.dp))
 
-                // Custom button on right
                 Button(
                     onClick = { showTimePicker = true },
                     shape =

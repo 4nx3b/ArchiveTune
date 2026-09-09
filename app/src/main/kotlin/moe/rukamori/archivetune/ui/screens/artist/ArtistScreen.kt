@@ -188,51 +188,18 @@ fun ArtistScreen(
     val loadedLibraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
     val blockState by viewModel.blockState.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
-    // Liquid Glass master toggle. When off, the Liquid Glass header pills are
-    // not shown and the standard TopAppBar is used instead. The kyant
-    // RuntimeShader stack requires Android 12+.
+
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // Suspend the LiquidGlass layerBackdrop recording + header pills while the
-    // full-screen lyrics overlay is open on top. The overlay is opaque, so this
-    // screen's pixels are never visible — but without this gate the kyant
-    // layerBackdrop keeps recording the LazyColumn into a GraphicsLayer every
-    // frame and the LiquidGlass header pills keep sampling it via RuntimeShader
-    // (vibrancy + blur + lens). That per-frame GPU work starves the 60 Hz
-    // karaoke lyrics sweep running on top, causing the 'enhanced word-synced
-    // lyrics lag when launched from an artist page' bug. The TopAppBar
-    // fallback below stays gated on `liquidGlassHeaderActive` (not
-    // `layerBackdropActive`) so the visual structure is preserved when lyrics
-    // closes — the pills simply re-appear.
+
     val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
-    // Defer the layerBackdrop activation for ~500ms after first composition so
-    // the page transition (NavHost default 250ms slide-in-from-right) doesn't
-    // compete with the kyant RuntimeShader recording for the GPU/frame budget.
-    // Per user report (2026-08-29): "Whenever I open a page the transition/page
-    // switch animation lags a lot. this only happens in the pages that has
-    // liquid glass implementation." Keep the FrostedHeaderPill fallback (no
-    // backdrop, no per-frame recording) until the screen has settled, then swap
-    // to the real LiquidGlassActionPill + layerBackdrop. Liquid glass itself is
-    // NOT removed — only delayed.
+
     val screenSettled = rememberLayerBackdropSettled()
 
     val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen && screenSettled
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
 
-    // Per user report (2026-08-29): "Opening Artist page also feels too
-    // fast. Apply the exact same logic you did for Spotify and playlist
-    // pages." The Spotify/Playlists/Playlist-detail fix in batches 4-5
-    // included a BackHandler with popBackStack-first fallback so the
-    // predictive back gesture never silently fails. ArtistScreen was
-    // missing this — the system default back behavior worked but could
-    // land the user on Home instead of the previous screen when the
-    // navController was momentarily null during fast back-to-back
-    // navigation. Mirroring the playlist-screen pattern: popBackStack()
-    // first, fall back to navigateUp(), then navigate("library") so the
-    // gesture NEVER silently fails. Wrapped in try/catch so unexpected
-    // IllegalArgumentException / IllegalStateException from the
-    // NavController doesn't break the gesture.
     BackHandler {
         try {
             if (!navController.popBackStack()) {
@@ -244,7 +211,7 @@ fun ArtistScreen(
                     navController.navigate("library") { launchSingleTop = true }
                 }
             } catch (_: Exception) {
-                // Last-resort: let the system handle the back press
+
             }
         }
     }
@@ -297,10 +264,6 @@ fun ArtistScreen(
         }
     }
 
-    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden
-    // (overflow menu, expanded player, etc.). The artist hero's top padding anchors below the
-    // TopAppBar using this value, so songs in inline sections no longer overlap the header when
-    // "hide status bar" is triggered.
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val heroContentColor =
@@ -385,25 +348,8 @@ fun ArtistScreen(
         }
     }
 
-    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
-    // handle). The actual content recording only happens when
-    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
-    // which is gated on `liquidGlassHeaderActive`.
-    // Surface-coloured base, NOT black (user report 2026-09-03: light-mode
-    // Liquid Glass pills render solid black over white pages). The recorded
-    // LazyColumn layer is transparent wherever light-theme item backgrounds
-    // don't fill, and the pill's backdrop sample then shows this base rect —
-    // black under a light theme reads as a solid black pill. The surface
-    // colour blends with the page (LocalPlaylistScreen pattern).
     val artworkBackdrop = rememberBackdrop(surfaceColor)
 
-    // Per user report (2026-08-29): "Whenever I open artist page there's
-    // always a refresh indicator who Refreshes automatically. it should
-    // only appear when I manually slide to refresh it." Wrap the LazyColumn
-    // in PullToRefresh so the user can manually pull to refresh. The
-    // PullToRefresh indicator only shows when `isManuallyRefreshing` is true
-    // — auto-fetches (init + preference changes) don't set it, so the
-    // indicator doesn't appear during the silent auto-fetch.
     val isManuallyRefreshing = viewModel.isManuallyRefreshing
 
     Box(
@@ -431,13 +377,7 @@ fun ArtistScreen(
                 ),
         ) {
             if (isManuallyRefreshing && artistPage == null && !showLocal) {
-                // Shimmer skeleton shows ONLY during manual pull-to-refresh
-                // (when `isManuallyRefreshing` is true). During the silent
-                // auto-fetch on screen open / preference change, this branch
-                // is skipped — the else branch renders the artist header
-                // using the cached `libraryArtist` flow instead, so the user
-                // sees the artist's name + thumbnail immediately without a
-                // refresh indicator.
+
                 item(key = "shimmer") {
                     ShimmerHost {
                         Box(
@@ -508,20 +448,6 @@ fun ArtistScreen(
                         }
                     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
-                    // SimpMusic-style liquid glass backdrop source: the
-                    // LazyColumn itself carries the layerBackdrop modifier
-                    // (see the LazyColumn definition above), so the entire
-                    // scrolling content is recorded into the backdrop. The
-                    // floating Liquid Glass back button (top-start) and
-                    // more-actions pill (top-end) are siblings of the
-                    // LazyColumn (children of the outer Box), so they sample
-                    // the backdrop without being recorded into it. They are
-                    // PERSISTENT — they stay at the top of the screen no
-                    // matter how far the user scrolls.
-                    //
-                    // The hero item itself just renders the artwork + gradient
-                    // + title column directly in the hero Box; no inner
-                    // backdrop-source Box wrapper is needed here.
                     Box(
                         modifier =
                             Modifier
@@ -764,27 +690,6 @@ fun ArtistScreen(
                     }
                 }
 
-                // Content sections
-                //
-                // Per user report (2026-08-30) batch-11: "When I open an artist
-                // page i initially see nothing on the artist screen. After two
-                // seconds it loads completely." Root cause: `artistPage` is null
-                // during the silent auto-fetch that runs on screen open (it's
-                // NOT a manual pull-to-refresh, so `isManuallyRefreshing` is
-                // false). The header renders immediately because it falls back
-                // to `libraryArtist` (the cached artist entity from the local
-                // database), but `orderedRemoteSections` is empty (it's derived
-                // from `artistPage?.sections`), so the rest of the screen is
-                // blank for ~2 seconds while the remote fetch completes.
-                //
-                // Fix: render a shimmer skeleton for the content sections
-                // whenever `!showLocal && artistPage == null && !isManuallyRefreshing`
-                // — i.e., the silent auto-fetch is still in flight. The shimmer
-                // mirrors the typical artist-page layout (section title + 5 song
-                // rows) so the user perceives a loading state instead of an empty
-                // screen. The existing manual-refresh shimmer (line ~434 above)
-                // already handles the pull-to-refresh case; this handles the
-                // auto-fetch case that was missed.
                 if (!showLocal && artistPage == null && !isManuallyRefreshing) {
                     item(key = "auto_fetch_shimmer") {
                         ShimmerHost {
@@ -794,27 +699,25 @@ fun ArtistScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 8.dp),
                             ) {
-                                // Section title placeholder ("Top songs" / "Latest release")
+
                                 TextPlaceholder(
                                     height = 18.dp,
                                     modifier = Modifier.fillMaxWidth(0.35f),
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
-                                // 5 song row placeholders — matches the `take(5)` cap
-                                // on the Local Songs Section and the typical Top Songs
-                                // section row count.
+
                                 repeat(5) {
                                     ListItemPlaceHolder()
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
-                                // Second section title placeholder ("Albums" / "Singles")
+
                                 TextPlaceholder(
                                     height = 18.dp,
                                     modifier = Modifier.fillMaxWidth(0.30f),
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
-                                // Horizontal album-row placeholders
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -834,7 +737,7 @@ fun ArtistScreen(
                         }
                     }
                 } else if (showLocal) {
-                    // Local Songs Section
+
                     if (librarySongs.isNotEmpty()) {
                         item {
                             NavigationTitle(
@@ -912,7 +815,6 @@ fun ArtistScreen(
                             )
                         }
 
-                        // Show "View All" if more songs available
                         if (filteredLibrarySongs.size > 5) {
                             item {
                                 Surface(
@@ -941,7 +843,6 @@ fun ArtistScreen(
                         }
                     }
 
-                    // Local Albums Section
                     if (libraryAlbums.isNotEmpty()) {
                         item {
                             NavigationTitle(
@@ -997,7 +898,7 @@ fun ArtistScreen(
                         }
                     }
                 } else {
-                    // YouTube/Remote content sections
+
                     orderedRemoteSections.fastForEach { section ->
                         if (section.items.isNotEmpty()) {
                             item(
@@ -1188,7 +1089,6 @@ fun ArtistScreen(
                     }
                 }
 
-                // Bottom spacing
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
@@ -1196,7 +1096,6 @@ fun ArtistScreen(
         }
         }
 
-        // FAB for switching between local/remote view
         HideOnScrollFAB(
             visible = librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true,
             lazyListState = lazyListState,
@@ -1208,7 +1107,6 @@ fun ArtistScreen(
             },
         )
 
-        // Snackbar
         SnackbarHost(
             hostState = snackbarHostState,
             modifier =
@@ -1217,16 +1115,6 @@ fun ArtistScreen(
                     .align(Alignment.BottomCenter),
         )
 
-        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
-        // (children of this outer Box), positioned at top-start and top-end.
-        // They sample the artworkBackdrop (which captures the entire scrolling
-        // content via Modifier.layerBackdrop on the LazyColumn) to render the
-        // frosted-glass effect. PERSISTENT — stay at the top no matter how far
-        // the user scrolls.
-        //
-        // Shown only when:
-        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
-        //  - The artist page is loaded (artistPage != null OR showLocal)
         if (layerBackdropActive && (artistPage != null || showLocal)) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
@@ -1246,7 +1134,7 @@ fun ArtistScreen(
                         .align(Alignment.TopEnd)
                         .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
             ) {
-                // More
+
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
@@ -1263,11 +1151,8 @@ fun ArtistScreen(
         }
     }
 
-    // Top App Bar: shown when Liquid Glass is disabled. When Liquid Glass is
-    // active, the persistent Liquid Glass buttons above handle navigation and
-    // actions, so the TopAppBar is hidden entirely.
     if (!liquidGlassHeaderActive) {
-    // Top App Bar
+
     TopAppBar(
         windowInsets =
             WindowInsets(top = systemBarsTopPadding)
@@ -1286,10 +1171,7 @@ fun ArtistScreen(
             )
         },
         navigationIcon = {
-            // Always show the back arrow when the TopAppBar is visible (i.e.
-            // when Liquid Glass is OFF). The Liquid Glass back button isn't
-            // there, so the TopAppBar must provide back navigation at all
-            // times — including when the hero is visible.
+
             IconButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
@@ -1301,9 +1183,7 @@ fun ArtistScreen(
             }
         },
         actions = {
-            // Always show the more action when the TopAppBar is visible (i.e.
-            // when Liquid Glass is OFF). The Liquid Glass more button isn't
-            // there, so the TopAppBar must provide it at all times.
+
             IconButton(
                 onClick = showArtistOverflowMenu,
                 onLongClick = {},

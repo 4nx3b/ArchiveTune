@@ -44,6 +44,7 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.MediaSessionConstants
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
@@ -299,10 +300,7 @@ class MediaLibrarySessionCallback
                 }
 
                 val requested = (safePage + 1) * safePageSize
-                // No hard cap on returned items — the previous `min(requested, 200)` truncated
-                // Android Auto / browse results above 200 entries (Task 13). Allocate the
-                // ArrayList at the requested size; the underlying queries already paginate
-                // and interleave cleanly without an upper bound.
+
                 val items = ArrayList<MediaItem>(requested)
 
                 val offlineSongs = searchOfflineSongs(q, previewSize = requested)
@@ -1032,7 +1030,7 @@ class MediaLibrarySessionCallback
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
             scope.future(Dispatchers.IO) {
-                // Play from Android Auto
+
                 val defaultResult =
                     MediaSession.MediaItemsWithStartPosition(emptyList(), startIndex, startPositionMs)
                 val firstItem = mediaItems.firstOrNull() ?: return@future defaultResult
@@ -1313,19 +1311,6 @@ class MediaLibrarySessionCallback
             return root in AUTO_QUEUE_SONG_ROOTS && contains("/")
         }
 
-        /**
-         * The "Liked Songs" folder for the Auto browse tree.
-         *
-         * Spotify's liked songs were reachable nowhere in the car: the tree carried the playlist
-         * folder and nothing else, so the one collection most people actually drive to was the one
-         * they could not open. It sits above the playlists for the same reason it does in Spotify's
-         * own apps.
-         *
-         * Resolved lazily — the folder is offered whenever Spotify browsing is enabled, without
-         * paging the whole liked library first. Auto asks for a node's children only when the user
-         * opens it, and doing that work up front would put a full library walk on the callback that
-         * draws the root.
-         */
         private suspend fun spotifyLikedFolder(): List<MediaItem> {
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
             return listOf(
@@ -1339,14 +1324,6 @@ class MediaLibrarySessionCallback
             )
         }
 
-        /**
-         * The liked songs as playable items, resolved to real streams and cached for the session.
-         *
-         * Same resolve-in-batches shape as [spotifyPlaylistMediaItems]: a Spotify track is not
-         * playable on its own, it has to be matched to a stream first, and doing that one track at
-         * a time over a library of hundreds is the difference between a list that appears and a
-         * browse callback that times out.
-         */
         private suspend fun spotifyLikedMediaItems(): List<MediaItem> {
             spotifyPlaylistItemCache[SPOTIFY_LIKED_CACHE_KEY]?.let { return it }
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
@@ -1354,10 +1331,7 @@ class MediaLibrarySessionCallback
                 runCatching {
                     spotifyLibraryRepository
                         .likedSongs()
-                        // Capped like every other Auto list. A Spotify track is not playable until
-                        // it has been matched to a stream, and a liked library runs to hundreds or
-                        // thousands — resolving all of them is a browse callback that never
-                        // returns. AUTO_BROWSE_LIMIT is what the rest of the tree already shows.
+
                         .take(AUTO_BROWSE_LIMIT)
                         .chunked(SPOTIFY_RESOLVE_BATCH_SIZE)
                         .flatMap { batch ->
@@ -1372,15 +1346,6 @@ class MediaLibrarySessionCallback
             return resolved
         }
 
-        /**
-         * The Spotify playlists folder, drawn from cache only.
-         *
-         * This runs while the PARENT list is being built, so it must not go to the network: it used
-         * to call [spotifyPlaylistsForAuto], which refreshes from Spotify when the cache is cold,
-         * and the whole "Playlists" screen in the car sat empty until that request came back. The
-         * folder is now offered whenever Spotify browsing is on, with a count only when one is
-         * already known — opening it is what fetches, and Auto asks for children only then.
-         */
         private suspend fun spotifyPlaylistFolder(): List<MediaItem> {
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) return emptyList()
             spotifyLibraryRepository.restoreCachedPlaylists()
@@ -1398,7 +1363,6 @@ class MediaLibrarySessionCallback
             )
         }
 
-        /** The playlists themselves — fetched when the folder is opened, not when it is listed. */
         private suspend fun spotifyPlaylistsForAuto() =
             if (!context.dataStore.get(ShowSpotifyPlaylistsKey, false)) {
                 emptyList()
@@ -2147,19 +2111,27 @@ class MediaLibrarySessionCallback
         )
 
         private fun downloadedSongs(): Flow<List<Song>> {
-            val downloads = downloadUtil.downloads.value
+            // Download index ids are source-scoped ("ytm:<id>", "qobuz:<id>",
+            // ... or legacy plain "<id>") — normalize to raw song ids so DB
+            // lookups keep matching while every source's copy still counts.
+            val updateTimeBySongId =
+                downloadUtil.downloads.value
+                    .filterValues { it.state == Download.STATE_COMPLETED }
+                    .entries
+                    .fold(mutableMapOf<String, Long>()) { acc, (id, dl) ->
+                        val songId = DownloadSourceConfig.downloadIdToSongId(id)
+                        val time = dl.updateTimeMs ?: 0L
+                        if (time > (acc[songId] ?: 0L)) acc[songId] = time
+                        acc
+                    }
             return database
                 .allSongs()
                 .flowOn(Dispatchers.IO)
                 .map { songs ->
-                    songs.filter {
-                        downloads[it.id]?.state == Download.STATE_COMPLETED
-                    }
+                    songs.filter { it.id in updateTimeBySongId }
                 }.map { songs ->
                     songs
-                        .map { it to downloads[it.id] }
-                        .sortedBy { it.second?.updateTimeMs ?: 0L }
-                        .map { it.first }
+                        .sortedBy { updateTimeBySongId[it.id] ?: 0L }
                 }
         }
 
@@ -2219,7 +2191,7 @@ class MediaLibrarySessionCallback
                 downloadUtil.downloads.value
                     .asSequence()
                     .filter { (_, download) -> download.state == Download.STATE_COMPLETED }
-                    .map { (id, _) -> id }
+                    .map { (id, _) -> DownloadSourceConfig.downloadIdToSongId(id) }
             val downloadCacheIds =
                 runCatching { downloadUtil.downloadCache.keys.asSequence() }
                     .getOrDefault(emptySequence())
@@ -2300,10 +2272,7 @@ class MediaLibrarySessionCallback
             private const val AUTO_HOME_PLAYLIST_LIMIT = 20
             private const val SPOTIFY_RESOLVE_BATCH_SIZE = 20
             private const val HOME_RECENT_WINDOW_MS = 86400000L * 14L
-            /**
-             * Liked songs share [spotifyPlaylistItemCache] under a key no Spotify playlist id can
-             * collide with — ids are base62, so a colon cannot appear in one.
-             */
+
             private const val SPOTIFY_LIKED_CACHE_KEY = "liked:songs"
             private const val PLAYLIST_ACTION_SHUFFLE = "_shuffle"
             private const val PLAYLIST_ACTION_SORT = "_sort"

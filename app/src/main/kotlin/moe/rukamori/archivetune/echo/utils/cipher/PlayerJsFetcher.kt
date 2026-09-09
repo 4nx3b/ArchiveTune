@@ -8,28 +8,18 @@ import okhttp3.Request
 import timber.log.Timber
 import java.io.File
 
-/**
- * Fetches and caches YouTube's player.js for cipher operations.
- *
- * The player.js contains the signature deobfuscation and n-transform functions
- * that are required to access stream URLs on web clients.
- */
 object PlayerJsFetcher {
     private const val TAG = "Metrolist_CipherFetcher"
     private const val IFRAME_API_URL = "https://www.youtube.com/iframe_api"
     private const val PLAYER_JS_URL_TEMPLATE = "https://www.youtube.com/s/player/%s/player_ias.vflset/en_GB/base.js"
-    private const val CACHE_TTL_MS = 6 * 60 * 60 * 1000L // 6 hours
+    private const val CACHE_TTL_MS = 6 * 60 * 60 * 1000L
 
     private val httpClient = OkHttpClient.Builder()
         .proxy(YouTube.proxy)
         .build()
 
-    // Regex to extract player hash from iframe_api response
     private val PLAYER_HASH_REGEX = Regex("""\\?/s\\?/player\\?/([a-zA-Z0-9_-]+)\\?/""")
 
-    // Serializes cache mutations: getPlayerJs has unsynchronized concurrent callers, and an
-    // unlocked writeToCache purge racing another writer's writeAtomic tmp window would delete
-    // the tmp mid-write and silently degrade to a truncating non-atomic write.
     private val cacheWriteLock = Any()
 
     private fun getCacheDir(): File = File(CipherDeobfuscator.appContext.filesDir, "cipher_cache")
@@ -38,12 +28,6 @@ object PlayerJsFetcher {
 
     private fun getHashFile(): File = File(getCacheDir(), "current_hash.txt")
 
-    /**
-     * Get player.js content and hash.
-     *
-     * Uses cached version if available and not expired, otherwise fetches fresh.
-     * Returns Pair(playerJs, hash) or null if failed.
-     */
     suspend fun getPlayerJs(forceRefresh: Boolean = false): Pair<String, String>? = withContext(Dispatchers.IO) {
         Timber.tag(TAG).d("=== GET PLAYER.JS ===")
         Timber.tag(TAG).d("forceRefresh: $forceRefresh")
@@ -55,7 +39,6 @@ object PlayerJsFetcher {
                 cacheDir.mkdirs()
             }
 
-            // Check cache first (unless forced refresh)
             if (!forceRefresh) {
                 val cached = readFromCache()
                 if (cached != null) {
@@ -66,7 +49,6 @@ object PlayerJsFetcher {
                 Timber.tag(TAG).d("Cache miss, will fetch fresh")
             }
 
-            // Fetch player hash from iframe_api
             Timber.tag(TAG).d("Fetching player hash from iframe_api...")
             val hash = fetchPlayerHash()
             if (hash == null) {
@@ -75,7 +57,6 @@ object PlayerJsFetcher {
             }
             Timber.tag(TAG).d("Extracted player hash: $hash")
 
-            // Download player JS
             Timber.tag(TAG).d("Downloading player JS for hash: $hash...")
             val playerJs = downloadPlayerJs(hash)
             if (playerJs == null) {
@@ -88,7 +69,6 @@ object PlayerJsFetcher {
             Timber.tag(TAG).d("length: ${playerJs.length} chars")
             Timber.tag(TAG).d("preview: ${playerJs.take(100)}...")
 
-            // Cache the result
             writeToCache(hash, playerJs)
 
             Pair(playerJs, hash)
@@ -98,19 +78,12 @@ object PlayerJsFetcher {
         }
     }
 
-    /**
-     * Invalidate the player.js cache.
-     * Call this when cipher operations fail to force a fresh fetch.
-     */
     fun invalidateCache() {
         Timber.tag(TAG).d("Invalidating cache...")
         synchronized(cacheWriteLock) { try {
             val cacheDir = getCacheDir()
             if (cacheDir.exists()) {
-                // Only the player.js cache (player_*.js + current_hash.txt) belongs to this fetcher.
-                // The dir is shared with PlayerConfigStore (configs_remote.json/.meta) — do NOT wipe
-                // those, or every decipher retry destroys the config ETag and forces a full
-                // non-conditional re-download of the config file.
+
                 val files = cacheDir.listFiles()?.filter {
                     it.name.startsWith("player_") || it.name == "current_hash.txt"
                 }
@@ -152,8 +125,6 @@ object PlayerJsFetcher {
             val ageHours = ageMs / (1000 * 60 * 60)
             Timber.tag(TAG).d("Cache age: ${ageHours}h (TTL: ${CACHE_TTL_MS / (1000 * 60 * 60)}h)")
 
-            // Check TTL (in-range: a future timestamp from a backward clock step counts as
-            // expired, not fresh — see PlayerConfigStore.withinWindow).
             if (!PlayerConfigStore.withinWindow(System.currentTimeMillis(), timestamp, CACHE_TTL_MS)) {
                 Timber.tag(TAG).d("Cache expired (hash=$hash, age=${ageHours}h)")
                 return null
@@ -185,14 +156,10 @@ object PlayerJsFetcher {
             try {
                 val cacheDir = getCacheDir()
 
-                // Clean old cache files
                 val oldFiles = cacheDir.listFiles()?.filter { it.name.startsWith("player_") }
                 Timber.tag(TAG).d("Cleaning ${oldFiles?.size ?: 0} old cache files")
                 oldFiles?.forEach { it.delete() }
 
-                // Atomic (temp + rename): a plain writeText truncates first, so process death
-                // during a same-hash force-refresh rewrite would leave a truncated player.js
-                // that readFromCache happily serves until the TTL expires.
                 PlayerConfigStore.writeAtomic(getCacheFile(hash), playerJs)
                 PlayerConfigStore.writeAtomic(getHashFile(), "$hash\n${System.currentTimeMillis()}")
 
@@ -211,8 +178,6 @@ object PlayerJsFetcher {
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .build()
 
-        // .use{} so the response is closed on the error path too (an unread body would
-        // otherwise strand its connection).
         val body = httpClient.newCall(request).execute().use { response ->
             Timber.tag(TAG).d("iframe_api response: HTTP ${response.code}")
             if (!response.isSuccessful) {
@@ -267,9 +232,6 @@ object PlayerJsFetcher {
         return body
     }
 
-    /**
-     * Debug method: Get cache information
-     */
     fun getCacheInfo(): Map<String, Any?> {
         return try {
             val hashFile = getHashFile()

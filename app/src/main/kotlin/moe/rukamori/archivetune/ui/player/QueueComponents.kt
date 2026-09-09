@@ -91,10 +91,6 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 
-/**
- * Current Song Header shown at the top of the queue
- * Displays album art, song info, and control buttons
- */
 @Composable
 fun CurrentSongHeader(
     sheetState: BottomSheetState,
@@ -122,15 +118,6 @@ fun CurrentSongHeader(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    // Notch-safe top inset (user report 2026-09-03: "The bottomsheet queue
-    // collides with notch"). `WindowInsets.systemBars.only(Top)` collapses to
-    // 0 whenever the status bar is HIDDEN — the hide-status-bar preference,
-    // an immersive/edge-to-edge player (every modern player style) — while the
-    // physical display cutout stays put, so an expanded queue sheet slid its
-    // drag handle and current-song header straight under the notch.
-    // `LocalStableSystemBarsTopPadding` floors against the display cutout
-    // (which is reported regardless of bar visibility) and against a cached
-    // status-bar height, so the header always clears the hardware notch.
     val stableTopInset = LocalStableSystemBarsTopPadding.current
 
     Column(
@@ -426,9 +413,6 @@ fun CurrentSongHeader(
     }
 }
 
-/**
- * Shared Sleep Timer Dialog component used in both Queue and Player.
- */
 @Composable
 fun SleepTimerDialog(
     onDismiss: () -> Unit,
@@ -492,9 +476,6 @@ fun SleepTimerDialog(
     )
 }
 
-/**
- * Codec information row displayed when showCodecOnPlayer is enabled.
- */
 @Composable
 fun CodecInfoRow(
     codec: String,
@@ -533,9 +514,6 @@ fun CodecInfoRow(
     }
 }
 
-/**
- * V2 Design Style collapsed queue content.
- */
 @Composable
 fun QueueCollapsedContentV2(
     showCodecOnPlayer: Boolean,
@@ -610,7 +588,6 @@ fun QueueCollapsedContentV2(
             val iconSize = 24.dp
             val borderColor = textBackgroundColor.copy(alpha = 0.35f)
 
-            // Queue button
             Box(
                 modifier =
                     Modifier
@@ -642,7 +619,6 @@ fun QueueCollapsedContentV2(
                 )
             }
 
-            // Sleep timer button
             Box(
                 modifier =
                     Modifier
@@ -680,7 +656,6 @@ fun QueueCollapsedContentV2(
                 }
             }
 
-            // Lyrics button
             Box(
                 modifier =
                     Modifier
@@ -698,7 +673,6 @@ fun QueueCollapsedContentV2(
                 )
             }
 
-            // Repeat mode button
             Box(
                 modifier =
                     Modifier
@@ -751,7 +725,6 @@ fun QueueCollapsedContentV2(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Menu button
             Box(
                 modifier =
                     Modifier
@@ -772,9 +745,6 @@ fun QueueCollapsedContentV2(
     }
 }
 
-/**
- * V3 Design Style collapsed queue content.
- */
 @Composable
 fun QueueCollapsedContentV3(
     showCodecOnPlayer: Boolean,
@@ -817,7 +787,7 @@ fun QueueCollapsedContentV3(
                         ),
                     ),
         ) {
-            // Queue button
+
             Box(
                 modifier =
                     Modifier
@@ -845,7 +815,6 @@ fun QueueCollapsedContentV3(
                 }
             }
 
-            // Sleep timer button
             Box(
                 modifier =
                     Modifier
@@ -876,7 +845,6 @@ fun QueueCollapsedContentV3(
                 }
             }
 
-            // Lyrics button
             Box(
                 modifier =
                     Modifier
@@ -904,7 +872,6 @@ fun QueueCollapsedContentV3(
                 }
             }
 
-            // Menu button
             Box(
                 modifier =
                     Modifier
@@ -924,9 +891,6 @@ fun QueueCollapsedContentV3(
     }
 }
 
-/**
- * V1 Design Style collapsed queue content (text buttons).
- */
 @Composable
 fun QueueCollapsedContentV1(
     showCodecOnPlayer: Boolean,
@@ -1068,9 +1032,6 @@ fun QueueCollapsedContentV1(
     }
 }
 
-/**
- * V4 Design Style collapsed queue content (pill buttons).
- */
 @Composable
 fun QueueCollapsedContentV4(
     showCodecOnPlayer: Boolean,
@@ -1116,7 +1077,6 @@ fun QueueCollapsedContentV4(
             val buttonSize = 48.dp
             val iconSize = 22.dp
 
-            // Queue button (pill)
             Box(
                 modifier =
                     Modifier
@@ -1150,7 +1110,6 @@ fun QueueCollapsedContentV4(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Sleep timer button (circle)
             Box(
                 modifier =
                     Modifier
@@ -1195,7 +1154,6 @@ fun QueueCollapsedContentV4(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Lyrics button (pill)
             Box(
                 modifier =
                     Modifier

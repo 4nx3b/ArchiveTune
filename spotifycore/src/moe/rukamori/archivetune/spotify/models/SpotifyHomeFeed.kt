@@ -7,11 +7,6 @@
 
 package moe.rukamori.archivetune.spotify.models
 
-/**
- * Personalized Spotify home feed returned by the `home` GQL operation.
- * Mirrors what open.spotify.com shows on its landing page: Daily Mix,
- * Discover Weekly, Release Radar, Jump back in, recently played, etc.
- */
 data class SpotifyHomeFeed(
     val greeting: String?,
     val sections: List<SpotifyHomeFeedSection>,

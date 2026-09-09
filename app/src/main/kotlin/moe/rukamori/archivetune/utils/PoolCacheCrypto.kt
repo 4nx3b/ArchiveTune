@@ -15,7 +15,6 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Encrypts the local pool cache with a non-exportable Android Keystore key. */
 object PoolCacheCrypto {
     private const val KEYSTORE = "AndroidKeyStore"
     private const val ALIAS = "archivetune-pool-cache"

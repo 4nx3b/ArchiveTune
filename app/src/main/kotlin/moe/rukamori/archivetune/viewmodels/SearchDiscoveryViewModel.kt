@@ -70,9 +70,7 @@ class SearchDiscoveryViewModel
         private fun load(force: Boolean = false) {
             if (!force && loadJob?.isActive == true) return
             loadJob?.cancel()
-            // On a non-forced re-load (e.g. ViewModel re-init on tab re-entry), don't flip
-            // back to Loading — the repository will return the cached snapshot instantly,
-            // so we can keep showing the previous content until the new load resolves.
+
             if (force || _state.value !is SearchDiscoveryScreenState.Success) {
                 _state.value = SearchDiscoveryScreenState.Loading
             }

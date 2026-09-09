@@ -552,37 +552,23 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.APPLE_MUSIC -> {
-                    // The Apple Music style renders its queue via the in-place
-                    // SharedTransitionLayout morph in AppleMusicPlayer (its
-                    // collapsed peek height is 0dp, so this BottomSheet never
-                    // visibly collapses for that style). Keeping an explicit
-                    // empty branch here means the `when` stays exhaustive and
-                    // we don't accidentally render an upstream collapsed-content
-                    // variant behind the morph.
+
                 }
 
                 PlayerDesignStyle.BITCHORD -> {
-                    // The Bitchord style renders its queue inline inside its own
-                    // player (drag the sleeve up / tap the queue glyph), exactly
-                    // like BitChord upstream. Its collapsed peek height is 0dp,
-                    // so this sheet never visibly collapses for that style either.
+
                 }
 
                 PlayerDesignStyle.TIKTOK -> {
-                    // The TikTok style owns its queue surface too: the feed IS
-                    // the queue (every page a queue entry), and its collapsed
-                    // peek height is 0dp, so this sheet never visibly collapses.
+
                 }
 
                 PlayerDesignStyle.SIMPMUSIC -> {
-                    // Same for the SimpMusic style: its artwork pager is a page per queue entry,
-                    // and its collapsed peek height is 0dp.
+
                 }
 
                 PlayerDesignStyle.SPATIALFLOW -> {
-                    // The SpatialFlow style owns its queue surface: the embedded
-                    // sliding queue drawer (SpatialFlowQueueDrawer) IS the queue,
-                    // so this sheet never renders a collapsed-content variant.
+
                 }
             }
 

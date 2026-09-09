@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,36 +64,66 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.annotation.StringRes
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
+import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.dataStore
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 
 /**
- * A single downloadable song surfaced in the export picker. The [songId] is the
- * raw media id (no source prefix); the actual cached spans may live under
- * "qobuz:$songId" or "tidal:$songId" — see [resolveSpans].
+ * One row PER (song, source) offline copy: a song downloaded from both Qobuz
+ * and YouTube Music shows two entries, each labeled with and exporting its
+ * own source's bytes. The row's identity IS the download cache key —
+ * "ytm:<id>" / "qobuz:<id>" / ... or a legacy plain "<id>" (pre-refactor
+ * YouTube download, also labeled YouTube Music).
  */
 private data class DownloadedSongRow(
     val songId: String,
+    val cacheKey: String,
+    @param:StringRes val sourceLabelRes: Int,
     val title: String,
     val artist: String,
     val thumbnailUrl: String?,
     val durationText: String?,
-)
+) {
+    val isYouTubeSource: Boolean
+        get() = cacheKey == songId ||
+            cacheKey.startsWith(DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX)
+}
+
+/** 1 MiB copy buffers — the previous default 8 KiB chunks made 30–70 MiB
+ * FLAC exports crawl through SAF's streaming layer. */
+private const val EXPORT_COPY_BUFFER_BYTES = 1024 * 1024
+
+private fun sourceLabelResFor(cacheKey: String): Int =
+    when (DownloadSourceConfig.downloadSourceForCacheKey(cacheKey)) {
+        DownloadSource.QOBUZ -> R.string.download_source_qobuz
+        DownloadSource.TIDAL -> R.string.download_source_tidal
+        DownloadSource.APPLE -> R.string.download_source_apple_music
+        DownloadSource.DEEZER -> R.string.download_source_deezer
+        DownloadSource.JIOSAAVN -> R.string.download_source_jiosaavn
+        DownloadSource.QOBUZ_BACKUP -> R.string.download_source_qobuz_backup
+        else -> R.string.download_source_youtube_music
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,9 +144,10 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     val selectedIds: SnapshotStateList<String> = remember { mutableStateListOf() }
+    var sourceOrder by remember {
+        mutableStateOf<List<DownloadSource>>(DownloadSourceConfig.DEFAULT_ORDER)
+    }
 
-    // Filter songs by search query (title or artist, case-insensitive).
-    // Empty query shows all songs.
     val displayedSongs = remember(songs, searchQuery) {
         if (searchQuery.isBlank()) songs
         else {
@@ -128,52 +158,57 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         }
     }
 
-    // Load the list of downloaded songs from the cache + database.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val cache = downloadUtil.downloadCache
-            // De-duplicate cache keys by the underlying song id so "qobuz:<id>"
-            // and "<id>" don't both show up as separate rows.
-            val songIds =
-                cache.keys
-                    .map { it.substringAfter(":") }
-                    .filter { it.isNotBlank() }
-                    .distinct()
+
+            // The user's download-source priority decides which source's
+            // cached spans win when several exist for the same song.
+            val storedOrder = runCatching {
+                runBlocking { context.dataStore.data.first()[DownloadSourceOrderKey] }
+            }.getOrNull()
+            val order = DownloadSourceConfig.parseOrder(storedOrder)
+            sourceOrder = order
+
+            // One row per cache key with spans — the same song appears once
+            // per source it was downloaded from, each labeled accordingly.
             val rows =
-                songIds.mapNotNull { songId ->
-                    // Only include songs that actually have cached spans.
-                    val hasSpans =
-                        listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId).any { key ->
-                            cache.getCachedSpans(key).isNotEmpty()
-                        }
-                    if (!hasSpans) return@mapNotNull null
-                    val songEntity = database.getSongByIdBlocking(songId)
-                    val title =
-                        songEntity?.song?.title?.takeIf { it.isNotBlank() }
-                            ?: "Unknown song ($songId)"
-                    val artist =
-                        songEntity?.artists?.firstOrNull()?.name?.takeIf { it.isNotBlank() }
-                            ?: songEntity?.album?.title?.takeIf { it.isNotBlank() }
-                            ?: ""
-                    val thumb = songEntity?.song?.thumbnailUrl
-                    DownloadedSongRow(
-                        songId = songId,
-                        title = title,
-                        artist = artist,
-                        thumbnailUrl = thumb,
-                        durationText = null,
+                cache.keys
+                    .mapNotNull { key ->
+                        val spans = runCatching { cache.getCachedSpans(key) }.getOrNull().orEmpty()
+                        if (spans.isEmpty()) return@mapNotNull null
+                        val songId = DownloadSourceConfig.downloadIdToSongId(key)
+                        if (songId.isBlank()) return@mapNotNull null
+                        val songEntity = database.getSongByIdBlocking(songId)
+                        val title =
+                            songEntity?.song?.title?.takeIf { it.isNotBlank() }
+                                ?: "Unknown song ($songId)"
+                        val artist =
+                            songEntity?.artists?.firstOrNull()?.name?.takeIf { it.isNotBlank() }
+                                ?: songEntity?.album?.title?.takeIf { it.isNotBlank() }
+                                ?: ""
+                        val thumb = songEntity?.song?.thumbnailUrl
+                        DownloadedSongRow(
+                            songId = songId,
+                            cacheKey = key,
+                            sourceLabelRes = sourceLabelResFor(key),
+                            title = title,
+                            artist = artist,
+                            thumbnailUrl = thumb,
+                            durationText = null,
+                        )
+                    }.sortedWith(
+                        compareBy({ it.title.lowercase() }, { it.sourceLabelRes }),
                     )
-                }.sortedBy { it.title.lowercase() }
             songs = rows
             isLoading = false
         }
     }
 
-    // SAF folder picker — fires when the user taps "Pick export folder".
     val pickFolderLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri == null) return@rememberLauncherForActivityResult
-            val toExport = songs.filter { it.songId in selectedIds }
+            val toExport = songs.filter { it.cacheKey in selectedIds }
             if (toExport.isEmpty()) {
                 Toast.makeText(
                     context,
@@ -199,123 +234,58 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             )
                         val tempDir = java.io.File(context.cacheDir, "export_tmp").apply { mkdirs() }
                         loop@ for (row in toExport) {
-                            val resolved = resolveSpansWithSource(cache, row.songId) ?: run { failed++; continue@loop }
-                            val spans = resolved.spans
-                            // Reject empty / partial spans before attempting any tagging
-                            // or export — exporting a 0-byte file is what causes the
-                            // "appears downloaded but won't play back" symptom when the
-                            // user later imports the file into another player.
-                            if (spans.isEmpty()) { failed++; continue@loop }
+                            // Each row IS a specific source's copy — resolve its
+                            // own key directly, no priority fallback (a fallback
+                            // would silently export a different source's bytes).
+                            val spans = runCatching { cache.getCachedSpans(row.cacheKey) }.getOrNull()
+
+                            if (spans.isNullOrEmpty()) { failed++; continue@loop }
                             val totalSpanBytes = spans.sumOf { it.length }
                             if (totalSpanBytes <= 0L) { failed++; continue@loop }
                             val detectedExt = detectAudioExtensionFromSpans(spans)
-                            // Skip legacy WebM/Opus caches entirely.
-                            //
-                            // These formats come from old YouTube Music downloads (pre-PR #67,
-                            // when the format picker preferred Opus-in-WebM over AAC-in-M4A).
-                            // The audio bytes inside are Opus, NOT MPEG-1 Layer III — so even
-                            // if we rename the file to .mp3 and prepend an ID3v2 tag, every
-                            // reasonable MP3 decoder will fail to find a valid MPEG frame sync
-                            // after the tag and report the file as corrupt / unplayable.
-                            //
-                            // Previous attempts (PR #68) tried to "rescue" these files by
-                            // prepending an ID3v2.4 tag and renaming to .mp3, but that just
-                            // produced files with metadata the user couldn't see because the
-                            // audio was unplayable. Skipping them is the correct behavior:
-                            //   - The user gets a clear toast telling them to re-download.
-                            //   - PR #67's format picker ensures new downloads are .m4a, so
-                            //     re-download produces a taggable, exportable file.
-                            //
-                            // We do NOT delete the legacy cache here — the user may still
-                            // want to play it inside the app (ExoPlayer handles WebM/Opus
-                            // natively). Only the export path is blocked.
+
                             if (detectedExt == "webm" || detectedExt == "opus") {
                                 skippedIncompatible++
                                 continue@loop
                             }
-                            // Determine the user-visible extension.
-                            //
-                            // YouTube-sourced downloads (no source prefix on the cache key) are
-                            // **always** exported as `.mp3` per the user's explicit request:
-                            // "if a song downloads in .webm format rename it to .MP3 while i export it."
-                            //
-                            // After the WebM/Opus skip above, the only YouTube-sourced caches
-                            // that reach this point are .m4a (AAC/MP4) — the format picker has
-                            // produced .m4a for new downloads since PR #67. The .m4a bytes are
-                            // a valid MP4 container; most modern Android players (MediaExtractor,
-                            // ExoPlayer, VLC, foobar2000) detect the actual codec from the
-                            // magic bytes ("ftyp" box at offset 4) and play the file correctly
-                            // regardless of the .mp3 extension. jaudiotagger writes MP4 tags
-                            // (not ID3v2) onto the file, which Android's MediaMetadataRetriever
-                            // reads back correctly.
-                            //
-                            // Lossless sources (Qobuz/Tidal/Deezer) keep their native extension
-                            // (.flac) — the user's complaint is specifically about YouTube Music
-                            // exports, not lossless.
-                            val isYouTubeSource = resolved.sourceKey == null
-                            val exportExt =
-                                if (isYouTubeSource) "mp3" else detectedExt
+
+
+                            // Export with the extension the bytes actually have —
+                            // the old `if (isYouTubeSource) "mp3"` override
+                            // mislabeled m4a (itag 140) downloads as .mp3, which
+                            // jaudiotagger and most players then fail to open.
+                            val exportExt = detectedExt
                             val mime = extensionToMimeType(exportExt)
                             val safeTitle =
                                 row.title
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                     .ifBlank { "audio_${row.songId}" }
-                            // Stage 1: assemble spans into a single temp file so jaudiotagger
-                            // can write metadata tags onto it. The temp file is named with the
-                            // *real* detected extension (m4a/flac/mp3) so jaudiotagger's
-                            // AudioFileIO.read() — which uses the extension to pick a reader —
-                            // finds the right format.
-                            val tempFile = java.io.File(tempDir, "${row.songId}.$detectedExt")
+
+                            // Distinct temp name per (song, source) so two rows of
+                            // the same song never write each other's temp file.
+                            val tempFile = java.io.File(tempDir, "${row.songId}_${row.cacheKey.hashCode()}.$detectedExt")
                             try {
                                 runCatching {
                                     java.io.FileOutputStream(tempFile).use { output ->
+                                        val outBuf = java.io.BufferedOutputStream(output, EXPORT_COPY_BUFFER_BYTES)
                                         spans.sortedBy { it.position }.forEach { span ->
                                             java.io.FileInputStream(span.file).use { input ->
-                                                input.copyTo(output)
+                                                java.io.BufferedInputStream(input, EXPORT_COPY_BUFFER_BYTES).use { bufIn ->
+                                                    bufIn.copyTo(outBuf)
+                                                }
                                             }
                                         }
-                                        output.flush()
+                                        outBuf.flush()
                                     }
                                 }.getOrElse {
                                     tempFile.delete()
                                     failed++
                                     continue@loop
                                 }
-                                // Stage 2: write metadata tags (title, artist, album, year,
-                                // track, artwork) using jaudiotagger's standard tag() path.
-                                //
-                                // We deliberately do NOT fall back to a manual ID3v2-prepend
-                                // when tag() fails. Previous code (PR #68) prepended an ID3v2.4
-                                // header onto non-MP3 bytes (e.g. .m4a files that jaudiotagger
-                                // couldn't read), which produced files where:
-                                //   - Players saw "ID3" magic → parsed the tag (good)
-                                //   - After the tag, players found MP4/WebM bytes instead of
-                                //     MPEG audio frames → reported the file as corrupt
-                                //
-                                // If jaudiotagger can't read/write the file, the file is
-                                // exported UNTAGGED but playable, which is strictly better than
-                                // tagged-but-unplayable. Failures here are rare because the
-                                // WebM/Opus case is already skipped above.
-                                //
-                                // Metadata source priority:
-                                //   1. Database SongEntity (populated when the user clicked
-                                //      Download — title/artists/album come from YouTube Music's
-                                //      browse response OR from persistPlaybackMetadata which
-                                //      inserts an ArtistEntity + SongArtistMap from
-                                //      videoDetails.author for direct YT downloads).
-                                //   2. YouTube.getMediaInfo(videoId) fallback — when the
-                                //      database has no artist/album. Fetches title + author +
-                                //      thumbnail from the watch endpoint.
-                                //   3. Song thumbnail URL constructed from the videoId
-                                //      (https://i.ytimg.com/vi/<id>/hqdefault.jpg) — always
-                                //      available for YouTube songs even if the DB row has no
-                                //      thumbnailUrl and getMediaInfo() failed.
-                                val resolvedMetadata = resolveExportMetadata(database, row, isYouTubeSource)
+
+                                val resolvedMetadata = resolveExportMetadata(database, row, row.isYouTubeSource)
                                 moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, resolvedMetadata)
-                                // Stage 3: copy the tagged temp file to the user-selected SAF
-                                // folder. The document is created with the export extension
-                                // (which is .mp3 for YouTube-sourced files even though the
-                                // underlying bytes are MP4/AAC — see comment on exportExt above).
+
                                 val destUri =
                                     android.provider.DocumentsContract.createDocument(
                                         context.contentResolver,
@@ -325,10 +295,13 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     ) ?: run { failed++; continue@loop }
                                 runCatching {
                                     context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-                                        java.io.FileInputStream(tempFile).use { input ->
-                                            input.copyTo(output)
+                                        java.io.BufferedOutputStream(output, EXPORT_COPY_BUFFER_BYTES).use { bufOut ->
+                                            java.io.FileInputStream(tempFile).use { input ->
+                                                java.io.BufferedInputStream(input, EXPORT_COPY_BUFFER_BYTES).use { bufIn ->
+                                                    bufIn.copyTo(bufOut)
+                                                }
+                                            }
                                         }
-                                        output.flush()
                                     }
                                 }.onSuccess {
                                     exported++
@@ -338,8 +311,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 tempFile.delete()
                             }
                         }
-                        // Best-effort cleanup of stale temp files from a
-                        // previous interrupted export run.
+
                         runCatching { tempDir.listFiles()?.forEach { it.delete() } }
                     }
                 } finally {
@@ -366,14 +338,8 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
 
     val allSelected = displayedSongs.isNotEmpty() && selectedIds.size == displayedSongs.size
 
-    /**
-     * Deletes the cached spans for the currently-selected song IDs. Releases
-     * the underlying cache entries via [Cache.removeResource] for every
-     * source-prefixed key the song may live under (qobuz:, tidal:, bare id).
-     * Updates the in-memory list so the UI reflects the deletion immediately.
-     */
     fun deleteSelected() {
-        val toDelete = songs.filter { it.songId in selectedIds }
+        val toDelete = songs.filter { it.cacheKey in selectedIds }
         if (toDelete.isEmpty()) return
         isDeleting = true
         totalCount = toDelete.size
@@ -386,26 +352,40 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     val cache = downloadUtil.downloadCache
                     val playerCache = downloadUtil.playerCache
                     for (row in toDelete) {
+                        // Per-source delete: only this row's cache key (plus the
+                        // legacy plain twin for YouTube rows) and its download
+                        // index entry go; other sources' copies survive.
                         var removed = false
-                        for (key in listOf("qobuz:${row.songId}", "tidal:${row.songId}", "deezer:${row.songId}", row.songId)) {
+                        val keys =
+                            listOf(row.cacheKey) + if (row.cacheKey == row.songId) {
+                                listOf(DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + row.songId)
+                            } else {
+                                emptyList()
+                            }
+                        for (key in keys) {
                             runCatching { cache.removeResource(key) }.onSuccess { removed = true }
                             runCatching { playerCache.removeResource(key) }.onSuccess { removed = true }
                         }
                         if (removed) deleted++ else failed++
                         deletedCount = deleted
                     }
-                    // Also cancel any pending Media3 download requests for these ids
-                    // so they don't immediately re-create the cache entries.
+
                     runCatching {
                         toDelete.forEach { row ->
-                            downloadUtil.downloadManager.removeDownload(row.songId)
+                            downloadUtil.downloadManager.removeDownload(row.cacheKey)
+                            if (row.cacheKey == row.songId) {
+                                // legacy plain entry: also drop any "ytm:" twin entry
+                                downloadUtil.downloadManager.removeDownload(
+                                    DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + row.songId,
+                                )
+                            }
                         }
                     }
                 }
             } finally {
                 isDeleting = false
             }
-            // Refresh the song list to reflect deletions.
+
             val failedMsg = if (failed > 0) ", $failed failed" else ""
             Toast.makeText(
                 context,
@@ -416,10 +396,10 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 ),
                 Toast.LENGTH_LONG,
             ).show()
-            // Update the local list + clear selection.
-            val deletedIds = toDelete.map { it.songId }.toSet()
-            songs = songs.filterNot { it.songId in deletedIds }
-            selectedIds.removeAll(deletedIds)
+
+            val deletedKeys = toDelete.map { it.cacheKey }.toSet()
+            songs = songs.filterNot { it.cacheKey in deletedKeys }
+            selectedIds.removeAll(deletedKeys)
         }
     }
 
@@ -459,7 +439,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 },
                 actions = {
                     if (!isSearchActive && songs.isNotEmpty()) {
-                        // Search button — toggles the search bar in the title slot.
+
                         IconButton(onClick = { isSearchActive = true }) {
                             Icon(
                                 painter = painterResource(R.drawable.search),
@@ -471,7 +451,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 if (allSelected) selectedIds.clear()
                                 else {
                                     selectedIds.clear()
-                                    selectedIds.addAll(displayedSongs.map { it.songId })
+                                    selectedIds.addAll(displayedSongs.map { it.cacheKey })
                                 }
                             },
                             onLongClick = {},
@@ -499,14 +479,18 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             Modifier
                                 .fillMaxWidth()
                                 .windowInsetsPadding(
+                                    // Include the Bottom side so the selection bar
+                                    // (count + export/delete buttons) pads above the
+                                    // miniplayer and the gesture bar — previously the
+                                    // Horizontal-only inset let the miniplayer overlap
+                                    // and half-hide these controls.
                                     LocalPlayerAwareWindowInsets.current.only(
-                                        WindowInsetsSides.Horizontal,
+                                        WindowInsetsSides.Horizontal +
+                                            WindowInsetsSides.Bottom,
                                     ),
                                 ).padding(16.dp),
                     ) {
-                        // Count + progress line — full width so the "X of Y selected"
-                        // text never gets squeezed into a vertical strip by the two
-                        // action buttons below it (previously rendered as "1 / o / f / 1 / …").
+
                         Text(
                             text =
                                 stringResource(
@@ -546,7 +530,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            // Delete button — destructive action, gated by a confirmation dialog.
+
                             OutlinedButton(
                                 onClick = { showDeleteConfirm = true },
                                 enabled = !isExporting && !isDeleting && selectedIds.isNotEmpty(),
@@ -635,7 +619,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 }
             }
             displayedSongs.isEmpty() -> {
-                // Search returned no matches — distinct empty state from "no songs at all".
+
                 Column(
                     modifier =
                         Modifier
@@ -669,15 +653,15 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                         ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(displayedSongs, key = { it.songId }) { row ->
-                        val isSelected = row.songId in selectedIds
+                    items(displayedSongs, key = { it.cacheKey }) { row ->
+                        val isSelected = row.cacheKey in selectedIds
                         Row(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        if (isSelected) selectedIds.remove(row.songId)
-                                        else selectedIds.add(row.songId)
+                                        if (isSelected) selectedIds.remove(row.cacheKey)
+                                        else selectedIds.add(row.cacheKey)
                                     }.padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -722,6 +706,16 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
+                                // Source badge: makes the per-source identity of
+                                // each offline copy explicit (e.g. the same song
+                                // downloaded from both Qobuz and YouTube Music).
+                                Text(
+                                    text = stringResource(row.sourceLabelRes),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                             Spacer(Modifier.width(12.dp))
                             Box(
@@ -754,7 +748,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         }
     }
 
-    // Delete confirmation dialog — destructive action needs an explicit OK.
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -768,7 +761,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 )
             },
             confirmButton = {
-                KeepStatusBarHiddenInDialog() // status bar stays hidden while this dialog window is focused
+                KeepStatusBarHiddenInDialog()
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false
@@ -790,67 +783,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     }
 }
 
-/**
- * Returns the cached spans for [songId], preferring source-prefixed keys
- * ("qobuz:$songId" / "tidal:$songId") so the export pulls the lossless FLAC
- * bytes when available, falling back to the bare media id.
- */
-private fun resolveSpans(
-    cache: androidx.media3.datasource.cache.Cache,
-    songId: String,
-): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>? =
-    resolveSpansWithSource(cache, songId)?.spans
-
-/**
- * Same as [resolveSpans] but also returns the matched cache key so the caller
- * can determine whether the cached bytes came from a lossless source
- * ("qobuz:$songId" / "tidal:$songId" / "deezer:$songId") or from YouTube
- * Music (bare media id, no prefix).
- *
- * The caller uses [sourceKey] to decide the user-visible export extension:
- * YouTube-sourced AAC caches are renamed to .mp3 (per the user's explicit
- * request), while lossless sources keep their native .flac extension.
- *
- * [sourceKey] is null when the bytes were cached under the bare media id
- * (i.e. YouTube Music is the source). It is non-null for source-prefixed
- * keys (Qobuz/Tidal/Deezer).
- */
-private data class ResolvedSpansWithSource(
-    val spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
-    val sourceKey: String?,
-)
-
-private fun resolveSpansWithSource(
-    cache: androidx.media3.datasource.cache.Cache,
-    songId: String,
-): ResolvedSpansWithSource? {
-    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId)) {
-        val spans = cache.getCachedSpans(key)
-        if (spans.isNotEmpty()) {
-            val sourceKey = key.takeIf { it != songId }
-            return ResolvedSpansWithSource(spans, sourceKey)
-        }
-    }
-    return null
-}
-
-/**
- * Fetches the raw bytes of an album-art image from [url] so they can be
- * embedded into the exported audio file via [AudioTagger].
- *
- * Uses a basic [HttpURLConnection][java.net.HttpURLConnection] with a
- * 10-second connect + 15-second read timeout — fast enough to not stall
- * the export pipeline on a slow thumbnail CDN, generous enough to fetch
- * a typical 500×500 JPEG (~50 KB) on a flaky mobile connection.
- *
- * Returns `null` on any error (HTTP non-2xx, IO failure, timeout). The
- * caller treats null artwork as non-fatal — the audio file is still
- * exported, just without embedded artwork.
- *
- * The URL is typically the song's `thumbnailUrl` from the database,
- * which points at iTunes/Qobuz/Tidal/Deezer/YouTube CDN. All of these
- * serve CORS-friendly JPEG/PNG over HTTPS.
- */
 private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
     val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
     connection.connectTimeout = 10_000
@@ -863,9 +795,7 @@ private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
         val responseCode = connection.responseCode
         if (responseCode !in 200..299) return@runCatching null
         val contentType = connection.contentType ?: ""
-        // Only accept image/* content types — a misconfigured CDN
-        // returning HTML (e.g. a login redirect) would corrupt the
-        // embedded artwork if we wrote it verbatim.
+
         if (!contentType.startsWith("image/")) return@runCatching null
         connection.inputStream.use { it.readBytes() }
     } finally {
@@ -873,53 +803,6 @@ private fun fetchArtworkBytes(url: String): ByteArray? = runCatching {
     }
 }.getOrNull()
 
-/**
- * Resolves the metadata to embed into an exported audio file.
- *
- * Source priority:
- *   1. **Database SongEntity** — populated when the user clicked Download.
- *      Carries title, artists (from song_artist_map), album (from
- *      song_album_map), year, thumbnailUrl.
- *   2. **YouTube.getMediaInfo(videoId) fallback** — when the database row
- *      is incomplete (e.g. the song was downloaded via a playlist and the
- *      artist relation wasn't persisted, or the song row only has the title
- *      because the browse endpoint didn't return album metadata). Fetches
- *      title + author from the YouTube watch endpoint.
- *   3. **Row fallback** — uses the [DownloadedSongRow.title] and
- *      [DownloadedSongRow.thumbnailUrl] that were already loaded for the
- *      list display. These come from the same DB row but are always
- *      non-null, so we have a final safety net.
- *   4. **YouTube thumbnail URL constructed from videoId** — when the song
- *      is YouTube-sourced ([isYouTubeSource] = true) and none of the above
- *      yielded a thumbnail URL, we construct the canonical
- *      `https://i.ytimg.com/vi/<videoId>/hqdefault.jpg` URL. This always
- *      exists for public YouTube videos and ensures artwork is embedded
- *      even when the DB row has no thumbnailUrl and getMediaInfo() failed.
- *
- * Artwork bytes are fetched from the resolved thumbnail URL via
- * [fetchArtworkBytes]. Failure is non-fatal — the audio file is still
- * exported with text tags but no embedded artwork.
- *
- * **IMPORTANT**: [MediaInfo.authorThumbnail] is the *channel avatar*, not
- * the song's album cover. We deliberately do NOT use it as an artwork
- * fallback — that would embed the artist's profile picture as the song's
- * cover art, which is wrong. For YouTube songs, the videoId-constructed
- * URL is always the correct song thumbnail.
- *
- * This function NEVER returns null fields when a fallback exists —
- * the user's complaint was "all exported songs show unknown artist,
- * unknown album, no song artwork", and this resolver exists specifically
- * to fill those gaps before handing the metadata to [AudioTagger.tag].
- *
- * Runs on the calling thread (already on Dispatchers.IO inside the export
- * pipeline). Network calls (YouTube.getMediaInfo + fetchArtworkBytes) have
- * their own timeouts.
- *
- * @param isYouTubeSource true when the cache key is the bare media id
- *   (no `qobuz:`/`tidal:`/`deezer:` prefix) — i.e. the song was downloaded
- *   from YouTube Music. Used to construct the canonical YT thumbnail URL
- *   when no other thumbnail source is available.
- */
 private suspend fun resolveExportMetadata(
     database: moe.rukamori.archivetune.db.MusicDatabase,
     row: DownloadedSongRow,
@@ -927,34 +810,21 @@ private suspend fun resolveExportMetadata(
 ): moe.rukamori.archivetune.playback.AudioTagger.Metadata {
     val songEntity = database.getSongByIdBlocking(row.songId)
 
-    // Title — fall back to the row's title (which already has a sensible
-    // "Unknown song (id)" default), then to YouTube.getMediaInfo.
     val dbTitle = songEntity?.song?.title?.takeIf(String::isNotBlank)
     val title = dbTitle ?: row.title.takeIf { it.isNotBlank() }
 
-    // Artist — from song_artist_map, then YouTube.getMediaInfo's author,
-    // then empty (AudioTagger skips blank fields).
     val dbArtists = songEntity?.artists?.mapNotNull { it.name.takeIf(String::isNotBlank) }
         ?.takeIf { it.isNotEmpty() }
     val dbArtistStr = dbArtists?.joinToString(", ")
 
-    // Album — from song_album_map → song.album.title, then song.albumName,
-    // then null (skipped).
     val dbAlbum = songEntity?.album?.title?.takeIf(String::isNotBlank)
         ?: songEntity?.song?.albumName?.takeIf(String::isNotBlank)
 
-    // Year — from song.year (set when the album was browsed).
     val dbYear = songEntity?.song?.year?.takeIf { it > 0 }
 
-    // Thumbnail URL — prefer the DB row's URL (which is the high-quality
-    // version set when the song was inserted), fall back to the row's
-    // thumbnailUrl (loaded at screen entry — may be the same or a
-    // lower-res variant).
     val dbThumb = songEntity?.song?.thumbnailUrl?.takeIf(String::isNotBlank)
     val thumbUrl = dbThumb ?: row.thumbnailUrl?.takeIf(String::isNotBlank)
 
-    // Fast path: if the DB has all the metadata we need, skip the
-    // YouTube.getMediaInfo() network call entirely.
     val hasFullMetadata = title != null && !dbArtistStr.isNullOrBlank() && thumbUrl != null
     if (hasFullMetadata) {
         val artworkBytes = thumbUrl?.let { fetchArtworkBytes(it) }
@@ -968,15 +838,6 @@ private suspend fun resolveExportMetadata(
         )
     }
 
-    // Fallback: query YouTube.getMediaInfo() for title/author.
-    // This is the key fix for "all exported songs show unknown artist" —
-    // when the DB row was inserted from a playlist context (not a full
-    // browse), the artist relation often isn't persisted. The watch
-    // endpoint always returns the author.
-    //
-    // Note: we deliberately ignore mediaInfo.authorThumbnail here — that's
-    // the channel's avatar, not the song's album cover. The song thumbnail
-    // is constructed from the videoId below when isYouTubeSource is true.
     val mediaInfo = runCatching {
         if (isYouTubeSource) {
             moe.rukamori.archivetune.innertube.YouTube.getMediaInfo(row.songId).getOrNull()
@@ -991,11 +852,7 @@ private suspend fun resolveExportMetadata(
     val resolvedArtist = dbArtistStr
         ?: mediaInfo?.author?.takeIf(String::isNotBlank)
         ?: ""
-    // Construct the YouTube song-thumbnail URL from the videoId when no
-    // DB thumbnail was available. This is the canonical pattern YouTube
-    // uses for all public video thumbnails — `hqdefault.jpg` is always
-    // present (480×360, letterboxed for non-16:9 videos) and is small
-    // enough (~30 KB) to embed without bloating the audio file.
+
     val resolvedThumb = thumbUrl
         ?: if (isYouTubeSource) "https://i.ytimg.com/vi/${row.songId}/hqdefault.jpg" else null
 

@@ -13,13 +13,6 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Guards the handoff between a settings search result and the sub-screen it deep links into.
- *
- * The tricky part is not "does it return the anchor" but the lifetime rules around it: a screen may
- * read the request more than once before it sticks, and a request that is never claimed must not
- * sit around waiting to fire on some unrelated later visit.
- */
 class SettingsAnchorRequestTest {
     private var now = 1_000L
 
@@ -32,8 +25,7 @@ class SettingsAnchorRequestTest {
     @After
     fun tearDown() {
         SettingsAnchorRequest.reset()
-        // Deliberately does NOT restore the android.os.SystemClock default: calling it on a plain
-        // JVM throws "not mocked", and every test here installs its own clock in setUp anyway.
+
     }
 
     @Test
@@ -57,7 +49,6 @@ class SettingsAnchorRequestTest {
     fun `a request aimed elsewhere is left intact for its own screen`() {
         SettingsAnchorRequest.request(SettingsAnchorScreens.STORAGE, SettingsAnchors.SMART_TRIMMER)
 
-        // Another screen composing first must not consume someone else's request.
         assertNull(SettingsAnchorRequest.consume(SettingsAnchorScreens.APPEARANCE))
         assertEquals(
             SettingsAnchors.SMART_TRIMMER,
@@ -67,8 +58,7 @@ class SettingsAnchorRequestTest {
 
     @Test
     fun `survives repeated reads inside the claim window`() {
-        // StorageSettings returns early until its image cache is ready, so its first composition is
-        // discarded and it reads the request again a moment later. That must still work.
+
         SettingsAnchorRequest.request(SettingsAnchorScreens.STORAGE, SettingsAnchors.EXPORT_DOWNLOADS)
 
         assertEquals(
@@ -90,7 +80,7 @@ class SettingsAnchorRequestTest {
             SettingsAnchors.GAPLESS,
             SettingsAnchorRequest.consume(SettingsAnchorScreens.PLAYER),
         )
-        // Re-opening the screen much later must not replay a stale highlight.
+
         now += 60_000
         assertNull(SettingsAnchorRequest.consume(SettingsAnchorScreens.PLAYER))
     }
@@ -99,8 +89,6 @@ class SettingsAnchorRequestTest {
     fun `expiry is measured from the first claim not from the request`() {
         SettingsAnchorRequest.request(SettingsAnchorScreens.APPEARANCE, SettingsAnchors.DARK_THEME)
 
-        // A request can sit unclaimed while the screen is still being built; that wait must not
-        // count against the window, otherwise a slow navigation would drop the highlight.
         now += 10_000
         assertEquals(
             SettingsAnchors.DARK_THEME,
@@ -132,8 +120,6 @@ class SettingsAnchorRequestTest {
             SettingsAnchorRequest.consume(SettingsAnchorScreens.PLAYER),
         )
 
-        // Tapping the same search result again after the first window lapsed must work, not be
-        // swallowed by the previous claim's bookkeeping.
         now += 60_000
         SettingsAnchorRequest.request(SettingsAnchorScreens.PLAYER, SettingsAnchors.CROSSFADE)
         assertEquals(
@@ -171,14 +157,12 @@ class SettingsAnchorRequestTest {
                 SettingsAnchors.SMART_TRIMMER,
             )
 
-        // Two preferences sharing an id would both light up, and the scroll offset would latch onto
-        // whichever was measured first.
         assertEquals(ids.size, ids.distinct().size)
     }
 
     @Test
     fun `anchor screen routes match the navigation graph`() {
-        // These strings are passed straight to navController.navigate, so a typo is a runtime crash.
+
         assertEquals("settings/player", SettingsAnchorScreens.PLAYER)
         assertEquals("settings/appearance", SettingsAnchorScreens.APPEARANCE)
         assertEquals("settings/storage", SettingsAnchorScreens.STORAGE)

@@ -41,10 +41,7 @@ data class HomeUiState(
     val forgottenFavorites: ImmutableList<Song>,
     val keepListening: ImmutableList<LocalItem>,
     val recentlyPlayed: ImmutableList<Song>,
-    // Three random songs picked from `quickPicks` (listening-preference based) and
-    // re-shuffled on every manual refresh. Drives the "Jump back in" hero at the
-    // top of the home page so the user sees fresh recommendations each visit
-    // rather than just their last-played tracks.
+
     val heroPicks: ImmutableList<Song>,
     val similarRecommendations: ImmutableList<SimilarRecommendation>,
     val accountPlaylists: ImmutableList<PlaylistItem>,
@@ -57,11 +54,7 @@ data class HomeUiState(
     val quickPicksDisplayMode: QuickPicksDisplayMode,
     val showCategoryChips: Boolean,
     val showTonalBackdrop: Boolean,
-    /**
-     * When `true`, the Home feed collapses to a focused subset
-     * (hero + Recently Played + Keep Listening + Live Performances).
-     * The hero section is always rendered regardless of this flag.
-     */
+
     val minimalHomeMode: Boolean = false,
     val isRefreshing: Boolean,
     val isLoadingMore: Boolean,

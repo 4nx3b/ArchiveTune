@@ -10,24 +10,19 @@ def get_git_commit_info():
     commit_hash_short = subprocess.check_output(['git', 'log', '-1', '--pretty=format:%h']).decode('utf-8')
     return commit_author, commit_message, commit_hash, commit_hash_short
 
-# Telegram API credentials
 api_id = int(os.getenv("API_ID"))
 api_hash = os.getenv("API_HASH")
 bot_token = os.getenv("BOT_TOKEN")
 group_id = int(os.getenv("CHAT_ID"))
 
-# File path pattern(s) to send
 apk_path = os.getenv("APK_PATH")
 
-# Get the latest commit info
 commit_author, commit_message, commit_hash, commit_hash_short = get_git_commit_info()
 
-# Cleanup last session(if exists) before create client
 session_file = "bot_session.session"
 if os.path.exists(session_file):
     os.remove(session_file)
 
-# Create the client with bot token directly
 client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
 client.parse_mode = 'markdown'
 
@@ -38,13 +33,11 @@ def human_readable_size(size, decimal_places=2):
         size /= 1024.0
     return f"{size:.{decimal_places}f} {unit}"
 
-
 async def progress(current, total):
     progress_percentage = (current / total) * 100
     uploaded_size_readable = human_readable_size(current)
     total_size_readable = human_readable_size(total)
     print(f"{progress_percentage:.2f}% uploaded - {uploaded_size_readable}/{total_size_readable}", end='\r')
-
 
 def resolve_apk_paths(path_value):
     if not path_value:
@@ -70,7 +63,6 @@ def resolve_apk_paths(path_value):
         unique_files.append(normalized)
     return unique_files
 
-
 def extract_abi_name(file_path):
     file_name = os.path.basename(file_path).lower()
     known_abis = [
@@ -85,7 +77,6 @@ def extract_abi_name(file_path):
             return abi
     return "universal"
 
-
 def extract_device_name(file_path):
     file_name = os.path.basename(file_path).lower()
     known_devices = [
@@ -96,7 +87,6 @@ def extract_device_name(file_path):
         if f"-{device}-" in file_name or file_name.startswith(f"app-{device}-"):
             return device
     return "mobile"
-
 
 async def send_files(file_paths):
     existing_files = [path for path in file_paths if os.path.exists(path)]

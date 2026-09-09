@@ -83,19 +83,7 @@ class CreatePlaylistViewModel
         ) {
             if (createJob?.isActive == true) return
             loadJob?.cancel()
-            // Open OPTIMISTICALLY with the last-known sync options so the
-            // dialog's first settled frame already shows the final UI (user
-            // report 2026-09-03: "When I click on + icon which is create a new
-            // playlist i see the playlist popup flicker"). The previous flow
-            // entered a visible Loading state (disabled text field, disabled
-            // sync switch, "not logged in" description) and swapped it for
-            // the real state once the async options read landed ~1-2 frames
-            // later — that whole-dialog enable/disable + text swap is the
-            // flicker. Restoring the previous state's sync options (the
-            // ViewModel survives dialog close, being scoped to the screen)
-            // makes every open after the first settle in ONE frame; the
-            // options are re-verified in the background and only write state
-            // back when something actually changed.
+
             val cached = (mutableScreenState.value as? CreatePlaylistScreenState.Success)?.data
             val optimistic =
                 CreatePlaylistUiData(
@@ -114,8 +102,7 @@ class CreatePlaylistViewModel
                         if (options.isSignedIn != optimistic.isSignedIn ||
                             options.isSyncEnabled != optimistic.isSyncEnabled
                         ) {
-                            // Preserve whatever the user has typed so far — the
-                            // refresh can land mid-typing.
+
                             updateData {
                                 it.copy(
                                     isSignedIn = options.isSignedIn,
@@ -126,8 +113,7 @@ class CreatePlaylistViewModel
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
-                        // Keep the optimistic state — creating a local playlist
-                        // never needed the options anyway.
+
                     }
                 }
         }
@@ -210,7 +196,25 @@ class CreatePlaylistViewModel
             loadJob?.cancel()
             loadJob = null
             if (createJob?.isActive != true) {
-                mutableScreenState.value = CreatePlaylistScreenState.Loading
+                // Reset the per-open fields but KEEP the resolved
+                // sign-in / sync-enabled flags: the next open() seeds its
+                // optimistic state from the current one, so the sync
+                // section renders the right description from the first
+                // frame instead of flashing "not logged in" and swapping
+                // text once the options load.
+                val retained =
+                    (
+                        currentData()
+                            ?: CreatePlaylistUiData(
+                                name = "",
+                                allowSyncing = true,
+                                isSignedIn = false,
+                                isSyncEnabled = false,
+                                syncRequested = false,
+                                isSubmitting = false,
+                            )
+                    ).copy(name = "", syncRequested = false, isSubmitting = false)
+                mutableScreenState.value = CreatePlaylistScreenState.Success(retained)
             }
         }
 

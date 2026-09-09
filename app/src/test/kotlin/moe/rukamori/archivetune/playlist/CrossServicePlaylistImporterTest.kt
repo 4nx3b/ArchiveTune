@@ -12,14 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * URL-parsing contract for the cross-service playlist importer. These are the
- * pure parts of the importer — no network — so they pin the routing and id
- * extraction that every import depends on.
- */
 class CrossServicePlaylistImporterTest {
-
-    // ─── Source detection ─────────────────────────────────────────────────
 
     @Test
     fun detectsSpotifyWebAndUriForms() {
@@ -71,11 +64,6 @@ class CrossServicePlaylistImporterTest {
         )
     }
 
-    /**
-     * Spotify is checked before the generic hosts, but YouTube must still win
-     * for its own URLs — a regression here would send YT playlists down the
-     * scraping path.
-     */
     @Test
     fun youtubeTakesPrecedenceOverGenericMatching() {
         assertEquals(
@@ -83,8 +71,6 @@ class CrossServicePlaylistImporterTest {
             CrossServicePlaylistImporter.detectSource("https://www.youtube.com/playlist?list=PLabc123"),
         )
     }
-
-    // ─── Spotify id extraction ────────────────────────────────────────────
 
     @Test
     fun extractsSpotifyIdFromWebUrlWithQueryParams() {
@@ -115,8 +101,6 @@ class CrossServicePlaylistImporterTest {
         assertNull(CrossServicePlaylistImporter.extractSpotifyPlaylistId("https://open.spotify.com/browse"))
     }
 
-    // ─── Qobuz id extraction ──────────────────────────────────────────────
-
     @Test
     fun extractsQobuzIdFromShortAndSluggedUrls() {
         assertEquals(
@@ -135,8 +119,6 @@ class CrossServicePlaylistImporterTest {
     fun rejectsQobuzUrlWithoutNumericId() {
         assertNull(CrossServicePlaylistImporter.extractQobuzPlaylistId("https://www.qobuz.com/us-en/playlists"))
     }
-
-    // ─── Script-block extraction ──────────────────────────────────────────
 
     @Test
     fun extractsJsonFromScriptBlockAcrossNewlines() {

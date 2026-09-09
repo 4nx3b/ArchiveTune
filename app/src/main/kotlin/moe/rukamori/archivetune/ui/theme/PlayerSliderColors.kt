@@ -12,20 +12,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/**
- * Player slider color configuration for consistent styling across all slider types
- *
- * This object provides standardized color schemes for Default, Squiggly, and Slim sliders
- * used in the music player interface, ensuring visual consistency and proper contrast.
- */
 object PlayerSliderColors {
-    /**
-     * Standard slider colors for all slider types
-     *
-     * @param activeColor Color for active track, ticks, and thumb
-     * @param inactiveAlpha Alpha transparency for inactive track (default: 0.15f for subtle appearance)
-     * @return SliderColors configuration
-     */
+
     @Composable
     fun getSliderColors(
         activeColor: Color,
@@ -38,12 +26,6 @@ object PlayerSliderColors {
             inactiveTrackColor = activeColor.copy(alpha = inactiveAlpha),
         )
 
-    /**
-     * Default slider colors using button color scheme
-     *
-     * @param buttonColor The active button color from player theme
-     * @return SliderColors configuration for default slider
-     */
     @Composable
     fun standardSliderColors(buttonColor: Color): SliderColors =
         getSliderColors(
@@ -51,12 +33,6 @@ object PlayerSliderColors {
             inactiveAlpha = Config.INACTIVE_TRACK_ALPHA,
         )
 
-    /**
-     * Squiggly slider colors using button color scheme
-     *
-     * @param buttonColor The active button color from player theme
-     * @return SliderColors configuration for squiggly slider
-     */
     @Composable
     fun wavySliderColors(buttonColor: Color): SliderColors =
         SliderDefaults.colors(
@@ -93,11 +69,8 @@ object PlayerSliderColors {
             inactiveTickColor = buttonColor.copy(alpha = Config.SIMPLE_INACTIVE_TRACK_ALPHA),
         )
 
-    /**
-     * Configuration constants for slider colors
-     */
     object Config {
-        /** Alpha transparency for inactive track - subtle appearance */
+
         const val INACTIVE_TRACK_ALPHA = 0.22f
 
         const val THICK_INACTIVE_TRACK_ALPHA = 0.28f
@@ -106,13 +79,10 @@ object PlayerSliderColors {
 
         const val SIMPLE_INACTIVE_TRACK_ALPHA = 0.15f
 
-        /** Alpha transparency for inactive ticks */
         const val INACTIVE_TICK_ALPHA = 0.25f
 
-        /** Default active color when no theme color is available */
         val DEFAULT_ACTIVE_COLOR = Color(0xFF1976D2)
 
-        /** Default inactive color when no theme color is available */
         val DEFAULT_INACTIVE_COLOR = Color.White.copy(alpha = INACTIVE_TRACK_ALPHA)
     }
 }

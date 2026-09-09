@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,12 +77,11 @@ class PlayerConnection(
     val database: MusicDatabase,
     scope: CoroutineScope,
 ) : Player.Listener {
+    private val connectionJob = SupervisorJob(scope.coroutineContext[Job])
+    private val connectionScope = CoroutineScope(scope.coroutineContext + connectionJob)
+    private var disposed = false
     val service = binder.service
 
-    /**
-     * Always the CURRENT active player. The service may promote a new player instance
-     * (crossfade promotion), so this must be a live getter, not a captured reference.
-     */
     val player: Player
         get() = service.player
     val localPlayer: ExoPlayer
@@ -96,7 +96,7 @@ class PlayerConnection(
         combine(playbackState, playWhenReady) { playbackState, playWhenReady ->
             playWhenReady && playbackState != STATE_ENDED
         }.stateIn(
-            scope,
+            connectionScope,
             SharingStarted.Lazily,
             player.playWhenReady && player.playbackState != STATE_ENDED,
         )
@@ -104,15 +104,15 @@ class PlayerConnection(
     val currentSong =
         mediaMetadata.flatMapLatest {
             database.song(it?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
     val currentLyrics =
         mediaMetadata.flatMapLatest { mediaMetadata ->
             database.lyrics(mediaMetadata?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
     val currentFormat =
         mediaMetadata.flatMapLatest { mediaMetadata ->
             database.format(mediaMetadata?.id)
-        }
+        }.stateIn(connectionScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val queueTitle = MutableStateFlow<String?>(null)
     val queueWindows = MutableStateFlow<List<Timeline.Window>>(emptyList())
@@ -132,9 +132,9 @@ class PlayerConnection(
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
 
-    // Ported from vossgraves/ArchiveTune: surfaces the moriextractor backend's
-    // bearer-token rejections (401 during playback) so the UI can prompt for a
-    // refreshed token; updateExtractorBearerToken pushes a new one into the service.
+    private val _songEndedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val songEndedEvents = _songEndedEvents.asSharedFlow()
+
     val extractorAuthenticationEvents = service.extractorAuthenticationEvents
 
     private val canvasArtworkRefetchMutex = Mutex()
@@ -142,8 +142,6 @@ class PlayerConnection(
     internal val isCanvasArtworkRefetching = _isCanvasArtworkRefetching.asStateFlow()
     private val _canvasArtworkUpdates = MutableSharedFlow<CanvasArtworkUpdate>(extraBufferCapacity = 1)
     internal val canvasArtworkUpdates = _canvasArtworkUpdates.asSharedFlow()
-
-    private var metadataExtractionJob: Job? = null
 
     init {
         attachToPlayer(service.player)
@@ -154,7 +152,7 @@ class PlayerConnection(
         }
 
         // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
-        scope.launch {
+        connectionScope.launch {
             service.playerFlow.collect { newPlayer ->
                 if (newPlayer != null && newPlayer !== attachedPlayer) {
                     attachToPlayer(newPlayer)
@@ -162,47 +160,40 @@ class PlayerConnection(
             }
         }
 
-        metadataExtractionJob =
-            scope.launch(Dispatchers.IO) {
-                mediaMetadata
-                    .distinctUntilChangedBy { it?.id }
-                    .collectLatest { metadata ->
-                        val mediaId = metadata?.id ?: return@collectLatest
-                        if (mediaId.isLocalMediaId()) {
-                            val storedFormat = database.format(mediaId).first()
-                            if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
-                                val result =
-                                    extractLocalAudioProperties(context, mediaId)
-                                        ?: return@collectLatest
-                                ensureActive()
-                                val finalBitrate =
-                                    if (result.first <= 0 && result.second == null) {
-                                        -1
-                                    } else {
-                                        result.first
-                                    }
-                                database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
-                            }
-                        } else if (mediaId.isTelegramMediaId()) {
-                            refineTelegramFormat(mediaId)
+        connectionScope.launch(Dispatchers.IO) {
+            mediaMetadata
+                .distinctUntilChangedBy { it?.id }
+                .collectLatest { metadata ->
+                    val mediaId = metadata?.id ?: return@collectLatest
+                    if (mediaId.isLocalMediaId()) {
+                        val storedFormat = database.format(mediaId).first()
+                        if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
+                            val result =
+                                extractLocalAudioProperties(context, mediaId)
+                                    ?: return@collectLatest
+                            ensureActive()
+                            val finalBitrate =
+                                if (result.first <= 0 && result.second == null) {
+                                    -1
+                                } else {
+                                    result.first
+                                }
+                            database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
                         }
+                    } else if (mediaId.isTelegramMediaId()) {
+                        refineTelegramFormat(mediaId)
                     }
-            }
+                }
+        }
     }
 
-    /**
-     * Refines a Telegram track's format row (seeded at enqueue with size + container + an average
-     * bitrate) by pulling the real sample rate — and a more accurate bitrate when the container
-     * reports one — from the downloaded audio header. Polls briefly for the header to arrive as the
-     * stream buffers; if the sample rate is already known it does nothing.
-     */
     private suspend fun refineTelegramFormat(mediaId: String) {
         val existing = database.format(mediaId).first() ?: return
         if (existing.sampleRate != null) return
         val decoded = TelegramMediaId.decode(mediaId) ?: return
         repeat(TELEGRAM_FORMAT_REFINE_ATTEMPTS) {
             currentCoroutineContext().ensureActive()
-            val path = TelegramClient.readyFilePath(decoded.fileId)
+            val path = TelegramClient.readyFilePath(decoded.chatId, decoded.messageId)
             if (path != null) {
                 val result = extractAudioPropertiesFromPath(path)
                 if (result != null && (result.second != null || result.first > 0)) {
@@ -334,6 +325,7 @@ class PlayerConnection(
         }
 
     private fun attachToPlayer(newPlayer: Player) {
+        if (disposed) return
         attachedPlayer?.removeListener(this)
         attachedPlayer = newPlayer
         newPlayer.addListener(this)
@@ -357,11 +349,6 @@ class PlayerConnection(
         service.startRadioSeamlessly()
     }
 
-    /**
-     * Start radio from [seed]: seamless hand-off when it is already the playing
-     * song, a fresh radio queue otherwise (from rukamori PR #1164 — the player
-     * menu's "Start radio" used to always re-seed from the current song).
-     */
     fun startRadio(seed: MediaMetadata) {
         if (mediaMetadata.value?.id == seed.id) {
             startRadioSeamlessly()
@@ -488,6 +475,9 @@ class PlayerConnection(
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && mediaItem != null) {
+            _songEndedEvents.tryEmit(Unit)
+        }
     }
 
     override fun onTimelineChanged(
@@ -527,16 +517,8 @@ class PlayerConnection(
                 error.value = null
             }
 
-            // Suppress the error dialog for recoverable MediaCodec decoder-state faults.
-            // MusicService.onPlayerError handles these silently by re-preparing the player,
-            // and the song resumes playback automatically after recovery. Surfacing the
-            // dialog mid-recovery is misleading UX — it flashes briefly then auto-dismisses
-            // once recovery succeeds, which the user perceives as a spurious error popup.
-            // We still log via reportException above (in onPlayerErrorChanged) for diagnostics.
             isRecoverableMediaCodecStateError(playbackError) -> {
-                // Intentionally do NOT update error.value; let recovery run silently.
-                // When recovery succeeds, onPlayerErrorChanged(null) will fire and reset
-                // any previously-exposed error state.
+
             }
 
             playbackError !== dismissedPlaybackError -> {
@@ -563,15 +545,15 @@ class PlayerConnection(
     }
 
     fun dispose() {
+        if (disposed) return
+        disposed = true
+        connectionJob.cancel()
         attachedPlayer?.removeListener(this)
         attachedPlayer = null
-        metadataExtractionJob?.cancel()
-        metadataExtractionJob = null
     }
 
     private companion object {
-        // How long to poll for a streamed Telegram track's header before giving up refining its
-        // sample rate (attempts × interval ≈ 15s).
+
         const val TELEGRAM_FORMAT_REFINE_ATTEMPTS = 10
         const val TELEGRAM_FORMAT_REFINE_INTERVAL_MS = 1_500L
     }

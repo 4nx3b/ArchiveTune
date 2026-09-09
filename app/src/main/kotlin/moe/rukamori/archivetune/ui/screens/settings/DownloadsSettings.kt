@@ -95,8 +95,7 @@ fun DownloadsSettings(
     val context = LocalContext.current
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(AutoDownloadOnLikeKey, defaultValue = false)
-    // Legacy single-pick key is kept for backup compatibility, but the UI now drives the
-    // new drag-drop `DownloadSourceOrderKey` CSV. The order list is the source of truth.
+
     val (downloadSourceOrderRaw, onDownloadSourceOrderChange) =
         rememberPreference(DownloadSourceOrderKey, defaultValue = "")
     val downloadSourceOrder =
@@ -155,9 +154,6 @@ fun DownloadsSettings(
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -209,7 +205,7 @@ fun DownloadsSettings(
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -265,8 +261,7 @@ fun DownloadsSettings(
                 }
 
                 item {
-                    // Description: arrow-joined names of the priority order, with the first
-                    // item being the preferred source. Tapping opens the drag-drop reorder dialog.
+
                     val fallbackAuto = stringResource(R.string.download_source_auto)
                     val description =
                         remember(downloadSourceOrder, fallbackAuto) {
@@ -310,9 +305,7 @@ fun DownloadsSettings(
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,
@@ -336,10 +329,7 @@ private fun DownloadSourceOrderDialog(
             val item = sources.removeAt(from.index)
             sources.add(to.index, item)
         }
-    // Apple Music availability snapshot for the row hint (in-memory token
-    // cache — cheap, read once when the dialog opens). Apple resolves through
-    // its OWN account ring (user sign-in + pool contributions), so unlike the
-    // REQUIRES_POOL sources it is not gated by the pool toggle.
+
     val appleSignedIn = AppleMusicAudioProvider.mediaUserToken() != null
 
     DefaultDialog(

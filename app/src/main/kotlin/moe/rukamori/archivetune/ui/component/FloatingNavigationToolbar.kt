@@ -70,7 +70,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
@@ -133,59 +132,32 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
 
-/**
- * Shared handle for the frosted navigation bar: the app records its content into [layer] each
- * frame, and the bar draws that layer (offset by the recorded content's root position) behind a
- * blur so the pixels underneath show through frosted.
- */
 class NavigationBarBackdrop(
     val layer: GraphicsLayer,
 ) {
     var contentOffsetInRoot: Offset = Offset.Zero
 }
 
-/**
- * The app-content capture used for frosted-glass surfaces (navigation bar, mini player). Null when
- * no frosted surface is enabled or the device cannot blur (below Android 12).
- */
 val LocalNavigationBarBackdrop = compositionLocalOf<NavigationBarBackdrop?> { null }
 
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
 
 private val SukiSUBarHeight = 64.dp
-private val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
+private val SukiSUItemPadding = 4.dp
 
-// Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
 private const val FrostedNavBarBlurRadiusPx = 60f
 
-// How much of the blurred backdrop shows through the opaque bar. The bar is always drawn on a
-// fully opaque surface and the blurred content is composited on top at this alpha, so page
-// brightness can only ever modulate the bar by this fraction — it reads the same over any screen,
-// and if the backdrop layer has nothing under the bar the result is simply a solid bar.
 private const val FrostedNavBarOverlayAlpha = 0.30f
 
-// The tint-frosted variant uses a DARK TRANSLUCENT base (Color.Black at 55% alpha) instead of
-// an opaque surface, so a higher overlay alpha lets more of the blurred app content show through
-// the dark tint — the "tinted glass" look (dark, translucent, with visible frosted blur).
 private const val TintFrostedNavBarOverlayAlpha = 0.45f
 
-// The sliding pill wraps just the icon (like the stock indicator), so the label sits below it,
-// outside the bubble. These are the standard Material3 active-indicator dimensions.
 private val NavigationIndicatorWidth = 56.dp
 private val NavigationIndicatorHeight = 32.dp
 
-// The floating pill uses a larger, softer blob around the selected icon (label stays outside),
-// tinted with the accent color like the reference bar.
 private val FloatingNavigationIndicatorWidth = 64.dp
 private val FloatingNavigationIndicatorHeight = 42.dp
 
-/**
- * Forces the signature navigation-bar motion (the sliding pill + icon pop) to always run at its
- * full, intended duration, ignoring the system "Animator duration scale" developer setting. Users
- * who run the OS at 0.5x still get expressive tab-switch motion, while the in-app "disable
- * animations" toggle continues to fully bypass these animations.
- */
 private object FullMotionDurationScale : MotionDurationScale {
     override val scaleFactor: Float = 1f
 }
@@ -207,8 +179,7 @@ fun FloatingNavigationToolbar(
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
     val isFloating = style == NavigationBarStyle.FLOATING
-    // Navigation bar customization. Read directly here so the toolbar picks up the user's
-    // tuning without the call site needing to thread 6 extra params.
+
     val (navBarWidthFraction) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
     val (navBarHeightMultiplier) =
@@ -222,21 +193,14 @@ fun FloatingNavigationToolbar(
     val (navBarCornerRadius) =
         rememberPreference(NavigationBarCornerRadiusKey, defaultValue = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-    // Either frosted variant enables backdrop blur. The tint variant additionally tints the
-    // bar surface with the accent (primary) color so the frost reads as a colored glass.
+
     val anyFrosted = frostedBlur || tintFrostedBlur
     val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
-    // Liquid Glass nav bar: requires the master toggle on and the LayerBackdrop
-    // available (Android 12+). Pure-black mode is no longer a hard blocker — the
-    // liquid glass surface tints itself with `surfaceContainerHigh`, so it stays
-    // visible even when the rest of the UI is pitch black. The user explicitly
-    // opts in via the Liquid Glass toggle, so honour that choice in pure dark too.
+
     val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
     val resolvedBarHeight =
         if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
-    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the items Row uses
-    // 4.dp padding on ALL sides (matching SukiSU's Row.padding(4.dp)). The non-
-    // Liquid-Glass variants keep the original 8.dp vertical-only padding.
+
     val itemVerticalPadding =
         if (canLiquidGlass) SukiSUItemPadding else NavigationItemVerticalPadding
     val itemHorizontalPadding = if (canLiquidGlass) SukiSUItemPadding else 0.dp
@@ -246,7 +210,7 @@ fun FloatingNavigationToolbar(
         } else {
             remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
                 when {
-                    // A detached pill keeps the user-configurable corner radius (default 28 dp).
+
                     isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
                     isPairedWithMiniPlayer ->
                         RoundedCornerShape(
@@ -261,13 +225,10 @@ fun FloatingNavigationToolbar(
         }
     val navigationContainerColor =
         if (canLiquidGlass) {
-            // Liquid glass surface — transparent so the LiquidGlassShader tint shows through.
+
             Color.Transparent
         } else if (canBlurBackdrop) {
-            // Frosted / tinted-frosted: surface sits under the blurred backdrop overlay.
-            // In pure-black mode we still want SOME surface so the blur has something to
-            // blend against — use a near-black tint rather than absolute black so the
-            // frosted effect remains perceptible.
+
             if (pureBlack) {
                 if (tintFrostedBlur) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.45f)
             } else if (tintFrostedBlur) {
@@ -278,9 +239,7 @@ fun FloatingNavigationToolbar(
         } else if (pureBlack) {
             Color.Black
         } else {
-            // Apply user-configured opacity (always) and transparency (only when no frosted
-            // variant is active — when frosted blur is on, the frost overlay already provides
-            // the see-through effect and adding transparency here would double-count).
+
             val baseColor = MaterialTheme.colorScheme.surfaceContainer
             val effectiveAlpha =
                 navBarOpacity * (1f - navBarTransparency)
@@ -293,14 +252,9 @@ fun FloatingNavigationToolbar(
 
     val indicatorColor =
         when {
-            // Liquid Glass: transparent indicator — the glass pill itself is the
-            // indicator. Setting this to transparent avoids a theme-tinted blob
-            // behind the active item.
+
             canLiquidGlass -> Color.Transparent
-            // Tint-frosted: the bar is now a DARK tinted glass (Color.Black at
-            // 55% alpha), so the pill uses a translucent white blob — the
-            // selected icon stands out against the dark bar without being a
-            // harsh solid white circle.
+
             tintFrostedBlur && !isFloating -> Color.White.copy(alpha = 0.18f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
@@ -309,18 +263,6 @@ fun FloatingNavigationToolbar(
     val indicatorWidth = if (isFloating) FloatingNavigationIndicatorWidth else NavigationIndicatorWidth
     val indicatorHeight = if (isFloating) FloatingNavigationIndicatorHeight else NavigationIndicatorHeight
 
-    // The built-in per-item indicator just fades in place; hide it so our single pill can slide
-    // between items instead. On pure-black we also pin the icon/label colors for contrast.
-    // For the tint-frosted variant, the bar surface is the primary color, so icons/labels use
-    // onPrimary for contrast (selected = full opacity, unselected = 0.85 opacity for legibility).
-    //
-    // Liquid Glass nav bar: icons/labels stay WHITE in BOTH themes (user
-    // request 2026-09-03: "Revert the visibility change for just navigation
-    // bar. I only wanted you to fix the visibility for the liquid glass
-    // header pills in light mode."). The light-mode glass-ink treatment
-    // (liquidGlassContentColor) applies ONLY to the header pills / icon
-    // buttons / mini player — the navigation bar deliberately keeps its
-    // original pinned-white look.
     val itemColors =
         when {
             canLiquidGlass ->
@@ -354,8 +296,7 @@ fun FloatingNavigationToolbar(
                     selectedIndicatorColor = Color.Transparent,
                     selectedIconColor = Color.White,
                     selectedTextColor = Color.White,
-                    // 0.7 alpha keeps unselected icons legible but de-emphasized
-                    // against the dark tinted glass.
+
                     unselectedIconColor = Color.White.copy(alpha = 0.7f),
                     unselectedTextColor = Color.White.copy(alpha = 0.7f),
                 )
@@ -373,42 +314,31 @@ fun FloatingNavigationToolbar(
             unselectedTextColor = Color.Transparent,
         )
 
-    // Measured center of each item's icon (root-space) and the row container's top-left, so the pill
-    // can slide to the exact icon position regardless of layout/insets. Only the icon is tracked so
-    // the bubble hugs the icon and leaves the text label outside of it.
     val iconCenters = remember { mutableStateMapOf<Int, Offset>() }
     val itemBounds = remember { mutableStateMapOf<Int, Rect>() }
-    // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
-    // lambda memoization.
+
     val containerPosState = remember { mutableStateOf(Offset.Zero) }
     var containerPos by containerPosState
 
     val indicatorX = remember { Animatable(0f) }
     var indicatorY by remember { mutableFloatStateOf(0f) }
     var indicatorPlaced by remember { mutableStateOf(false) }
-    // Liquid Glass pill size, computed from the selected item's full bounds
-    // (icon + label). Zero until the first item is measured.
+
     var liquidGlassPillWidth by remember { mutableStateOf(0.dp) }
     var liquidGlassPillHeight by remember { mutableStateOf(0.dp) }
 
     val animationScope = rememberCoroutineScope()
-    val isLtr = true // ArchiveTune doesn't currently support RTL layout flipping
-    // Per audit (2026-08-30): hoisted to State holders for onGloballyPositioned
-    // lambda memoization.
+    val isLtr = true
+
     val tabWidthPxState = remember { mutableFloatStateOf(0f) }
     val totalWidthPxState = remember { mutableFloatStateOf(0f) }
     val itemsRowLeftInContainerState = remember { mutableFloatStateOf(0f) }
     var tabWidthPx by tabWidthPxState
     var totalWidthPx by totalWidthPxState
-    // The items Row is centered inside the container Box (via the Box's
-    // `contentAlignment = Alignment.Center`). To position the sliding pill at
-    // `dampedDragAnimation.value × tabWidthPx`, we need to know the items
-    // Row's left edge within the container Box — tracked here.
+
     var itemsRowLeftInContainer by itemsRowLeftInContainerState
     val rubberBandPx = with(density) { 4.dp.toPx() }
-    // Accumulated raw drag delta (unclamped). Used as the source for the
-    // clamped rubber-band `panelOffset` — at most ±4dp, with an EaseOut curve
-    // so it ramps up quickly then slows down (the iOS liquid-glass feel).
+
     val rubberBandOffset = remember { Animatable(0f) }
     val panelOffset by remember(rubberBandPx, totalWidthPx) {
         derivedStateOf {
@@ -433,23 +363,19 @@ fun FloatingNavigationToolbar(
                     valueRange = 0f..(tabsCount - 1).toFloat(),
                     visibilityThreshold = 0.001f,
                     initialScale = 1f,
-                    pressedScale = 78f / 56f, // SukiSU: 56dp tab → 78dp pressed pill
+                    pressedScale = 78f / 56f,
                     canDrag = { offset ->
-                        // Only accept drags that begin inside the bar's content area
-                        // (totalWidthPx × bar height). This prevents the drag from
-                        // triggering when the user touches outside the items Row.
+
                         if (totalWidthPx == 0f) return@LiquidGlassDragAnimation false
                         offset.x in 0f..totalWidthPx && offset.y >= 0f
                     },
-                    onDragStarted = { /* no-op — press() is called by the modifier */ },
+                    onDragStarted = {  },
                     onDragStopped = {
                         val targetIndex = targetValue.roundToInt().coerceIn(0, tabsCount - 1)
                         animationScope.launch {
                             rubberBandOffset.animateTo(0f, spring(1f, 300f, 0.5f))
                         }
-                        // Read the LATEST selectedIndex via the State wrapper —
-                        // otherwise we'd compare against the stale value captured
-                        // at animation-creation time.
+
                         if (targetIndex != selectedIndexUpdated.value) {
                             onItemClickUpdated.value(items[targetIndex], false)
                         }
@@ -487,9 +413,7 @@ fun FloatingNavigationToolbar(
             val sel = isSelectedTracker.value
             itemsList.indexOfFirst { sel(it) }
         }.drop(1).collect { idx ->
-            // `items.size` is captured at composition time. It's stable for the
-            // lifetime of `dampedDragAnimation` (which is `remember(tabsCount, ...)`
-            // keyed on `items.size`), so this check is safe.
+
             if (idx in 0..(items.size - 1)) {
                 anim.animateToValue(idx.toFloat())
             }
@@ -498,24 +422,19 @@ fun FloatingNavigationToolbar(
 
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
     val selectedItemBounds = if (selectedIndex >= 0) itemBounds[selectedIndex] else null
-    // Per audit (2026-08-30): hoisted to State holder for onGloballyPositioned
-    // lambda memoization.
+
     val itemsRowTopInContainerState = remember { mutableFloatStateOf(0f) }
     var itemsRowTopInContainer by itemsRowTopInContainerState
     LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass, tabWidthPx, itemsRowTopInContainer, itemVerticalPadding) {
         if (canLiquidGlass) {
             if (tabWidthPx <= 0f) return@LaunchedEffect
             liquidGlassPillWidth = with(density) { tabWidthPx.toDp() }
-            liquidGlassPillHeight = SukiSUBarHeight - SukiSUItemPadding * 2 // 64 - 8 = 56.dp
-            // Position the pill at the items Row's content area top (which is
-            // `itemVerticalPadding` below the bar's top edge). The items Row
-            // fills the Surface height (64.dp) with 4.dp vertical padding, so
-            // its content area starts at y = 4.dp from the Surface's top.
+            liquidGlassPillHeight = SukiSUBarHeight - SukiSUItemPadding * 2
+
             indicatorY = itemsRowTopInContainer + with(density) { itemVerticalPadding.toPx() }
             indicatorPlaced = true
         } else {
-            // Default / frosted / floating: pill wraps only the icon (label
-            // stays outside). This is the original behavior.
+
             val center = selectedCenter ?: return@LaunchedEffect
             val widthPx = with(density) { indicatorWidth.toPx() }
             val heightPx = with(density) { indicatorHeight.toPx() }
@@ -543,10 +462,7 @@ fun FloatingNavigationToolbar(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
         contentAlignment = Alignment.Center,
     ) {
-        // Per audit (2026-08-30): hoisted to State holders so the
-        // onGloballyPositioned lambda can be memoized on the holder (stable
-        // across recompositions) instead of on the unwrapped value (which
-        // would defeat the memoization).
+
         val barPositionInRootState = remember { mutableStateOf(Offset.Zero) }
         val barSizeState = remember { mutableStateOf(IntSize.Zero) }
         val barPositionInRoot by barPositionInRootState
@@ -563,10 +479,7 @@ fun FloatingNavigationToolbar(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    // Per audit (2026-08-30): memoize the lambda so the
-                    // OnGloballyPositionedElement.equals() returns true across
-                    // recompositions — avoids node re-install + invalidateDraw
-                    // every recomposition.
+
                     .onGloballyPositioned(
                         remember(barPositionInRootState, barSizeState) {
                             { coordinates ->
@@ -607,7 +520,7 @@ fun FloatingNavigationToolbar(
                         updateIntervalMs = if (LocalContext.current.isLowEndDevice()) 160L else 80L,
                     )
                     if (blurredBitmap != null) {
-                        // Match the S+ path's conditional overlay alpha (see the comment below).
+
                         val preSOverlayAlpha = if (tintFrostedBlur) TintFrostedNavBarOverlayAlpha else FrostedNavBarOverlayAlpha
                         Box(
                             modifier =
@@ -655,7 +568,7 @@ fun FloatingNavigationToolbar(
                     contentColor =
                         when {
                             pureBlack -> Color.White
-                            // Tint-frosted bar is now dark glass, so content is white.
+
                             tintFrostedBlur -> Color.White
                             else -> MaterialTheme.colorScheme.onSurface
                         },
@@ -667,7 +580,7 @@ fun FloatingNavigationToolbar(
                         Modifier
                             .fillMaxSize()
                             .onGloballyPositioned(
-                        // Per audit (2026-08-30): memoize the lambda.
+
                         remember(containerPosState) {
                             { coordinates -> containerPosState.value = coordinates.positionInRoot() }
                         },
@@ -708,10 +621,7 @@ fun FloatingNavigationToolbar(
                                     horizontal = itemHorizontalPadding,
                                 )
                                 .onGloballyPositioned(
-                                    // Per audit (2026-08-30): memoize the lambda so
-                                    // the OnGloballyPositionedElement.equals() returns
-                                    // true across recompositions — avoids 5 state-write
-                                    // + Rect/Offset allocations per layout pass.
+
                                     remember(itemsRowLeftInContainerState, itemsRowTopInContainerState, totalWidthPxState, tabWidthPxState, containerPosState, density, itemHorizontalPadding, tabsCount) {
                                         { coordinates ->
                                             val rowPosInRoot = coordinates.positionInRoot()
@@ -735,16 +645,14 @@ fun FloatingNavigationToolbar(
                     ) {
                         items.forEachIndexed { index, screen ->
                             val selected = isSelected(screen)
-                            // Tactile "pop": when an item becomes selected, its icon springs
-                            // from 80% up past 100% and settles back, giving the bottom pill a
-                            // lively bounce on every tab switch (skipped when animations are off).
+
                             val iconScale = remember(screen) { Animatable(1f) }
                             LaunchedEffect(selected, disableAnimations) {
                                 if (disableAnimations) {
                                     iconScale.snapTo(1f)
                                 } else if (selected) {
                                     iconScale.snapTo(0.8f)
-                                    // Fixed motion scale keeps the pop expressive at 0.5x too.
+
                                     withContext(FullMotionDurationScale) {
                                         iconScale.animateTo(
                                             targetValue = 1f,
@@ -789,16 +697,10 @@ fun FloatingNavigationToolbar(
                                     Modifier
                                         .weight(1f)
                                         .onGloballyPositioned(
-                                            // Per audit (2026-08-30): memoize the lambda so
-                                            // the OnGloballyPositionedElement.equals() returns
-                                            // true across recompositions — avoids Rect
-                                            // allocation per layout pass.
+
                                             remember(itemBounds, index) {
                                                 { coordinates ->
-                                                    // Track the full item bounds (icon + spacing +
-                                                    // label) so the Liquid Glass pill can size to
-                                                    // cover both. The default variant ignores this
-                                                    // and uses the icon-only [iconCenters] map.
+
                                                     val pos = coordinates.positionInRoot()
                                                     itemBounds[index] =
                                                         Rect(
@@ -811,14 +713,11 @@ fun FloatingNavigationToolbar(
                                             },
                                         ),
                                 icon = {
-                                    // Measure the icon's own bounds so the pill hugs only the icon.
+
                                     Box(
                                         modifier =
                                             Modifier.onGloballyPositioned(
-                                                // Per audit (2026-08-30): memoize the lambda
-                                                // so the OnGloballyPositionedElement.equals()
-                                                // returns true across recompositions — avoids
-                                                // Offset allocation per layout pass.
+
                                                 remember(iconCenters, index) {
                                                     { coordinates ->
                                                         val pos = coordinates.positionInRoot()
@@ -840,10 +739,7 @@ fun FloatingNavigationToolbar(
                                             Icon(
                                                 painter =
                                                     painterResource(
-                                                        // For Liquid Glass: the underlying bar always
-                                                        // uses the INACTIVE icon variant. The pill
-                                                        // overlay renders the ACTIVE variant in
-                                                        // primary color on top of the glass.
+
                                                         if (canLiquidGlass) screen.iconIdInactive else if (isSelected) screen.iconIdActive else screen.iconIdInactive,
                                                     ),
                                                 contentDescription = null,
@@ -865,9 +761,7 @@ fun FloatingNavigationToolbar(
                                                 text = stringResource(screen.titleId),
                                                 maxLines = 1,
                                                 modifier = Modifier.offset(y = (-4).dp),
-                                                // Liquid Glass: underlying label is always Normal.
-                                                // The pill overlay renders the active label in
-                                                // SemiBold (primary color) on top of the glass.
+
                                                 fontWeight = FontWeight.Normal,
                                             )
                                         } else {
@@ -884,7 +778,7 @@ fun FloatingNavigationToolbar(
                     }
                 }
             }
-            } // end CompositionLocalProvider(LocalIndication provides transparentRipple)
+            }
 
         }
 
@@ -895,14 +789,9 @@ fun FloatingNavigationToolbar(
             if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
                 val pillShape = RoundedCornerShape(percent = 50)
                 val isDark = isSystemInDarkTheme()
-                // Liquid Glass pill: always use white for the active icon/label so
-                // they don't change with the app's color theme. The pill's glass
-                // effect provides enough contrast on its own.
+
                 val primaryColor = Color.White
-                // Fallback surface drawn UNDER the backdrop sample. Hoisted to the
-                // composable scope because MaterialTheme.colorScheme is only
-                // accessible from a @Composable context (onDrawBehind is a plain
-                // DrawScope lambda).
+
                 val pillFallbackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 Box(
                     modifier =
@@ -910,9 +799,7 @@ fun FloatingNavigationToolbar(
                             .offset {
                                 val pillWidthPx = pillWidth.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
-                                // X: align with the items Row's content area, then slide.
-                                // iconOffsetX corrects for ShortNavigationBarItem not
-                                // centering the icon within the tab slot.
+
                                 val tabSlotCenterForSelected =
                                     containerPos.x +
                                         itemsRowLeftInContainer +
@@ -929,18 +816,14 @@ fun FloatingNavigationToolbar(
                                         (tabWidthPx - pillWidthPx) / 2f +
                                         panelOffset +
                                         iconOffsetX
-                                // Y = 0: the wrapper Box's CenterStart alignment
-                                // centers the pill vertically. No Y computation needed.
+
                                 val xRelativeToWrapper = xInRoot - barPositionInRoot.x
                                 IntOffset(xRelativeToWrapper.roundToInt(), 0)
                             }
                             .width(pillWidth)
                             .height(pillHeight)
                             .graphicsLayer {
-                                // SukiSU pressedScale = 78f / 56f ≈ 1.393.
-                                // Velocity-stretch: the pill squishes horizontally when
-                                // flung (a physical "rubber" feel). The asymmetry (0.75 ×
-                                // horizontal, 0.25 × vertical) preserves area roughly.
+
                                 val pressScale = lerp(1f, 78f / 56f, dragAnim.pressProgress)
                                 val velocityStretch = (dragAnim.velocity / 10f).fastCoerceIn(-0.2f, 0.2f)
                                 scaleX = pressScale / (1f - velocityStretch * 0.75f)
@@ -959,25 +842,13 @@ fun FloatingNavigationToolbar(
                                 },
                                 onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
                                 shape = { pillShape },
-                                // Fallback surface drawn UNDER the backdrop sample.
-                                // When the backdrop has content (album art, page content
-                                // behind the nav bar), the backdrop sample covers this
-                                // and you see the liquid glass refraction. When the
-                                // backdrop is EMPTY (e.g. bottom of a short page with
-                                // nothing behind the nav bar), the backdrop sample is
-                                // transparent and this opaque surface shows through —
-                                // matching the existing pattern used by the bar Surface
-                                // (baseColor = surfaceContainerHigh) and the Frosted nav
-                                // bar variant (opaque surface + 30% alpha overlay).
+
                                 onDrawBehind = {
                                     drawRect(pillFallbackColor)
                                 },
                                 onDrawSurface = {
                                     val progress = dragAnim.pressProgress
-                                    // Per audit (2026-08-30): use drawRect's `alpha`
-                                    // parameter instead of `Color.copy(alpha=...)` —
-                                    // zero per-frame Color allocation, identical
-                                    // visual result.
+
                                     val tintColor = if (isDark) Color.Black else Color.White
                                     drawRect(
                                         color = tintColor,
@@ -989,19 +860,12 @@ fun FloatingNavigationToolbar(
                                     )
                                 },
                             )
-                            // Per audit (2026-08-30): memoize the innerShadow lambda
-                            // so InnerShadowElement.equals() returns true across
-                            // recompositions — avoids `update() + invalidateDraw()`
-                            // every recomposition. The lambda still reads
-                            // dragAnim.pressProgress live, so the draw scope sees the
-                            // latest value; only the lambda INSTANCE is stabilized.
+
                             .innerShadow(
                                 shape = pillShape,
                                 shadow = remember(dragAnim, pillShape) {
                                     {
-                                        // Inner shadow only appears during press — radius + alpha
-                                        // both scale with pressProgress. This is the "glass lifted
-                                        // off the bar" feel.
+
                                         if (dragAnim.pressProgress > 0f) {
                                             InnerShadow(
                                                 radius = 8.dp * dragAnim.pressProgress,
@@ -1024,13 +888,11 @@ fun FloatingNavigationToolbar(
                         Icon(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
-                            // Pinned white in both themes — see the canLiquidGlass note above
-                            // (the nav bar was explicitly excluded from the light-mode glass ink).
+
                             tint = Color.White,
                             modifier =
                                 Modifier.graphicsLayer {
-                                    // SukiSU LocalFloatingBottomBarTabScale: the
-                                    // icon scales up to 1.2× during press.
+
                                     val scale = lerp(1f, 1.2f, dragAnim.pressProgress)
                                     scaleX = scale
                                     scaleY = scale
@@ -1039,8 +901,7 @@ fun FloatingNavigationToolbar(
                         if (!hideNavigationLabels) {
                             Text(
                                 text = stringResource(displayScreen.titleId),
-                                // Pinned white in both themes — see the canLiquidGlass note above
-                                // (the nav bar was explicitly excluded from the light-mode glass ink).
+
                                 color = Color.White,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -1051,63 +912,10 @@ fun FloatingNavigationToolbar(
                 }
             }
         }
-        } // end wrapper Box (CenterStart — vertically centers the pill)
+        }
     }
 }
 
-/**
- * Pre-Android 12 (pre-S) fallback for the frosted-glass surfaces (navigation bar, mini player).
- *
- * On Android 12+ the frosted effect uses [BlurEffect] (RenderEffect, hardware-accelerated, every
- * frame). Below API 31 RenderEffect is unavailable, so the previous implementation silently fell
- * back to a plain opaque surface — the frosted setting appeared to do nothing on older devices.
- *
- * This helper restores a real frosted effect on pre-S by periodically capturing the app-content
- * [GraphicsLayer] (the same one the S+ path uses) to a [Bitmap], running it through
- * [ImageBlurUtils.blur] (a pure-CPU stack blur that needs no RenderEffect), and publishing the
- * result as an [ImageBitmap] the caller draws with the same offset/alpha as the S+ path.
- *
- * SLICE OPTIMIZATION (fixes the "weird glitchy blur" the user reported on pre-S):
- * The original implementation captured the FULL app-content layer (typically 1080x2400 px on a
- * phone), blurred the entire thing, then drew a small slice of it on the bar via translate+clip.
- * That had three problems on pre-S hardware:
- *   1. The full-screen capture + full-screen blur was slow, forcing a 200 ms update interval
- *      (5 fps) — visible "jumps" as content scrolled, reading as glitchiness.
- *   2. [ImageBlurUtils.blur] downscales any source >720 px to 720 px before stack-blurring, then
- *      upscales back. On a full-screen source the downscale factor was ~0.3, so the blurred
- *      result was extremely low-resolution and looked pixelated/muddy when upscaled.
- *   3. Allocating a full-screen ARGB_8888 bitmap (~10 MB) every frame caused heavy GC pressure,
- *      adding stutter on top of the slow blur.
- *
- * The slice path fixes all three: we capture the full layer ONCE per update (unavoidable —
- * GraphicsLayer has no region capture), but then immediately extract just the small rectangle
- * that lies under the bar (e.g. 1080x240 px) via [Bitmap.createBitmap] before blurring. The
- * slice is small enough that [ImageBlurUtils.blur]'s 720 px downscale threshold either doesn't
- * trigger or triggers at a much milder factor (~0.67 instead of ~0.3), so the blur keeps real
- * resolution. The slice is also ~10x smaller, so allocation/GC is ~10x lighter and we can push
- * the update interval down to 80 ms (~12 fps) for visibly smoother tracking. The slice is
- * extracted with [blurRadiusPx] of padding on every side so the stack blur has neighboring
- * pixels to sample at the bar's edges — without padding the blur would just clamp the bar's own
- * edge pixels and the frost would look wrong at the boundary.
- *
- * The caller receives the small blurred slice (already aligned to the bar's top-left) and draws
- * it at (0, 0) — no translate, no clip — at the same bounded alpha as the S+ path. If the bar
- * moves between slice extraction and draw, the slice shows the content that was at the bar's
- * extraction-time position; for the navigation bar (which is fixed) and the mini player (which
- * only moves during drag), this is imperceptible.
- *
- * Returns `null` while the layer has no size (before first `record { ... }`), while the bar
- * hasn't been positioned yet, or if the capture fails — the caller should keep the opaque base
- * surface in that case.
- *
- * @param backdrop The shared capture handle (layer + content offset in root).
- * @param barPositionInRoot The bar's current top-left position in root coordinates. Read fresh
- *   each capture via [rememberUpdatedState], so the slice tracks the bar as it moves.
- * @param barSize The bar's current size in pixels. Read fresh each capture.
- * @param blurRadiusPx Blur radius in raw pixels (clamped to 0.5..48 by [ImageBlurUtils.blur]).
- * @param updateIntervalMs Capture+blur throttle. Default 80 ms (~12 fps) — fast enough for
- *   smooth frosted tracking, slow enough to not tank pre-S hardware.
- */
 @Composable
 internal fun rememberPreSFrostedBitmap(
     backdrop: NavigationBarBackdrop?,
@@ -1120,10 +928,7 @@ internal fun rememberPreSFrostedBitmap(
     var blurred by remember(backdrop, blurRadiusPx, updateIntervalMs) {
         mutableStateOf<ImageBitmap?>(null)
     }
-    // rememberUpdatedState lets the LaunchedEffect's coroutine read the LATEST bar position/size
-    // without re-launching on every layout pass (the LaunchedEffect's keys are intentionally
-    // coarse — backdrop/blurRadius/interval — so the capture loop isn't torn down and rebuilt
-    // every time the bar moves).
+
     val barPositionState = rememberUpdatedState(barPositionInRoot)
     val barSizeState = rememberUpdatedState(barSize)
 
@@ -1135,27 +940,17 @@ internal fun rememberPreSFrostedBitmap(
             if (layerW > 0 && layerH > 0) {
                 try {
                     val next = withContext(Dispatchers.Default) {
-                        // Read the latest bar geometry. These States are updated by the caller's
-                        // onGloballyPositioned, which fires on the main thread during layout.
+
                         val pos = barPositionState.value
                         val size = barSizeState.value
                         if (size.width <= 0 || size.height <= 0) return@withContext null
 
-                        // The slice is the bar's bounds expressed in the LAYER's coordinate
-                        // system (layer's top-left is contentOffsetInRoot in root coords).
                         val contentOffset = backdrop.contentOffsetInRoot
                         val rawX = (pos.x - contentOffset.x).toInt()
                         val rawY = (pos.y - contentOffset.y).toInt()
 
-                        // Padding around the slice so the stack blur has neighboring pixels to
-                        // sample at the bar's edges. Without this, the blur clamps the bar's own
-                        // edge pixels and the frost looks wrong at the boundary.
                         val pad = blurRadiusPx.toInt().coerceIn(8, 64)
 
-                        // Clamp the padded slice to the layer's bounds. If the bar is partially
-                        // off-layer (e.g. floating bar that overshoots), we still capture what we
-                        // can — the missing pixels are filled with the layer's edge color via
-                        // stack blur's edge clamping, which is acceptable.
                         val paddedX = rawX - pad
                         val paddedY = rawY - pad
                         val paddedW = size.width + 2 * pad
@@ -1168,13 +963,9 @@ internal fun rememberPreSFrostedBitmap(
                         val clampedH = clampedBottom - clampedY
                         if (clampedW <= 0 || clampedH <= 0) return@withContext null
 
-                        // Capture the full layer to a bitmap. This is the expensive part (GPU→CPU
-                        // readback) but is unavoidable — GraphicsLayer has no region capture API.
                         val imageBitmap = layer.toImageBitmap()
                         val fullBitmap = imageBitmap.asAndroidBitmap()
 
-                        // Extract just the small slice under the bar (with padding). This is a
-                        // cheap pixel copy; the slice is ~10x smaller than the full bitmap.
                         val sliceBitmap = Bitmap.createBitmap(
                             fullBitmap,
                             clampedX,
@@ -1183,9 +974,6 @@ internal fun rememberPreSFrostedBitmap(
                             clampedH,
                         )
 
-                        // Blur the small slice directly. Because the slice is small, the 720 px
-                        // downscale threshold in ImageBlurUtils either doesn't trigger or triggers
-                        // at a mild factor, so the blur keeps real resolution (no muddy upscale).
                         val blurredSlice = ImageBlurUtils.blur(sliceBitmap, blurRadiusPx)
 
                         val barXInSlice = (rawX - clampedX).coerceIn(0, blurredSlice.width - 1)
@@ -1193,13 +981,12 @@ internal fun rememberPreSFrostedBitmap(
                         val barW = size.width.coerceAtMost(blurredSlice.width - barXInSlice)
                         val barH = size.height.coerceAtMost(blurredSlice.height - barYInSlice)
                         if (barW <= 0 || barH <= 0) {
-                            // Degenerate slice — return as-is and let the caller clip.
+
                             blurredSlice.asImageBitmap()
                         } else if (barXInSlice == 0 && barYInSlice == 0 &&
                             blurredSlice.width == size.width && blurredSlice.height == size.height
                         ) {
-                            // No padding was added (pad == 0, impossible here since pad >= 8) or
-                            // slice is already exactly the bar size — skip the extra allocation.
+
                             blurredSlice.asImageBitmap()
                         } else {
                             Bitmap.createBitmap(blurredSlice, barXInSlice, barYInSlice, barW, barH)
@@ -1208,8 +995,7 @@ internal fun rememberPreSFrostedBitmap(
                     }
                     if (next != null) blurred = next
                 } catch (_: Throwable) {
-                    // Capture or blur failed (e.g. OOM, native crash on some devices) — keep the
-                    // previous frame; the opaque base surface is still visible underneath.
+
                 }
             }
             delay(updateIntervalMs)

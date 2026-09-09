@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.utils
 
 import android.content.Context
-import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,7 +22,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -34,6 +32,8 @@ import moe.rukamori.archivetune.constants.HISTORY_DURATION_LEGACY_FLOAT_KEY
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MAX
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MIN
 import moe.rukamori.archivetune.constants.HistoryDuration
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.UpdateChannel
@@ -78,6 +78,21 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
+            // SimpMusic's lyrics renderer used to be a boolean of its own, read only by the
+            // SimpMusic player style's lyrics card. It is a LyricsMode now, so it applies to the
+            // lyrics page under every style — carry anyone who had it switched on across.
+            object : DataMigration<Preferences> {
+                override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+                    currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true
+
+                override suspend fun migrate(currentData: Preferences): Preferences =
+                    currentData.toMutablePreferences().apply {
+                        this[LyricsModeKey] = LyricsMode.SIMPMUSIC.name
+                        remove(LEGACY_SIMPMUSIC_LYRICS_KEY)
+                    }
+
+                override suspend fun cleanUp() {}
+            },
             // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
             // (without). The option has been removed along with the gatekeeper machinery
             // that conditioned it; rewrite stale values to WEB_REMIX so existing users
@@ -98,9 +113,13 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     },
 )
 
+/** The retired `simpMusicLyrics` boolean, kept only so the migration above can read it. */
+private val LEGACY_SIMPMUSIC_LYRICS_KEY = androidx.datastore.preferences.core.booleanPreferencesKey("simpMusicLyrics")
+
 object PreferenceStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _prefs = MutableStateFlow<Preferences?>(null)
+    @Volatile private var _prefs: Preferences? = null
+    private val initialSnapshot = kotlinx.coroutines.CompletableDeferred<Preferences>()
 
     @Volatile private var started = false
 
@@ -110,14 +129,26 @@ object PreferenceStore {
             if (started) return
             started = true
             scope.launch {
-                context.dataStore.data.collect { preferences ->
-                    _prefs.value = preferences
+                try {
+                    context.applicationContext.dataStore.data.collect { preferences ->
+                        _prefs = preferences
+                        initialSnapshot.complete(preferences)
+                    }
+                } catch (error: Throwable) {
+                    initialSnapshot.completeExceptionally(error)
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    reportException(error)
                 }
             }
         }
     }
 
-    fun <T> get(key: Preferences.Key<T>): T? = _prefs.value?.get(key)
+    val snapshot: Preferences?
+        get() = _prefs
+
+    suspend fun awaitSnapshot(): Preferences = snapshot ?: initialSnapshot.await()
+
+    fun <T> get(key: Preferences.Key<T>): T? = snapshot?.get(key)
 
     fun launchEdit(
         dataStore: DataStore<Preferences>,
@@ -131,32 +162,20 @@ object PreferenceStore {
     }
 }
 
-operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? =
-    PreferenceStore.get(key)
-        ?: if (Looper.getMainLooper().thread == Thread.currentThread()) {
-            null
-        } else {
-            runBlocking(Dispatchers.IO) {
-                withTimeoutOrNull(1500) {
-                    data.first()[key]
-                }
-            }
-        }
+operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
+    val snapshot = PreferenceStore.snapshot
+    if (snapshot != null) return snapshot[key]
+    // UI startup awaits readiness without blocking. Keep the bounded fallback
+    // for synchronous, headless Android entrypoints rather than silently using defaults.
+    return runBlocking(Dispatchers.IO) {
+        withTimeoutOrNull(1500) { data.first()[key] }
+    }
+}
 
 fun <T> DataStore<Preferences>.get(
     key: Preferences.Key<T>,
     defaultValue: T,
-): T =
-    PreferenceStore.get(key)
-        ?: if (Looper.getMainLooper().thread == Thread.currentThread()) {
-            defaultValue
-        } else {
-            runBlocking(Dispatchers.IO) {
-                withTimeoutOrNull(1500) {
-                    data.first()[key]
-                } ?: defaultValue
-            }
-        }
+): T = get(key) ?: defaultValue
 
 suspend fun <T> DataStore<Preferences>.getAsync(key: Preferences.Key<T>): T? = data.first()[key]
 
@@ -184,12 +203,20 @@ fun <T> rememberPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    // Seeded from the in-memory snapshot, not from [defaultValue]. DataStore's flow is
+    // asynchronous, so seeding with the default paints one frame of the default before the stored
+    // value arrives — visible as a flash of the wrong screen whenever a preference chooses WHICH ui
+    // to show (the Home tab briefly rendering the YouTube page before the stored Spotify one).
+    // [PreferenceStore] keeps a hot copy of the whole Preferences object for exactly this, so the
+    // first frame is already correct; the fallback still applies before the store has loaded.
+    val initial = remember { PreferenceStore.get(key) ?: defaultValue }
+
     val state =
         remember {
             context.dataStore.data
                 .map { it[key] ?: defaultValue }
                 .distinctUntilChanged()
-        }.collectAsStateWithLifecycle(initialValue = defaultValue)
+        }.collectAsStateWithLifecycle(initialValue = initial)
 
     return remember {
         object : MutableState<T> {
@@ -215,12 +242,15 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    // See [rememberPreference] — same first-frame seeding, same reason.
+    val initial = remember { PreferenceStore.get(key).toEnum(defaultValue = defaultValue) }
+
     val state =
         remember {
             context.dataStore.data
                 .map { it[key].toEnum(defaultValue = defaultValue) }
                 .distinctUntilChanged()
-        }.collectAsStateWithLifecycle(initialValue = defaultValue)
+        }.collectAsStateWithLifecycle(initialValue = initial)
 
     return remember {
         object : MutableState<T> {
