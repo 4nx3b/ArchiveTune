@@ -1211,3 +1211,93 @@ Stage Summary:
 - Remaining known caveats (documented in the PR): TDLib-era sessions require
   one re-login; old tgart:// artwork models lose the document-thumbnail
   download path but keep the catalogue lookup.
+
+---
+Task ID: 25
+Agent: main (Super Z)
+Task: ArchiveTune — fix the Telegram login "infinite Connecting…" /
+RuntimeStartFailed hang reported with two on-device screenshots after the
+TDLib -> mtcute swap
+
+Work Log:
+- Read both screenshots via VLM: 06:29:49 shows the login screen stuck on
+  "Connecting to Telegram…" (authState Idle/Connecting); 06:32:25 shows
+  "Unsupported login step: RuntimeStartFailed" — i.e. the QuickJS host
+  start failed after a long hang.
+- Downloaded quickjs-kt 1.0.14 (AAR + sources) from Maven Central and read
+  the actual evaluate/async-binding implementation (QuickJs.jni.kt):
+  awaitEvaluateResult() waits for the async-binding jobs created in the
+  evaluation's session (asyncJobs filtered by session), and
+  executePendingJob() is ONLY called from awaitEvaluateResult — pending JS
+  jobs run exclusively while a root evaluate is in flight.
+- Root cause: banner.js starts the event pump with
+  Promise.resolve().then(pump) whose __tgPollEvent() async binding suspends
+  forever on the bridge event channel. During TgJsRuntime.start()'s
+  evaluate() the pump microtask runs, arming that never-settling job in the
+  startup session -> the startup evaluate can never return -> the 60s
+  STARTUP_TIMEOUT_MS fires -> catch(Exception) -> start() = false ->
+  TelegramClient set Unsupported("RuntimeStartFailed"). The Node smoke test
+  could not catch this: Node's vm has no evaluate-waits-for-jobs semantic.
+  Even past startup, per-call evaluate() RPCs would have stalled the pump,
+  timers and WebSocket transport between calls.
+- Fix (TgJsRuntime.kt rewritten core): the mtcute bundle + a small
+  MAIN_LOOP_JS wrapper are evaluated ONCE as a long-lived root evaluation
+  ("the JS process"). The wrapper calls __tgSignalReady() synchronously,
+  then forever awaits __tgWaitRpc() (Kotlin -> JS queue) and dispatches each
+  RPC as an independent promise chain reporting results through
+  __tgResolveRpc (JSON) / __tgResolveRpcBin (binary + TGERR text). Kotlin
+  call()/callBin() no longer evaluate JS: invokeRpc() enqueues a
+  RpcRequest and awaits a CompletableDeferred keyed by call id; timed-out
+  calls keep running JS-side and late resolutions for stale ids are
+  dropped (pendingCalls.remove -> null). The always-in-flight root
+  evaluation keeps quickjs-kt's job queue draining, so the event pump,
+  timers, WebSocket frames and mtcute reconnect/keepalive logic stay live
+  between RPCs.
+- New start() lifecycle: readiness is a CompletableDeferred completed by
+  the ready binding ("ready") or by loop death ("failed: <reason>");
+  start() awaits it with the 60s bound and surfaces the actual failure
+  text via TgJsRuntime.lastStartError. start() also tears down any
+  half-alive previous instance first (fixes a thread/QuickJS leak when
+  retrying after Failed). onLoopEnded() marks the runtime Failed and fails
+  pending calls if the root evaluation ever ends on its own.
+- Error UX: TelegramAuthState gains RuntimeFailed(detail) fed from
+  lastStartError (truncated to 200 chars); TelegramClient.ensureStarted
+  guards against it; the login screen renders it with the new
+  telegram_runtime_failed string ("Telegram engine failed to start: %s")
+  and no longer toast+bounces the user back to settings for runtime
+  failures — the reason stays visible for diagnosis.
+- Validation without local compile: kotlin_balance_check.py OK on the 3
+  touched Kotlin files; binding-name contract re-checked programmatically
+  (29/29 Kotlin bindings match every JS reference; JS-only identifiers are
+  only __tgApiCall/__tgApiCallBin/__tgHostReady); MAIN_LOOP_JS is
+  byte-identical to scripts/telegram-js/host/mainloop.js enforced by
+  test/check_mainloop_sync.js; smoke suite extended with the main-loop
+  protocol (synchronous ready signal, JSON RPC round-trip, binary error
+  round-trip as TGERR text, __error envelope for unknown methods, stale-id
+  drop, loop liveness after all of the above) — 20/20 checks pass.
+- Rebuilt the bundle locally only to run the smoke suite; the committed
+  asset app/src/main/assets/telegram/mtcute_host.js is UNCHANGED (the
+  rebuild only renamed esbuild symbols, so it was reverted).
+- Committed 6d5b29bcd on dev via a clean worktree (local workspace branch
+  contains environment snapshot commits that must not reach dev) and
+  pushed; CI: all 12 check-runs green on 6d5b29bcd (check compile gate,
+  build with unit tests + lint, 7 nightly APK variants incl. foss/armeabi,
+  2 release APKs, create-nightly).
+
+Stage Summary:
+- The Telegram login hang is fixed at the root: the QuickJS host now runs
+  as one long-lived root evaluation, which is the only evaluate shape
+  quickjs-kt 1.0.14 supports for a permanently-armed async event pump.
+- RPCs, timers, WebSocket transport and the event pump are live between
+  calls (previously latent-broken even without the startup hang); timed-out
+  RPCs no longer interrupt mtcute mid-request.
+- Startup failures now show the real reason on the login screen instead of
+  the misleading "sign in with the official app first" message.
+- Key files: telegram/TgJsRuntime.kt (core rewrite),
+  telegram/TelegramClient.kt (RuntimeFailed state),
+  ui/screens/settings/TelegramLoginScreen.kt (error rendering + stay
+  on-screen), res/values/strings.xml (2 new strings),
+  scripts/telegram-js/host/mainloop.js (new, synced with the Kotlin
+  constant), scripts/telegram-js/test/{smoke.js, check_mainloop_sync.js}.
+- Next: on-device retest of the Telegram login flow (TDLib-era sessions
+  still need the one-time re-login documented in Task 24).
