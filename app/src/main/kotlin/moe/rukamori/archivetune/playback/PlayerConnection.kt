@@ -193,7 +193,7 @@ class PlayerConnection(
         val decoded = TelegramMediaId.decode(mediaId) ?: return
         repeat(TELEGRAM_FORMAT_REFINE_ATTEMPTS) {
             currentCoroutineContext().ensureActive()
-            val path = moe.rukamori.archivetune.telegram.TelegramStreamCache.readyFilePath(decoded.chatId, decoded.messageId)
+            val path = TelegramClient.readyFilePath(decoded.chatId, decoded.messageId)
             if (path != null) {
                 val result = extractAudioPropertiesFromPath(path)
                 if (result != null && (result.second != null || result.first > 0)) {

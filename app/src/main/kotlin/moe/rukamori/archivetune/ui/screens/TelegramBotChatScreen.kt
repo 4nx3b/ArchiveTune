@@ -5,7 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * One-on-one chat screen with a saved Telegram bot. The user pastes a song link, the app sends it
- * to the bot via the mtcute host, then waits on [TelegramBotClient.messagesForChat] for audio
+ * to the bot via TDLib, then waits on [TelegramBotClient.messagesForChat] for audio
  * replies. Each reply is persisted as a Song + Format row so it can be played / downloaded /
  * added-to-playlist through the existing infrastructure.
  *

@@ -23,7 +23,7 @@
 # Move all classes that R8 is allowed to move into a single 'r8' package.
 # This shortens class name strings in the DEX constant pool and removes
 # per-package directory entries, reducing DEX size by ~1–3%. It does NOT
-# rename or move any class covered by a -keep rule (media3, kuromoji,
+# rename or move any class covered by a -keep rule (media3, tdlib, kuromoji,
 # jaudiotagger, newpipe.extractor, ktor, guava, Glance widgets, queue
 # persistence models, @Serializable companions). Reflection by system class
 # name (e.g. Class.forName("android.os.SystemProperties")) is unaffected.
@@ -199,3 +199,6 @@
 -dontwarn kotlinx.coroutines.**
 
 # TDLib (Telegram) — JNI bridges into these classes by reflection; must not be renamed/stripped
+-keep class org.drinkless.tdlib.** { *; }
+-dontwarn org.drinkless.tdlib.**
+

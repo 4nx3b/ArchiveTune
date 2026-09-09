@@ -90,6 +90,7 @@ fun TelegramLoginScreen(navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
 
     val authState by TelegramClient.authState.collectAsStateWithLifecycle()
+    val nativeDownloadProgress by TelegramClient.nativeDownloadProgress.collectAsStateWithLifecycle()
 
     var callingCode by rememberSaveable { mutableStateOf("") }
     var nationalNumber by rememberSaveable { mutableStateOf("") }
@@ -214,6 +215,10 @@ fun TelegramLoginScreen(navController: NavController) {
             }
 
             when {
+                nativeDownloadProgress != null -> {
+                    EngineDownloadCard(progress = nativeDownloadProgress)
+                }
+
                 state is TelegramAuthState.Idle || state is TelegramAuthState.Connecting -> {
                     ConnectingCard()
                 }
@@ -565,6 +570,26 @@ private fun ConnectingCard() {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
         Text(stringResource(R.string.telegram_connecting))
+    }
+}
+
+@Composable
+private fun EngineDownloadCard(progress: Float?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.telegram_engine_downloading),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress = { progress?.takeIf { it >= 0f } ?: 0f },
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = Color.Transparent,
+        )
     }
 }
 

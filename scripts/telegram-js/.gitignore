@@ -1,8 +1,0 @@
-node_modules/
-build/
-package-lock.json
-*.md.bak
-quickjs*.md
-polyfill*.kt
-quickjs-main.kt
-rws.kt
