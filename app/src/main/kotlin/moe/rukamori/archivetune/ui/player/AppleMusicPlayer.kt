@@ -1448,39 +1448,15 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(titleToScrubberGap))
 
-    val currentPosition = positionProvider()
-
-    Column {
-        AppleMusicSeekBar(
-            position = sliderPosition ?: currentPosition,
-            duration = duration,
-            onScrub = onSliderValueChange,
-            onScrubFinished = onSliderValueChangeFinished,
-        )
-        Spacer(Modifier.height(6.dp))
-
-        Box(Modifier.fillMaxWidth()) {
-            Text(
-                text = makeTimeString(sliderPosition ?: currentPosition),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.align(Alignment.CenterStart),
-            )
-            if (currentFormat != null) {
-                AppleMusicQualityChip(
-                    currentFormat = currentFormat,
-                    onClick = onQualityChipClick,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-            Text(
-                text = "-" + makeTimeString((duration - (sliderPosition ?: currentPosition)).coerceAtLeast(0L)),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.align(Alignment.CenterEnd),
-            )
-        }
-    }
+    AppleMusicPositionSection(
+        positionProvider = positionProvider,
+        sliderPosition = sliderPosition,
+        duration = duration,
+        currentFormat = currentFormat,
+        onSliderValueChange = onSliderValueChange,
+        onSliderValueChangeFinished = onSliderValueChangeFinished,
+        onQualityChipClick = onQualityChipClick,
+    )
 
     Spacer(Modifier.height(scrubberToTransportGap))
 
@@ -1900,6 +1876,65 @@ private fun AppleMusicQualityChip(
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.72f),
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Position-scoped leaf for the seek bar, the elapsed/remaining time labels
+ * and the quality chip.
+ *
+ * The live playback position is a state that updates ~10x per second. It
+ * used to be read (`positionProvider()`) in the middle of the big controls
+ * composable, which made the ENTIRE lower player — transport row, output
+ * selector, title actions, like button — recompose on every tick and made
+ * the whole app feel laggy while the Apple Music style was active (the
+ * other styles read the position in much smaller subtrees). Reading it
+ * here, inside this leaf, confines the per-tick recomposition to the
+ * seek bar and the two time labels, which are exactly the elements whose
+ * content changes with the position anyway.
+ */
+@Composable
+private fun AppleMusicPositionSection(
+    positionProvider: () -> Long,
+    sliderPosition: Long?,
+    duration: Long,
+    currentFormat: FormatEntity?,
+    onSliderValueChange: (Long) -> Unit,
+    onSliderValueChangeFinished: () -> Unit,
+    onQualityChipClick: () -> Unit,
+) {
+    val currentPosition = positionProvider()
+
+    Column {
+        AppleMusicSeekBar(
+            position = sliderPosition ?: currentPosition,
+            duration = duration,
+            onScrub = onSliderValueChange,
+            onScrubFinished = onSliderValueChangeFinished,
+        )
+        Spacer(Modifier.height(6.dp))
+
+        Box(Modifier.fillMaxWidth()) {
+            Text(
+                text = makeTimeString(sliderPosition ?: currentPosition),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+            if (currentFormat != null) {
+                AppleMusicQualityChip(
+                    currentFormat = currentFormat,
+                    onClick = onQualityChipClick,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            Text(
+                text = "-" + makeTimeString((duration - (sliderPosition ?: currentPosition)).coerceAtLeast(0L)),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }

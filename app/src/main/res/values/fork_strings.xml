@@ -141,4 +141,26 @@
 
     <string name="tiktok_feed_fullscreen">Full screen</string>
     <string name="tiktok_feed_exit_fullscreen">Exit full screen</string>
+
+    <!-- Preload songs (playback setting) -->
+    <string name="preload_songs_title">Preload songs</string>
+    <string name="preload_songs_desc">Resolve and cache the next songs while the current one plays so they start instantly. Uses extra data.</string>
+    <string name="preload_songs_off">Off</string>
+    <string name="preload_songs_count">%d songs</string>
+
+    <!-- SponsorBlock -->
+    <string name="sponsor_block_group">Sponsor Block</string>
+    <string name="sponsor_block_use">Use SponsorBlock</string>
+    <string name="sponsor_block_categories">SponsorBlock</string>
+    <string name="sponsor_block_categories_desc">Select SponsorBlock filtering</string>
+    <string name="sponsor_block_api_url">SponsorBlock API URL</string>
+    <string name="sponsor_block_music_off_topic">Non-music and off-topic portions</string>
+    <string name="sponsor_block_sponsors">Sponsors</string>
+    <string name="sponsor_block_intro">Intro</string>
+    <string name="sponsor_block_outro">Outro</string>
+    <string name="sponsor_block_self_promotions">Self promos</string>
+    <string name="sponsor_block_previews">Previews</string>
+    <string name="sponsor_block_fillers">Fillers</string>
+    <string name="sponsor_block_subscription_reminders">Subscription reminders</string>
+    <string name="sponsor_block_hooks">Hook/Greetings</string>
 </resources>
