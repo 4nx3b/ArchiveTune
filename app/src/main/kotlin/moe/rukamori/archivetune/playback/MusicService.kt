@@ -126,6 +126,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -8578,7 +8579,7 @@ class MusicService :
         if (currentIndex < 0) return
         val upcoming = player.mediaItems.drop(currentIndex + 1).take(count)
         for (item in upcoming) {
-            if (!isActive) return
+            if (!currentCoroutineContext().isActive) return
             runCatching { preloadPlaybackStream(item) }
         }
     }
