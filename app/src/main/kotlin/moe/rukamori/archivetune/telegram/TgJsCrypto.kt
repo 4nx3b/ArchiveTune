@@ -87,23 +87,42 @@ internal object TgJsCrypto {
         val cipher = Cipher.getInstance("AES/ECB/NoPadding")
         cipher.init(if (encrypt) Cipher.ENCRYPT_MODE else Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"))
 
-        var ivX = iv.copyOfRange(0, 16)
-        var ivY = iv.copyOfRange(16, 32)
+        // MTProto AES-IGE (core.telegram.org/mtproto/description):
+        //   encrypt: c_i = E(p_i XOR c_{i-1}) XOR p_{i-1}
+        //   decrypt: p_i = D(c_i XOR p_{i-1}) XOR c_{i-1}
+        // seeded with c_0 = iv[0..16) and p_0 = iv[16..32).
+        // The chaining state must be the FULL previous output/input block
+        // (after the outer XOR), never the bare ECB result.
+        var ivX = iv.copyOfRange(0, 16) // c_{i-1}
+        var ivY = iv.copyOfRange(16, 32) // p_{i-1}
         val out = ByteArray(data.size)
         var offset = 0
         while (offset < data.size) {
             val block = data.copyOfRange(offset, offset + 16)
-            val xored = ByteArray(16)
-            for (i in 0 until 16) {
-                xored[i] = (block[i].toInt() xor ivX[i].toInt()).toByte()
+            if (encrypt) {
+                val xored = xor16(block, ivX)
+                val e = cipher.doFinal(xored)
+                val c = xor16(e, ivY)
+                System.arraycopy(c, 0, out, offset, 16)
+                ivX = c // next c_{i-1} is the emitted ciphertext block
+                ivY = block // next p_{i-1} is the consumed plaintext block
+            } else {
+                val xored = xor16(block, ivY)
+                val d = cipher.doFinal(xored)
+                val p = xor16(d, ivX)
+                System.arraycopy(p, 0, out, offset, 16)
+                ivY = p // next p_{i-1} is the emitted plaintext block
+                ivX = block // next c_{i-1} is the consumed ciphertext block
             }
-            val encrypted = cipher.doFinal(xored)
-            for (i in 0 until 16) {
-                out[offset + i] = (encrypted[i].toInt() xor ivY[i].toInt()).toByte()
-            }
-            ivX = encrypted.copyOf()
-            ivY = block.copyOf()
             offset += 16
+        }
+        return out
+    }
+
+    private fun xor16(a: ByteArray, b: ByteArray): ByteArray {
+        val out = ByteArray(16)
+        for (i in 0 until 16) {
+            out[i] = (a[i].toInt() xor b[i].toInt()).toByte()
         }
         return out
     }
@@ -115,7 +134,11 @@ internal object TgJsCrypto {
         encrypt: Boolean,
     ): Int {
         val cipher = Cipher.getInstance("AES/CTR/NoPadding")
-        cipher.init(if (encrypt) Cipher.ENCRYPT_MODE else Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+        // AES needs a 16-byte counter block; mtcute callers pass 16 bytes
+        // (obfuscated transport) — defensively clamp longer IVs like the
+        // reference wasm implementation does.
+        val counterIv = if (iv.size > 16) iv.copyOf(16) else iv
+        cipher.init(if (encrypt) Cipher.ENCRYPT_MODE else Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(counterIv))
         val handle = nextCtrHandle++
         ctrHandles[handle] = cipher
         return handle

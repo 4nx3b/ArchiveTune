@@ -180,10 +180,15 @@ const ctrStreams = new Map()
 let nextCtrHandle = 1
 
 function aesIge(encrypt, key, iv, data) {
+  // Mirrors TgJsCrypto.aesIge — MTProto AES-IGE:
+  //   encrypt: c_i = E(p_i ^ c_{i-1}) ^ p_{i-1}
+  //   decrypt: p_i = D(c_i ^ p_{i-1}) ^ c_{i-1}
+  // seeded with c_0 = iv[0..16) and p_0 = iv[16..32). The chaining state
+  // is the full previous output/input block (after the outer XOR).
   if (data.length === 0) return data
   if (data.length % 16 !== 0) throw new Error('AES-IGE input must be a multiple of 16 bytes')
-  let ivX = iv.slice(0, 16)
-  let ivY = iv.slice(16, 32)
+  let ivX = iv.slice(0, 16) // c_{i-1}
+  let ivY = iv.slice(16, 32) // p_{i-1}
   const ecb = encrypt
     ? nodeCrypto.createCipheriv('aes-256-ecb', key, null)
     : nodeCrypto.createDecipheriv('aes-256-ecb', key, null)
@@ -192,12 +197,25 @@ function aesIge(encrypt, key, iv, data) {
   const out = Buffer.alloc(d.length)
   for (let off = 0; off < d.length; off += 16) {
     const block = d.slice(off, off + 16)
-    const xored = Buffer.alloc(16)
-    for (let i = 0; i < 16; i++) xored[i] = block[i] ^ ivX[i]
-    const processed = ecb.update(xored)
-    for (let i = 0; i < 16; i++) out[off + i] = processed[i] ^ ivY[i]
-    ivX = Buffer.from(processed)
-    ivY = Buffer.from(block)
+    if (encrypt) {
+      const xored = Buffer.alloc(16)
+      for (let i = 0; i < 16; i++) xored[i] = block[i] ^ ivX[i]
+      const e = ecb.update(xored)
+      const c = Buffer.alloc(16)
+      for (let i = 0; i < 16; i++) c[i] = e[i] ^ ivY[i]
+      c.copy(out, off)
+      ivX = c
+      ivY = Buffer.from(block)
+    } else {
+      const xored = Buffer.alloc(16)
+      for (let i = 0; i < 16; i++) xored[i] = block[i] ^ ivY[i]
+      const dec = ecb.update(xored)
+      const p = Buffer.alloc(16)
+      for (let i = 0; i < 16; i++) p[i] = dec[i] ^ ivX[i]
+      p.copy(out, off)
+      ivY = p
+      ivX = Buffer.from(block)
+    }
   }
   return out
 }
