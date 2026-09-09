@@ -151,16 +151,24 @@ object TelegramClient {
      * only when the build has no Telegram api credentials (or a previous start
      * failed permanently); runtime failures surface later through [authState]
      * and per-call exceptions.
+     *
+     * [allowEngineDownload] is false for the app-boot session restore: boot
+     * must never silently pull the multi-MB engine over the network — it
+     * only resumes when the native library is already cached. Interactive
+     * callers (settings screen) keep the download so a returning user gets
+     * their session back without visiting the login screen.
      */
-    fun ensureStarted(context: Context): Boolean {
+    fun ensureStarted(context: Context, allowEngineDownload: Boolean = true): Boolean {
         if (!hasApiCredentials) return false
         if (TdEngine.isRunning || isReady) return true
         if (_authState.value is TelegramAuthState.Unsupported) return false
         if (_authState.value is TelegramAuthState.RuntimeFailed) return false
         appContext = context.applicationContext
-        val hasSession = runCatching { sessionDir(context).exists() }.getOrDefault(false)
+        val wantsDownload =
+            allowEngineDownload &&
+                runCatching { sessionDir(context).exists() }.getOrDefault(false)
         scope.launch {
-            runCatching { initialize(context, allowEngineDownload = hasSession) }
+            runCatching { initialize(context, allowEngineDownload = wantsDownload) }
                 .onFailure { Timber.tag(TAG).w(it, "Telegram init failed") }
         }
         return true
@@ -173,9 +181,16 @@ object TelegramClient {
         return initialize(context, allowEngineDownload = true)
     }
 
+    /**
+     * App-boot entry: resumes an existing Telegram session from the already
+     * cached engine (never downloads — the login screen owns the one-time
+     * engine download with its progress UI). Fails closed when the library
+     * is not cached yet; Telegram features come alive after the user's next
+     * visit to the login screen or an interactive settings start.
+     */
     fun startIfSessionExists(context: Context): Boolean {
         if (!runCatching { sessionDir(context).exists() }.getOrDefault(false)) return false
-        return ensureStarted(context)
+        return ensureStarted(context, allowEngineDownload = false)
     }
 
     private fun sessionDir(context: Context): File = File(File(context.filesDir, "telegram"), "db")
@@ -189,9 +204,11 @@ object TelegramClient {
 
             if (TdLibNativeLibrary.needsDownload(context)) {
                 if (!allowEngineDownload) {
-                    // No session and no interactive caller: don't pull the
-                    // ~20 MB engine just for peeking at settings — the login
-                    // screen downloads it on demand with a progress UI.
+                    // Boot restore or a settings peek without a session:
+                    // never pull the multi-MB engine in the background —
+                    // the login screen downloads it on demand with a
+                    // progress UI. Returning true keeps Telegram features
+                    // lazy instead of marking the runtime failed.
                     return true
                 }
                 _nativeDownloadProgress.value = 0f

@@ -512,6 +512,12 @@ dependencies {
 
     implementation(libs.bcpg)
 
+    // QuickJS JNI bindings (io.github.dokar3:quickjs-kt). REQUIRED by :core's
+    // YouTube player-JS cipher solver (QuickJsEngine/FaradayJsDecoder) — the
+    // quickjs-kt artifact ships the per-ABI libquickjs.so that the solver
+    // dlopens; it is not a Telegram dependency.
+    implementation(libs.quickjs.kt)
+
     // TDLight (tdlight-team/tdlight) Telegram engine. The td-ktx core
     // (TelegramFlow) is vendored under kotlinx/telegram/core; the
     // org.drinkless.tdlib Client/TdApi JNI binding is vendored under

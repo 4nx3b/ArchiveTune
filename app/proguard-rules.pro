@@ -180,3 +180,10 @@
 -keep class org.drinkless.tdlib.** { *; }
 -dontwarn org.drinkless.tdlib.**
 
+# Vendored td-ktx core (3 classes driving the engine's coroutine bridge).
+# Cheap insurance against R8 renaming across the vendored boundary; the
+# generated td-ktx extension wrappers are NOT vendored, so this keep adds
+# near-zero DEX compared to the upstream AAR's blanket rule.
+-keep class kotlinx.telegram.core.** { *; }
+-dontwarn kotlinx.telegram.core.**
+
