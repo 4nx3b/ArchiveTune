@@ -212,6 +212,7 @@ object CanvasArtworkPlaybackCache {
             videoUrl = regularUri ?: entry.artwork.videoUrl,
             animatedVertical = verticalUri ?: entry.artwork.animatedVertical,
             videoUrlVertical = verticalUri ?: entry.artwork.videoUrlVertical,
+            provider = entry.artwork.provider ?: entry.artwork.inferredProvider(),
         )
     }
 
@@ -749,6 +750,11 @@ object CanvasArtworkPlaybackCache {
                         artwork.animatedVertical.takeIfNotBlank() ?: verticalUri
                     },
                 videoUrlVertical = verticalUri,
+                // The URL fields above no longer reflect the resolver that
+                // produced this artwork (they are local file URIs), so keep
+                // the provider tag explicit — inferring it here from the
+                // PRE-rewrite fields also migrates legacy cache entries.
+                provider = artwork.provider ?: artwork.inferredProvider(),
             )
         }
     }

@@ -143,32 +143,35 @@ fun CanvasArtworkPlayer(
         remember(context) {
             DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         }
-    val trackSelector =
-        remember(context) {
-            DefaultTrackSelector(context).apply {
-                setParameters(
-                    buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                        .setForceHighestSupportedBitrate(true)
-                        .build(),
-                )
-            }
-        }
-
-    val loadControl =
-        remember {
-            DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                     15_000,
-                     30_000,
-                     500,
-                     1_000,
-                )
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .build()
-        }
+    // One ExoPlayer per call site for the composable's whole lifetime — the
+    // player is deliberately NOT keyed on the canvas URL. TrackSelector.init
+    // throws IllegalStateException when a selector is initialized twice, so
+    // rebuilding the player while reusing a remembered selector crashes the
+    // moment the URL changes (next/previous track). The selector and the
+    // load control are created inside the same remember block as the player
+    // to guarantee a 1:1 lifetime, and URL changes are applied to the
+    // retained player by the currentUrl LaunchedEffect below (setMediaItem).
     val exoPlayer =
-        remember(initial, mediaSourceFactory, renderersFactory, trackSelector, loadControl) {
+        remember(mediaSourceFactory, renderersFactory) {
+            val trackSelector =
+                DefaultTrackSelector(context).apply {
+                    setParameters(
+                        buildUponParameters()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            .setForceHighestSupportedBitrate(true)
+                            .build(),
+                    )
+                }
+            val loadControl =
+                DefaultLoadControl
+                    .Builder()
+                    .setBufferDurationsMs(
+                        15_000,
+                        30_000,
+                        500,
+                        1_000,
+                    ).setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
             ExoPlayer
                 .Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)

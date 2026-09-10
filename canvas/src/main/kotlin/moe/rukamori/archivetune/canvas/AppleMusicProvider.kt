@@ -590,6 +590,7 @@ object AppleMusicProvider {
                             albumName = resolvedAlbumName,
                             animated = videoUrls.animated,
                             animatedVertical = videoUrls.animatedVertical,
+                            provider = CanvasArtwork.PROVIDER_APPLE_MUSIC,
                         )
                     }
                 }
@@ -693,6 +694,7 @@ object AppleMusicProvider {
                         albumName = albumName,
                         animated = videoUrls.animated,
                         animatedVertical = videoUrls.animatedVertical,
+                        provider = CanvasArtwork.PROVIDER_APPLE_MUSIC,
                     )
                 }
             }

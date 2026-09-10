@@ -195,6 +195,18 @@ private const val AmLyricsBackdropMorphMs = 650
 
 private val AmBackdropBlurRadius = 64.dp
 
+/**
+ * The Apple Music blurred backdrop renders the playing canvas at this
+ * fraction of the footprint with a proportionally divided blur radius, then
+ * upscales via the graphics layer — visually identical to the full-size
+ * render (a 72dp-blurred result is featureless) while the per-frame
+ * RenderEffect and video compositing costs drop by the square of this
+ * factor, which keeps canvas playback from janking the whole app.
+ */
+private const val AmCanvasBackdropUpscale = 6f
+
+private val AmCanvasBackdropBlurRadius = 72.dp
+
 private const val AppleMusicLyricsContentDeferMs = 160L
 
 private const val AppleMusicLyricsControlsAutoHideDelayMs = 5_000L
@@ -728,26 +740,38 @@ fun AppleMusicPlayerContent(
             }
 
             if (useCanvasBackdrop) {
-
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasVisibleForLyrics,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    visible = canvasVisibleForLyrics,
+                // Cheap blurred-canvas backdrop (see AmCanvasBackdropUpscale):
+                // the video surface is laid out at 1/6 of the footprint with a
+                // 72/6 = 12dp blur, and the graphics layer upscales it back
+                // (folded with the existing AmCoverBlurScale overscan and the
+                // lyrics-progress alpha). Modifier order matters: the blur sits
+                // INSIDE the scaling layer, so it processes the small surface.
+                Box(
                     modifier =
                         Modifier
                             .matchParentSize()
-
                             .then(canvasSeamFade)
-                            .blur(72.dp)
                             .graphicsLayer {
-
-                                scaleX = AmCoverBlurScale
-                                scaleY = AmCoverBlurScale
+                                val scale = AmCoverBlurScale * AmCanvasBackdropUpscale
+                                scaleX = scale
+                                scaleY = scale
                                 alpha = 1f - lyricsBackdropProgress.value
                             },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CanvasArtworkPlayer(
+                        primaryUrl = canvasPrimaryUrl,
+                        fallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying && canvasVisibleForLyrics,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        visible = canvasVisibleForLyrics,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                .fillMaxHeight(1f / AmCanvasBackdropUpscale)
+                                .blur(AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale),
+                    )
+                }
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
 
