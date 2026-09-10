@@ -267,14 +267,28 @@ fun FloatingNavigationToolbar(
 
     val itemColors =
         when {
-            canLiquidGlass ->
+            canLiquidGlass -> {
+                // Liquid-glass legibility follows the theme: night keeps the
+                // white-on-glass look, day switches to onSurface tones — the
+                // glass bar renders as a light frosted surface in light mode,
+                // where white icons and labels are invisible.
+                val glassIsNight = isSystemInDarkTheme()
+                val glassSelectedColor =
+                    if (glassIsNight) Color.White else MaterialTheme.colorScheme.onSurface
+                val glassUnselectedColor =
+                    if (glassIsNight) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color.White,
-                    unselectedTextColor = Color.White,
+                    selectedIconColor = glassSelectedColor,
+                    selectedTextColor = glassSelectedColor,
+                    unselectedIconColor = glassUnselectedColor,
+                    unselectedTextColor = glassUnselectedColor,
                 )
+            }
             isFloating ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
@@ -904,6 +918,12 @@ fun FloatingNavigationToolbar(
                     contentAlignment = Alignment.Center,
                 ) {
                     val displayScreen = items[displayIndex]
+                    // Day mode: the pill is a light glass lens over a light
+                    // bar, so the selected icon/label switch from the night
+                    // white to onSurface — white content is invisible in
+                    // light mode. Night keeps white + the shadow unchanged.
+                    val pillContentColor =
+                        if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
@@ -912,7 +932,7 @@ fun FloatingNavigationToolbar(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
 
-                            tint = Color.White,
+                            tint = pillContentColor,
                             modifier =
                                 Modifier.graphicsLayer {
 
@@ -925,7 +945,7 @@ fun FloatingNavigationToolbar(
                             Text(
                                 text = stringResource(displayScreen.titleId),
 
-                                color = Color.White,
+                                color = pillContentColor,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
