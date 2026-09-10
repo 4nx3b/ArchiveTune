@@ -445,9 +445,6 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
-    // Google Drive backups (gms flavor): sign-in via the Google Play
-    // services auth API, same version the upstream port pinned.
-    add("gmsImplementation", "com.google.android.gms:play-services-auth:22.0.0")
     implementation(libs.squigglyslider)
 
     implementation(libs.room.runtime)

@@ -57,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -511,7 +512,7 @@ private fun TikTokLikeRailButton(
                 contentAlignment = Alignment.Center,
                 modifier =
                     Modifier
-                        .size(30.dp)
+                        .size(34.dp)
                         .graphicsLayer {
                             scaleX = scale.value
                             scaleY = scale.value
@@ -521,17 +522,27 @@ private fun TikTokLikeRailButton(
                     iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
                     contentDescription = likeLabel,
                     tint = if (liked) TIKTOK_RED else Color.White,
+                    iconSize = 34.dp,
                 )
             }
 
-            AnimatedVisibility(
-                visible = likeCountLabel != null,
-                enter =
-                    fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
-                        slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
-                exit = fadeOut(tween(120)),
+            // Fixed-height count row: keeps the button's footprint (and the
+            // breathing room to the comment button below) stable whether or
+            // not the like count ever loads — real TikTok reserves this slot
+            // too, so a missing count never reflows the rail.
+            Box(
+                modifier = Modifier.height(18.dp),
+                contentAlignment = Alignment.Top,
             ) {
-                TikTokRailCountLabel(label = likeCountLabel.orEmpty())
+                AnimatedVisibility(
+                    visible = likeCountLabel != null,
+                    enter =
+                        fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
+                            slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
+                    exit = fadeOut(tween(120)),
+                ) {
+                    TikTokRailCountLabel(label = likeCountLabel.orEmpty())
+                }
             }
         }
     }
@@ -585,8 +596,9 @@ private fun TikTokRailGlyph(
     iconRes: Int,
     contentDescription: String,
     tint: Color,
+    iconSize: Dp = 30.dp,
 ) {
-    Box(modifier = Modifier.size(30.dp)) {
+    Box(modifier = Modifier.size(iconSize)) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,

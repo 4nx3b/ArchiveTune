@@ -237,7 +237,6 @@ class BackupRestoreViewModel
     constructor(
         val database: MusicDatabase,
         private val createBackupUseCase: CreateBackupUseCase,
-        private val backupOperationCoordinator: moe.rukamori.archivetune.backup.BackupOperationCoordinator,
         observeScheduledBackupSettings: ObserveScheduledBackupSettingsUseCase,
         private val updateScheduledBackup: UpdateScheduledBackupUseCase,
         observeGoogleDriveSyncSettings: ObserveGoogleDriveSyncSettingsUseCase,
@@ -262,7 +261,6 @@ class BackupRestoreViewModel
         private var showCustomDatePicker = false
         private var scheduledBackupUpdateJob: Job? = null
         private var manualBackupJob: Job? = null
-        private var restoreJob: Job? = null
 
         private val _googleDriveSyncState =
             MutableStateFlow<GoogleDriveSyncScreenState>(GoogleDriveSyncScreenState.Loading)
@@ -319,12 +317,11 @@ class BackupRestoreViewModel
             uri: Uri,
             categories: Set<BackupCategory>,
         ) {
-            if (manualBackupJob?.isActive == true || restoreJob?.isActive == true) return
+            if (manualBackupJob?.isActive == true) return
             manualBackupJob =
                 viewModelScope.launch(Dispatchers.IO) {
-                    backupOperationCoordinator.withLock {
-                        val title = context.getString(R.string.backup_in_progress)
-                        try {
+                    val title = context.getString(R.string.backup_in_progress)
+                    try {
                         createBackupUseCase(
                             uri = uri,
                             categories = categories.mapTo(linkedSetOf()) { BackupArchiveCategory.valueOf(it.name) },
@@ -360,7 +357,6 @@ class BackupRestoreViewModel
                         _backupEvent.tryEmit(msg)
                     } finally {
                         _backupRestoreProgress.value = null
-                    }
                     }
                 }
         }
@@ -623,12 +619,9 @@ class BackupRestoreViewModel
             uri: Uri,
             categories: Set<BackupCategory>,
         ) {
-            if (restoreJob?.isActive == true || manualBackupJob?.isActive == true) return
-            restoreJob =
-                viewModelScope.launch(Dispatchers.IO) {
-                    backupOperationCoordinator.withLock {
-                        val title = context.getString(R.string.restore_in_progress)
-                        try {
+            viewModelScope.launch(Dispatchers.IO) {
+                val title = context.getString(R.string.restore_in_progress)
+                try {
                     val includeSettings = BackupCategory.SETTINGS in categories
                     val includeAccount = BackupCategory.ACCOUNT in categories
                     val includeLibrary = BackupCategory.LIBRARY in categories
@@ -775,7 +768,6 @@ class BackupRestoreViewModel
                     }
                 } finally {
                     _backupRestoreProgress.value = null
-                }
                 }
             }
         }
