@@ -163,7 +163,12 @@ fun BottomSheetMenu(
         if (dark) {
             Color(0x8C1C1C1E)
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f)
+            // Light mode must stay a *glass* tint: the blurred, vibrancy-
+            // boosted backdrop behind it is what carries the look, and a
+            // near-opaque tint here (as before, 0.82) flattened the popup
+            // into a solid panel. 0.42 keeps dark-ink content legible over
+            // arbitrary backdrops while the blur clearly reads through.
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
         }
 
     val fallbackColor =

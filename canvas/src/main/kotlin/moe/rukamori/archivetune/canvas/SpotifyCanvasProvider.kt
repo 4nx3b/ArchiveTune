@@ -231,6 +231,7 @@ object SpotifyCanvasProvider {
             animatedVertical = null,
             videoUrl = canvasUrl,
             videoUrlVertical = canvasUrl,
+            provider = CanvasArtwork.PROVIDER_SPOTIFY,
         )
     }
 
@@ -271,6 +272,7 @@ object SpotifyCanvasProvider {
             animatedVertical = null,
             videoUrl = videoUrl,
             videoUrlVertical = videoUrl,
+            provider = CanvasArtwork.PROVIDER_SPOTIFY,
         )
     }
 

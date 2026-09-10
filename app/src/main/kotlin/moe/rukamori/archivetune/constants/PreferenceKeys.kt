@@ -482,6 +482,11 @@ val DeviceMutePlaybackRecoveryVolumeKey = intPreferencesKey("deviceMutePlaybackR
 val AutoStartOnBluetoothKey = booleanPreferencesKey("autoStartOnBluetooth")
 val StopMusicOnTaskClearKey = booleanPreferencesKey("stopMusicOnTaskClear")
 val WakelockKey = booleanPreferencesKey("wakelock")
+
+val SponsorBlockEnabledKey = booleanPreferencesKey("sponsorBlockEnabled")
+val SponsorBlockCategoriesKey = stringSetPreferencesKey("sponsorBlockCategories")
+val SponsorBlockApiUrlKey = stringPreferencesKey("sponsorBlockApiUrl")
+
 val ArtistSeparatorsKey = stringPreferencesKey("artistSeparators")
 val ExternalDownloaderEnabledKey = booleanPreferencesKey("externalDownloaderEnabled")
 val ExternalDownloaderPackageKey = stringPreferencesKey("externalDownloaderPackage")
@@ -980,6 +985,11 @@ const val HISTORY_DURATION_MAX = 60
 val HISTORY_DURATION_RANGE = HISTORY_DURATION_MIN.toFloat()..HISTORY_DURATION_MAX.toFloat()
 val HISTORY_DURATION_LEGACY_FLOAT_KEY = floatPreferencesKey("historyDuration")
 val HistoryDuration = intPreferencesKey("historyDuration")
+
+/** How many upcoming songs are resolved + cached ahead of playback (0 = off). */
+const val PRELOAD_SONGS_MAX = 10
+val PRELOAD_SONGS_RANGE = 0f..PRELOAD_SONGS_MAX.toFloat()
+val PreloadSongsCountKey = intPreferencesKey("preloadSongsCount")
 
 val PlayerButtonsStyleKey = stringPreferencesKey("player_buttons_style")
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")

@@ -51,6 +51,7 @@ data class PlaylistEntity(
         const val LIKED_PLAYLIST_ID = "LP_LIKED"
         const val DOWNLOADED_PLAYLIST_ID = "LP_DOWNLOADED"
         private const val LOCAL_CUSTOM_COVER_PREFIX = "content://"
+        private const val LOCAL_CUSTOM_COVER_FILE_PREFIX = "file:"
         private const val REMOTE_CUSTOM_COVER_MARKER = "studio_square_thumbnail"
 
         fun generatePlaylistId() = "LP" + RandomStringUtils.insecure().next(8, true, false)
@@ -69,11 +70,15 @@ data class PlaylistEntity(
         get() =
             thumbnailUrl?.let { url ->
                 url.startsWith(LOCAL_CUSTOM_COVER_PREFIX) ||
+                    url.startsWith(LOCAL_CUSTOM_COVER_FILE_PREFIX) ||
                     url.contains(REMOTE_CUSTOM_COVER_MARKER, ignoreCase = true)
             } == true
 
     val hasLocalCustomCover: Boolean
-        get() = thumbnailUrl?.startsWith(LOCAL_CUSTOM_COVER_PREFIX) == true
+        get() =
+            thumbnailUrl?.let { url ->
+                url.startsWith(LOCAL_CUSTOM_COVER_PREFIX) || url.startsWith(LOCAL_CUSTOM_COVER_FILE_PREFIX)
+            } == true
 
     fun localToggleLike() =
         copy(

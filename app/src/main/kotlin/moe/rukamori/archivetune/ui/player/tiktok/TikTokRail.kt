@@ -57,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,6 +81,7 @@ import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.shareLocalAudio
+import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 internal val TIKTOK_RED = Color(0xFFFE2C55)
@@ -101,6 +103,24 @@ private object TikTokLikeCountCache {
     }
 
     private fun Int.toLabel(): String = formatCompactCount(this.toLong())
+}
+
+/**
+ * In-memory cache for the artist profile-picture URLs resolved for the TikTok
+ * rail avatar. Misses are stored as null sentinels so an artist with no
+ * YouTube art is not looked up again on every page swipe.
+ */
+private object TikTokArtistAvatarCache {
+    private val cache = ConcurrentHashMap<String, Optional<String>>()
+
+    fun thumbnailUrlOf(artistId: String): String? = cache[artistId]?.orElse(null)
+
+    fun store(
+        artistId: String,
+        thumbnailUrl: String?,
+    ) {
+        cache[artistId] = Optional.ofNullable(thumbnailUrl)
+    }
 }
 
 private const val TIKTOK_RAIL_FADE_MS = 180
@@ -277,8 +297,6 @@ private fun TikTokArtistAvatar(
     val artist = remember(pageMetadata.id) { pageMetadata.artists.firstOrNull() }
     val artistId = artist?.id
 
-    val avatarUrl = artist?.thumbnailUrl ?: pageMetadata.thumbnailUrl
-
     val artistFlow =
         remember(artistId, database) {
             if (artistId != null) {
@@ -289,6 +307,44 @@ private fun TikTokArtistAvatar(
         }
     val libraryArtist by artistFlow.collectAsStateWithLifecycle(initialValue = null)
     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
+
+    // The avatar must show the ARTIST's profile picture, not the song
+    // thumbnail. MediaMetadata.Artist.thumbnailUrl is only populated from
+    // library songs (Song.toMediaMetadata); songs streamed from search or
+    // browse pages carry null artist thumbnails, which previously made the
+    // avatar silently fall back to the song artwork. Resolution order:
+    // 1) the metadata's own artist thumbnail,
+    // 2) the library's ArtistEntity thumbnail (already collected above for
+    //    the subscribe button),
+    // 3) an on-demand YouTube artist-page lookup (cached in memory),
+    // 4) the song thumbnail as a last resort.
+    val libraryArtistThumbnail = libraryArtist?.artist?.thumbnailUrl
+    val resolvedAvatarUrl by
+        produceState<String?>(
+            initialValue = artist?.thumbnailUrl?.takeIf(String::isNotBlank),
+            artistId,
+            libraryArtistThumbnail,
+        ) {
+            val metadataThumbnail = artist?.thumbnailUrl?.takeIf(String::isNotBlank)
+            when {
+                metadataThumbnail != null -> value = metadataThumbnail
+                !libraryArtistThumbnail.isNullOrBlank() -> value = libraryArtistThumbnail
+                artistId != null -> {
+                    val cached = TikTokArtistAvatarCache.thumbnailUrlOf(artistId)
+                    if (cached != null) {
+                        value = cached
+                    } else {
+                        val fetched =
+                            runCatching {
+                                YouTube.artist(artistId).getOrNull()?.artist?.thumbnail
+                            }.getOrNull()?.takeIf(String::isNotBlank)
+                        TikTokArtistAvatarCache.store(artistId, fetched)
+                        value = fetched
+                    }
+                }
+            }
+        }
+    val avatarUrl = resolvedAvatarUrl ?: pageMetadata.thumbnailUrl
 
     Box(
         modifier =
@@ -456,7 +512,7 @@ private fun TikTokLikeRailButton(
                 contentAlignment = Alignment.Center,
                 modifier =
                     Modifier
-                        .size(30.dp)
+                        .size(34.dp)
                         .graphicsLayer {
                             scaleX = scale.value
                             scaleY = scale.value
@@ -466,15 +522,21 @@ private fun TikTokLikeRailButton(
                     iconRes = if (liked) R.drawable.solar_heart_bold else R.drawable.solar_heart_linear,
                     contentDescription = likeLabel,
                     tint = if (liked) TIKTOK_RED else Color.White,
+                    iconSize = 34.dp,
                 )
             }
 
+            // Fixed-height count slot: keeps the button's footprint (and the
+            // breathing room to the comment button below) stable whether or
+            // not the like count ever loads — real TikTok reserves this slot
+            // too, so a missing count never reflows the rail.
             AnimatedVisibility(
                 visible = likeCountLabel != null,
                 enter =
                     fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
                         slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
                 exit = fadeOut(tween(120)),
+                modifier = Modifier.height(18.dp),
             ) {
                 TikTokRailCountLabel(label = likeCountLabel.orEmpty())
             }
@@ -530,8 +592,9 @@ private fun TikTokRailGlyph(
     iconRes: Int,
     contentDescription: String,
     tint: Color,
+    iconSize: Dp = 30.dp,
 ) {
-    Box(modifier = Modifier.size(30.dp)) {
+    Box(modifier = Modifier.size(iconSize)) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
