@@ -526,23 +526,19 @@ private fun TikTokLikeRailButton(
                 )
             }
 
-            // Fixed-height count row: keeps the button's footprint (and the
+            // Fixed-height count slot: keeps the button's footprint (and the
             // breathing room to the comment button below) stable whether or
             // not the like count ever loads — real TikTok reserves this slot
             // too, so a missing count never reflows the rail.
-            Box(
+            AnimatedVisibility(
+                visible = likeCountLabel != null,
+                enter =
+                    fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
+                        slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
+                exit = fadeOut(tween(120)),
                 modifier = Modifier.height(18.dp),
-                contentAlignment = Alignment.Top,
             ) {
-                AnimatedVisibility(
-                    visible = likeCountLabel != null,
-                    enter =
-                        fadeIn(tween(TIKTOK_RAIL_FADE_MS)) +
-                            slideInVertically(tween(TIKTOK_RAIL_FADE_MS)) { it / 2 },
-                    exit = fadeOut(tween(120)),
-                ) {
-                    TikTokRailCountLabel(label = likeCountLabel.orEmpty())
-                }
+                TikTokRailCountLabel(label = likeCountLabel.orEmpty())
             }
         }
     }
