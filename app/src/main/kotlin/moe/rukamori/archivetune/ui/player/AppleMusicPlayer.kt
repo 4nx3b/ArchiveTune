@@ -195,6 +195,27 @@ private const val AmLyricsBackdropMorphMs = 650
 
 private val AmBackdropBlurRadius = 64.dp
 
+/**
+ * The Apple Music blurred backdrop renders the playing canvas at this
+ * fraction of the footprint with a proportionally divided blur radius, then
+ * upscales via the graphics layer — visually identical to the full-size
+ * render (a 72dp-blurred result is featureless) while the per-frame
+ * RenderEffect and video compositing costs drop by the square of this
+ * factor, which keeps canvas playback from janking the whole app.
+ */
+private const val AmCanvasBackdropUpscale = 6f
+
+private val AmCanvasBackdropBlurRadius = 72.dp
+
+/**
+ * Selection-level cap on the backdrop canvas' decoded video variant (see
+ * CanvasArtworkPlayer.maxVideoEdgePx). The backdrop renders on a 1/6
+ * footprint behind a 72/6 = 12dp blur, so nothing above ~480px survives the
+ * blur — the backdrop decoder must not pay full-resolution decode cost for
+ * pixels the blur throws away.
+ */
+private const val AmCanvasBackdropMaxVideoEdgePx = 480
+
 private const val AppleMusicLyricsContentDeferMs = 160L
 
 private const val AppleMusicLyricsControlsAutoHideDelayMs = 5_000L
@@ -206,8 +227,6 @@ private fun shouldAutoHideAppleMusicControls(
     queueOpen: Boolean,
     autoHideEnabled: Boolean,
 ): Boolean = (lyricsOpen || queueOpen) && autoHideEnabled
-
-private val AmCanvasSeamFadeDp = 88.dp
 
 private class AdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -596,8 +615,6 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
-        var morphAreaHeightPx by remember { mutableIntStateOf(0) }
-
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -656,29 +673,6 @@ fun AppleMusicPlayerContent(
                 compositingStrategy = CompositingStrategy.Offscreen
             }
 
-            val canvasSeamFade: Modifier =
-                if (landscape) {
-                    Modifier
-                } else {
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            val seam = morphAreaHeightPx.toFloat()
-
-                            if (seam <= 0f || seam >= size.height) return@drawWithContent
-                            val fadeStart = ((seam - AmCanvasSeamFadeDp.toPx()) / size.height).coerceIn(0f, 1f)
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        fadeStart to Color.Black,
-                                        (seam / size.height) to Color.Transparent,
-                                    ),
-                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                            )
-                        }
-                }
-
             val backdropFootprint =
                 remember(maxWidth, maxHeight) {
                     blurBackdropFootprint(
@@ -728,26 +722,47 @@ fun AppleMusicPlayerContent(
             }
 
             if (useCanvasBackdrop) {
-
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasVisibleForLyrics,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    visible = canvasVisibleForLyrics,
+                // Cheap blurred-canvas backdrop (see AmCanvasBackdropUpscale):
+                // the video surface is laid out at 1/6 of the footprint with a
+                // 72/6 = 12dp blur, and the graphics layer upscales it back
+                // (folded with the existing AmCoverBlurScale overscan and the
+                // lyrics-progress alpha). Modifier order matters: the blur sits
+                // INSIDE the scaling layer, so it processes the small surface.
+                //
+                // The backdrop runs the FULL height of the player: the same
+                // canvas, blurred, keeps moving behind the bottom controls —
+                // for both BetterLyrics/ArchiveTune and Spotify canvases (the
+                // sharp stage's fadeBottom dissolves the video into this
+                // blurred continuation). The static blurred artwork underneath
+                // stays as the buffering/failure fallback, and the decode is
+                // capped at AmCanvasBackdropMaxVideoEdgePx since the blur
+                // cannot resolve anything finer anyway.
+                Box(
                     modifier =
                         Modifier
                             .matchParentSize()
-
-                            .then(canvasSeamFade)
-                            .blur(72.dp)
                             .graphicsLayer {
-
-                                scaleX = AmCoverBlurScale
-                                scaleY = AmCoverBlurScale
+                                val scale = AmCoverBlurScale * AmCanvasBackdropUpscale
+                                scaleX = scale
+                                scaleY = scale
                                 alpha = 1f - lyricsBackdropProgress.value
                             },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CanvasArtworkPlayer(
+                        primaryUrl = canvasPrimaryUrl,
+                        fallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying && canvasVisibleForLyrics,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        visible = canvasVisibleForLyrics,
+                        maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(1f / AmCanvasBackdropUpscale)
+                                .fillMaxHeight(1f / AmCanvasBackdropUpscale)
+                                .blur(AmCanvasBackdropBlurRadius / AmCanvasBackdropUpscale),
+                    )
+                }
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
 
@@ -874,8 +889,7 @@ fun AppleMusicPlayerContent(
                         },
             ) {
                 BoxWithConstraints(
-
-                    modifier = Modifier.weight(1f).onSizeChanged { morphAreaHeightPx = it.height },
+                    modifier = Modifier.weight(1f),
                 ) {
 
                 val topInset = LocalStableSystemBarsTopPadding.current
@@ -1448,39 +1462,15 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(titleToScrubberGap))
 
-    val currentPosition = positionProvider()
-
-    Column {
-        AppleMusicSeekBar(
-            position = sliderPosition ?: currentPosition,
-            duration = duration,
-            onScrub = onSliderValueChange,
-            onScrubFinished = onSliderValueChangeFinished,
-        )
-        Spacer(Modifier.height(6.dp))
-
-        Box(Modifier.fillMaxWidth()) {
-            Text(
-                text = makeTimeString(sliderPosition ?: currentPosition),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.align(Alignment.CenterStart),
-            )
-            if (currentFormat != null) {
-                AppleMusicQualityChip(
-                    currentFormat = currentFormat,
-                    onClick = onQualityChipClick,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-            Text(
-                text = "-" + makeTimeString((duration - (sliderPosition ?: currentPosition)).coerceAtLeast(0L)),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.align(Alignment.CenterEnd),
-            )
-        }
-    }
+    AppleMusicPositionSection(
+        positionProvider = positionProvider,
+        sliderPosition = sliderPosition,
+        duration = duration,
+        currentFormat = currentFormat,
+        onSliderValueChange = onSliderValueChange,
+        onSliderValueChangeFinished = onSliderValueChangeFinished,
+        onQualityChipClick = onQualityChipClick,
+    )
 
     Spacer(Modifier.height(scrubberToTransportGap))
 
@@ -1900,6 +1890,65 @@ private fun AppleMusicQualityChip(
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.72f),
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Position-scoped leaf for the seek bar, the elapsed/remaining time labels
+ * and the quality chip.
+ *
+ * The live playback position is a state that updates ~10x per second. It
+ * used to be read (`positionProvider()`) in the middle of the big controls
+ * composable, which made the ENTIRE lower player — transport row, output
+ * selector, title actions, like button — recompose on every tick and made
+ * the whole app feel laggy while the Apple Music style was active (the
+ * other styles read the position in much smaller subtrees). Reading it
+ * here, inside this leaf, confines the per-tick recomposition to the
+ * seek bar and the two time labels, which are exactly the elements whose
+ * content changes with the position anyway.
+ */
+@Composable
+private fun AppleMusicPositionSection(
+    positionProvider: () -> Long,
+    sliderPosition: Long?,
+    duration: Long,
+    currentFormat: FormatEntity?,
+    onSliderValueChange: (Long) -> Unit,
+    onSliderValueChangeFinished: () -> Unit,
+    onQualityChipClick: () -> Unit,
+) {
+    val currentPosition = positionProvider()
+
+    Column {
+        AppleMusicSeekBar(
+            position = sliderPosition ?: currentPosition,
+            duration = duration,
+            onScrub = onSliderValueChange,
+            onScrubFinished = onSliderValueChangeFinished,
+        )
+        Spacer(Modifier.height(6.dp))
+
+        Box(Modifier.fillMaxWidth()) {
+            Text(
+                text = makeTimeString(sliderPosition ?: currentPosition),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+            if (currentFormat != null) {
+                AppleMusicQualityChip(
+                    currentFormat = currentFormat,
+                    onClick = onQualityChipClick,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            Text(
+                text = "-" + makeTimeString((duration - (sliderPosition ?: currentPosition)).coerceAtLeast(0L)),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }

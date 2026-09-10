@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -31,6 +32,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.rememberSliderState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,6 +54,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -61,6 +66,8 @@ import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
+import moe.rukamori.archivetune.constants.PRELOAD_SONGS_RANGE
+import moe.rukamori.archivetune.constants.PreloadSongsCountKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
 import moe.rukamori.archivetune.constants.CanvasResolverEndpointsKey
@@ -93,6 +100,7 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
+import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SliderPreference
@@ -194,6 +202,12 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             HistoryDuration,
             defaultValue = HISTORY_DURATION_DEFAULT,
+        )
+
+    val (preloadSongsCount, onPreloadSongsCountChange) =
+        rememberPreference(
+            PreloadSongsCountKey,
+            defaultValue = 0,
         )
 
     val (crossfadeEnabled, onCrossfadeEnabledChange) =
@@ -428,6 +442,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.history), null) },
                             value = historyDuration,
                             onValueChange = onHistoryDurationChange,
+                        )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("preload_songs")) {
+                        PreloadSongsPreference(
+                            value = preloadSongsCount,
+                            onValueChange = onPreloadSongsCountChange,
                         )
                     }
                 }
@@ -1029,4 +1052,107 @@ internal fun ArtworkProviderOrderDialog(
             }
         }
     }
+}
+
+/**
+ * "Preload songs" playback setting: how many upcoming songs are resolved
+ * and cached ahead of playback (0 = off, max 10). Dialog-slider shape
+ * matches the existing history-duration / crossfade preferences.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PreloadSongsPreference(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    isEnabled: Boolean = true,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    var sliderValue by remember(value) { mutableFloatStateOf(value.toFloat()) }
+
+    if (showDialog) {
+        ActionPromptDialog(
+            titleBar = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.preload_songs_title),
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                }
+            },
+            onDismiss = { showDialog = false },
+            onConfirm = {
+                showDialog = false
+                onValueChange(sliderValue.roundToInt())
+            },
+            onCancel = {
+                sliderValue = value.toFloat()
+                showDialog = false
+            },
+            onReset = {
+                sliderValue = 0f
+            },
+            content = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text =
+                            if (sliderValue.roundToInt() == 0) {
+                                stringResource(R.string.preload_songs_off)
+                            } else {
+                                stringResource(R.string.preload_songs_count, sliderValue.roundToInt())
+                            },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = stringResource(R.string.preload_songs_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    val sliderState =
+                        rememberSliderState(
+                            value = sliderValue,
+                            valueRange = PRELOAD_SONGS_RANGE,
+                            onValueChangeFinished = {},
+                        )
+                    sliderState.onValueChange = { sliderValue = it }
+                    sliderState.value = sliderValue
+
+                    Slider(
+                        state = sliderState,
+                        modifier = Modifier.fillMaxWidth(),
+                        track = {
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                trackCornerSize = 12.dp,
+                            )
+                        },
+                    )
+                }
+            },
+        )
+    }
+
+    PreferenceEntry(
+        title = { Text(stringResource(R.string.preload_songs_title)) },
+        description =
+            if (value == 0) {
+                stringResource(R.string.preload_songs_off)
+            } else {
+                stringResource(R.string.preload_songs_count, value)
+            },
+        icon = { Icon(painterResource(R.drawable.fast_forward), null) },
+        onClick = { showDialog = true },
+        isEnabled = isEnabled,
+    )
 }

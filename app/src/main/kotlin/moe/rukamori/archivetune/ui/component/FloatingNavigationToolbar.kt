@@ -47,6 +47,7 @@ import androidx.compose.material3.ShortNavigationBarArrangement
 import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -75,6 +76,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -265,14 +267,28 @@ fun FloatingNavigationToolbar(
 
     val itemColors =
         when {
-            canLiquidGlass ->
+            canLiquidGlass -> {
+                // Liquid-glass legibility follows the theme: night keeps the
+                // white-on-glass look, day switches to onSurface tones — the
+                // glass bar renders as a light frosted surface in light mode,
+                // where white icons and labels are invisible.
+                val glassIsNight = isSystemInDarkTheme()
+                val glassSelectedColor =
+                    if (glassIsNight) Color.White else MaterialTheme.colorScheme.onSurface
+                val glassUnselectedColor =
+                    if (glassIsNight) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color.White,
-                    unselectedTextColor = Color.White,
+                    selectedIconColor = glassSelectedColor,
+                    selectedTextColor = glassSelectedColor,
+                    unselectedIconColor = glassUnselectedColor,
+                    unselectedTextColor = glassUnselectedColor,
                 )
+            }
             isFloating ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
@@ -739,8 +755,7 @@ fun FloatingNavigationToolbar(
                                             Icon(
                                                 painter =
                                                     painterResource(
-
-                                                        if (canLiquidGlass) screen.iconIdInactive else if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                                        if (isSelected) screen.iconIdActive else screen.iconIdInactive,
                                                     ),
                                                 contentDescription = null,
                                                 modifier =
@@ -757,12 +772,32 @@ fun FloatingNavigationToolbar(
                                 } else {
                                     {
                                         if (canLiquidGlass) {
+                                            // Night-mode legibility: the lens
+                                            // specular on the glass can wash out
+                                            // plain white labels. A soft text
+                                            // shadow (night only, liquid-glass
+                                            // nav bar only) keeps them readable
+                                            // over any backdrop without touching
+                                            // the glass look itself.
+                                            val nightGlassLabelStyle =
+                                                if (isSystemInDarkTheme()) {
+                                                    LocalTextStyle.current.copy(
+                                                        shadow =
+                                                            Shadow(
+                                                                color = Color.Black.copy(alpha = 0.8f),
+                                                                blurRadius = 10f,
+                                                            ),
+                                                    )
+                                                } else {
+                                                    LocalTextStyle.current
+                                                }
                                             Text(
                                                 text = stringResource(screen.titleId),
                                                 maxLines = 1,
                                                 modifier = Modifier.offset(y = (-4).dp),
 
                                                 fontWeight = FontWeight.Normal,
+                                                style = nightGlassLabelStyle,
                                             )
                                         } else {
                                             Spacer(Modifier.height(navBarLabelSpacing.dp))
@@ -789,8 +824,6 @@ fun FloatingNavigationToolbar(
             if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
                 val pillShape = RoundedCornerShape(percent = 50)
                 val isDark = isSystemInDarkTheme()
-
-                val primaryColor = Color.White
 
                 val pillFallbackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 Box(
@@ -850,9 +883,13 @@ fun FloatingNavigationToolbar(
                                     val progress = dragAnim.pressProgress
 
                                     val tintColor = if (isDark) Color.Black else Color.White
+                                    // Night mode keeps a deeper tint so the lens
+                                    // specular cannot wash the white icon/label
+                                    // out (day mode keeps the airy 0.1 veil).
+                                    val restAlpha = if (isDark) 0.28f else 0.1f
                                     drawRect(
                                         color = tintColor,
-                                        alpha = 0.1f * (1f - progress),
+                                        alpha = restAlpha * (1f - progress),
                                     )
                                     drawRect(
                                         color = Color.Black,
@@ -881,6 +918,12 @@ fun FloatingNavigationToolbar(
                     contentAlignment = Alignment.Center,
                 ) {
                     val displayScreen = items[displayIndex]
+                    // Day mode: the pill is a light glass lens over a light
+                    // bar, so the selected icon/label switch from the night
+                    // white to onSurface — white content is invisible in
+                    // light mode. Night keeps white + the shadow unchanged.
+                    val pillContentColor =
+                        if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
@@ -889,7 +932,7 @@ fun FloatingNavigationToolbar(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
 
-                            tint = Color.White,
+                            tint = pillContentColor,
                             modifier =
                                 Modifier.graphicsLayer {
 
@@ -902,10 +945,22 @@ fun FloatingNavigationToolbar(
                             Text(
                                 text = stringResource(displayScreen.titleId),
 
-                                color = Color.White,
+                                color = pillContentColor,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                style =
+                                    if (isDark) {
+                                        LocalTextStyle.current.copy(
+                                            shadow =
+                                                Shadow(
+                                                    color = Color.Black.copy(alpha = 0.9f),
+                                                    blurRadius = 12f,
+                                                ),
+                                        )
+                                    } else {
+                                        LocalTextStyle.current
+                                    },
                             )
                         }
                     }

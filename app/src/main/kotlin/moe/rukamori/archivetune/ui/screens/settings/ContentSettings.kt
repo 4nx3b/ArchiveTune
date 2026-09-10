@@ -54,9 +54,11 @@ import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
+import moe.rukamori.archivetune.ui.component.MultiSelectListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -80,6 +82,9 @@ fun ContentSettings(
 ) {
     val context = LocalContext.current
     val aiContentFilterState by viewModel.aiContentFilterState.collectAsStateWithLifecycle()
+    val sponsorBlockSettingsViewModel: moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsViewModel = hiltViewModel()
+    val sponsorBlockSettingsState by
+        sponsorBlockSettingsViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(viewModel, context) {
@@ -305,6 +310,50 @@ fun ContentSettings(
             positions = positions,
         )
 
+        SponsorBlockPreferences(
+            state = sponsorBlockSettingsState,
+            onEnabledChange =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onEnabledChange
+                },
+            onCategorySheetOpen =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onCategorySheetOpen
+                },
+            onCategorySheetDismiss =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onCategorySheetDismiss
+                },
+            onCategoryCheckedChange =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onCategoryOptionCheckedChange
+                },
+            onCategorySelectionConfirm =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onCategorySelectionConfirm
+                },
+            onApiUrlEditorOpen =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onApiUrlEditorOpen
+                },
+            onApiUrlEditorDismiss =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onApiUrlEditorDismiss
+                },
+            onApiUrlDraftChange =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onApiUrlDraftChange
+                },
+            onApiUrlConfirm =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::onApiUrlConfirm
+                },
+            onRetry =
+                remember(sponsorBlockSettingsViewModel) {
+                    sponsorBlockSettingsViewModel::retry
+                },
+        )
+
         PreferenceGroup(
             modifier = positions.modifierFor("app_language"),
             title = stringResource(R.string.app_language),
@@ -471,4 +520,127 @@ private fun AiContentFilterPreferences(
             }
         }
     }
+}
+
+/**
+ * SponsorBlock group (ported from the upstream player settings, moved here
+ * into Content settings per user request): enable switch, category
+ * multi-select and API URL override.
+ */
+@Composable
+private fun SponsorBlockPreferences(
+    state: moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsScreenState,
+    onEnabledChange: (Boolean) -> Unit,
+    onCategorySheetOpen: () -> Unit,
+    onCategorySheetDismiss: () -> Unit,
+    onCategoryCheckedChange: (moe.rukamori.archivetune.viewmodels.SponsorBlockCategoryUiModel, Boolean) -> Unit,
+    onCategorySelectionConfirm: () -> Unit,
+    onApiUrlEditorOpen: () -> Unit,
+    onApiUrlEditorDismiss: () -> Unit,
+    onApiUrlDraftChange: (String) -> Unit,
+    onApiUrlConfirm: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val data = (state as? moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsScreenState.Success)?.data
+    val controlsEnabled = data != null
+    val configurationEnabled = controlsEnabled && data?.enabled == true
+    val categoryOptions = data?.categoryOptions ?: emptyList()
+    val draftCategoryOptions = data?.draftCategoryOptions ?: emptyList()
+
+    PreferenceGroup(title = stringResource(R.string.sponsor_block_group)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.sponsor_block_use)) },
+                icon = { Icon(painterResource(R.drawable.block), null) },
+                checked = data?.enabled ?: false,
+                onCheckedChange = onEnabledChange,
+                isEnabled = controlsEnabled,
+            )
+        }
+
+        item {
+            val selectedCount = data?.selectedCategoryOptions?.size ?: 0
+            MultiSelectListPreference(
+                title = { Text(stringResource(R.string.sponsor_block_categories)) },
+                description = stringResource(R.string.sponsor_block_categories_desc),
+                icon = { Icon(painterResource(R.drawable.fast_forward), null) },
+                values = categoryOptions,
+                checkedValues = draftCategoryOptions,
+                selectionText =
+                    androidx.compose.ui.res.pluralStringResource(
+                        R.plurals.n_selected,
+                        selectedCount,
+                        selectedCount,
+                    ),
+                valueText = { option -> stringResource(option.labelRes) },
+                isBottomSheetVisible = data?.isCategorySheetVisible == true,
+                onOpen = onCategorySheetOpen,
+                onDismiss = onCategorySheetDismiss,
+                onValueCheckedChange = onCategoryCheckedChange,
+                onConfirm = onCategorySelectionConfirm,
+                isEnabled = configurationEnabled,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.sponsor_block_api_url)) },
+                description = data?.apiUrl ?: moe.rukamori.archivetune.sponsorblock.DEFAULT_SPONSOR_BLOCK_API_URL,
+                icon = { Icon(painterResource(R.drawable.link), null) },
+                onClick = onApiUrlEditorOpen,
+                isEnabled = configurationEnabled,
+            )
+        }
+
+        if (state is moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsScreenState.Error) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.retry)) },
+                    description = stringResource(state.messageRes),
+                    onClick = onRetry,
+                )
+            }
+        }
+    }
+
+    SponsorBlockApiUrlDialog(
+        state = state,
+        onValueChange = onApiUrlDraftChange,
+        onConfirm = onApiUrlConfirm,
+        onDismiss = onApiUrlEditorDismiss,
+    )
+}
+
+@Composable
+private fun SponsorBlockApiUrlDialog(
+    state: moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsScreenState,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val data = (state as? moe.rukamori.archivetune.viewmodels.SponsorBlockSettingsScreenState.Success)?.data ?: return
+    if (!data.isApiUrlEditorVisible) return
+    val isInputValid =
+        remember(data.isApiUrlDraftValid) {
+            { _: String -> data.isApiUrlDraftValid }
+        }
+    val confirmValue =
+        remember(onConfirm) {
+            { _: String -> onConfirm() }
+        }
+
+    TextFieldDialog(
+        title = { Text(stringResource(R.string.sponsor_block_api_url)) },
+        textFieldValue = data.apiUrlDraft,
+        onTextFieldValueChange = onValueChange,
+        keyboardOptions =
+            androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri,
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+            ),
+        isInputValid = isInputValid,
+        dismissOnDone = false,
+        onDone = confirmValue,
+        onDismiss = onDismiss,
+    )
 }
