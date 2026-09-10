@@ -1748,6 +1748,7 @@ fun BottomSheetPlayer(
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropLandscape",
+                                playCanvasInBackdrop = v7CanvasArtwork?.isSpotifyProviderCanvas() == true,
                             )
                         }
 
@@ -2217,6 +2218,7 @@ fun BottomSheetPlayer(
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropPortrait",
+                                playCanvasInBackdrop = v7CanvasArtwork?.isSpotifyProviderCanvas() == true,
                             )
                         }
 
@@ -2922,6 +2924,7 @@ private fun V7PlayerBackdrop(
     disableBlur: Boolean,
     backdropBlurAmount: Int,
     label: String,
+    playCanvasInBackdrop: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val configuration = LocalConfiguration.current
@@ -3145,6 +3148,26 @@ private fun V7PlayerBackdrop(
                     )
                 }
             }
+            // Spotify canvas (official canvaz + configured mirrors): mirror
+            // the PLAYING canvas into the blurred backdrop behind the bottom
+            // controls — the same treatment the Apple Music style gives its
+            // backdrop. CanvasArtworkPlayer fades in over the static blurred
+            // artwork once its first frame renders, so the artwork stays as
+            // the buffering fallback underneath. The video surface is only
+            // blur-able with RenderEffect (API 31+); pre-S keeps the static
+            // backdrop. BetterLyrics-powered ArchiveTune canvases are
+            // deliberately excluded — their backdrop stays static.
+            if (playCanvasInBackdrop && hasCanvas && needsBlur &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimary,
+                    fallbackUrl = canvasFallback,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = backdropImageModifier.blur(backdropBlurRadius),
+                )
+            }
             Box(
                 modifier =
                     Modifier
@@ -3272,6 +3295,19 @@ private data class V7PlayerBackdropState(
     val canvasPrimaryUrl: String?,
     val canvasFallbackUrl: String?,
 )
+
+/**
+ * True when the canvas came from the Spotify provider (official canvaz
+ * endpoint or one of the configured "Spotify Canvas resolver" mirrors) —
+ * those only populate the videoUrl fields. ArchiveTune canvases (the
+ * BetterLyrics-powered "ArchiveTune Canvas" setting) populate the
+ * animated fields instead, so the blurred V7 backdrop deliberately does
+ * not mirror them.
+ */
+private fun CanvasArtwork.isSpotifyProviderCanvas(): Boolean =
+    animated.isNullOrBlank() &&
+        animatedVertical.isNullOrBlank() &&
+        (!videoUrl.isNullOrBlank() || !videoUrlVertical.isNullOrBlank())
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

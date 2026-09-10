@@ -380,31 +380,6 @@ fun BackupAndRestore(
                 )
             }
 
-            // Google Drive as a backup provider (gms builds): sign in, pick
-            // or create a Drive backup and restore it through the same
-            // validation flow as a local file. The foss build ships a
-            // no-op section with the same signature.
-            GoogleDriveBackupSection(
-                enabled = backupRestoreProgress == null && !showRestoreOptionsDialog && !showBackupOptionsDialog,
-                onRestoreReady =
-                    remember(viewModel, context) {
-                        { uri ->
-                            coroutineScope.launch {
-                                val result = viewModel.validateBackup(context, uri)
-                                if (result.isValid) {
-                                    pendingRestoreCategories = result.availableCategories
-                                    pendingRestoreUri = uri
-                                    showRestoreOptionsDialog = true
-                                } else {
-                                    restoreValidationErrorMessage =
-                                        result.errorMessage ?: context.getString(R.string.restore_corrupted)
-                                    showRestoreValidationError = true
-                                }
-                            }
-                        }
-                    },
-            )
-
             PreferenceGroup(
                 modifier = positions.modifierFor("backup"),
                 title = stringResource(R.string.internal_service),

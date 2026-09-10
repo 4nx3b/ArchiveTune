@@ -73,6 +73,7 @@ import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.cache.ContentMetadata
+import androidx.media3.datasource.cache.ContentMetadataMutations
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.DrmSessionManager
@@ -1328,6 +1329,12 @@ class MusicService :
                     scope.launch(SilentHandler) { removeExplicitItems() }
                 }
             }
+        // Preload songs: react the moment the slider moves so the upcoming
+        // window (re)populates without waiting for the next track change.
+        dataStore.data
+            .map { preferences -> preferences[PreloadSongsCountKey] ?: 0 }
+            .distinctUntilChanged()
+            .collect(scope) { updateSongPreload() }
         widgetUpdater =
             MusicServiceWidgetUpdater(
                 service = this,
@@ -8567,17 +8574,24 @@ class MusicService :
         }
         val preloadCount = dataStore.get(PreloadSongsCountKey, 0)
         if (preloadCount <= 0) return
+        // Media3 players are single-threaded. Snapshot the upcoming window on
+        // the application thread (this runs from player callbacks and the main
+        // coroutine scope) and hand the immutable list to the IO coroutine:
+        // reading player state from Dispatchers.IO throws
+        // IllegalStateException, which SilentHandler would swallow, so
+        // preloading silently never happened.
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0) return
+        val upcoming = player.mediaItems.drop(currentIndex + 1).take(preloadCount)
+        if (upcoming.isEmpty()) return
         songPreloadJob =
             ioScope.launch(SilentHandler) {
-                preloadUpcomingPlaybackStreams(preloadCount)
+                preloadUpcomingPlaybackStreams(upcoming)
             }
     }
 
-    private suspend fun preloadUpcomingPlaybackStreams(count: Int) {
+    private suspend fun preloadUpcomingPlaybackStreams(upcoming: List<MediaItem>) {
         moe.rukamori.archivetune.App.startupReadiness.awaitReady()
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex < 0) return
-        val upcoming = player.mediaItems.drop(currentIndex + 1).take(count)
         for (item in upcoming) {
             if (!currentCoroutineContext().isActive) return
             runCatching { preloadPlaybackStream(item) }
@@ -8627,8 +8641,10 @@ class MusicService :
 
     /**
      * Full-file fetch into [playerCache] with the same sink parameters the
-     * download prewarm uses. Partial fetches are kept: the playback cache
-     * data source tops up missing ranges live.
+     * download prewarm uses, plus the content-length metadata `CacheUtil`
+     * records — without it the playback resolver cannot recognize the
+     * fully-cached song and still does a network round-trip. Partial fetches
+     * are kept: the playback cache data source tops up missing ranges live.
      */
     private suspend fun fetchFullStreamIntoPlayerCache(
         url: String,
@@ -8662,6 +8678,7 @@ class MusicService :
                             .setFragmentSize(preloadSongsFragmentBytes)
                             .createDataSink()
                     val buffer = ByteArray(preloadSongsBufferBytes)
+                    var bytesWritten = 0L
                     try {
                         cacheSink.open(dataSpec)
                         response.body?.byteStream()?.use { input ->
@@ -8669,10 +8686,25 @@ class MusicService :
                                 val read = input.read(buffer)
                                 if (read < 0) break
                                 cacheSink.write(buffer, 0, read)
+                                bytesWritten += read
                             }
                         }
                     } finally {
                         runCatching { cacheSink.close() }
+                    }
+                    // Record the real length so the next-song resolver treats
+                    // this item as fully cached (mirrors CacheUtil metadata).
+                    val fetchComplete = contentLength <= 0 || bytesWritten == contentLength
+                    if (bytesWritten > 0L && fetchComplete) {
+                        runCatching {
+                            playerCache.applyContentMetadataMutations(
+                                cacheKey,
+                                ContentMetadataMutations().set(
+                                    ContentMetadata.KEY_CONTENT_LENGTH,
+                                    bytesWritten,
+                                ),
+                            )
+                        }
                     }
                     playerCache.getCachedSpans(cacheKey).isNotEmpty()
                 }

@@ -29,7 +29,9 @@ sealed class Screens(
     object Search : Screens(
         titleId = R.string.search,
         iconIdInactive = R.drawable.search,
-        iconIdActive = R.drawable.search,
+        // Bold (filled-ring) Solar magnifier so the selected tab visibly
+        // fills, matching how home/library swap outlined -> filled.
+        iconIdActive = R.drawable.solar_magnifer_bold,
         route = "search",
     )
 
