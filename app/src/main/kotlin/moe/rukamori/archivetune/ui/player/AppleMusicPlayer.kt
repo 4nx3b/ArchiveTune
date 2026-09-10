@@ -207,6 +207,15 @@ private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
+/**
+ * Selection-level cap on the backdrop canvas' decoded video variant (see
+ * CanvasArtworkPlayer.maxVideoEdgePx). The backdrop renders on a 1/6
+ * footprint behind a 72/6 = 12dp blur, so nothing above ~480px survives the
+ * blur — the backdrop decoder must not pay full-resolution decode cost for
+ * pixels the blur throws away.
+ */
+private const val AmCanvasBackdropMaxVideoEdgePx = 480
+
 private const val AppleMusicLyricsContentDeferMs = 160L
 
 private const val AppleMusicLyricsControlsAutoHideDelayMs = 5_000L
@@ -218,8 +227,6 @@ private fun shouldAutoHideAppleMusicControls(
     queueOpen: Boolean,
     autoHideEnabled: Boolean,
 ): Boolean = (lyricsOpen || queueOpen) && autoHideEnabled
-
-private val AmCanvasSeamFadeDp = 88.dp
 
 private class AdaptiveCornerShape(
     private val smallRadius: Dp,
@@ -608,8 +615,6 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
-        var morphAreaHeightPx by remember { mutableIntStateOf(0) }
-
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -668,29 +673,6 @@ fun AppleMusicPlayerContent(
                 compositingStrategy = CompositingStrategy.Offscreen
             }
 
-            val canvasSeamFade: Modifier =
-                if (landscape) {
-                    Modifier
-                } else {
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            val seam = morphAreaHeightPx.toFloat()
-
-                            if (seam <= 0f || seam >= size.height) return@drawWithContent
-                            val fadeStart = ((seam - AmCanvasSeamFadeDp.toPx()) / size.height).coerceIn(0f, 1f)
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        fadeStart to Color.Black,
-                                        (seam / size.height) to Color.Transparent,
-                                    ),
-                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                            )
-                        }
-                }
-
             val backdropFootprint =
                 remember(maxWidth, maxHeight) {
                     blurBackdropFootprint(
@@ -746,11 +728,19 @@ fun AppleMusicPlayerContent(
                 // (folded with the existing AmCoverBlurScale overscan and the
                 // lyrics-progress alpha). Modifier order matters: the blur sits
                 // INSIDE the scaling layer, so it processes the small surface.
+                //
+                // The backdrop runs the FULL height of the player: the same
+                // canvas, blurred, keeps moving behind the bottom controls —
+                // for both BetterLyrics/ArchiveTune and Spotify canvases (the
+                // sharp stage's fadeBottom dissolves the video into this
+                // blurred continuation). The static blurred artwork underneath
+                // stays as the buffering/failure fallback, and the decode is
+                // capped at AmCanvasBackdropMaxVideoEdgePx since the blur
+                // cannot resolve anything finer anyway.
                 Box(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .then(canvasSeamFade)
                             .graphicsLayer {
                                 val scale = AmCoverBlurScale * AmCanvasBackdropUpscale
                                 scaleX = scale
@@ -765,6 +755,7 @@ fun AppleMusicPlayerContent(
                         isPlaying = isPlaying && canvasVisibleForLyrics,
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                         visible = canvasVisibleForLyrics,
+                        maxVideoEdgePx = AmCanvasBackdropMaxVideoEdgePx,
                         modifier =
                             Modifier
                                 .fillMaxWidth(1f / AmCanvasBackdropUpscale)
@@ -898,8 +889,7 @@ fun AppleMusicPlayerContent(
                         },
             ) {
                 BoxWithConstraints(
-
-                    modifier = Modifier.weight(1f).onSizeChanged { morphAreaHeightPx = it.height },
+                    modifier = Modifier.weight(1f),
                 ) {
 
                 val topInset = LocalStableSystemBarsTopPadding.current

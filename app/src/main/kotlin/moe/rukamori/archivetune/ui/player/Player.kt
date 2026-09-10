@@ -1131,6 +1131,18 @@ fun BottomSheetPlayer(
         LocalVideoSelectedHeight provides videoSelectedHeight,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
+    // Canvas decode gate: the sheet keeps its content alive while minimised
+    // (keepContentAlive), so every CanvasArtworkPlayer hosted in the sheet
+    // would otherwise keep decoding and compositing its video behind the
+    // mini player at full frame rate while the music plays. Pause them the
+    // moment the sheet settles at/below the collapsed bound. The threshold is
+    // its own derivedStateOf so sheet drags and expand/collapse animations do
+    // not re-provide the local per frame — it flips only when the sheet
+    // actually crosses the collapsed bound.
+    val playerSheetCanvasVisible by remember(state) {
+        derivedStateOf { state.value > state.collapsedBound }
+    }
+    CompositionLocalProvider(LocalPlayerSheetVisible provides playerSheetCanvasVisible) {
     BottomSheet(
         state = state,
         modifier =
@@ -2726,6 +2738,7 @@ fun BottomSheetPlayer(
                 }
             }
         }
+    }
     }
     }
 
