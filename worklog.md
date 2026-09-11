@@ -1566,3 +1566,98 @@ Stage Summary:
   libtdjni.so assets (digests pinned in code).
 - Next: user retests phone -> OTP -> (2FA) login on-device; mtcute-era
   sessions require one re-login.
+
+---
+Task ID: 29
+Agent: session-2026-09-11 (10-item user batch)
+Task: (1) video-playback toggle must gate ALL inline video incl. cached canvas, every player style; (2) canvas must never play when all canvas options are off, even cached; (3) residual liquid glass with the toggle off; (4) TikTok style slow thumbnails; (5) remove the audio-start timeout (song starts only when both audio AND video are ready); (6) dependency updates incl. the lyrics animation library; (7) much faster auto AI translate/romanise + "Use separate provider for Romanisation"; (8) dead code / comment blocks / memory leaks; (9) YouTube downloads stuck on loading; (10) PR dev -> main.
+
+Work Log:
+- 1+2) Player.kt: canvas gates (shouldUseV7Canvas / shouldUseArtworkCanvas) now
+  require enableVideoPlayback AND (archiveTuneCanvasEnabled || spotifyCanvasEnabled);
+  removed the spotifyConnected ("sp_dc set => canvas on") bypass, so a cached
+  canvas can no longer play with every canvas option off. trySpotifyCanvas now
+  honors only the Spotify Canvas toggle. Manual-refetch collector gated and
+  keyed on the same flags. Thumbnail.kt (classic player) gained the
+  enableVideoPlayback gate; AlbumViewModel.fetchAlbumCanvas gained both gates.
+- 5) VideoArtworkPlayer.kt: deleted the VideoAudioHoldFastStartMs (1.8 s)
+  watchdog that started audio before the video was ready. Audio now stays held
+  until the first rendered frame (10 s artwork-fallback watchdog retained for
+  total failure). Audio/video readiness mutual gating already existed
+  (isMainAudioBuffering freeze + pendingResume scheduling).
+- 3) Liquid glass leftovers gated on LiquidGlassEnabledKey: the four player
+  lyrics-overflow popups (AppleMusicPlayer, TikTokPlayer, SpatialFlowLyrics,
+  SimpMusicFullscreenLyricsSheet) no longer self-allocate a kyant backdrop on
+  SDK >= S; ScreenHeaderHaze (frosted progressive header strip) and the
+  MainActivity Home/Search/Library top fade are now liquid-glass-gated too.
+- 4) TikTok thumbnails: artwork request switched to the shared cache-keyed
+  rememberOfflineArtworkImageRequest + quality fallback chain on error
+  (maxres -> hq720 -> mq, same as V7); mesh palette now fetches the RAW
+  thumbnailUrl (cache-shared with the other players' palette) instead of a
+  second 1080px-class fetch of the resized URL; TikTokPlayer prefetches the
+  next two feed pages' covers ahead of the swipe.
+- 6) Dependency bumps (verified against Maven Central / Google Maven):
+  agp 9.2.1->9.4.0, kotlin 2.4.0->2.4.20 (+kotlinMetadata), ksp 2.3.10->2.3.12,
+  compose 1.12.0-beta02->1.12.1 (stable), material3 1.5.0-alpha23->alpha28
+  (repo's pre-release rail for compose.*, per renovate.json), coil 3.5.0->3.6.2,
+  okhttp 5.4.0->5.5.0, ktor 3.5.1->3.5.2, jsoup 1.22.2->1.23.2,
+  lottie 6.6.6->6.7.1, guava 33.6.0->33.7.1-jre, media3 1.10.1->1.11.1,
+  room 2.8.4->2.8.5, navigation 2.9.8->2.10.1, bcpg 1.85->1.86,
+  org.json 20250517->20260814 (+ removed the stale direct 20240303 pin),
+  aboutlibraries 15.0.3->15.2.0, kyant0/backdrop 2.0.0->2.0.1.
+  Enhanced-lyrics animation library (com.mocharealm.accompanist) verified
+  ALREADY at the latest published versions (lyrics-ui 1.0.19 / lyrics-core
+  0.4.7) — nothing newer exists on Maven Central to bump to.
+- 7) AI speed: batches 80/6000 -> 160/16000 (typical song = ONE request),
+  multi-batch songs run 3 concurrent batches; rate limiter for
+  LYRICS_TRANSLATION / LYRICS_ROMANIZATION 1000 ms spacing / 60 per hour ->
+  150 ms / 240 per hour; result caches 8 -> 32 tracks.
+  Separate romanisation provider: 7 new preference keys
+  (AiRomanizeSeparateProviderKey + provider/apiKey/endpoint/model/
+  validationStatus), AiLyricsRomanization.rememberSettings() branches to the
+  dedicated config (falls back to the main provider while unconfigured),
+  AiIntegrationSettingsViewModel gained testRomanizeApi/fetchRomanizeModels/
+  clearRomanize*, and the AI Integration screen's Romanisation group gained
+  the full provider/key/model/Check-API block mirroring the main provider
+  (MISTRAL/DEEPL excluded — they are translation-only in AiTextService).
+- 8) Dead code: deleted unused api/{OpenRouter,DeepL,Mistral}Service.kt and
+  echo/utils/sabr/EjsNTransformSolver.kt (296 lines incl. an unused WebView
+  holder); removed the disabled desugaring dependency + config lines and the
+  org.json dual-pin. Comment blocks: the remaining block comments are design
+  documentation, not commented-out code — kept. Memory leaks: the video
+  artwork player's per-instance OkHttpClient (fresh connection pool +
+  dispatcher per player rebuild) is now one shared process-wide client;
+  verified ExoPlayer/listener/lifecycle/receiver teardown in
+  CanvasArtworkPlayer, VideoArtworkPlayer, MusicService, Discord client.
+- 9) YouTube downloads: PRDownloader whole-file stage now publishes REAL
+  progress (DownloadFetchProgress StateFlow keyed by "ytm:<id>", surfaced in
+  the SpatialFlow download chip); fetch bounds tightened (12 min -> 5 min
+  deadline, 90 s -> 45 s stall, 3 -> 2 attempts); download resolver's
+  startupReadiness wait bounded to 10 s; ONE automatic retry per failed
+  request (purged songUrlCache => fresh stream URL resolution, bounded to a
+  single attempt so permanent failures still surface); download request ids
+  unified to the source-scoped key ("ytm:<id>") in MusicService
+  auto-download-on-like, SpatialFlowPlayer, HeaderDownloadState
+  (sendAddMissingDownloads now takes the DownloadUtil and queues the target
+  source key; sendRemoveDownloads / pause / resume resolve through
+  DownloadSourceConfig.songIdToDownloadIds so playlist-header actions
+  actually hit the source-scoped entries instead of no-op'ing on plain ids).
+- Static review pass (independent agent) over the full diff: 1 compile
+  blocker (duplicate clearError()) + 4 polish items found and fixed.
+
+Stage Summary:
+- Video playback toggle is now a true global video gate (music videos AND
+  canvas, cached or not, in every player style + album page); canvas toggles
+  are strictly opt-in again (no Spotify-connected bypass).
+- Song start with video: audio held until the video's first rendered frame;
+  no premature audio start timeout. Both-sides-ready semantics preserved.
+- Liquid glass toggle now removes every glass effect: player lyrics popups,
+  frosted header strips, home top fade.
+- TikTok thumbnails load faster (shared cache, fallback chain, palette from
+  the small raw URL, next-page prefetch) and no longer hang on maxres 404s.
+- AI translate/romanise: single-request songs, parallel batches, no rate
+  limiter stall; separate romanisation provider with its own key check,
+  model picker and test button.
+- YouTube downloads: bounded at every stage, show real progress, auto-retry
+  once with a fresh stream URL, and every download/cancel path now targets
+  the same source-scoped entry — the "infinite download" class is closed.

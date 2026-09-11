@@ -505,6 +505,7 @@ fun SelectionSongMenu(
                                                 )
                                             },
                                         downloads = downloadUtil.downloads.value,
+                                        downloadUtil = downloadUtil,
                                     )
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -1057,6 +1058,7 @@ fun SelectionMediaMetadataMenu(
                                                 )
                                             },
                                         downloads = downloadUtil.downloads.value,
+                                        downloadUtil = downloadUtil,
                                     )
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

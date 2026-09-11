@@ -366,6 +366,14 @@ val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 
+val AiRomanizeSeparateProviderKey = booleanPreferencesKey("ai_romanize_separate_provider")
+val AiRomanizeProviderKey = stringPreferencesKey("ai_romanize_provider")
+val AiRomanizeCustomEndpointKey = stringPreferencesKey("ai_romanize_custom_endpoint")
+val AiRomanizeApiKeyKey = stringPreferencesKey("ai_romanize_api_key")
+val AiRomanizeApiValidationStatusKey = stringPreferencesKey("ai_romanize_api_validation_status")
+val AiRomanizeSelectedModelKey = stringPreferencesKey("ai_romanize_selected_model")
+val AiRomanizeCustomModelKey = stringPreferencesKey("ai_romanize_custom_model")
+
 val DeeplApiKeyKey = stringPreferencesKey("deeplApiKey")
 
 val DeeplFormalityKey = stringPreferencesKey("deeplFormality")

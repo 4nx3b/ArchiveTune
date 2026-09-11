@@ -123,6 +123,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
@@ -156,8 +157,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
         mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
     }
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null

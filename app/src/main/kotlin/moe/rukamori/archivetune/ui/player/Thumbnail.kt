@@ -95,6 +95,7 @@ import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
@@ -143,6 +144,7 @@ fun Thumbnail(
 
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
+    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = true)
     val lowDataModeActive = rememberLowDataModeActive()
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
@@ -390,6 +392,7 @@ fun Thumbnail(
                             }
                         val shouldUseCanvas =
                             archiveTuneCanvasEnabled &&
+                                enableVideoPlayback &&
                                 playerDesignStyle != PlayerDesignStyle.V7 &&
                                 item.mediaId.isNotBlank() &&
                                 item.mediaId == currentMediaItem?.mediaId &&

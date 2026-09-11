@@ -158,6 +158,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
@@ -552,8 +553,11 @@ fun AppleMusicPlayerContent(
 
     var tapAreaRootOrigin by remember { mutableStateOf(Offset.Zero) }
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null

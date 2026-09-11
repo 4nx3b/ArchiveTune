@@ -648,6 +648,7 @@ fun AlbumMenu(
                                                     )
                                                 },
                                             downloads = downloadUtil.downloads.value,
+                                            downloadUtil = downloadUtil,
                                         )
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

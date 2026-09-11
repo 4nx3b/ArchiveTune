@@ -298,7 +298,6 @@ android {
     }
 
     compileOptions {
-        isCoreLibraryDesugaringEnabled = false
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
@@ -489,8 +488,6 @@ dependencies {
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
 
-    coreLibraryDesugaring(libs.desugaring)
-
     implementation(libs.timber)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
@@ -502,7 +499,7 @@ dependencies {
     implementation(libs.accompanist.lyrics.ui)
     implementation(libs.accompanist.lyrics.core)
 
-    implementation("org.json:json:20240303")
+    implementation(libs.json)
 
     implementation(libs.prdownloader)
 

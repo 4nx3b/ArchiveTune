@@ -106,6 +106,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
@@ -186,8 +187,11 @@ internal fun SpatialFlowLyricsOverlay(
     var showLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null

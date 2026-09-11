@@ -180,7 +180,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
-import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -526,9 +525,6 @@ fun BottomSheetPlayer(
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
-
-    val spotifyConnected by rememberPreference(SpotifySpDcKey, defaultValue = "")
-    val spotifyCanvasEffective = spotifyCanvasEnabled || spotifyConnected.isNotBlank()
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -1373,14 +1369,23 @@ fun BottomSheetPlayer(
         // the canvas (even a cached one for the same media id) must never
         // stand in for the video.
         val trackIsMusicVideo = mediaMetadata?.isMusicVideo == true
+        // Canvas is video: the global video-playback switch and the canvas
+        // toggles are both hard gates. When video playback is disabled — or
+        // when every canvas option is off — nothing is resolved here at all,
+        // so a previously cached canvas video can never start playing in any
+        // player style. A connected Spotify account no longer implies canvas
+        // on: the user must explicitly enable the Spotify Canvas toggle.
+        val canvasOptionsEnabled = archiveTuneCanvasEnabled || spotifyCanvasEnabled
         val shouldUseV7Canvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
+            enableVideoPlayback &&
+                canvasOptionsEnabled &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||
                     playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled &&
                 !trackIsMusicVideo
         val shouldUseArtworkCanvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
+            enableVideoPlayback &&
+                canvasOptionsEnabled &&
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9
@@ -1422,16 +1427,22 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = next.spotifyTrackId,
                     )
                 }
             }
         }
 
-        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+        LaunchedEffect(playerConnection, mediaMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
+                // Manual refetch results only flow into the render states
+                // while canvas use is currently allowed (video playback on
+                // and a canvas option enabled); otherwise they are dropped so
+                // a refetched (possibly cached) canvas can never bypass the
+                // toggles.
+                if (!shouldUseV7Canvas && !shouldUseArtworkCanvas) return@collect
 
                 canvasArtworkRevision += 1
                 if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
@@ -1472,7 +1483,7 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
@@ -1512,7 +1523,7 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {

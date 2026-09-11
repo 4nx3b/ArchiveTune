@@ -626,6 +626,7 @@ fun YouTubeAlbumMenu(
                                                     )
                                                 },
                                             downloads = downloadUtil.downloads.value,
+                                            downloadUtil = downloadUtil,
                                         )
                                     }
                                 },
