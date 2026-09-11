@@ -523,7 +523,11 @@ fun SpatialFlowPlayerContent(
                             // temp file Media3 reports 0% — combine in the live
                             // fetch progress so the label reflects the network
                             // download instead of a fake "Downloading 0%".
-                            val media3Percent = download?.percentDownloaded ?: 0.0
+                            // media3's percentDownloaded is a Java float; the
+                            // elvis must stay Float (a 0.0 Double fallback
+                            // widens the type to Number&Comparable, which no
+                            // maxOf overload accepts).
+                            val media3Percent = (download?.percentDownloaded ?: 0f).toDouble()
                             val fetchPercent = fetchProgressMap[downloadUtil
                                 .currentSourceDownloadTarget(mediaMetadata.id)
                                 .key]?.percent ?: 0
