@@ -6,7 +6,13 @@ kotlin = "2.4.20"
 kotlinMetadata = "2.4.20"
 compose = "1.12.1"
 lifecycle = "2.11.0"
-material3 = "1.5.0-alpha28"
+# material3 stays on the last alpha that matches the app's Material3 API
+# usage: 1.5.0-alpha28+ removes/changes 6 API surfaces the app relies on
+# (old Slider overload + SliderState.valueRange, ShortNavigationBarItemDefaults
+# text-color params, no-arg menuAnchor(), ExposedDropdownMenu,
+# toggleButtonColors). Compose stays on the same 1.12 train (1.12.1 stable),
+# which alpha23 is binary-compatible with.
+material3 = "1.5.0-alpha23"
 media3 = "1.11.1"
 room = "2.8.5"
 hilt = "2.60.1"
