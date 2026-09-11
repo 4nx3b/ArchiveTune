@@ -669,11 +669,21 @@ class DownloadUtil
                                 // user having to notice and tap again. Bounded
                                 // to a single attempt so a permanently broken
                                 // stream surfaces as a normal failure.
-                                val retryCount = autoRetryCounts.merge(download.request.id, 1, Int::plus)
+                                // MutableMap.merge declares a nullable return
+                                // (removal semantics); Int::plus never removes,
+                                // so null can only mean "no count yet" -> 1.
+                                val retryCount =
+                                    autoRetryCounts.merge(download.request.id, 1, Int::plus) ?: 1
                                 if (retryCount <= 1) {
                                     downloadScope.launch {
                                         delay(DOWNLOAD_AUTO_RETRY_DELAY_MS)
-                                        runCatching { downloadManager.retryDownloads() }
+                                        // Re-adding the same request restarts the
+                                        // failed download: the data source factory
+                                        // re-resolves the stream URL at open time
+                                        // (songUrlCache was purged above), so the
+                                        // retry fetches a fresh URL. Same idiom as
+                                        // DownloadRepository's resume path.
+                                        runCatching { downloadManager.addDownload(download.request) }
                                     }
                                 }
                             }
