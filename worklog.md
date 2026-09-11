@@ -1701,3 +1701,36 @@ Stage Summary:
 - material3 intentionally stays on 1.5.0-alpha23: alpha28+ would force
   rewriting 6 API surfaces across ~13 UI files against an unstable
   alpha API (documented in libs.versions.toml).
+
+---
+Task ID: 32
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Revert all the dependency upgrades including the enhanced lyrics
+animation library
+
+Work Log:
+- Audited every dependency change 50b232dd7 made (toml + app/build.gradle.kts)
+  and the full git history of the MochaRealm accompanist lyrics entries.
+- 43bff001a: reverted all 19 version bumps to the pre-batch (6a2e878f8)
+  values: agp 9.2.1, kotlin 2.4.0 + ksp 2.3.10 + kotlinMetadata 2.4.0,
+  compose 1.12.0-beta02, material3 1.5.0-alpha23, media3 1.10.1, room
+  2.8.4, ktor 3.5.1, jsoup 1.22.2, coil 3.5.0, guava 33.6.0-jre,
+  navigation 2.9.8, lottie 6.6.6, bouncyCastle 1.85, okhttp 5.4.0,
+  aboutLibraries 15.0.3, liquid-glass 2.0.0, org.json 20250517.
+- Enhanced lyrics animation: accompanist-core 0.4.7 -> 0.4.6 (the
+  library's last bump, Jul 2 automated PR #966). lyrics-ui stays 1.0.19 —
+  it is the only version ever published/used (dependency introduced at
+  1.0.19 in May); no earlier version exists to revert to.
+- Kept the batch's non-upgrade cleanups: disabled-desugaring dep removal,
+  org.json stale direct-pin -> version catalog unification.
+- Pre-checked the batch's new code for APIs that would need the newer
+  versions (coil usage in TikTok pages, media3 DataSource imports in
+  PRDownloaderDataSource/DownloadUtil) — all long-stable APIs.
+- Monitored CI through to green on the revert.
+
+Stage Summary:
+- Dependency set now matches 6a2e878f8 exactly (plus lyrics-core one
+  step back); all three workflows green on 43bff001a — the batch's
+  functional code compiles, tests and lints clean against the reverted
+  dependencies, and all release/R8 builds pass.
+- PR #216 head is 43bff001a, mergeable_state clean.
