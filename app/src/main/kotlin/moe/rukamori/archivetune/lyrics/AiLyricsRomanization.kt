@@ -30,8 +30,14 @@ import moe.rukamori.archivetune.constants.AiCustomEndpointKey
 import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiKeyKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomEndpointKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomModelKey
 import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AiRomanizeProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeSelectedModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeSeparateProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -123,17 +129,48 @@ object AiLyricsRomanization {
         val (selectedModel) = rememberPreference(AiSelectedModelKey, defaultValue = "")
         val (customModel) = rememberPreference(AiCustomModelKey, defaultValue = "")
 
-        return remember(enabled, auto, excluded, provider, apiKey, customEndpoint, selectedModel, customModel) {
+        // Separate-provider override: when the toggle is on AND a dedicated
+        // romanisation provider has been selected, romanisation runs on that
+        // provider/key/model instead of the main one. Falling back to the main
+        // provider while the dedicated one is unconfigured keeps the feature
+        // working the moment the toggle is flipped.
+        val (separateProviderEnabled) = rememberPreference(AiRomanizeSeparateProviderKey, defaultValue = false)
+        val romanizeProvider by rememberEnumPreference(AiRomanizeProviderKey, AiProvider.NONE)
+        val (romanizeApiKey) = rememberPreference(AiRomanizeApiKeyKey, defaultValue = "")
+        val (romanizeCustomEndpoint) = rememberPreference(AiRomanizeCustomEndpointKey, defaultValue = "")
+        val (romanizeSelectedModel) = rememberPreference(AiRomanizeSelectedModelKey, defaultValue = "")
+        val (romanizeCustomModel) = rememberPreference(AiRomanizeCustomModelKey, defaultValue = "")
+
+        val useSeparate = separateProviderEnabled && romanizeProvider != AiProvider.NONE
+        val effectiveProvider = if (useSeparate) romanizeProvider else provider
+        val effectiveApiKey = if (useSeparate) romanizeApiKey else apiKey
+        val effectiveCustomEndpoint = if (useSeparate) romanizeCustomEndpoint else customEndpoint
+        val effectiveModel =
+            if (useSeparate) {
+                if (romanizeProvider == AiProvider.CUSTOM) romanizeCustomModel else romanizeSelectedModel
+            } else {
+                if (provider == AiProvider.CUSTOM) customModel else selectedModel
+            }
+
+        return remember(
+            enabled,
+            auto,
+            excluded,
+            effectiveProvider,
+            effectiveApiKey,
+            effectiveCustomEndpoint,
+            effectiveModel,
+        ) {
             Settings(
                 enabled = enabled,
                 auto = auto,
                 excludedLanguages = excluded,
                 config =
                     AiServiceConfig(
-                        provider = provider,
-                        apiKey = apiKey,
-                        customEndpoint = customEndpoint,
-                        model = if (provider == AiProvider.CUSTOM) customModel else selectedModel,
+                        provider = effectiveProvider,
+                        apiKey = effectiveApiKey,
+                        customEndpoint = effectiveCustomEndpoint,
+                        model = effectiveModel,
                     ),
             )
         }
@@ -240,5 +277,5 @@ object AiLyricsRomanization {
         cache.keys.firstOrNull { it != keep }?.let { cache.remove(it) }
     }
 
-    private const val MaxCachedTracks = 8
+    private const val MaxCachedTracks = 32
 }

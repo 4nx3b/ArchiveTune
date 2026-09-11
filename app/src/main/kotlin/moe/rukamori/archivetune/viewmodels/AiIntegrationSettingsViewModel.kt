@@ -35,6 +35,12 @@ import moe.rukamori.archivetune.constants.AiCustomEndpointKey
 import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiKeyKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiValidationStatusKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomEndpointKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeSelectedModelKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.utils.dataStore
@@ -66,6 +72,14 @@ class AiIntegrationSettingsViewModel
         private var fetchModelsJob: Job? = null
         private val fetchModelsRequestId = AtomicInteger()
 
+        private val _romanizeActionState = MutableStateFlow(AiIntegrationActionState())
+        val romanizeActionState: StateFlow<AiIntegrationActionState> = _romanizeActionState.asStateFlow()
+
+        private val _romanizeAvailableModels = MutableStateFlow<List<AiModelOption>>(emptyList())
+        val romanizeAvailableModels: StateFlow<List<AiModelOption>> = _romanizeAvailableModels.asStateFlow()
+        private var fetchRomanizeModelsJob: Job? = null
+        private val fetchRomanizeModelsRequestId = AtomicInteger()
+
         fun clearAvailableModels() {
             fetchModelsRequestId.incrementAndGet()
             fetchModelsJob?.cancel()
@@ -73,6 +87,18 @@ class AiIntegrationSettingsViewModel
             _availableModels.value = emptyList()
             _actionState.value =
                 _actionState.value.copy(
+                    isFetchingModels = false,
+                    errorMessage = null,
+                )
+        }
+
+        fun clearRomanizeAvailableModels() {
+            fetchRomanizeModelsRequestId.incrementAndGet()
+            fetchRomanizeModelsJob?.cancel()
+            fetchRomanizeModelsJob = null
+            _romanizeAvailableModels.value = emptyList()
+            _romanizeActionState.value =
+                _romanizeActionState.value.copy(
                     isFetchingModels = false,
                     errorMessage = null,
                 )
@@ -156,6 +182,84 @@ class AiIntegrationSettingsViewModel
             }
         }
 
+        fun fetchRomanizeModels(
+            provider: AiProvider,
+            apiKey: String,
+            customEndpoint: String,
+        ) {
+            if (fetchRomanizeModelsJob?.isActive == true) return
+            val requestId = fetchRomanizeModelsRequestId.incrementAndGet()
+            fetchRomanizeModelsJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    _romanizeActionState.value =
+                        _romanizeActionState.value.copy(
+                            isFetchingModels = true,
+                            errorMessage = null,
+                        )
+                    _romanizeAvailableModels.value = emptyList()
+                    try {
+                        val config =
+                            AiServiceConfig(
+                                provider = provider,
+                                apiKey = apiKey,
+                                customEndpoint = customEndpoint,
+                                model = "",
+                            )
+                        val models = AiTextService.fetchModels(config)
+                        if (requestId == fetchRomanizeModelsRequestId.get()) {
+                            _romanizeAvailableModels.value = models
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (requestId == fetchRomanizeModelsRequestId.get()) {
+                            _romanizeActionState.value =
+                                _romanizeActionState.value.copy(
+                                    errorMessage = e.shortMessage(context.getString(R.string.ai_model_fetch_failed)),
+                                )
+                        }
+                    } finally {
+                        if (requestId == fetchRomanizeModelsRequestId.get()) {
+                            _romanizeActionState.value = _romanizeActionState.value.copy(isFetchingModels = false)
+                            fetchRomanizeModelsJob = null
+                        }
+                    }
+                }
+        }
+
+        fun clearRomanizeError() {
+            _romanizeActionState.value = _romanizeActionState.value.copy(errorMessage = null)
+        }
+
+        fun testRomanizeApi() {
+            if (_romanizeActionState.value.isTesting) return
+            viewModelScope.launch(Dispatchers.IO) {
+                _romanizeActionState.value =
+                    _romanizeActionState.value.copy(
+                        isTesting = true,
+                        errorMessage = null,
+                    )
+                try {
+                    AiTextService.test(readRomanizeConfig())
+                    context.dataStore.edit { prefs ->
+                        prefs[AiRomanizeApiValidationStatusKey] = AiApiValidationStatus.SUCCESS.name
+                    }
+                    _romanizeActionState.value = _romanizeActionState.value.copy(errorMessage = null)
+                    _events.emit(context.getString(R.string.ai_api_connected))
+                } catch (e: Exception) {
+                    context.dataStore.edit { prefs ->
+                        prefs[AiRomanizeApiValidationStatusKey] = AiApiValidationStatus.FAILED.name
+                    }
+                    _romanizeActionState.value =
+                        _romanizeActionState.value.copy(
+                            errorMessage = e.shortMessage(context.getString(R.string.ai_api_test_failed)),
+                        )
+                } finally {
+                    _romanizeActionState.value = _romanizeActionState.value.copy(isTesting = false)
+                }
+            }
+        }
+
         private suspend fun readConfig(): AiServiceConfig {
             val prefs = context.dataStore.data.first()
             val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
@@ -169,6 +273,23 @@ class AiIntegrationSettingsViewModel
                 provider = provider,
                 apiKey = prefs[AiApiKeyKey].orEmpty(),
                 customEndpoint = prefs[AiCustomEndpointKey].orEmpty(),
+                model = model,
+            )
+        }
+
+        private suspend fun readRomanizeConfig(): AiServiceConfig {
+            val prefs = context.dataStore.data.first()
+            val provider = prefs[AiRomanizeProviderKey].toEnum(AiProvider.NONE)
+            val model =
+                if (provider == AiProvider.CUSTOM) {
+                    prefs[AiRomanizeCustomModelKey].orEmpty()
+                } else {
+                    prefs[AiRomanizeSelectedModelKey].orEmpty()
+                }
+            return AiServiceConfig(
+                provider = provider,
+                apiKey = prefs[AiRomanizeApiKeyKey].orEmpty(),
+                customEndpoint = prefs[AiRomanizeCustomEndpointKey].orEmpty(),
                 model = model,
             )
         }

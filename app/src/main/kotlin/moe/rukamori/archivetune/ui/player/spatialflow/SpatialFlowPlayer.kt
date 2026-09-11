@@ -159,9 +159,12 @@ fun SpatialFlowPlayerContent(
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
-    val download by LocalDownloadUtil.current
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil
         .getDownload(mediaMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
+    val fetchProgressMap by moe.rukamori.archivetune.playback.DownloadFetchProgress.flow
+        .collectAsStateWithLifecycle()
 
     val artUrl = remember(mediaMetadata.id, mediaMetadata.thumbnailUrl) { mediaMetadata.thumbnailUrl?.highRes() }
     val palette = rememberMeshPalette(artUrl)
@@ -516,7 +519,15 @@ fun SpatialFlowPlayerContent(
                     val realDownloaded = download?.state == Download.STATE_COMPLETED
                     val realDownloadProgress =
                         if (download?.state == Download.STATE_DOWNLOADING) {
-                            download?.percentDownloaded?.roundToInt()
+                            // While PRDownloader buffers the whole stream to its
+                            // temp file Media3 reports 0% — combine in the live
+                            // fetch progress so the label reflects the network
+                            // download instead of a fake "Downloading 0%".
+                            val media3Percent = download?.percentDownloaded ?: 0.0
+                            val fetchPercent = fetchProgressMap[downloadUtil
+                                .currentSourceDownloadTarget(mediaMetadata.id)
+                                .key]?.percent ?: 0
+                            maxOf(media3Percent, fetchPercent.toDouble()).roundToInt()
                         } else {
                             null
                         }
@@ -540,12 +551,17 @@ fun SpatialFlowPlayerContent(
                         isSelected = realDownloaded || isDownloading,
                         progress = if (isDownloading) (realDownloadProgress ?: 0) / 100f else null,
                         onClick = {
+                            // Source-scoped request ids ("ytm:<id>", …) everywhere:
+                            // remove must target the SAME entry the menus queue,
+                            // otherwise a running download can never be cancelled
+                            // from here ("infinite download").
+                            val target = downloadUtil.currentSourceDownloadTarget(mediaMetadata.id)
                             when (download?.state) {
                                 Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
                                     DownloadService.sendRemoveDownload(
                                         context,
                                         ExoDownloadService::class.java,
-                                        mediaMetadata.id,
+                                        target.key,
                                         false,
                                     )
                                 }
@@ -557,14 +573,14 @@ fun SpatialFlowPlayerContent(
                                         DownloadService.sendRemoveDownload(
                                             context,
                                             ExoDownloadService::class.java,
-                                            mediaMetadata.id,
+                                            dl.request.id,
                                             false,
                                         )
                                     }
                                     val downloadRequest =
                                         DownloadRequest
-                                            .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                            .setCustomCacheKey(mediaMetadata.id)
+                                            .Builder(target.key, mediaMetadata.id.toUri())
+                                            .setCustomCacheKey(target.key)
                                             .setData(mediaMetadata.title.toByteArray())
                                             .build()
                                     DownloadService.sendAddDownload(

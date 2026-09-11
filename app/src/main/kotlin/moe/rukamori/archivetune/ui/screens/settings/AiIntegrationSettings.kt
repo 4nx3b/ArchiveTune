@@ -109,8 +109,15 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiKeyKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiValidationStatusKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomEndpointKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomModelKey
 import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AiRomanizeProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeSelectedModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeSeparateProviderKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
@@ -183,6 +190,19 @@ fun AiIntegrationSettings(
     val (romanizeExcludedLanguageCodes, onRomanizeExcludedLanguageCodesChange) =
         rememberPreference(AiRomanizeExcludedLanguagesKey, defaultValue = emptySet())
     var showRomanizeExcludedLanguagesDialog by rememberSaveable { mutableStateOf(false) }
+
+    val (romanizeSeparateProvider, onRomanizeSeparateProviderChange) =
+        rememberPreference(AiRomanizeSeparateProviderKey, defaultValue = false)
+    val (romanizeProvider, setRomanizeProvider) = rememberEnumPreference(AiRomanizeProviderKey, AiProvider.NONE)
+    val (romanizeApiKey, setRomanizeApiKey) = rememberPreference(AiRomanizeApiKeyKey, "")
+    val (romanizeCustomEndpoint, setRomanizeCustomEndpoint) = rememberPreference(AiRomanizeCustomEndpointKey, "")
+    val (romanizeSelectedModel, setRomanizeSelectedModel) = rememberPreference(AiRomanizeSelectedModelKey, "")
+    val (romanizeCustomModel, setRomanizeCustomModel) = rememberPreference(AiRomanizeCustomModelKey, "")
+    val (romanizeValidationStatus, setRomanizeValidationStatus) =
+        rememberEnumPreference(AiRomanizeApiValidationStatusKey, AiApiValidationStatus.UNKNOWN)
+    val romanizeActionState by viewModel.romanizeActionState.collectAsStateWithLifecycle()
+    val romanizeAvailableModels by viewModel.romanizeAvailableModels.collectAsStateWithLifecycle()
+    var showRomanizeApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -263,6 +283,18 @@ fun AiIntegrationSettings(
             onConfirm = { newSet ->
                 onRomanizeExcludedLanguageCodesChange(newSet)
                 showRomanizeExcludedLanguagesDialog = false
+            },
+        )
+    }
+
+    if (showRomanizeApiKeyDialog) {
+        ApiKeyDialog(
+            value = romanizeApiKey,
+            onDismiss = { showRomanizeApiKeyDialog = false },
+            onSave = { value ->
+                setRomanizeApiKey(value.trim())
+                setRomanizeValidationStatus(AiApiValidationStatus.UNKNOWN)
+                viewModel.clearRomanizeAvailableModels()
             },
         )
     }
@@ -631,7 +663,14 @@ fun AiIntegrationSettings(
                     checked = aiRomanizeLyrics,
                     onCheckedChange = onAiRomanizeLyricsChange,
 
-                    isEnabled = hasApiConfiguration,
+                    // Either the main provider or a configured separate
+                    // romanisation provider is enough to enable the feature.
+                    isEnabled =
+                        hasApiConfiguration || (
+                            romanizeSeparateProvider &&
+                                romanizeProvider != AiProvider.NONE &&
+                                romanizeApiKey.isNotBlank()
+                            ),
                 )
             }
 
@@ -643,7 +682,232 @@ fun AiIntegrationSettings(
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
                     checked = autoAiRomanizeLyrics,
                     onCheckedChange = onAutoAiRomanizeLyricsChange,
-                    isEnabled = hasApiConfiguration,
+                    // Either the main provider or a configured separate
+                    // romanisation provider is enough to enable the feature.
+                    isEnabled =
+                        hasApiConfiguration || (
+                            romanizeSeparateProvider &&
+                                romanizeProvider != AiProvider.NONE &&
+                                romanizeApiKey.isNotBlank()
+                            ),
+                )
+            }
+
+            item(visible = aiRomanizeLyrics) {
+                SwitchPreference(
+                    modifier = positions.modifierFor("ai_romanize_separate_provider"),
+                    title = { Text(stringResource(R.string.ai_romanize_separate_provider)) },
+                    description = stringResource(R.string.ai_romanize_separate_provider_desc),
+                    icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                    checked = romanizeSeparateProvider,
+                    onCheckedChange = onRomanizeSeparateProviderChange,
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider) {
+                ListPreference(
+                    modifier = positions.modifierFor("ai_romanize_provider"),
+                    title = { Text(stringResource(R.string.ai_romanize_provider)) },
+                    description = stringResource(R.string.ai_romanize_provider_desc),
+                    icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                    selectedValue = romanizeProvider,
+                    values =
+                        listOf(
+                            AiProvider.GEMINI,
+                            AiProvider.CHATGPT,
+                            AiProvider.OPENROUTER,
+                            AiProvider.CUSTOM,
+                            AiProvider.NONE,
+                        ),
+                    valueText = { it.label() },
+                    onValueSelected = { selectedProvider ->
+                        if (romanizeProvider != selectedProvider) {
+                            setRomanizeSelectedModel("")
+                            viewModel.clearRomanizeAvailableModels()
+                        }
+                        setRomanizeProvider(selectedProvider)
+                        setRomanizeValidationStatus(AiApiValidationStatus.UNKNOWN)
+                    },
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider && romanizeProvider == AiProvider.CUSTOM) {
+                EditTextPreference(
+                    modifier = positions.modifierFor("ai_romanize_custom_endpoint"),
+                    title = { Text(stringResource(R.string.ai_custom_endpoint)) },
+                    icon = { Icon(painterResource(R.drawable.website), null) },
+                    value = romanizeCustomEndpoint,
+                    onValueChange = {
+                        setRomanizeCustomEndpoint(it.trim())
+                        setRomanizeValidationStatus(AiApiValidationStatus.UNKNOWN)
+                        viewModel.clearRomanizeError()
+                    },
+                    isInputValid = { it.startsWith("https://") || it.startsWith("http://") },
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider && romanizeProvider != AiProvider.NONE && romanizeProvider != AiProvider.CUSTOM) {
+                val keyPortalUrl = romanizeProvider.apiKeyPortalUrl()
+                val keyPortalLabel = romanizeProvider.apiKeyPortalLabel()
+                PreferenceEntry(
+                    title = { Text("Get API key") },
+                    description = keyPortalLabel,
+                    icon = { Icon(painterResource(R.drawable.link), null) },
+                    onClick = {
+                        if (!keyPortalUrl.isNullOrBlank()) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(keyPortalUrl)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider && romanizeProvider != AiProvider.NONE) {
+                PreferenceEntry(
+                    modifier = positions.modifierFor("ai_romanize_api_key"),
+                    title = { Text(stringResource(R.string.ai_romanize_api_key)) },
+                    description =
+                        if (romanizeApiKey.isBlank()) {
+                            stringResource(R.string.ai_api_key_missing)
+                        } else {
+                            stringResource(R.string.ai_api_key_configured)
+                        },
+                    icon = { Icon(painterResource(R.drawable.token), null) },
+                    onClick = { showRomanizeApiKeyDialog = true },
+                )
+            }
+
+            item(
+                visible = aiRomanizeLyrics &&
+                    romanizeSeparateProvider &&
+                    romanizeProvider != AiProvider.NONE &&
+                    romanizeProvider != AiProvider.CUSTOM,
+            ) {
+                ModelPickerPreference(
+                    selectedModel = romanizeSelectedModel,
+                    availableModels = romanizeAvailableModels,
+                    isFetching = romanizeActionState.isFetchingModels,
+                    isEnabled = romanizeProvider != AiProvider.DEEPL && romanizeProvider != AiProvider.OPENROUTER,
+                    canFetch = romanizeApiKey.isNotBlank() && !romanizeActionState.isFetchingModels,
+                    onModelSelected = {
+                        setRomanizeSelectedModel(it)
+                        setRomanizeValidationStatus(AiApiValidationStatus.UNKNOWN)
+                        viewModel.clearRomanizeError()
+                    },
+                    onFetch = { viewModel.fetchRomanizeModels(romanizeProvider, romanizeApiKey, romanizeCustomEndpoint) },
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider && romanizeProvider == AiProvider.CUSTOM) {
+                EditTextPreference(
+                    modifier = positions.modifierFor("ai_romanize_model"),
+                    title = { Text(stringResource(R.string.ai_model)) },
+                    icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                    value = romanizeCustomModel,
+                    onValueChange = {
+                        setRomanizeCustomModel(it)
+                        setRomanizeValidationStatus(AiApiValidationStatus.UNKNOWN)
+                        viewModel.clearRomanizeError()
+                    },
+                )
+            }
+
+            item(visible = aiRomanizeLyrics && romanizeSeparateProvider && romanizeProvider != AiProvider.NONE) {
+                val romanizeTestVisualState =
+                    when {
+                        romanizeActionState.isTesting -> TestApiVisualState.Testing
+                        romanizeValidationStatus == AiApiValidationStatus.SUCCESS -> TestApiVisualState.Success
+                        romanizeValidationStatus == AiApiValidationStatus.FAILED -> TestApiVisualState.Failed
+                        else -> TestApiVisualState.Idle
+                    }
+                val hasRomanizeModelConfig =
+                    when (romanizeProvider) {
+                        AiProvider.CUSTOM -> romanizeCustomModel.isNotBlank()
+                        AiProvider.DEEPL -> true
+                        AiProvider.NONE -> false
+                        else -> romanizeSelectedModel.isNotBlank()
+                    }
+                PreferenceEntry(
+                    modifier = positions.modifierFor("ai_romanize_test_api"),
+                    title = { Text(stringResource(R.string.ai_romanize_test_api)) },
+                    icon = {
+                        AnimatedContent(
+                            targetState = romanizeTestVisualState,
+                            transitionSpec = {
+                                (
+                                    scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)) +
+                                        fadeIn(tween(200))
+                                ) togetherWith
+                                    (scaleOut(tween(100)) + fadeOut(tween(100)))
+                            },
+                            label = "testRomanizeApiIcon",
+                        ) { state ->
+                            when (state) {
+                                TestApiVisualState.Success -> {
+                                    Icon(painterResource(R.drawable.done), null)
+                                }
+
+                                TestApiVisualState.Failed -> {
+                                    Icon(painterResource(R.drawable.error), null, tint = MaterialTheme.colorScheme.error)
+                                }
+
+                                else -> {
+                                    Icon(painterResource(R.drawable.sync), null)
+                                }
+                            }
+                        }
+                    },
+                    content = {
+                        Spacer(Modifier.height(2.dp))
+                        AnimatedContent(
+                            targetState = romanizeTestVisualState,
+                            transitionSpec = {
+                                (slideInVertically { -it } + fadeIn(tween(250))) togetherWith
+                                    (slideOutVertically { it } + fadeOut(tween(150)))
+                            },
+                            label = "testRomanizeApiDesc",
+                        ) { state ->
+                            Text(
+                                text =
+                                    when (state) {
+                                        TestApiVisualState.Testing -> stringResource(R.string.ai_api_testing)
+                                        else -> romanizeValidationStatus.label()
+                                    },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color =
+                                    when (state) {
+                                        TestApiVisualState.Success -> MaterialTheme.colorScheme.primary
+                                        TestApiVisualState.Failed -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                            )
+                        }
+                        romanizeActionState.errorMessage?.let { message ->
+                            Spacer(Modifier.height(10.dp))
+                            AiErrorHintRow(message = message)
+                        }
+                    },
+                    trailingContent = {
+                        AnimatedContent(
+                            targetState = romanizeActionState.isTesting,
+                            transitionSpec = {
+                                (scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(tween(200))) togetherWith
+                                    (scaleOut(tween(150)) + fadeOut(tween(150)))
+                            },
+                            label = "testRomanizeApiTrailing",
+                        ) { isTesting ->
+                            if (isTesting) {
+                                CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        }
+                    },
+                    onClick = viewModel::testRomanizeApi,
+                    isEnabled = romanizeApiKey.isNotBlank() && hasRomanizeModelConfig && !romanizeActionState.isTesting,
                 )
             }
 

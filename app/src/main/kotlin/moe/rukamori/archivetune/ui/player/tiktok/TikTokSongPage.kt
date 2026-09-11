@@ -68,7 +68,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -80,8 +79,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.crossfade
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -97,6 +94,8 @@ import moe.rukamori.archivetune.ui.player.InlineVideoPlayer
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
 import moe.rukamori.archivetune.ui.player.isLoadingState
+import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
+import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
@@ -156,7 +155,14 @@ internal fun TikTokSongPage(
                 maxresAllowed = true,
             )
         }
-    val context = LocalContext.current
+
+    // Full-resolution artwork with a quality-fallback chain: maxresdefault
+    // 404s on a large share of ytimg-hosted videos, and without a fallback
+    // the artwork slot used to sit empty indefinitely (perceived as "the
+    // thumbnail never loads"). On error the URL steps down
+    // maxres -> hq720 -> mq, exactly like the V7 player backdrop.
+    var artworkModel by remember(artUrl) { mutableStateOf(artUrl) }
+    val artworkRequest = rememberOfflineArtworkImageRequest(artworkModel)
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
 
@@ -182,7 +188,7 @@ internal fun TikTokSongPage(
         // a second tap hides it. Reset per song.
         var videoControlsVisible by remember(pageMetadata.id) { mutableStateOf(false) }
 
-        val meshColors = rememberTikTokArtworkColors(artUrl)
+        val meshColors = rememberTikTokArtworkColors(pageMetadata.thumbnailUrl)
         TikTokMeshBackdrop(
             palette = meshColors,
             trackKey = pageMetadata.id,
@@ -359,15 +365,14 @@ internal fun TikTokSongPage(
                                     label = "tiktokArtworkFallbackAlpha",
                                 )
                                 AsyncImage(
-                                    model =
-                                        ImageRequest
-                                            .Builder(context)
-                                            .data(artUrl)
-                                            .size(TIKTOK_ART_PX)
-                                            .crossfade(true)
-                                            .build(),
+                                    model = artworkRequest,
                                     contentDescription = pageMetadata.title,
                                     contentScale = ContentScale.Crop,
+                                    onState = { state ->
+                                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                                            getNextFallbackUrl(artworkModel)?.let { artworkModel = it }
+                                        }
+                                    },
                                     modifier =
                                         Modifier
                                             .fillMaxSize()

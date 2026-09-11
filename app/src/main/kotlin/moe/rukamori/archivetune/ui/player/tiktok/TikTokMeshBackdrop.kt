@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 import coil3.imageLoader
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
@@ -163,6 +164,13 @@ internal fun rememberTikTokArtworkColors(imageUrl: String?): TikTokMeshPalette {
             .data(imageUrl)
             .size(128)
             .allowHardware(false)
+            // Explicit cache keys: the raw thumbnail URL is the same entry the
+            // other player styles use for their palette extraction, so repeat
+            // views resolve from the memory/disk cache instead of re-fetching.
+            .memoryCacheKey(imageUrl)
+            .diskCacheKey(imageUrl)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .networkCachePolicy(CachePolicy.ENABLED)
             .build()
         val result = context.imageLoader.execute(request)
         val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@LaunchedEffect

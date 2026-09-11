@@ -412,6 +412,9 @@ class MusicService :
     @Inject
     lateinit var sponsorBlockPlaybackController: moe.rukamori.archivetune.sponsorblock.SponsorBlockPlaybackController
 
+    @Inject
+    lateinit var downloadUtil: DownloadUtil
+
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
     private var lastAudioFocusState = AudioManager.AUDIOFOCUS_NONE
@@ -6643,11 +6646,15 @@ class MusicService :
                 syncUtils.likeSong(song)
 
                 if (!song.isLocal && dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-
+                    // Source-scoped request id ("ytm:<id>", …) — identical to
+                    // what the download menus queue. The old plain-id request
+                    // created a SECOND download entry the menus could not see
+                    // (and could not cancel) next to the source-scoped one.
+                    val downloadId = downloadUtil.currentSourceDownloadTarget(song.id).key
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
-                            .Builder(song.id, song.id.toUri())
-                            .setCustomCacheKey(song.id)
+                            .Builder(downloadId, song.id.toUri())
+                            .setCustomCacheKey(downloadId)
                             .setData(song.title.toByteArray())
                             .build()
                     androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
