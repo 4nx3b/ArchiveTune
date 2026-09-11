@@ -1661,3 +1661,43 @@ Stage Summary:
 - YouTube downloads: bounded at every stage, show real progress, auto-retry
   once with a fresh stream URL, and every download/cancel path now targets
   the same source-scoped entry — the "infinite download" class is closed.
+
+---
+Task ID: 30
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Fix the CI build broken by 50b232dd7 ("always monitor the build and
+fix the error")
+
+Work Log:
+- Pulled failing CI logs for 50b232dd7 (PR build + Build APKs + Nightly,
+  all red): 30+ Kotlin errors. Root causes: (a) material3
+  1.5.0-alpha23 -> 1.5.0-alpha28 removes/changes 6 API surfaces the app
+  still uses (old Slider overload + SliderState.valueRange,
+  ShortNavigationBarItemDefaults text-color params, no-arg menuAnchor(),
+  ExposedDropdownMenu, toggleButtonColors) across ~13 untouched files;
+  (b) DownloadUtil auto-retry called nonexistent
+  DownloadManager.retryDownloads() and tripped null-safety on
+  MutableMap.merge's nullable return; (c) SpatialFlowPlayer's
+  percentDownloaded elvis widened to Number&Comparable (no maxOf
+  overload).
+- e841b27e9: pinned material3 back to 1.5.0-alpha23 (all other dep
+  updates kept; alpha23 is built against compose 1.12.0-alpha03, same
+  1.12 train as the kept 1.12.1 stable pin); DownloadUtil retry now
+  re-adds the request (the app's established restart idiom — same as
+  DownloadRepository's resume path; the youtube factory re-resolves the
+  stream URL at open since the failure purged songUrlCache).
+- 17d25c6b8: fixed the SpatialFlowPlayer Float-elvis type trap
+  ((download?.percentDownloaded ?: 0f).toDouble()).
+- Set up an Android SDK + local Gradle compile loop
+  (scripts/setup-android-sdk.sh, scripts/local-compile.sh) as a
+  pre-push safety net; CI watcher script (scripts/ci-monitor.py) polls
+  workflow runs per head SHA.
+- Monitored both fix pushes through CI to green.
+
+Stage Summary:
+- All three workflows green on 17d25c6b8: Build Pull Request (build +
+  test + lint), Build APKs, Nightly (all 8 release/R8 matrix jobs).
+- PR #216 open, mergeable_state clean, 3 commits, head 17d25c6b8.
+- material3 intentionally stays on 1.5.0-alpha23: alpha28+ would force
+  rewriting 6 API surfaces across ~13 UI files against an unstable
+  alpha API (documented in libs.versions.toml).
