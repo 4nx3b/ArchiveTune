@@ -299,11 +299,32 @@ internal fun SpatialFlowLyricsOverlay(
                     interactionSource = consumeClicks,
                     indication = null,
                     onClick = {},
-                ).padding(top = LocalStableSystemBarsTopPadding.current)
-                .navigationBarsPadding()
-                .padding(vertical = 12.dp),
+                ),
     ) {
-
+        // The backdrop layer wraps EVERY visual in the overlay — the moving-
+        // blur background AND the content — so the lyrics overflow popup's
+        // drawBackdrop() samples the actual on-screen pixels behind it
+        // (gradient + moving blur + text), not just the text column over a
+        // transparent base (which is what the popup used to sample: an empty
+        // texture = "transparent popup, no liquid glass"). The popup itself
+        // stays OUTSIDE this box, as a later sibling, so it never feeds back
+        // into its own sample. (Same pattern as AppleMusicPlayer.)
+        //
+        // The padding that used to sit on THIS box now lives on the content
+        // Column inside: back then MovingBlurBackground was inset by the
+        // status-bar padding, so the strip above the song title showed only
+        // the dark scrim/base brush — the reported "black bar above the
+        // song's name". The blur background now fills edge to edge.
+        Box(
+            modifier =
+                Modifier.fillMaxSize().let { base ->
+                    if (popupBackdrop != null) {
+                        base.layerBackdrop(popupBackdrop)
+                    } else {
+                        base
+                    }
+                },
+        ) {
         // The SpatialFlow lyrics backdrop is the moving-blur artwork
         // background (same renderer the standalone lyrics page uses for
         // MOVING_BLUR) — on by default for this style. The solid
@@ -314,24 +335,14 @@ internal fun SpatialFlowLyricsOverlay(
             modifier = Modifier.matchParentSize(),
         )
 
-        Box(
+        Column(
             modifier =
-                Modifier.fillMaxSize().let { base ->
-                    // Attached for the overlay's whole lifetime, not just while
-                    // the menu is open: the backdrop layer needs at least one
-                    // rendered frame before the popup's drawBackdrop() can
-                    // sample it — attaching it in the same composition pass as
-                    // the popup's first frame left the glass reading an empty
-                    // texture, which is why the popup looked transparent with
-                    // no liquid glass. (Same pattern as AppleMusicPlayer.)
-                    if (popupBackdrop != null) {
-                        base.layerBackdrop(popupBackdrop)
-                    } else {
-                        base
-                    }
-                },
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = LocalStableSystemBarsTopPadding.current)
+                    .navigationBarsPadding()
+                    .padding(vertical = 12.dp),
         ) {
-        Column(modifier = Modifier.fillMaxSize()) {
 
             Row(
                 modifier =

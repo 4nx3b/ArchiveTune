@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -220,6 +222,18 @@ fun NewMenuContainer(
         modifier =
             modifier
                 .fillMaxWidth()
+                // Scrollable within the hosting popup's height cap: the tall
+                // non-lazy menus built from this container (the Spotify
+                // playlist menu: header + action grid + divider + list rows)
+                // used to be clipped at the bottom with no way to reach the
+                // cut-off rows ("not scrollable and the bottom text is cut
+                // off"). The container's content is always fully static
+                // (no LazyColumn, no ColumnScope.weight children), so
+                // unbounded child measurement is safe here. The host popup
+                // itself stays non-scrollable on purpose — PlayerMenu and
+                // friends embed their own LazyColumns, which must receive
+                // bounded constraints.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 32.dp),
     ) {
