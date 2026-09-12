@@ -136,7 +136,10 @@ object IconPackRuntimeManager {
 
                 val zipFile = File(appContext.cacheDir, "icon-pack-$VERSION.part.zip")
                 val ok =
-                    runCatching { downloadZip(appContext, zipFile, onProgress) }.getOrElse { t ->
+                    runCatching {
+                        downloadZip(appContext, zipFile, onProgress)
+                        true
+                    }.getOrElse { t ->
                         lastFailure = t.message
                         false
                     }
@@ -147,7 +150,10 @@ object IconPackRuntimeManager {
                 }
 
                 val extracted =
-                    runCatching { extractZip(appContext, zipFile) }.getOrElse { t ->
+                    runCatching {
+                        extractZip(appContext, zipFile)
+                        true
+                    }.getOrElse { t ->
                         lastFailure = t.message
                         false
                     }
