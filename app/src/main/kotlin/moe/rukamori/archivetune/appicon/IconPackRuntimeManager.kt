@@ -99,7 +99,12 @@ object IconPackRuntimeManager {
 
     fun packDirectory(context: Context): File = File(File(context.filesDir, "icon-pack"), VERSION)
 
-    fun catalogFile(context: Context): File = File(packDirectory(context), CATALOG_ENTRY.removePrefix("$ZIP_ENTRY_PREFIX/"))
+    // NOTE: ZIP_ENTRY_PREFIX already ends in '/', so interpolating it with an
+    // extra '/' ("icon_pack//") made removePrefix a no-op and pointed the
+    // catalog at <pack>/icon_pack/catalog.json while extractZip writes
+    // <pack>/catalog.json — isInstalled() then never became true and the pack
+    // re-downloaded forever. Strip the plain prefix instead.
+    fun catalogFile(context: Context): File = File(packDirectory(context), CATALOG_ENTRY.removePrefix(ZIP_ENTRY_PREFIX))
 
     private fun drawablesDirectory(context: Context): File =
         File(packDirectory(context), "drawables")

@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -78,6 +79,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -125,6 +131,23 @@ import androidx.navigation.NavController
 
 
 // Blurred canvas backdrop (behind the controls) — Apple Music player recipe.
+//
+// The frosted twin renders at 1/6 of the player with a 12dp blur on that
+// small surface (72/6), upscaled 6x (plus a 10% overscan to hide the blur's
+// edge falloff) by the wrapping graphics layer — the blur never processes
+// more than a sixth of the pixels, and the decode is capped at 480px since
+// the blur cannot resolve anything finer anyway.
+private const val SfCanvasBackdropUpscale = 6f
+private const val SfCanvasBackdropOverscan = 1.10f
+private val SfCanvasBackdropBlurRadius = 72.dp
+private const val SfCanvasBackdropMaxVideoEdgePx = 480
+
+// Where the sharp full-bleed canvas starts dissolving into the frosted
+// continuation (fractions of the player height). The reference keeps the
+// video sharp down to ~60-65% (the song-title level) and blends the last
+// stretch; the control dock sits in the frosted area below.
+private const val SfSharpCanvasFadeStart = 0.50f
+private const val SfSharpCanvasFadeEnd = 0.65f
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -282,32 +305,92 @@ fun SpatialFlowPlayerContent(
         )
 
         // Full-bleed canvas — the SpatialFlow canvas reference look: when a
-        // canvas (Apple Music / Spotify Canvaz loop) is available it owns the
-        // whole screen (RESIZE_MODE_ZOOM, edge to edge) with a bottom legibility
-        // gradient, and the controls float on top in the lower third. The static
-        // blurred backdrop stays beneath as the buffering state; the old
-        // bounded-in-artwork-slot canvas and its low-res blurred twin are gone.
+        // canvas (Apple Music / Spotify Canvaz loop) is available the video
+        // owns the whole screen (RESIZE_MODE_ZOOM, edge to edge). Per the
+        // reference, the sharp video plays ABOVE the player controls while a
+        // FROSTED continuation of the same canvas (blurred twin + tint) sits
+        // behind the lower-third control dock, and the sharp stage dissolves
+        // into that frost through a gradient fade instead of a hard edge —
+        // "seamlessly blending both canvas and the player controls". The
+        // static blurred backdrop stays beneath as the buffering state; the
+        // old bounded-in-artwork-slot canvas is gone.
         val canvasActive = !lyricsModeEnabled && (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
         if (canvasActive) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
-                isPlaying = isPlaying && !lyricsModeEnabled,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                visible = !lyricsModeEnabled,
-                modifier = Modifier.matchParentSize(),
-            )
+            // 1) Frosted twin: the SAME canvas, low-res decoded, laid out at
+            // 1/6 of the player with a 72/6 = 12dp blur on the small surface,
+            // upscaled back through the scaling layer (Apple Music's cheap
+            // blurred-canvas-backdrop recipe — the blur never processes more
+            // than a sixth of the pixels).
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            val scale = SfCanvasBackdropOverscan * SfCanvasBackdropUpscale
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(1f / SfCanvasBackdropUpscale)
+                            .fillMaxHeight(1f / SfCanvasBackdropUpscale)
+                            .blur(SfCanvasBackdropBlurRadius / SfCanvasBackdropUpscale),
+                )
+            }
+
+            // 2) Sharp stage: full-bleed video whose bottom dissolves into the
+            // frosted twin via a DstIn fade over the last stretch before the
+            // control dock (the reference's "gradually blurs and darkens"
+            // transition band).
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush =
+                                    Brush.verticalGradient(
+                                        SfSharpCanvasFadeStart to Color.Black,
+                                        SfSharpCanvasFadeEnd to Color.Transparent,
+                                    ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            // 3) Frost tint: near-transparent over the sharp video, deepening
+            // through the fade band into the dark legibility glass of the
+            // control dock — the tint layer that turns the blurred twin into
+            // a frosted panel behind the controls.
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
                         .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.30f),
-                                0.10f to Color.Black.copy(alpha = 0.06f),
-                                0.46f to Color.Black.copy(alpha = 0.10f),
-                                0.72f to Color.Black.copy(alpha = 0.42f),
-                                1f to Color.Black.copy(alpha = 0.70f),
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.16f),
+                                SfSharpCanvasFadeStart to Color.Black.copy(alpha = 0.16f),
+                                SfSharpCanvasFadeEnd to Color.Black.copy(alpha = 0.32f),
+                                0.85f to Color.Black.copy(alpha = 0.52f),
+                                1f to Color.Black.copy(alpha = 0.72f),
                             ),
                         ),
             )

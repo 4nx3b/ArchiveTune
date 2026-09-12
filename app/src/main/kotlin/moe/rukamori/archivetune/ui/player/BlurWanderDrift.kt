@@ -137,10 +137,25 @@ internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
     LaunchedEffect(active) {
         if (!active) return@LaunchedEffect
         var lastFrameNanos = 0L
+        var unappliedMs = 0f
         while (isActive) {
             withFrameNanos { frameTimeNanos ->
                 if (lastFrameNanos != 0L) {
-                    drift.advance((frameTimeNanos - lastFrameNanos) / 1_000_000f)
+                    val deltaMs = (frameTimeNanos - lastFrameNanos) / 1_000_000f
+                    unappliedMs += deltaMs
+                    // Apply the drift at ~20 fps, not per frame. The wander is
+                    // a 26 dp/s crawl — a 50 ms step is visually identical to a
+                    // 16 ms one — but each state update invalidates the drift's
+                    // graphicsLayer, and that layer carries a full-footprint
+                    // RenderEffect blur. At 60 fps the blur re-composited every
+                    // frame and competed with the karaoke lyrics animation for
+                    // the GPU (the "enhanced lyrics animation lag" in the
+                    // SpatialFlow lyrics overlay and the moving-blur lyrics
+                    // screen); at 20 fps it costs a third of that.
+                    if (unappliedMs >= DriftUpdateIntervalMs) {
+                        drift.advance(unappliedMs)
+                        unappliedMs = 0f
+                    }
                 }
                 lastFrameNanos = frameTimeNanos
             }
@@ -148,3 +163,5 @@ internal fun rememberBlurWanderDrift(active: Boolean): BlurWanderDrift {
     }
     return drift
 }
+
+private const val DriftUpdateIntervalMs = 50f

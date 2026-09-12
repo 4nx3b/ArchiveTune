@@ -363,7 +363,15 @@ fun SimpMusicPlayerContent(
                     playerConnection = playerConnection,
                     containerColor = startColor,
 
-                    renderLyrics = hasScrolled,
+                    // Suspend the card's Enhanced-lyrics renderer while the
+                    // fullscreen lyrics sheet is showing: the sheet renders its
+                    // own LyricsEnhanced on top, and the hidden card instance
+                    // kept a second karaoke view (frame loop + per-line text
+                    // fill + scroll) running underneath the sheet — the
+                    // "enhanced lyrics animation lag" in the SimpMusic style.
+                    // The card keeps its 300dp box so the page stays
+                    // scrollable.
+                    renderLyrics = hasScrolled && !lyricsFullscreenOpen,
                     onShowLyrics = { lyricsFullscreenOpen = true },
                     modifier = Modifier.padding(top = 10.dp),
                 )

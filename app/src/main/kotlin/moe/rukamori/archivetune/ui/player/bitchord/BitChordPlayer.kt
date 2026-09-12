@@ -1125,35 +1125,43 @@ fun BitChordPlayerContent(
 
                     .offset(y = 6.dp),
             ) {
-                if (!lyrics.isNullOrEmpty()) {
-                    CurrentLyricLine(
-                        lines = lyrics,
-                        trackKey = mediaMetadata.id,
-                        positionMs = lyricsPosition,
-                        isPlaying = isPlaying,
-                        durationMs = duration,
+                // The one-line strip is the collapsed-state teaser for the
+                // lyrics page. When the lyrics page is open it kept rendering
+                // above the progress bar (task report: "one line lyrics
+                // shouldn't display over the progress bar when I open lyrics
+                // page") — the page already shows the full lyrics, so the
+                // strip steps aside entirely.
+                if (!lyricsOpen) {
+                    if (!lyrics.isNullOrEmpty()) {
+                        CurrentLyricLine(
+                            lines = lyrics,
+                            trackKey = mediaMetadata.id,
+                            positionMs = lyricsPosition,
+                            isPlaying = isPlaying,
+                            durationMs = duration,
 
-                        onClick = {
-                            queueOpen = false
-                            lyricsOpen = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        synced = lyricsSynced,
-                    )
-                } else if (lyricsUnavailable) {
-                    LyricsUnavailableLine(
-                        trackKey = mediaMetadata.id,
-                        modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                queueOpen = false
+                                lyricsOpen = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            synced = lyricsSynced,
+                        )
+                    } else if (lyricsUnavailable) {
+                        LyricsUnavailableLine(
+                            trackKey = mediaMetadata.id,
+                            modifier = Modifier.fillMaxWidth(),
 
-                        onClick = { lyricsOpen = true },
-                    )
-                } else {
-                    LyricsLoadingLine(
-                        trackKey = mediaMetadata.id,
-                        modifier = Modifier.fillMaxWidth(),
+                            onClick = { lyricsOpen = true },
+                        )
+                    } else {
+                        LyricsLoadingLine(
+                            trackKey = mediaMetadata.id,
+                            modifier = Modifier.fillMaxWidth(),
 
-                        onClick = { lyricsOpen = true },
-                    )
+                            onClick = { lyricsOpen = true },
+                        )
+                    }
                 }
             }
             ThinSlider(
