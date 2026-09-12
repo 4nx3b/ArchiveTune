@@ -1757,3 +1757,84 @@ Work Log:
 Stage Summary:
 - dev @ 75ee5a5b2 (+ digest-pin commit pending): all 10 code tasks implemented, translations synced, PR open, branches cleaned.
 - build-icon-pack.yml publishes the runtime pack; the app downloads it on demand.
+
+---
+Task ID: 35
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 12-item follow-up batch — icon pack download failure, SpatialFlow full-bleed canvas/spacing/menu-glass/pills/moving-blur, BitChord canvas, SimpMusic freeze/static-bg/lyrics-mode removal, playlist import auto-sync, Year-in-Music share resolution, customization gating
+
+Work Log:
+- Icon pack: logcat had ZERO IconPackRuntime entries (the manager never logged —
+  unused android.util.Log import). Verified release asset reachable + digest
+  matches (f8444fda…). IconPackRuntimeManager: Timber logging at every step
+  (URL, HTTP code+redirect, byte progress, digest, extraction, retries), 3
+  attempts with 1s/3s backoff, stale .part/.tmp cleanup per attempt, explicit
+  followRedirects/followSslRedirects/retryOnConnectionFailure. Failure reason
+  now flows lastInstallFailure → IconViewModel.packDownloadError → the icon
+  screen's failed row (error-colored second line).
+- SpatialFlow canvas: full-bleed CanvasArtworkPlayer (RESIZE_MODE_ZOOM,
+  matchParentSize) + vertical legibility gradient (0.30/0.06/0.10/0.42/0.70
+  black stops); controls pushed to lower third with weight(1f); title uses
+  displayMedium Bold (reference's ~45sp heavy) + 6dp artist gap in canvas
+  mode. The 1/6-surface blurred-canvas backdrop recipe deleted (would be a
+  second decoder under the full-bleed video); SpatialFlowArtworkPager's
+  canvas params removed (dead path).
+- Spacing ported exactly from SpatialFlow FullPlayer.kt: topOffset =
+  ((screenHeight - albumArtSize)/2 - 220dp).coerceAtLeast(statusBar+68dp),
+  Spacer(topOffset - (statusBar+68dp)) after the header, fixed 24dp between
+  chips and wavy slider (the weight(0.32f)/weight(0.68f) spacers stretched
+  with leftover space = the reported "empty space between seekbar and song
+  title").
+- Lyrics overflow menu glass: (a) SpatialFlowLyrics attaches layerBackdrop
+  for the overlay's whole lifetime — attaching it only while the menu was
+  open meant the popup's first drawBackdrop sampled a not-yet-rendered
+  texture (transparent popup, no glass); (b) AnchoredLyricsOverflowMenu no
+  longer paints 0.55-alpha black over the frosted glass (glass + 10% surface
+  tint is the surface; opaque fallback unchanged when backdrop null); (c)
+  new scrimColor param — SpatialFlow passes its lyrics surface hue at 0.45,
+  others keep dim black.
+- Pills: tintColor constant (contentColor 0.8 alpha); only background reacts
+  to isSelected.
+- SpatialFlow lyrics background = MovingBlurBackground (exported internal
+  from LyricsScreen), palette colors passed in; solid brush stays as the
+  reveal base.
+- BitChord canvas: canvasPrimaryUrl/FallbackUrl params; bounded art card
+  renders CanvasArtworkPlayer over the AsyncImage fallback (same
+  clip/corners/shadow); hero slot renders it under the same DstIn fade +
+  top-strip scrim. Player.kt passes artworkCanvas at both call sites.
+- SimpMusic freeze: BottomSheetState.isExpanded was exact Animatable-Dp
+  equality — mid-slop gesture cancellation left value a hair below the upper
+  bound with no settle: visually expanded, functionally not (verticalScroll
+  disabled, nested-scroll latch reset path dead) until collapse+reopen. Now
+  `value >= upperBound - 0.5.dp`; connection converted from lazy object to a
+  named PreUpPostDownNestedScrollConnection with resetLatch() called on
+  expand().
+- SimpMusic lyrics background frozen: rememberInfiniteTransition angle/offset
+  animations removed, gradient at fixed diagonal (0,0 → 2500,2500); palette
+  color transitions on song change kept.
+- SimpMusic-lyrics mode removed: settings toggle + LyricsMode.SIMPMUSIC +
+  SimpMusicLyrics renderer deleted; card/fullscreen sheet always render
+  LyricsEnhanced; DataStore legacy migration rewrites SIMPMUSIC → ENHANCED;
+  all when-branches (BitChord/AppleMusic/LyricsScreen) now cover the
+  remaining V2/ENHANCED/SPOTIFY exhaustively.
+- Playlist import auto-sync: AddToPlaylistDialogOnline collects succeeded
+  YouTube ids; after the import, signed-in + YtmSync users get an
+  incremental syncPlaylistNow for remote playlists or a
+  YouTube.createPlaylist + browseId link for local-only ones (CrossService
+  dialog's recipe); CancellationException rethrown.
+- Year-in-Music share: realScreenPixels (R+ maximumWindowMetrics, else
+  getRealMetrics) + ComposeToImage.coverBitmap (scale=max, center-crop)
+  replace the 1080x1920 fitBitmap letterbox — export = phone's native
+  resolution and aspect, no bars, full-bleed card.
+- Customization gating: SIMPMUSIC + SPATIALFLOW added to
+  isPlayerStyleCustomizationEnabled's disabled list and to the
+  lyrics-background unavailability list.
+- Local SDK (platform 36+37.0, build-tools 36) installed; in-process kotlin
+  compile reached the compiler and surfaced/caught the AspectRatioFrameLayout
+  import (media3.ui not media3.common) before the container's 4GB ceiling
+  killed the daemon; brace-balance + exhaustive-when + import audits passed
+  on all 20 touched files.
+- Pushed dev @ 1c23ecc24; Build APKs / PR build / nightly workflows queued.
+
+Stage Summary:
+- All 12 follow-up items implemented on dev @ 1c23ecc24; CI compile pending.
