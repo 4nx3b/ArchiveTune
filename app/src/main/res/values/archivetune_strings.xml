@@ -362,8 +362,6 @@
     <string name="published_on">Published on %1$s</string>
     <string name="view_count_value">%1$s views</string>
     <string name="like_and_dislike">%1$s like(s), %2$s dislike(s)</string>
-    <string name="simpmusic_lyrics">SimpMusic lyrics</string>
-    <string name="simpmusic_lyrics_desc">Use SimpMusic’s lyrics view instead of Enhanced.</string>
     <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
@@ -686,6 +684,8 @@
     <string name="restore_step_verifying">Verifying backup</string>
     <string name="restore_step_stopping_playback">Stopping playback</string>
     <string name="restore_step_restoring_settings">Restoring settings</string>
+    <string name="restore_step_restoring_stats">Restoring listening stats</string>
+    <string name="backup_step_export_stats">Exporting listening stats</string>
     <string name="restore_step_restoring_file">Restoring %1$s</string>
     <string name="restore_step_restarting">Restarting app</string>
     <string name="backup_options_title">What to back up?</string>
@@ -763,6 +763,12 @@
     <string name="ai_romanize_lyrics_desc">Use the configured AI provider to romanise lyrics instead of the built-in engines. Usually more accurate on names, slang and unusual readings. While this is on, the app\'s own romanisation is switched off so a song never mixes two schemes.</string>
     <string name="auto_ai_romanize_lyrics">Auto AI romanisation</string>
     <string name="auto_ai_romanize_lyrics_desc">Romanise automatically as soon as lyrics are shown. Off by default because each track costs one request — with it off, use Lyrics menu → \"Romanise with AI\" when you want it.</string>
+    <string name="ai_romanize_separate_provider">Use separate provider for Romanisation</string>
+    <string name="ai_romanize_separate_provider_desc">When on, AI romanisation runs on its own provider, API key and model instead of the main AI provider. Leave the romanisation provider set to \"None\" to keep using the main one.</string>
+    <string name="ai_romanize_provider">Romanisation provider</string>
+    <string name="ai_romanize_provider_desc">Choose the AI service used only for romanising lyrics.</string>
+    <string name="ai_romanize_api_key">Romanisation API key</string>
+    <string name="ai_romanize_test_api">Test romanisation API</string>
     <string name="ai_romanize_excluded_languages">Don\'t romanise these languages</string>
     <string name="ai_romanize_excluded_languages_desc">Pick languages to leave in their original script even when AI romanisation is on. Useful for scripts you already read.</string>
     <string name="ai_romanize_excluded_languages_none">None — every non-Latin lyric will be romanised</string>

@@ -497,6 +497,7 @@ fun AutoPlaylistScreen(
                                                             )
                                                         },
                                                     downloads = downloads,
+                                                    downloadUtil = downloadUtil,
                                                 )
                                             }
                                         }

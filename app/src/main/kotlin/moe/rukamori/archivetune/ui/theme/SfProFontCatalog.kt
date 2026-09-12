@@ -6,13 +6,23 @@
 
 package moe.rukamori.archivetune.ui.theme
 
+import android.content.Context
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 object SfProFontCatalog {
@@ -87,4 +97,116 @@ object SfProFontCatalog {
                 }
             }.getOrNull()
         }
+}
+
+/**
+ * Lazily-downloaded previews for the SF Pro font picker.
+ *
+ * Each font in the catalog is downloaded exactly once into [Context.cacheDir]
+ * (small, system-reclaimable, excluded from backups) and turned into a
+ * [FontFamily] so the picker can render a live specimen of the real font
+ * below its name — the user sees how the font looks *before* committing to
+ * the full download+apply flow.
+ */
+object SfProFontPreview {
+    private const val PREVIEW_DIR = "sf_pro_previews"
+    private const val MIN_FONT_BYTES = 1024
+
+    private val inFlight = Mutex()
+
+    // Main-thread only: built from composition during row rendering.
+    private val loadedFamilies = HashMap<String, FontFamily>()
+
+    // Font previews are small but there can be ~47 rows scrolling through the
+    // picker; keep at most 3 concurrent preview downloads.
+    private val client =
+        OkHttpClient
+            .Builder()
+            .dispatcher(
+                Dispatcher().apply {
+                    maxRequests = 6
+                    maxRequestsPerHost = 3
+                },
+            ).connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
+
+    @Immutable
+    data class PreviewSpec(
+        val fontWeight: FontWeight = FontWeight.Normal,
+        val fontStyle: FontStyle = FontStyle.Normal,
+    )
+
+    fun previewSpec(entry: SfProFontCatalog.FontEntry): PreviewSpec =
+        PreviewSpec(
+            fontWeight = FontWeight(entry.numericWeight ?: 400),
+            fontStyle = if (entry.style == "italic") FontStyle.Italic else FontStyle.Normal,
+        )
+
+    fun previewFile(
+        context: Context,
+        entry: SfProFontCatalog.FontEntry,
+    ): File {
+        val dir = File(context.cacheDir, PREVIEW_DIR)
+        if (!dir.isDirectory) dir.mkdirs()
+        val name = entry.fileName ?: entry.url.substringAfterLast('/')
+        return File(dir, name)
+    }
+
+    fun isCached(
+        context: Context,
+        entry: SfProFontCatalog.FontEntry,
+    ): Boolean = previewFile(context, entry).length() >= MIN_FONT_BYTES
+
+    /**
+     * Downloads the font for preview if not cached yet. Returns true when the
+     * preview file is available afterwards. Thread-safe; concurrent calls for
+     * the same entry are collapsed.
+     */
+    suspend fun ensureDownloaded(
+        context: Context,
+        entry: SfProFontCatalog.FontEntry,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val file = previewFile(context, entry)
+            if (file.length() >= MIN_FONT_BYTES) return@withContext true
+            inFlight.withLock {
+                if (file.length() >= MIN_FONT_BYTES) return@withLock true
+                runCatching {
+                    val request = Request.Builder().url(entry.url).build()
+                    client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@use
+                        val bytes = response.body?.bytes() ?: return@use
+                        if (bytes.size < MIN_FONT_BYTES) return@use
+                        val partial = File(file.parentFile, "${file.name}.part")
+                        partial.writeBytes(bytes)
+                        partial.renameTo(file)
+                    }
+                }
+            }
+            file.length() >= MIN_FONT_BYTES
+        }
+
+    /**
+     * Builds (and caches) the [FontFamily] for a preview file that already
+     * exists on disk. Must be called from the main thread.
+     */
+    fun fontFamilyFor(
+        context: Context,
+        entry: SfProFontCatalog.FontEntry,
+    ): FontFamily? {
+        val file = previewFile(context, entry)
+        if (!file.isFile) return null
+        return loadedFamilies.getOrPut(entry.url) {
+            val spec = previewSpec(entry)
+            FontFamily(
+                Font(
+                    file = file,
+                    weight = spec.fontWeight,
+                    style = spec.fontStyle,
+                ),
+            )
+        }
+    }
 }

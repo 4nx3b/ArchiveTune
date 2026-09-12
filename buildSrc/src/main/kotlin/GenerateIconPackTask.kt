@@ -53,6 +53,15 @@ abstract class GenerateIconPackTask : DefaultTask() {
     @get:Input
     abstract val excludedIconIds: SetProperty<String>
 
+    /**
+     * When true (the default, mirroring slimTdlib) the pack is NOT baked into
+     * the APK: only the default launcher alias is generated (so the app keeps
+     * a launcher icon) and the pack itself is downloaded at runtime from the
+     * GitHub release built by build-icon-pack.yml — see IconPackRuntimeManager.
+     */
+    @get:Input
+    abstract val slimMode: Property<Boolean>
+
     @get:OutputDirectory
     abstract val resourceOutputDirectory: DirectoryProperty
 
@@ -78,6 +87,14 @@ abstract class GenerateIconPackTask : DefaultTask() {
         resourcesDirectory.mkdirs()
         assetsDirectory.mkdirs()
         manifestFile.parentFile.mkdirs()
+
+        if (slimMode.get()) {
+            // Slim build: no pack resources, no catalog asset, no pack
+            // aliases — only the default launcher alias so the app keeps its
+            // icon. The pack is downloaded at runtime.
+            manifestFile.writeText(buildManifest(emptyList()))
+            return
+        }
 
         val seenIds = mutableSetOf<String>()
         val seenHashes = mutableSetOf<String>()

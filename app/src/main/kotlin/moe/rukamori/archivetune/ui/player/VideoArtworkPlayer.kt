@@ -130,18 +130,6 @@ private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreferen
 
 private const val VideoReadyHoldTimeoutMs = 10000L
 
-/**
- * Fast-start cap for the audio-until-video-ready hold. The hold exists so a
- * fast-loading video and the audio begin together, but it previously waited
- * for the ENTIRE video pipeline (stream resolution + prepare + first frame),
- * bounded only by the 10 s artwork-fallback watchdog — so audio start could
- * lag the tap by up to 10 s. Now the hold auto-releases after this window:
- * audio starts immediately, and a video that becomes ready later simply
- * re-anchors to the live audio position in onRenderedFirstFrame (the drift
- * seek there is the same path used for every late-render recovery), so A/V
- * sync is preserved in both cases.
- */
-private const val VideoAudioHoldFastStartMs = 1800L
 private const val VideoClientAttemptTimeoutMs = 8000L
 
 private const val VideoSimpMusicAttemptTimeoutMs = 12000L
@@ -154,6 +142,48 @@ data class VideoStreamInfo(
     val captionTracks: List<PlayerResponse.CaptionTrack>,
     val selectedHeight: Int? = null,
 )
+
+/**
+ * Shared OkHttp client for the silent video artwork player. One process-wide
+ * instance: the previous per-`rememberVideoArtworkState` allocation leaked a
+ * fresh connection pool + dispatcher executor every time the video state was
+ * rebuilt (player-style switches, quality changes, navigation) — the players
+ * were released, but the clients only died with their idle threads.
+ */
+private val VideoStreamHttpClient by lazy {
+    OkHttpClient
+        .Builder()
+        .proxy(YouTube.streamOkHttpProxy)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val request = chain.request()
+            val host = request.url.host
+            val isYouTubeMediaHost =
+                host.endsWith("googlevideo.com") ||
+                    host.endsWith("googleusercontent.com") ||
+                    host.endsWith("youtube.com") ||
+                    host.endsWith("youtube-nocookie.com") ||
+                    host.endsWith("ytimg.com")
+
+            if (!isYouTubeMediaHost) {
+                return@addInterceptor chain.proceed(request)
+            }
+
+            val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
+            chain.proceed(
+                StreamClientUtils
+                    .applyRequestProfile(
+                        request.newBuilder(),
+                        requestProfile,
+                    ).build(),
+            )
+        }.build()
+}
+
+private fun videoStreamHttpClient(): OkHttpClient = VideoStreamHttpClient
 
 @Stable
 class VideoArtworkState internal constructor(
@@ -301,40 +331,7 @@ fun rememberVideoArtworkState(
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
     val updatedIsMainAudioBuffering by rememberUpdatedState(isMainAudioBuffering)
 
-    val okHttpClient =
-        remember {
-            OkHttpClient
-                .Builder()
-                .proxy(YouTube.streamOkHttpProxy)
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val host = request.url.host
-                    val isYouTubeMediaHost =
-                        host.endsWith("googlevideo.com") ||
-                            host.endsWith("googleusercontent.com") ||
-                            host.endsWith("youtube.com") ||
-                            host.endsWith("youtube-nocookie.com") ||
-                            host.endsWith("ytimg.com")
-
-                    if (!isYouTubeMediaHost) {
-
-                        return@addInterceptor chain.proceed(request)
-                    }
-
-                    val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
-                    chain.proceed(
-                        StreamClientUtils
-                            .applyRequestProfile(
-                                request.newBuilder(),
-                                requestProfile,
-                            ).build(),
-                    )
-                }.build()
-        }
+    val okHttpClient = remember { videoStreamHttpClient() }
 
     val mediaSourceFactory =
         remember(okHttpClient) {
@@ -397,7 +394,7 @@ fun rememberVideoArtworkState(
         if (shouldPlay) updatedOnRequestPauseMain()
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Video for $videoId loading — audio paused (bounded to ${VideoAudioHoldFastStartMs}ms)")
+            .d("Video for $videoId loading — audio paused until first frame (or artwork fallback)")
     }
 
     fun releaseAudioHold(resumeMainAudio: Boolean = false) {
@@ -632,26 +629,6 @@ fun rememberVideoArtworkState(
                     }
                 }.build()
         trackSelector.setParameters(params)
-    }
-
-    // Fast-start watchdog for the audio hold: if the video is not ready
-    // within VideoAudioHoldFastStartMs, start the audio anyway. The video
-    // keeps loading; its first rendered frame re-anchors it to the audio
-    // position (see the drift seek in onRenderedFirstFrame), so sync is
-    // recovered rather than sacrificed. This converts a worst-case 10 s
-    // silent start (slow video resolution) into a ~1.8 s one.
-    LaunchedEffect(awaitingVideoReady, state.hasPlaybackFailed) {
-        if (!awaitingVideoReady || state.hasPlaybackFailed) return@LaunchedEffect
-        delay(VideoAudioHoldFastStartMs)
-        if (awaitingVideoReady && !state.isVideoReady) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .i(
-                    "Video for $videoId not ready within ${VideoAudioHoldFastStartMs}ms — " +
-                        "starting audio now; video re-anchors on first frame",
-                )
-            releaseAudioHold(resumeMainAudio = true)
-        }
     }
 
     LaunchedEffect(state.streamUrl) {
@@ -1026,13 +1003,11 @@ fun rememberVideoArtworkState(
                             if (resumeMainAudio) {
                                 SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
                             } else {
-                                // No audio resume is scheduled — either the
-                                // fast-start watchdog already released the hold
-                                // (audio is live) or no hold was ever armed.
-                                // Parking the video for the extra settle delay
-                                // here would start it VideoLoadResumeDelayMs
-                                // BEHIND the already-playing audio, so resume
-                                // it immediately instead.
+                                // No audio resume is scheduled — no hold was
+                                // ever armed for this stream. Parking the video
+                                // for the extra settle delay here would start it
+                                // VideoLoadResumeDelayMs BEHIND the already-
+                                // playing audio, so resume it immediately instead.
                                 SystemClock.elapsedRealtime()
                             }
                         Timber

@@ -1566,3 +1566,345 @@ Stage Summary:
   libtdjni.so assets (digests pinned in code).
 - Next: user retests phone -> OTP -> (2FA) login on-device; mtcute-era
   sessions require one re-login.
+
+---
+Task ID: 29
+Agent: session-2026-09-11 (10-item user batch)
+Task: (1) video-playback toggle must gate ALL inline video incl. cached canvas, every player style; (2) canvas must never play when all canvas options are off, even cached; (3) residual liquid glass with the toggle off; (4) TikTok style slow thumbnails; (5) remove the audio-start timeout (song starts only when both audio AND video are ready); (6) dependency updates incl. the lyrics animation library; (7) much faster auto AI translate/romanise + "Use separate provider for Romanisation"; (8) dead code / comment blocks / memory leaks; (9) YouTube downloads stuck on loading; (10) PR dev -> main.
+
+Work Log:
+- 1+2) Player.kt: canvas gates (shouldUseV7Canvas / shouldUseArtworkCanvas) now
+  require enableVideoPlayback AND (archiveTuneCanvasEnabled || spotifyCanvasEnabled);
+  removed the spotifyConnected ("sp_dc set => canvas on") bypass, so a cached
+  canvas can no longer play with every canvas option off. trySpotifyCanvas now
+  honors only the Spotify Canvas toggle. Manual-refetch collector gated and
+  keyed on the same flags. Thumbnail.kt (classic player) gained the
+  enableVideoPlayback gate; AlbumViewModel.fetchAlbumCanvas gained both gates.
+- 5) VideoArtworkPlayer.kt: deleted the VideoAudioHoldFastStartMs (1.8 s)
+  watchdog that started audio before the video was ready. Audio now stays held
+  until the first rendered frame (10 s artwork-fallback watchdog retained for
+  total failure). Audio/video readiness mutual gating already existed
+  (isMainAudioBuffering freeze + pendingResume scheduling).
+- 3) Liquid glass leftovers gated on LiquidGlassEnabledKey: the four player
+  lyrics-overflow popups (AppleMusicPlayer, TikTokPlayer, SpatialFlowLyrics,
+  SimpMusicFullscreenLyricsSheet) no longer self-allocate a kyant backdrop on
+  SDK >= S; ScreenHeaderHaze (frosted progressive header strip) and the
+  MainActivity Home/Search/Library top fade are now liquid-glass-gated too.
+- 4) TikTok thumbnails: artwork request switched to the shared cache-keyed
+  rememberOfflineArtworkImageRequest + quality fallback chain on error
+  (maxres -> hq720 -> mq, same as V7); mesh palette now fetches the RAW
+  thumbnailUrl (cache-shared with the other players' palette) instead of a
+  second 1080px-class fetch of the resized URL; TikTokPlayer prefetches the
+  next two feed pages' covers ahead of the swipe.
+- 6) Dependency bumps (verified against Maven Central / Google Maven):
+  agp 9.2.1->9.4.0, kotlin 2.4.0->2.4.20 (+kotlinMetadata), ksp 2.3.10->2.3.12,
+  compose 1.12.0-beta02->1.12.1 (stable), material3 1.5.0-alpha23->alpha28
+  (repo's pre-release rail for compose.*, per renovate.json), coil 3.5.0->3.6.2,
+  okhttp 5.4.0->5.5.0, ktor 3.5.1->3.5.2, jsoup 1.22.2->1.23.2,
+  lottie 6.6.6->6.7.1, guava 33.6.0->33.7.1-jre, media3 1.10.1->1.11.1,
+  room 2.8.4->2.8.5, navigation 2.9.8->2.10.1, bcpg 1.85->1.86,
+  org.json 20250517->20260814 (+ removed the stale direct 20240303 pin),
+  aboutlibraries 15.0.3->15.2.0, kyant0/backdrop 2.0.0->2.0.1.
+  Enhanced-lyrics animation library (com.mocharealm.accompanist) verified
+  ALREADY at the latest published versions (lyrics-ui 1.0.19 / lyrics-core
+  0.4.7) — nothing newer exists on Maven Central to bump to.
+- 7) AI speed: batches 80/6000 -> 160/16000 (typical song = ONE request),
+  multi-batch songs run 3 concurrent batches; rate limiter for
+  LYRICS_TRANSLATION / LYRICS_ROMANIZATION 1000 ms spacing / 60 per hour ->
+  150 ms / 240 per hour; result caches 8 -> 32 tracks.
+  Separate romanisation provider: 7 new preference keys
+  (AiRomanizeSeparateProviderKey + provider/apiKey/endpoint/model/
+  validationStatus), AiLyricsRomanization.rememberSettings() branches to the
+  dedicated config (falls back to the main provider while unconfigured),
+  AiIntegrationSettingsViewModel gained testRomanizeApi/fetchRomanizeModels/
+  clearRomanize*, and the AI Integration screen's Romanisation group gained
+  the full provider/key/model/Check-API block mirroring the main provider
+  (MISTRAL/DEEPL excluded — they are translation-only in AiTextService).
+- 8) Dead code: deleted unused api/{OpenRouter,DeepL,Mistral}Service.kt and
+  echo/utils/sabr/EjsNTransformSolver.kt (296 lines incl. an unused WebView
+  holder); removed the disabled desugaring dependency + config lines and the
+  org.json dual-pin. Comment blocks: the remaining block comments are design
+  documentation, not commented-out code — kept. Memory leaks: the video
+  artwork player's per-instance OkHttpClient (fresh connection pool +
+  dispatcher per player rebuild) is now one shared process-wide client;
+  verified ExoPlayer/listener/lifecycle/receiver teardown in
+  CanvasArtworkPlayer, VideoArtworkPlayer, MusicService, Discord client.
+- 9) YouTube downloads: PRDownloader whole-file stage now publishes REAL
+  progress (DownloadFetchProgress StateFlow keyed by "ytm:<id>", surfaced in
+  the SpatialFlow download chip); fetch bounds tightened (12 min -> 5 min
+  deadline, 90 s -> 45 s stall, 3 -> 2 attempts); download resolver's
+  startupReadiness wait bounded to 10 s; ONE automatic retry per failed
+  request (purged songUrlCache => fresh stream URL resolution, bounded to a
+  single attempt so permanent failures still surface); download request ids
+  unified to the source-scoped key ("ytm:<id>") in MusicService
+  auto-download-on-like, SpatialFlowPlayer, HeaderDownloadState
+  (sendAddMissingDownloads now takes the DownloadUtil and queues the target
+  source key; sendRemoveDownloads / pause / resume resolve through
+  DownloadSourceConfig.songIdToDownloadIds so playlist-header actions
+  actually hit the source-scoped entries instead of no-op'ing on plain ids).
+- Static review pass (independent agent) over the full diff: 1 compile
+  blocker (duplicate clearError()) + 4 polish items found and fixed.
+
+Stage Summary:
+- Video playback toggle is now a true global video gate (music videos AND
+  canvas, cached or not, in every player style + album page); canvas toggles
+  are strictly opt-in again (no Spotify-connected bypass).
+- Song start with video: audio held until the video's first rendered frame;
+  no premature audio start timeout. Both-sides-ready semantics preserved.
+- Liquid glass toggle now removes every glass effect: player lyrics popups,
+  frosted header strips, home top fade.
+- TikTok thumbnails load faster (shared cache, fallback chain, palette from
+  the small raw URL, next-page prefetch) and no longer hang on maxres 404s.
+- AI translate/romanise: single-request songs, parallel batches, no rate
+  limiter stall; separate romanisation provider with its own key check,
+  model picker and test button.
+- YouTube downloads: bounded at every stage, show real progress, auto-retry
+  once with a fresh stream URL, and every download/cancel path now targets
+  the same source-scoped entry — the "infinite download" class is closed.
+
+---
+Task ID: 30
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Fix the CI build broken by 50b232dd7 ("always monitor the build and
+fix the error")
+
+Work Log:
+- Pulled failing CI logs for 50b232dd7 (PR build + Build APKs + Nightly,
+  all red): 30+ Kotlin errors. Root causes: (a) material3
+  1.5.0-alpha23 -> 1.5.0-alpha28 removes/changes 6 API surfaces the app
+  still uses (old Slider overload + SliderState.valueRange,
+  ShortNavigationBarItemDefaults text-color params, no-arg menuAnchor(),
+  ExposedDropdownMenu, toggleButtonColors) across ~13 untouched files;
+  (b) DownloadUtil auto-retry called nonexistent
+  DownloadManager.retryDownloads() and tripped null-safety on
+  MutableMap.merge's nullable return; (c) SpatialFlowPlayer's
+  percentDownloaded elvis widened to Number&Comparable (no maxOf
+  overload).
+- e841b27e9: pinned material3 back to 1.5.0-alpha23 (all other dep
+  updates kept; alpha23 is built against compose 1.12.0-alpha03, same
+  1.12 train as the kept 1.12.1 stable pin); DownloadUtil retry now
+  re-adds the request (the app's established restart idiom — same as
+  DownloadRepository's resume path; the youtube factory re-resolves the
+  stream URL at open since the failure purged songUrlCache).
+- 17d25c6b8: fixed the SpatialFlowPlayer Float-elvis type trap
+  ((download?.percentDownloaded ?: 0f).toDouble()).
+- Set up an Android SDK + local Gradle compile loop
+  (scripts/setup-android-sdk.sh, scripts/local-compile.sh) as a
+  pre-push safety net; CI watcher script (scripts/ci-monitor.py) polls
+  workflow runs per head SHA.
+- Monitored both fix pushes through CI to green.
+
+Stage Summary:
+- All three workflows green on 17d25c6b8: Build Pull Request (build +
+  test + lint), Build APKs, Nightly (all 8 release/R8 matrix jobs).
+- PR #216 open, mergeable_state clean, 3 commits, head 17d25c6b8.
+- material3 intentionally stays on 1.5.0-alpha23: alpha28+ would force
+  rewriting 6 API surfaces across ~13 UI files against an unstable
+  alpha API (documented in libs.versions.toml).
+
+---
+Task ID: 32
+Agent: Super Z (main agent, session web-e130fa90)
+Task: Revert all the dependency upgrades including the enhanced lyrics
+animation library
+
+Work Log:
+- Audited every dependency change 50b232dd7 made (toml + app/build.gradle.kts)
+  and the full git history of the MochaRealm accompanist lyrics entries.
+- 43bff001a: reverted all 19 version bumps to the pre-batch (6a2e878f8)
+  values: agp 9.2.1, kotlin 2.4.0 + ksp 2.3.10 + kotlinMetadata 2.4.0,
+  compose 1.12.0-beta02, material3 1.5.0-alpha23, media3 1.10.1, room
+  2.8.4, ktor 3.5.1, jsoup 1.22.2, coil 3.5.0, guava 33.6.0-jre,
+  navigation 2.9.8, lottie 6.6.6, bouncyCastle 1.85, okhttp 5.4.0,
+  aboutLibraries 15.0.3, liquid-glass 2.0.0, org.json 20250517.
+- Enhanced lyrics animation: accompanist-core 0.4.7 -> 0.4.6 (the
+  library's last bump, Jul 2 automated PR #966). lyrics-ui stays 1.0.19 —
+  it is the only version ever published/used (dependency introduced at
+  1.0.19 in May); no earlier version exists to revert to.
+- Kept the batch's non-upgrade cleanups: disabled-desugaring dep removal,
+  org.json stale direct-pin -> version catalog unification.
+- Pre-checked the batch's new code for APIs that would need the newer
+  versions (coil usage in TikTok pages, media3 DataSource imports in
+  PRDownloaderDataSource/DownloadUtil) — all long-stable APIs.
+- Monitored CI through to green on the revert.
+
+Stage Summary:
+- Dependency set now matches 6a2e878f8 exactly (plus lyrics-core one
+  step back); all three workflows green on 43bff001a — the batch's
+  functional code compiles, tests and lints clean against the reverted
+  dependencies, and all release/R8 builds pass.
+- PR #216 head is 43bff001a, mergeable_state clean.
+
+---
+Task ID: 34
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 12-item user batch — canvas/video decoupling, stats backup, SpatialFlow canvas/haptics, runtime icon packs, lyrics active-line fix, romanisation providers, enhanced lyrics in new styles, upstream V9/V10 copy, SF Pro font previews, translations sync, PR, branch cleanup
+
+Work Log:
+- translate: merged upstream/translate (609 commits) into fork translate, resolved 18 Weblate conflicts via three-way entry merge (upstream wins, fork-only entries kept), sanitized corrupt Weblate bytes in values-es; pushed 0902ca920.
+- Canvas decoupled from enableVideoPlayback in Player.kt/Thumbnail.kt/AlbumViewModel (4 gate sites); canvas toggles are now the only gates.
+- Lyrics active-line fix: LyricsV2 + SimpMusicLyrics position providers keyed to the live state object (stale-provider capture froze word fill after track change); LyricsEnhanced restart clobber folded into the poll loop's wrap detection.
+- Backup: stats/events.json (kotlinx-serialization payload of the event table) emitted whenever LIBRARY is excluded; restore merges it into the live DB (idempotent dedup, play-time increments); DAO helpers added.
+- AI romanisation: secondary provider dropdown lists all 7 providers; Mistral gained OpenAI-compatible completion + model fetching (previously every completion threw); model picker enabled for OpenRouter/Mistral.
+- Enhanced lyrics: SpatialFlow overlay + SimpMusic fullscreen sheet render LyricsEnhanced for the default mode; BitChord feeds scrub-position to its lyrics panel.
+- SpatialFlow player: canvas in the artwork slot + blurred canvas backdrop behind controls (AM recipe); music haptics completed — engine moved to playback/, fed by HapticsPcmProcessor (pass-through Media3 BaseAudioProcessor, SpatialFlow's analyzePcmForHaptics verbatim); no RECORD_AUDIO needed anymore; settings switch + strength slider.
+- Upstream V9 (Material Extended) / V10 (Editorial) copied verbatim from rukamori/ArchiveTune dev incl. WavySliderExpressive, ToggleSegmentButton, V9AnimatedPlaybackControls; V10Player.kt deleted (block now in PlayerComponents.kt like upstream); Player.kt integration points aligned (V10 fixed-bg/skip/peek/bg-fade + V9 canvasSource/gradientColors). CanvasSource doesn't exist in the fork's canvas module — the provider-tag String (inferredProvider()) is the type adapter.
+- Runtime icon packs: slimIconPacks gradle flag (default true) — GenerateIconPackTask emits only the default alias; IconPackRuntimeManager downloads icon-pack-v1.zip from the new build-icon-pack.yml release (digest pinned f8444fda…); IconScreen prompts + download row; runtime selection pins home-screen shortcuts (Android cannot add aliases post-install); TelegramSettings got the runtime-extension text + download pill that disappears once present.
+- SF Pro picker: live font specimen per row (cached preview download, low-data degrade).
+- CI: 3 fix rounds (CanvasSource adapter, Result inference in the pack installer, ShortcutManagerCompat API, exhaustive when, imports, variant task name in the workflow). Icon-pack release workflow green; digest pinned.
+- Branches: deleted arena/*, codex/batch-10-*, codex/batch-11-* — only main/dev/translate remain. PR #216 (dev -> main) open.
+
+Stage Summary:
+- dev @ 75ee5a5b2 (+ digest-pin commit pending): all 10 code tasks implemented, translations synced, PR open, branches cleaned.
+- build-icon-pack.yml publishes the runtime pack; the app downloads it on demand.
+
+---
+Task ID: 35
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 12-item follow-up batch — icon pack download failure, SpatialFlow full-bleed canvas/spacing/menu-glass/pills/moving-blur, BitChord canvas, SimpMusic freeze/static-bg/lyrics-mode removal, playlist import auto-sync, Year-in-Music share resolution, customization gating
+
+Work Log:
+- Icon pack: logcat had ZERO IconPackRuntime entries (the manager never logged —
+  unused android.util.Log import). Verified release asset reachable + digest
+  matches (f8444fda…). IconPackRuntimeManager: Timber logging at every step
+  (URL, HTTP code+redirect, byte progress, digest, extraction, retries), 3
+  attempts with 1s/3s backoff, stale .part/.tmp cleanup per attempt, explicit
+  followRedirects/followSslRedirects/retryOnConnectionFailure. Failure reason
+  now flows lastInstallFailure → IconViewModel.packDownloadError → the icon
+  screen's failed row (error-colored second line).
+- SpatialFlow canvas: full-bleed CanvasArtworkPlayer (RESIZE_MODE_ZOOM,
+  matchParentSize) + vertical legibility gradient (0.30/0.06/0.10/0.42/0.70
+  black stops); controls pushed to lower third with weight(1f); title uses
+  displayMedium Bold (reference's ~45sp heavy) + 6dp artist gap in canvas
+  mode. The 1/6-surface blurred-canvas backdrop recipe deleted (would be a
+  second decoder under the full-bleed video); SpatialFlowArtworkPager's
+  canvas params removed (dead path).
+- Spacing ported exactly from SpatialFlow FullPlayer.kt: topOffset =
+  ((screenHeight - albumArtSize)/2 - 220dp).coerceAtLeast(statusBar+68dp),
+  Spacer(topOffset - (statusBar+68dp)) after the header, fixed 24dp between
+  chips and wavy slider (the weight(0.32f)/weight(0.68f) spacers stretched
+  with leftover space = the reported "empty space between seekbar and song
+  title").
+- Lyrics overflow menu glass: (a) SpatialFlowLyrics attaches layerBackdrop
+  for the overlay's whole lifetime — attaching it only while the menu was
+  open meant the popup's first drawBackdrop sampled a not-yet-rendered
+  texture (transparent popup, no glass); (b) AnchoredLyricsOverflowMenu no
+  longer paints 0.55-alpha black over the frosted glass (glass + 10% surface
+  tint is the surface; opaque fallback unchanged when backdrop null); (c)
+  new scrimColor param — SpatialFlow passes its lyrics surface hue at 0.45,
+  others keep dim black.
+- Pills: tintColor constant (contentColor 0.8 alpha); only background reacts
+  to isSelected.
+- SpatialFlow lyrics background = MovingBlurBackground (exported internal
+  from LyricsScreen), palette colors passed in; solid brush stays as the
+  reveal base.
+- BitChord canvas: canvasPrimaryUrl/FallbackUrl params; bounded art card
+  renders CanvasArtworkPlayer over the AsyncImage fallback (same
+  clip/corners/shadow); hero slot renders it under the same DstIn fade +
+  top-strip scrim. Player.kt passes artworkCanvas at both call sites.
+- SimpMusic freeze: BottomSheetState.isExpanded was exact Animatable-Dp
+  equality — mid-slop gesture cancellation left value a hair below the upper
+  bound with no settle: visually expanded, functionally not (verticalScroll
+  disabled, nested-scroll latch reset path dead) until collapse+reopen. Now
+  `value >= upperBound - 0.5.dp`; connection converted from lazy object to a
+  named PreUpPostDownNestedScrollConnection with resetLatch() called on
+  expand().
+- SimpMusic lyrics background frozen: rememberInfiniteTransition angle/offset
+  animations removed, gradient at fixed diagonal (0,0 → 2500,2500); palette
+  color transitions on song change kept.
+- SimpMusic-lyrics mode removed: settings toggle + LyricsMode.SIMPMUSIC +
+  SimpMusicLyrics renderer deleted; card/fullscreen sheet always render
+  LyricsEnhanced; DataStore legacy migration rewrites SIMPMUSIC → ENHANCED;
+  all when-branches (BitChord/AppleMusic/LyricsScreen) now cover the
+  remaining V2/ENHANCED/SPOTIFY exhaustively.
+- Playlist import auto-sync: AddToPlaylistDialogOnline collects succeeded
+  YouTube ids; after the import, signed-in + YtmSync users get an
+  incremental syncPlaylistNow for remote playlists or a
+  YouTube.createPlaylist + browseId link for local-only ones (CrossService
+  dialog's recipe); CancellationException rethrown.
+- Year-in-Music share: realScreenPixels (R+ maximumWindowMetrics, else
+  getRealMetrics) + ComposeToImage.coverBitmap (scale=max, center-crop)
+  replace the 1080x1920 fitBitmap letterbox — export = phone's native
+  resolution and aspect, no bars, full-bleed card.
+- Customization gating: SIMPMUSIC + SPATIALFLOW added to
+  isPlayerStyleCustomizationEnabled's disabled list and to the
+  lyrics-background unavailability list.
+- Local SDK (platform 36+37.0, build-tools 36) installed; in-process kotlin
+  compile reached the compiler and surfaced/caught the AspectRatioFrameLayout
+  import (media3.ui not media3.common) before the container's 4GB ceiling
+  killed the daemon; brace-balance + exhaustive-when + import audits passed
+  on all 20 touched files.
+- Pushed dev @ 1c23ecc24; Build APKs / PR build / nightly workflows queued.
+
+Stage Summary:
+- All 12 follow-up items implemented on dev @ 1c23ecc24; CI compile pending.
+
+---
+Task ID: 36
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item follow-up batch — icon pack download failure (log-attached),
+spatialflow canvas/control frosted blend + lyrics-page black bar + popup
+glass, enhanced-lyrics animation lag (simpmusic + spatialflow), bitchord
+one-line lyric over progress bar, Spotify playlist overflow menu clipping.
+
+Work Log:
+- Log analysis (archivetune-log-1789248894837.txt): the pack download itself
+  succeeds 3x in a row (2,666,581 bytes = exact release size, digest OK) but
+  each install ends in "Icon pack installed: version=icon-pack-v1, icons=-1"
+  and restarts — isInstalled() never became true. Root cause: catalogFile()
+  built its path from CATALOG_ENTRY.removePrefix("$ZIP_ENTRY_PREFIX/") — the
+  interpolated prefix is "icon_pack//" (double slash) so removePrefix was a
+  no-op and the catalog was read from <pack>/icon_pack/catalog.json while
+  extractZip writes <pack>/catalog.json. Fixed to removePrefix(ZIP_ENTRY_
+  PREFIX); the already-extracted on-disk pack is recognized with no
+  re-download, and AppIconRepository.loadRuntimeIcons() now finds the catalog
+  so the icons list. (Release zip structure independently verified by
+  downloading icon-pack-v1.zip and unzip -l: entries are exactly
+  icon_pack/catalog.json + icon_pack/drawables/*.png.)
+- Screenshot/VLM analysis (030809 player, 030803 lyrics page, 031841 menu)
+  plus the previous session's reference image: spatialflow needs the
+  reference's frosted-dock canvas layout (sharp video above, blurred+tinted
+  glass behind the lower-third controls, gradient blend at the boundary).
+  Implemented the 3-layer recipe in SpatialFlowPlayer: (1) frosted twin
+  canvas at 1/6 layout, 72/6=12dp blur on the small surface, 6x + 10%
+  overscan upscale, maxVideoEdgePx=480 (Apple Music's cheap backdrop
+  recipe); (2) sharp full-bleed stage with a DstIn fade over 50-65% of
+  height; (3) frost tint gradient deepening into the dock. The plain black
+  legibility gradient is gone.
+- SpatialFlow lyrics black bar: the overlay's statusBar/navigationBars/
+  vertical padding sat OUTSIDE MovingBlurBackground (matchParentSize inside
+  the padded box), so the top strip above the song title painted only the
+  dark base brush (pixel-verified: RGB(57,17,17), 140px tall, sharp edge).
+  Padding moved onto the content Column; the blur background now fills edge
+  to edge.
+- SpatialFlow lyrics popup glass: layerBackdrop wrapped ONLY the lyrics text
+  Column, so the popup's drawBackdrop sampled an essentially empty texture
+  (transparent popup, no glass — the exact reported symptom). The backdrop
+  layer now wraps the moving-blur background AND the content; the popup is a
+  later sibling outside the layer so it never self-samples. Popup anchoring
+  also loses the parent-padding offset error it used to inherit.
+- Enhanced-lyrics lag: (a) BlurWanderDrift updated its x/y/rotation states
+  every frame, each invalidating the full-footprint 64dp RenderEffect layer
+  (60 re-composites/sec against the karaoke animation) — updates now
+  throttle to ~20fps (50ms), visually identical for a 26dp/s crawl; benefits
+  the spatialflow overlay and the moving-blur lyrics screen alike. (b)
+  SimpMusic card's LyricsEnhanced kept a second karaoke view running beneath
+  the fullscreen lyrics sheet — the card renderer now suspends while the
+  sheet is open (300dp box kept for scrollability).
+- BitChord: the one-line lyric strip (CurrentLyricLine / LyricsUnavailable_
+  Line / LyricsLoadingLine) no longer renders above the progress bar while
+  the lyrics page is open.
+- Spotify playlist menu clipping: the BottomSheetMenu host capped popups at
+  40% of screen height with no scrolling, silently clipping the menu's
+  bottom rows (est. ~430dp content vs ~367dp cap on a 919dp screen).
+  Cap raised to 0.55 and NewMenuContainer (the fully-static container the
+  Spotify playlist menu uses; verified its ONLY user) scrolls within the
+  cap. The shared host Column deliberately stays non-scrollable — PlayerMenu
+  and friends embed direct LazyColumns that would crash with unbounded
+  height constraints (caught during review before push).
+- Pushed dev @ 148c1d486; CI in flight (check passed, builds running).
+
+Stage Summary:
+- All 5 items implemented on dev @ 148c1d486; icons, spatialflow canvas
+  dock, lyrics overlay visuals/glass, lyrics perf, bitchord strip, and the
+  playlist menu all fixed. CI result to be verified in the monitor loop.

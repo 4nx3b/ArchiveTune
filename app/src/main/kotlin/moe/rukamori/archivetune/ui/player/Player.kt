@@ -180,7 +180,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.SpotifyCanvasKey
-import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -426,6 +425,7 @@ fun BottomSheetPlayer(
     )
     val playerUsesFixedBackground =
         playerDesignStyle == PlayerDesignStyle.V9 ||
+            playerDesignStyle == PlayerDesignStyle.V10 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
@@ -526,9 +526,6 @@ fun BottomSheetPlayer(
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
     val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
-
-    val spotifyConnected by rememberPreference(SpotifySpDcKey, defaultValue = "")
-    val spotifyCanvasEffective = spotifyCanvasEnabled || spotifyConnected.isNotBlank()
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -969,6 +966,7 @@ fun BottomSheetPlayer(
     val dynamicQueuePeekHeight =
         if (
             playerDesignStyle == PlayerDesignStyle.V5 ||
+            playerDesignStyle == PlayerDesignStyle.V10 ||
             playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
             playerDesignStyle == PlayerDesignStyle.BITCHORD ||
             playerDesignStyle == PlayerDesignStyle.TIKTOK ||
@@ -1241,6 +1239,17 @@ fun BottomSheetPlayer(
                         0f
                     }
                 dynamicBgColor.copy(alpha = 1f - fadeProgress)
+            } else if (playerDesignStyle == PlayerDesignStyle.V10) {
+                val progress =
+                    ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
+                        .coerceIn(0f, 1f)
+                val fadeProgress =
+                    if (progress < 0.2f) {
+                        ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                dynamicV10FieldColor.copy(alpha = 1f - fadeProgress)
             } else if (playerDesignStyle == PlayerDesignStyle.V7) {
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
@@ -1373,17 +1382,26 @@ fun BottomSheetPlayer(
         // the canvas (even a cached one for the same media id) must never
         // stand in for the video.
         val trackIsMusicVideo = mediaMetadata?.isMusicVideo == true
+        // Canvas is independent of the global video-playback switch: that
+        // switch only governs music videos. Canvas artwork has its own explicit
+        // toggles (below), which remain the sole gates. When every canvas option
+        // is off nothing is resolved here at all, so a previously cached canvas
+        // video can never start playing in any player style. A connected Spotify
+        // account no longer implies canvas on: the user must explicitly enable
+        // the Spotify Canvas toggle.
+        val canvasOptionsEnabled = archiveTuneCanvasEnabled || spotifyCanvasEnabled
         val shouldUseV7Canvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
+            canvasOptionsEnabled &&
                 (playerDesignStyle == PlayerDesignStyle.V7 ||
                     playerDesignStyle == PlayerDesignStyle.TIKTOK) &&
                 !aodModeEnabled &&
                 !trackIsMusicVideo
         val shouldUseArtworkCanvas =
-            (archiveTuneCanvasEnabled || spotifyCanvasEffective) &&
+            canvasOptionsEnabled &&
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
-                        playerDesignStyle == PlayerDesignStyle.V9
+                        playerDesignStyle == PlayerDesignStyle.V9 ||
+                        playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
                 ) &&
                 !aodModeEnabled &&
                 !trackIsMusicVideo
@@ -1422,16 +1440,22 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = next.spotifyTrackId,
                     )
                 }
             }
         }
 
-        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+        LaunchedEffect(playerConnection, mediaMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
+                // Manual refetch results only flow into the render states
+                // while canvas use is currently allowed (video playback on
+                // and a canvas option enabled); otherwise they are dropped so
+                // a refetched (possibly cached) canvas can never bypass the
+                // toggles.
+                if (!shouldUseV7Canvas && !shouldUseArtworkCanvas) return@collect
 
                 canvasArtworkRevision += 1
                 if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
@@ -1472,7 +1496,7 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
@@ -1512,7 +1536,7 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
-                        trySpotifyCanvas = spotifyCanvasEffective,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                         spotifyTrackId = metadata.spotifyTrackId,
                     )
                 if (requestRevision == canvasArtworkRevision) {
@@ -1577,6 +1601,7 @@ fun BottomSheetPlayer(
             playerDesignStyle != PlayerDesignStyle.V5 &&
             playerDesignStyle != PlayerDesignStyle.V7 &&
             playerDesignStyle != PlayerDesignStyle.V9 &&
+            playerDesignStyle != PlayerDesignStyle.V10 &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
             playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.TIKTOK &&
@@ -1615,6 +1640,8 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -1851,8 +1878,10 @@ fun BottomSheetPlayer(
                             textBackgroundColor = TextBackgroundColor,
                             textButtonColor = textButtonColor,
                             iconButtonColor = iconButtonColor,
+                            canvasSource = artworkCanvas?.inferredProvider(),
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            gradientColors = gradientColors,
                             onCollapseClick = { state.collapseSoft() },
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -1948,6 +1977,8 @@ fun BottomSheetPlayer(
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
                             positionProvider = { position },
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                             modifier =
@@ -2083,6 +2114,8 @@ fun BottomSheetPlayer(
                             menuState = menuState,
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
                             modifier =
                                 Modifier
                                     .fillMaxSize()
@@ -2319,8 +2352,10 @@ fun BottomSheetPlayer(
                             textBackgroundColor = TextBackgroundColor,
                             textButtonColor = textButtonColor,
                             iconButtonColor = iconButtonColor,
+                            canvasSource = artworkCanvas?.inferredProvider(),
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            gradientColors = gradientColors,
                             onCollapseClick = { state.collapseSoft() },
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -2415,6 +2450,8 @@ fun BottomSheetPlayer(
                             bottomSheetPageState = bottomSheetPageState,
                             currentFormat = currentFormat,
                             positionProvider = { position },
+                            canvasPrimaryUrl = artworkCanvas?.animated,
+                            canvasFallbackUrl = artworkCanvas?.videoUrl,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                             modifier =

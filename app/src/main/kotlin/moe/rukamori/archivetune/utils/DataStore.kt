@@ -78,16 +78,20 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // SimpMusic's lyrics renderer used to be a boolean of its own, read only by the
-            // SimpMusic player style's lyrics card. It is a LyricsMode now, so it applies to the
-            // lyrics page under every style — carry anyone who had it switched on across.
+            // SimpMusic's lyrics renderer used to be a boolean of its own, then a
+            // LyricsMode entry; both are gone now and the SimpMusic style renders
+            // Enhanced lyrics — carry anyone who had it switched on to ENHANCED,
+            // and rewrite any stale stored SIMPMUSIC value the same way.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
-                    currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true
+                    currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true ||
+                        currentData[LyricsModeKey] == "SIMPMUSIC"
 
                 override suspend fun migrate(currentData: Preferences): Preferences =
                     currentData.toMutablePreferences().apply {
-                        this[LyricsModeKey] = LyricsMode.SIMPMUSIC.name
+                        if (this[LyricsModeKey] == "SIMPMUSIC") {
+                            this[LyricsModeKey] = LyricsMode.ENHANCED.name
+                        }
                         remove(LEGACY_SIMPMUSIC_LYRICS_KEY)
                     }
 

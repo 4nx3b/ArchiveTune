@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.constants.AudioQuality
@@ -154,6 +155,9 @@ class DownloadUtil
         private val appleMusicQuality by enumPreference(context, AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
+
+        /** Request ids that have already consumed their one automatic retry. */
+        private val autoRetryCounts = ConcurrentHashMap<String, Int>()
 
         private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
 
@@ -424,7 +428,14 @@ class DownloadUtil
             ) { dataSpec ->
                 // Media3 invokes resolvers on its download worker, including
                 // resumed downloads that never pass through the activity.
-                runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
+                // Bounded wait: a hung app-initialisation stage must not park
+                // the download worker (and every queued download behind it) at
+                // "Downloading 0%" forever.
+                runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(STARTUP_READINESS_WAIT_MS) {
+                        moe.rukamori.archivetune.App.startupReadiness.awaitReady()
+                    }
+                }
                 val requestKey = dataSpec.key ?: error("No media id")
                 val mediaId = DownloadSourceConfig.downloadIdToSongId(requestKey)
 
@@ -648,6 +659,38 @@ class DownloadUtil
                                 // "old download gets overwritten, only a single
                                 // entry remains" report.
                                 removeDownloadCacheEntriesForRequest(download.request.id)
+
+                                // One automatic retry per request: the failure
+                                // purged the cached stream URL (and its partial
+                                // spans), so the retry resolves a FRESH stream
+                                // URL instead of blindly re-fetching the expired
+                                // one — this is what recovers the transient
+                                // 403/expired-URL and stall failures without the
+                                // user having to notice and tap again. Bounded
+                                // to a single attempt so a permanently broken
+                                // stream surfaces as a normal failure.
+                                // MutableMap.merge declares a nullable return
+                                // (removal semantics); Int::plus never removes,
+                                // so null can only mean "no count yet" -> 1.
+                                val retryCount =
+                                    autoRetryCounts.merge(download.request.id, 1, Int::plus) ?: 1
+                                if (retryCount <= 1) {
+                                    downloadScope.launch {
+                                        delay(DOWNLOAD_AUTO_RETRY_DELAY_MS)
+                                        // Re-adding the same request restarts the
+                                        // failed download: the data source factory
+                                        // re-resolves the stream URL at open time
+                                        // (songUrlCache was purged above), so the
+                                        // retry fetches a fresh URL. Same idiom as
+                                        // DownloadRepository's resume path.
+                                        runCatching { downloadManager.addDownload(download.request) }
+                                    }
+                                }
+                            }
+                            if (download.state == Download.STATE_COMPLETED ||
+                                download.state == Download.STATE_REMOVING
+                            ) {
+                                autoRetryCounts.remove(download.request.id)
                             }
                             downloadState.put(download.request.id, download)
                         }
@@ -669,6 +712,7 @@ class DownloadUtil
                                 runCatching { downloadCache.removeResource(ytmKey) }
                                 runCatching { playerCache.removeResource(ytmKey) }
                             }
+                            autoRetryCounts.remove(removedKey)
                             downloadState.remove(removedKey)
                         }
                     },
@@ -1484,6 +1528,12 @@ class DownloadUtil
              * network state from parking the download worker in a
              * "Downloading 0%" forever (the "infinite loading" report). */
             internal const val YT_DOWNLOAD_RESOLVE_TIMEOUT_MS = 120_000L
+
+            /** Bound for the download resolver's wait on app-startup readiness. */
+            internal const val STARTUP_READINESS_WAIT_MS = 10_000L
+
+            /** Delay before the single automatic retry of a failed download. */
+            internal const val DOWNLOAD_AUTO_RETRY_DELAY_MS = 4_000L
 
             /** Ceiling on the Source Pool account refresh inside the prewarm
              * path — it runs before the download request is even enqueued, so

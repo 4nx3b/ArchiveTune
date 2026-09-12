@@ -27,8 +27,6 @@ package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -50,6 +48,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -70,7 +69,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,6 +79,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -95,13 +98,14 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.ui.AspectRatioFrameLayout
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.source.ShuffleOrder
@@ -116,6 +120,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
@@ -123,6 +128,26 @@ import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
 import androidx.compose.foundation.layout.heightIn
 import androidx.navigation.NavController
+
+
+// Blurred canvas backdrop (behind the controls) — Apple Music player recipe.
+//
+// The frosted twin renders at 1/6 of the player with a 12dp blur on that
+// small surface (72/6), upscaled 6x (plus a 10% overscan to hide the blur's
+// edge falloff) by the wrapping graphics layer — the blur never processes
+// more than a sixth of the pixels, and the decode is capped at 480px since
+// the blur cannot resolve anything finer anyway.
+private const val SfCanvasBackdropUpscale = 6f
+private const val SfCanvasBackdropOverscan = 1.10f
+private val SfCanvasBackdropBlurRadius = 72.dp
+private const val SfCanvasBackdropMaxVideoEdgePx = 480
+
+// Where the sharp full-bleed canvas starts dissolving into the frosted
+// continuation (fractions of the player height). The reference keeps the
+// video sharp down to ~60-65% (the song-title level) and blends the last
+// stretch; the control dock sits in the frosted area below.
+private const val SfSharpCanvasFadeStart = 0.50f
+private const val SfSharpCanvasFadeEnd = 0.65f
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -141,12 +166,13 @@ fun SpatialFlowPlayerContent(
     bottomSheetPageState: BottomSheetPageState,
     currentFormat: FormatEntity?,
     positionProvider: () -> Long,
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
     val isDark = isSystemInDarkTheme()
@@ -159,9 +185,12 @@ fun SpatialFlowPlayerContent(
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
-    val download by LocalDownloadUtil.current
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil
         .getDownload(mediaMetadata.id)
         .collectAsStateWithLifecycle(initialValue = null)
+    val fetchProgressMap by moe.rukamori.archivetune.playback.DownloadFetchProgress.flow
+        .collectAsStateWithLifecycle()
 
     val artUrl = remember(mediaMetadata.id, mediaMetadata.thumbnailUrl) { mediaMetadata.thumbnailUrl?.highRes() }
     val palette = rememberMeshPalette(artUrl)
@@ -257,35 +286,12 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    val musicHaptics =
-        remember(context) {
-            SpatialFlowMusicHaptics(context, SpatialFlowHapticEngine(context))
-        }
-    var hapticsEnabled by remember { mutableStateOf(musicHaptics.isEngineEnabled()) }
-    DisposableEffect(view, musicHaptics) {
-        musicHaptics.engine.attachView(view)
-        onDispose {
-            musicHaptics.releaseVisualizer()
-            musicHaptics.engine.detachView()
-        }
-    }
-
-    val permissionLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission(),
-        ) { isGranted ->
-            if (isGranted) {
-                musicHaptics.setEnabled(true)
-                hapticsEnabled = true
-            }
-        }
-
-    LaunchedEffect(hapticsEnabled) {
-        if (hapticsEnabled) {
-            val sessionId = runCatching { playerConnection.localPlayer.audioSessionId }.getOrDefault(0)
-            musicHaptics.attachToAudioSession(sessionId)
-        }
-    }
+    // Music haptics (SpatialFlow port): toggling writes the shared preference;
+    // the engine owned by MusicService picks the change up through its prefs
+    // listener and the PCM tap inside the audio processor chain starts feeding
+    // it — no permission needed (the old Visualizer tap required RECORD_AUDIO,
+    // which is why it silently failed when the mic permission was denied).
+    var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
     Box(
         modifier =
@@ -293,16 +299,118 @@ fun SpatialFlowPlayerContent(
                 .fillMaxSize()
                 .background(backgroundBrush),
     ) {
-
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
         )
 
+        // Full-bleed canvas — the SpatialFlow canvas reference look: when a
+        // canvas (Apple Music / Spotify Canvaz loop) is available the video
+        // owns the whole screen (RESIZE_MODE_ZOOM, edge to edge). Per the
+        // reference, the sharp video plays ABOVE the player controls while a
+        // FROSTED continuation of the same canvas (blurred twin + tint) sits
+        // behind the lower-third control dock, and the sharp stage dissolves
+        // into that frost through a gradient fade instead of a hard edge —
+        // "seamlessly blending both canvas and the player controls". The
+        // static blurred backdrop stays beneath as the buffering state; the
+        // old bounded-in-artwork-slot canvas is gone.
+        val canvasActive = !lyricsModeEnabled && (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        if (canvasActive) {
+            // 1) Frosted twin: the SAME canvas, low-res decoded, laid out at
+            // 1/6 of the player with a 72/6 = 12dp blur on the small surface,
+            // upscaled back through the scaling layer (Apple Music's cheap
+            // blurred-canvas-backdrop recipe — the blur never processes more
+            // than a sixth of the pixels).
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            val scale = SfCanvasBackdropOverscan * SfCanvasBackdropUpscale
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(1f / SfCanvasBackdropUpscale)
+                            .fillMaxHeight(1f / SfCanvasBackdropUpscale)
+                            .blur(SfCanvasBackdropBlurRadius / SfCanvasBackdropUpscale),
+                )
+            }
+
+            // 2) Sharp stage: full-bleed video whose bottom dissolves into the
+            // frosted twin via a DstIn fade over the last stretch before the
+            // control dock (the reference's "gradually blurs and darkens"
+            // transition band).
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush =
+                                    Brush.verticalGradient(
+                                        SfSharpCanvasFadeStart to Color.Black,
+                                        SfSharpCanvasFadeEnd to Color.Transparent,
+                                    ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            // 3) Frost tint: near-transparent over the sharp video, deepening
+            // through the fade band into the dark legibility glass of the
+            // control dock — the tint layer that turns the blurred twin into
+            // a frosted panel behind the controls.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.16f),
+                                SfSharpCanvasFadeStart to Color.Black.copy(alpha = 0.16f),
+                                SfSharpCanvasFadeEnd to Color.Black.copy(alpha = 0.32f),
+                                0.85f to Color.Black.copy(alpha = 0.52f),
+                                1f to Color.Black.copy(alpha = 0.72f),
+                            ),
+                        ),
+            )
+        }
+
         MaterialTheme(typography = SpatialFlowTypography) {
                 val configuration = LocalConfiguration.current
                 val screenWidth = configuration.screenWidthDp.dp
+                val screenHeight = configuration.screenHeightDp.dp
                 val albumArtSize = screenWidth * 0.9f
+
+                // SpatialFlow's exact top offset: the artwork slot is centered
+                // by formula, not by flexible spacers — `((screenHeight -
+                // albumArtSize) / 2f - 220.dp).coerceAtLeast(statusBar + 68.dp)`
+                // (FullPlayer.kt). The flexible Spacer weights that used to
+                // stand here stretched with leftover space and opened a gap
+                // between the metadata block and the seek bar.
+                val statusBarTopDp = LocalStableSystemBarsTopPadding.current
+                val minTopOffset = statusBarTopDp + 68.dp
+                val topOffset = ((screenHeight - albumArtSize) / 2f - 220.dp).coerceAtLeast(minTopOffset)
 
                 var lyricsButtonCenterInRoot by remember { mutableStateOf<Offset?>(null) }
                 val lyricsRevealProgress by animateFloatAsState(
@@ -317,7 +425,7 @@ fun SpatialFlowPlayerContent(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .padding(top = LocalStableSystemBarsTopPadding.current)
+                            .padding(top = statusBarTopDp)
                             .navigationBarsPadding()
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -350,30 +458,35 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.size(48.dp))
                 }
 
-                Spacer(
-                    modifier =
-                        Modifier
-                            .heightIn(min = 12.dp)
-                            .weight(0.32f),
-                )
+                if (canvasActive) {
+                    // Canvas reference layout: the video is the whole screen,
+                    // so the metadata/controls stack is pushed to the lower
+                    // third — no artwork slot, no top offset.
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.height(topOffset - (statusBarTopDp + 68.dp)))
+                }
 
-                SpatialFlowArtworkPager(
-                    mediaMetadata = mediaMetadata,
-                    queueWindows = queueWindows,
-                    currentWindowIndex = currentWindowIndex,
-                    userScrollEnabled = !lyricsModeEnabled && !queueExpanded,
-                    artUrl = artUrl,
-                    cornerRadius = 16.dp,
-                    shadowElevation = 16.dp,
-                    onPlaySongAtWindow = { windowIndex ->
-                        val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowArtworkPager
-                        playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
-                        playerConnection.player.playWhenReady = true
-                    },
-                    modifier = Modifier.size(albumArtSize),
-                )
+                if (!canvasActive) {
+                    SpatialFlowArtworkPager(
+                        mediaMetadata = mediaMetadata,
+                        queueWindows = queueWindows,
+                        currentWindowIndex = currentWindowIndex,
+                        userScrollEnabled = !lyricsModeEnabled && !queueExpanded,
+                        artUrl = artUrl,
+                        isPlaying = isPlaying,
+                        cornerRadius = 16.dp,
+                        shadowElevation = 16.dp,
+                        onPlaySongAtWindow = { windowIndex ->
+                            val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowArtworkPager
+                            playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                            playerConnection.player.playWhenReady = true
+                        },
+                        modifier = Modifier.size(albumArtSize),
+                    )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 Row(
                     modifier =
@@ -387,16 +500,25 @@ fun SpatialFlowPlayerContent(
                     ) {
                         Text(
                             text = mediaMetadata.title,
-                            style = MaterialTheme.typography.headlineMediumEmphasized,
+                            // Canvas reference look: HEAVEN/TWXNY use the display
+                            // scale (≈45sp heavy) floating over the video; the
+                            // artwork layout keeps the repo's own
+                            // headlineMediumEmphasized + bodyMedium pair.
+                            style =
+                                if (canvasActive) {
+                                    MaterialTheme.typography.displayMedium
+                                } else {
+                                    MaterialTheme.typography.headlineMediumEmphasized
+                                },
                             fontWeight = FontWeight.Bold,
                             color = contentColor,
                             maxLines = 1,
                             modifier = Modifier.basicMarqueeWithFadedEdges(),
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(if (canvasActive) 6.dp else 4.dp))
                         Text(
                             text = mediaMetadata.artists.joinToString { it.name },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = if (canvasActive) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
                             color = contentSecondary,
                             maxLines = 1,
                             modifier =
@@ -455,19 +577,9 @@ fun SpatialFlowPlayerContent(
                         isSelected = hapticsEnabled,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            val hasPermission =
-                                androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context,
-                                    android.Manifest.permission.RECORD_AUDIO,
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                            if (!hasPermission) {
-                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                            } else {
-                                val next = !hapticsEnabled
-                                musicHaptics.setEnabled(next)
-                                hapticsEnabled = next
-                            }
+                            val next = !hapticsEnabled
+                            MusicHapticsSettings.setEnabled(context, next)
+                            hapticsEnabled = next
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
@@ -516,7 +628,19 @@ fun SpatialFlowPlayerContent(
                     val realDownloaded = download?.state == Download.STATE_COMPLETED
                     val realDownloadProgress =
                         if (download?.state == Download.STATE_DOWNLOADING) {
-                            download?.percentDownloaded?.roundToInt()
+                            // While PRDownloader buffers the whole stream to its
+                            // temp file Media3 reports 0% — combine in the live
+                            // fetch progress so the label reflects the network
+                            // download instead of a fake "Downloading 0%".
+                            // media3's percentDownloaded is a Java float; the
+                            // elvis must stay Float (a 0.0 Double fallback
+                            // widens the type to Number&Comparable, which no
+                            // maxOf overload accepts).
+                            val media3Percent = (download?.percentDownloaded ?: 0f).toDouble()
+                            val fetchPercent = fetchProgressMap[downloadUtil
+                                .currentSourceDownloadTarget(mediaMetadata.id)
+                                .key]?.percent ?: 0
+                            maxOf(media3Percent, fetchPercent.toDouble()).roundToInt()
                         } else {
                             null
                         }
@@ -540,12 +664,17 @@ fun SpatialFlowPlayerContent(
                         isSelected = realDownloaded || isDownloading,
                         progress = if (isDownloading) (realDownloadProgress ?: 0) / 100f else null,
                         onClick = {
+                            // Source-scoped request ids ("ytm:<id>", …) everywhere:
+                            // remove must target the SAME entry the menus queue,
+                            // otherwise a running download can never be cancelled
+                            // from here ("infinite download").
+                            val target = downloadUtil.currentSourceDownloadTarget(mediaMetadata.id)
                             when (download?.state) {
                                 Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
                                     DownloadService.sendRemoveDownload(
                                         context,
                                         ExoDownloadService::class.java,
-                                        mediaMetadata.id,
+                                        target.key,
                                         false,
                                     )
                                 }
@@ -557,14 +686,14 @@ fun SpatialFlowPlayerContent(
                                         DownloadService.sendRemoveDownload(
                                             context,
                                             ExoDownloadService::class.java,
-                                            mediaMetadata.id,
+                                            dl.request.id,
                                             false,
                                         )
                                     }
                                     val downloadRequest =
                                         DownloadRequest
-                                            .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
-                                            .setCustomCacheKey(mediaMetadata.id)
+                                            .Builder(target.key, mediaMetadata.id.toUri())
+                                            .setCustomCacheKey(target.key)
                                             .setData(mediaMetadata.title.toByteArray())
                                             .build()
                                     DownloadService.sendAddDownload(
@@ -584,12 +713,10 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.width(12.dp))
                 }
 
-                Spacer(
-                    modifier =
-                        Modifier
-                            .heightIn(min = 24.dp)
-                            .weight(0.68f),
-                )
+                // Fixed 24dp, straight from FullPlayer.kt — a weighted spacer
+                // here grew with leftover space and produced the "empty space
+                // between the seek bar and the song title" report.
+                Spacer(modifier = Modifier.height(24.dp))
 
                 WavySliderWithLabels(
                     currentPositionProvider = positionProvider,
@@ -814,6 +941,7 @@ fun SpatialFlowPlayerContent(
                     currentPositionProvider = positionProvider,
                     contentReady = lyricsContentReady,
                     backgroundBrush = lyricsBackgroundBrush,
+                    movingBlurColors = palette.colors,
                     revealProgressProvider = { lyricsRevealProgress },
                     revealCenterProvider = { lyricsButtonCenterInRoot },
                     contentColor = contentColor,
@@ -909,6 +1037,7 @@ private fun SpatialFlowArtworkPager(
     currentWindowIndex: Int,
     userScrollEnabled: Boolean,
     artUrl: String?,
+    isPlaying: Boolean,
     cornerRadius: androidx.compose.ui.unit.Dp,
     shadowElevation: androidx.compose.ui.unit.Dp,
     onPlaySongAtWindow: (Int) -> Unit,

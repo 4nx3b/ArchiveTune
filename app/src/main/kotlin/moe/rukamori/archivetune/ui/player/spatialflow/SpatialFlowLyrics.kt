@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -97,6 +98,8 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
@@ -106,9 +109,13 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.ui.player.MovingBlurBackground
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
@@ -172,6 +179,7 @@ internal fun SpatialFlowLyricsOverlay(
     currentPositionProvider: () -> Long,
     contentReady: Boolean,
     backgroundBrush: Brush,
+    movingBlurColors: List<Color> = emptyList(),
     revealProgressProvider: () -> Float,
     revealCenterProvider: () -> Offset?,
     contentColor: Color,
@@ -183,11 +191,20 @@ internal fun SpatialFlowLyricsOverlay(
     val playerConnection = LocalPlayerConnection.current ?: return
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
+    // Respect the global lyrics mode: Enhanced (the default) renders the
+    // shared word-synced karaoke view so enhanced lyrics are used in the
+    // SpatialFlow style too; every other mode keeps this style's own
+    // char-fill renderer below.
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
+
     var showLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null
@@ -282,22 +299,50 @@ internal fun SpatialFlowLyricsOverlay(
                     interactionSource = consumeClicks,
                     indication = null,
                     onClick = {},
-                ).padding(top = LocalStableSystemBarsTopPadding.current)
-                .navigationBarsPadding()
-                .padding(vertical = 12.dp),
+                ),
     ) {
-
+        // The backdrop layer wraps EVERY visual in the overlay — the moving-
+        // blur background AND the content — so the lyrics overflow popup's
+        // drawBackdrop() samples the actual on-screen pixels behind it
+        // (gradient + moving blur + text), not just the text column over a
+        // transparent base (which is what the popup used to sample: an empty
+        // texture = "transparent popup, no liquid glass"). The popup itself
+        // stays OUTSIDE this box, as a later sibling, so it never feeds back
+        // into its own sample. (Same pattern as AppleMusicPlayer.)
+        //
+        // The padding that used to sit on THIS box now lives on the content
+        // Column inside: back then MovingBlurBackground was inset by the
+        // status-bar padding, so the strip above the song title showed only
+        // the dark scrim/base brush — the reported "black bar above the
+        // song's name". The blur background now fills edge to edge.
         Box(
             modifier =
                 Modifier.fillMaxSize().let { base ->
-                    if (popupBackdrop != null && showLyricsMenu) {
+                    if (popupBackdrop != null) {
                         base.layerBackdrop(popupBackdrop)
                     } else {
                         base
                     }
                 },
         ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // The SpatialFlow lyrics backdrop is the moving-blur artwork
+        // background (same renderer the standalone lyrics page uses for
+        // MOVING_BLUR) — on by default for this style. The solid
+        // backgroundBrush beneath it is the reveal/crop base colour.
+        MovingBlurBackground(
+            mediaMetadata = currentSong,
+            gradientColors = movingBlurColors,
+            modifier = Modifier.matchParentSize(),
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = LocalStableSystemBarsTopPadding.current)
+                    .navigationBarsPadding()
+                    .padding(vertical = 12.dp),
+        ) {
 
             Row(
                 modifier =
@@ -401,6 +446,14 @@ internal fun SpatialFlowLyricsOverlay(
                 when {
                     !contentReady -> Unit
 
+                    lyricsMode == LyricsMode.ENHANCED && !syncedLyrics.isNullOrEmpty() ->
+                        LyricsEnhanced(
+                            sliderPositionProvider = { null },
+                            lyricsSyncOffset = 0,
+                            modifier = Modifier.fillMaxSize(),
+                            textColorOverride = contentColor,
+                        )
+
                     !syncedLyrics.isNullOrEmpty() ->
                         SpatialFlowSyncedLyrics(
                             lyrics = syncedLyrics,
@@ -465,6 +518,10 @@ internal fun SpatialFlowLyricsOverlay(
         }
 
         if (showLyricsMenu) {
+            // Dim in the lyrics surface's own hue instead of flashing pure
+            // black over the moving-blur backdrop (task report: "a black
+            // overlay appears as background").
+            val scrimBase = (backgroundBrush as? SolidColor)?.value ?: Color.Black
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = moreIconBounds,
                 lyricsProvider = { currentLyricsEntity },
@@ -473,6 +530,7 @@ internal fun SpatialFlowLyricsOverlay(
                 onLyricsSyncOffsetChange = {},
                 onDismiss = { showLyricsMenu = false },
                 backdrop = popupBackdrop,
+                scrimColor = scrimBase.copy(alpha = 0.45f),
             )
         }
     }

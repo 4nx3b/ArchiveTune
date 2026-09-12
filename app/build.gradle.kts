@@ -156,6 +156,21 @@ android {
                 ?: "https://github.com/4nx3B/ArchiveTune/releases/download/tdlight-2b51b33"}\"",
         )
 
+        // Icon packs follow the same runtime-download model as TDLib: the
+        // generated pack resources (aliases + rasterized icons + catalog) are
+        // NOT bundled — the pack is downloaded on demand from this repo's
+        // GitHub release (see IconPackRuntimeManager) the first time the user
+        // opens the app-icon customization screen. Pass -PslimIconPacks=false
+        // to bake the pack into the APK like before.
+        val slimIconPacks = (project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true
+        buildConfigField("boolean", "ICON_PACK_BUNDLED", "${!slimIconPacks}")
+        buildConfigField(
+            "String",
+            "ICON_PACK_BASE_URL",
+            "\"${project.findProperty("iconPackBaseUrl") as String?
+                ?: "https://github.com/4nx3B/ArchiveTune/releases/download/icon-pack-v1"}\"",
+        )
+
 
         val sourceProviderUrl =
             (
@@ -298,7 +313,6 @@ android {
     }
 
     compileOptions {
-        isCoreLibraryDesugaringEnabled = false
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
@@ -489,8 +503,6 @@ dependencies {
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
 
-    coreLibraryDesugaring(libs.desugaring)
-
     implementation(libs.timber)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
@@ -502,7 +514,7 @@ dependencies {
     implementation(libs.accompanist.lyrics.ui)
     implementation(libs.accompanist.lyrics.core)
 
-    implementation("org.json:json:20240303")
+    implementation(libs.json)
 
     implementation(libs.prdownloader)
 
@@ -539,6 +551,7 @@ androidComponents {
                 svgDirectory.set(rootProject.layout.projectDirectory.dir("IconPack/svg"))
                 applicationId.set(variant.applicationId)
                 targetActivityClassName.set("moe.rukamori.archivetune.MainActivity")
+                slimMode.set((project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true)
                 excludedIconIds.set(
                     listOf(
                         // Retired launcher icons — removed from the shipped pack.

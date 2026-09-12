@@ -44,6 +44,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import coil3.imageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import moe.rukamori.archivetune.ui.utils.resize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +89,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
@@ -198,6 +203,35 @@ fun TikTokPlayerContent(
         }
     }
 
+    // Artwork prefetch: the pager only composes one page beyond the viewport,
+    // so a fast swipe lands on a page whose 1080px cover has just started
+    // fetching. Warm the next two pages' covers ahead of the swipe so the
+    // artwork is in the memory/disk cache (or already in flight) by the time
+    // the page settles — same explicit cache keys as the page's own request.
+    val prefetchContext = LocalContext.current
+    LaunchedEffect(currentWindowIndex, queueWindows) {
+        val imageLoader = prefetchContext.imageLoader
+        for (page in (currentWindowIndex + 1)..minOf(currentWindowIndex + 2, queueWindows.lastIndex)) {
+            val metadata = queueWindows.getOrNull(page)?.mediaItem?.metadata ?: continue
+            val url = metadata.thumbnailUrl ?: continue
+            val sized = url.resize(
+                width = TIKTOK_ART_PX,
+                height = TIKTOK_ART_PX,
+                maxresAllowed = true,
+            )
+            imageLoader.enqueue(
+                ImageRequest
+                    .Builder(prefetchContext)
+                    .data(sized)
+                    .memoryCacheKey(sized)
+                    .diskCacheKey(sized)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .networkCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+            )
+        }
+    }
+
     LaunchedEffect(pendingSeekTarget) {
         val pending = pendingSeekTarget ?: return@LaunchedEffect
         delay(PENDING_SEEK_TIMEOUT_MS)
@@ -290,8 +324,11 @@ fun TikTokPlayerContent(
         label = "tiktokQueueFeedBlur",
     )
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null

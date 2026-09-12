@@ -44,6 +44,8 @@ import moe.rukamori.archivetune.backup.CreateBackupUseCase
 import moe.rukamori.archivetune.backup.ObserveScheduledBackupSettingsUseCase
 import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
 import moe.rukamori.archivetune.backup.ScheduledBackupSettings
+import moe.rukamori.archivetune.backup.StatsBackup
+import moe.rukamori.archivetune.backup.mergeStatsIntoDatabase
 import moe.rukamori.archivetune.backup.UpdateScheduledBackupUseCase
 import moe.rukamori.archivetune.db.InternalDatabase
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -330,6 +332,10 @@ class BackupRestoreViewModel
                                 when (progress.step) {
                                     BackupArchiveStep.EXPORT_SETTINGS -> {
                                         context.getString(R.string.backup_step_export_settings)
+                                    }
+
+                                    BackupArchiveStep.EXPORT_STATS -> {
+                                        context.getString(R.string.backup_step_export_stats)
                                     }
 
                                     BackupArchiveStep.CHECKPOINT_DATABASE -> {
@@ -635,22 +641,26 @@ class BackupRestoreViewModel
 
                     val entryNames = ArrayList<String>()
                     var hasDb = false
+                    var hasStats = false
                     context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
                         stream.zipInputStream().use { zip ->
                             var entry = zip.nextEntry
                             while (entry != null) {
                                 entryNames.add(entry.name)
                                 if (entry.name == InternalDatabase.DB_NAME) hasDb = true
+                                if (entry.name == StatsBackup.ZIP_ENTRY_NAME) hasStats = true
                                 entry = zip.nextEntry
                             }
                         }
                     }
                     if (includeLibrary && !hasDb) throw IllegalStateException("Backup missing database")
 
+                    val includeStatsMerge = !includeLibrary && hasStats
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
                                 (includeSettings && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
+                                (includeStatsMerge && name == StatsBackup.ZIP_ENTRY_NAME) ||
                                 (
                                     includeLibrary && (
                                         name == InternalDatabase.DB_NAME ||
@@ -693,6 +703,20 @@ class BackupRestoreViewModel
                                     continue
                                 }
                                 when (name) {
+                                    StatsBackup.ZIP_ENTRY_NAME -> {
+                                        emit(context.getString(R.string.restore_step_restoring_stats), indeterminate = true)
+                                        val payload =
+                                            runCatching {
+                                                StatsBackup.decode(zip.readBytes().toString(Charsets.UTF_8))
+                                            }.getOrNull()
+                                        if (payload != null) {
+                                            // The library category was not restored, so the live
+                                            // database is untouched here — fold the stats snapshot
+                                            // (Settings → Stats page data) into it.
+                                            mergeStatsIntoDatabase(database, payload)
+                                        }
+                                    }
+
                                     SETTINGS_XML_FILENAME -> {
                                         emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
                                         restoreSettingsFromXml(context, zip, settingsExcludedKeys)
