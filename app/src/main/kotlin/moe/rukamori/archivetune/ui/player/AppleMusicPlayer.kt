@@ -161,7 +161,6 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
@@ -1049,15 +1048,6 @@ fun AppleMusicPlayerContent(
                                             .fillMaxSize()
                                             .padding(horizontal = lyricsHorizontalPadding),
                                         spotifyStyle = true,
-                                    )
-
-                                LyricsMode.SIMPMUSIC ->
-                                    SimpMusicLyrics(
-                                        sliderPositionProvider = lyricsPosProvider,
-                                        lyricsSyncOffset = lyricsSyncOffset,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = lyricsHorizontalPadding),
                                     )
                             }
                         }

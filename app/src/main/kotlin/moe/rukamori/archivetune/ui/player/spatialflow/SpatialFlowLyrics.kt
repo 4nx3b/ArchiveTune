@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -114,6 +115,7 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
+import moe.rukamori.archivetune.ui.player.MovingBlurBackground
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
@@ -177,6 +179,7 @@ internal fun SpatialFlowLyricsOverlay(
     currentPositionProvider: () -> Long,
     contentReady: Boolean,
     backgroundBrush: Brush,
+    movingBlurColors: List<Color> = emptyList(),
     revealProgressProvider: () -> Float,
     revealCenterProvider: () -> Offset?,
     contentColor: Color,
@@ -301,10 +304,27 @@ internal fun SpatialFlowLyricsOverlay(
                 .padding(vertical = 12.dp),
     ) {
 
+        // The SpatialFlow lyrics backdrop is the moving-blur artwork
+        // background (same renderer the standalone lyrics page uses for
+        // MOVING_BLUR) — on by default for this style. The solid
+        // backgroundBrush beneath it is the reveal/crop base colour.
+        MovingBlurBackground(
+            mediaMetadata = currentSong,
+            gradientColors = movingBlurColors,
+            modifier = Modifier.matchParentSize(),
+        )
+
         Box(
             modifier =
                 Modifier.fillMaxSize().let { base ->
-                    if (popupBackdrop != null && showLyricsMenu) {
+                    // Attached for the overlay's whole lifetime, not just while
+                    // the menu is open: the backdrop layer needs at least one
+                    // rendered frame before the popup's drawBackdrop() can
+                    // sample it — attaching it in the same composition pass as
+                    // the popup's first frame left the glass reading an empty
+                    // texture, which is why the popup looked transparent with
+                    // no liquid glass. (Same pattern as AppleMusicPlayer.)
+                    if (popupBackdrop != null) {
                         base.layerBackdrop(popupBackdrop)
                     } else {
                         base
@@ -487,6 +507,10 @@ internal fun SpatialFlowLyricsOverlay(
         }
 
         if (showLyricsMenu) {
+            // Dim in the lyrics surface's own hue instead of flashing pure
+            // black over the moving-blur backdrop (task report: "a black
+            // overlay appears as background").
+            val scrimBase = (backgroundBrush as? SolidColor)?.value ?: Color.Black
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = moreIconBounds,
                 lyricsProvider = { currentLyricsEntity },
@@ -495,6 +519,7 @@ internal fun SpatialFlowLyricsOverlay(
                 onLyricsSyncOffsetChange = {},
                 onDismiss = { showLyricsMenu = false },
                 backdrop = popupBackdrop,
+                scrimColor = scrimBase.copy(alpha = 0.45f),
             )
         }
     }

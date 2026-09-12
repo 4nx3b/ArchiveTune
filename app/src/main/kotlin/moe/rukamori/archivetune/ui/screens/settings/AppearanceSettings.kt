@@ -108,7 +108,6 @@ import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -167,14 +166,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
-        )
-    // The SimpMusic-lyrics switch, where main put it. The mechanism behind it changed on dev:
-    // the renderer choice is the LyricsModeKey enum now, so the switch drives that — SIMPMUSIC's
-    // own Classic renderer when on, the app's Enhanced renderer when off.
-    val (lyricsMode, onLyricsModeChange) =
-        rememberEnumPreference(
-            LyricsModeKey,
-            defaultValue = LyricsMode.ENHANCED,
         )
     // No value read needed here anymore: the Appearance row is gone (2026-09-08),
     // so the only writer left is the style picker below, and the reader that
@@ -367,23 +358,28 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyle.V10,
             PlayerDesignStyle.BITCHORD,
             PlayerDesignStyle.TIKTOK,
+            PlayerDesignStyle.SIMPMUSIC,
+            PlayerDesignStyle.SPATIALFLOW,
             -> false
 
             else -> true
         }
     // The lyrics background only feeds the standalone lyrics page's backdrop.
-    // The BitChord, Apple Music and TikTok styles own their lyrics surfaces
-    // outright — Bitchord's panel sits on its mesh-gradient backdrop, Apple
-    // Music's inline pane on its artwork-tinted gradient, and TikTok opens the
-    // shared full-screen lyrics page from its comment-bubble action without
-    // drawing a lyrics backdrop of its own — so the setting does nothing for
-    // them and reads as broken. Disabled (with a note) rather than hidden so
-    // the row keeps its search anchor and its position in the list (user
-    // request 2026-09-01).
+    // The BitChord, Apple Music, TikTok, SimpMusic and SpatialFlow styles own
+    // their lyrics surfaces outright — BitChord's panel sits on its
+    // mesh-gradient backdrop, Apple Music's inline pane on its
+    // artwork-tinted gradient, TikTok opens the shared full-screen lyrics
+    // page, SimpMusic renders its own fullscreen sheet over its palette wash
+    // and SpatialFlow's circular-reveal overlay carries the moving-blur
+    // backdrop — so the setting does nothing for them and reads as broken.
+    // Disabled (with a note) rather than hidden so the row keeps its search
+    // anchor and its position in the list (user request 2026-09-01).
     val isLyricsBackgroundStyleAvailable =
         playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
-            playerDesignStyle != PlayerDesignStyle.TIKTOK
+            playerDesignStyle != PlayerDesignStyle.TIKTOK &&
+            playerDesignStyle != PlayerDesignStyle.SIMPMUSIC &&
+            playerDesignStyle != PlayerDesignStyle.SPATIALFLOW
     val isVolumeBarSupported = playerDesignStyle == PlayerDesignStyle.V7
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
@@ -884,26 +880,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // The SimpMusic style is the only one that carries a second
-                // lyrics surface of its own, so the choice between that and the app's Enhanced
-                // renderer means nothing under any other style. Sits directly under the style
-                // picker, where the style it belongs to was just chosen.
-                if (playerDesignStyle == PlayerDesignStyle.SIMPMUSIC) {
-                    item {
-                        SwitchPreference(
-                            modifier = positions.modifierFor("simpmusic_lyrics"),
-                            title = { Text(stringResource(R.string.simpmusic_lyrics)) },
-                            description = stringResource(R.string.simpmusic_lyrics_desc),
-                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                            checked = lyricsMode == LyricsMode.SIMPMUSIC,
-                            onCheckedChange = { useSimpMusic ->
-                                onLyricsModeChange(
-                                    if (useSimpMusic) LyricsMode.SIMPMUSIC else LyricsMode.ENHANCED,
-                                )
-                            },
-                        )
-                    }
-                }
+                // The SimpMusic-lyrics switch is gone (2026-09-12): the style
+                // always renders the shared Enhanced (word-synced) lyrics —
+                // its own Classic renderer and the LyricsMode.SIMPMUSIC entry
+                // were removed with it.
 
                 // The Apple Music animated-artwork row is removed from the UI
                 // (user request): the style's own behavior decides when the
