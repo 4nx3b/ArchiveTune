@@ -46,8 +46,9 @@ object IconPackRuntimeManager {
     /**
      * SHA-256 of the pack zip (the release asset). Pinned from the release
      * built by build-icon-pack.yml — same digest-pinning scheme as TDLib.
+     * (Re-run the workflow after an IconPack submodule bump, then re-pin.)
      */
-    const val EXPECTED_SHA256 = ""
+    const val EXPECTED_SHA256 = "f8444fdaf096d5f4712ce2ec4a79cd1f5251d19477234c787b68c9e082025fc0"
 
     private const val ZIP_ENTRY_PREFIX = "icon_pack/"
     private const val CATALOG_ENTRY = "icon_pack/catalog.json"

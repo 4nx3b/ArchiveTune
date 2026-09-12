@@ -1734,3 +1734,26 @@ Stage Summary:
   functional code compiles, tests and lints clean against the reverted
   dependencies, and all release/R8 builds pass.
 - PR #216 head is 43bff001a, mergeable_state clean.
+
+---
+Task ID: 34
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 12-item user batch — canvas/video decoupling, stats backup, SpatialFlow canvas/haptics, runtime icon packs, lyrics active-line fix, romanisation providers, enhanced lyrics in new styles, upstream V9/V10 copy, SF Pro font previews, translations sync, PR, branch cleanup
+
+Work Log:
+- translate: merged upstream/translate (609 commits) into fork translate, resolved 18 Weblate conflicts via three-way entry merge (upstream wins, fork-only entries kept), sanitized corrupt Weblate bytes in values-es; pushed 0902ca920.
+- Canvas decoupled from enableVideoPlayback in Player.kt/Thumbnail.kt/AlbumViewModel (4 gate sites); canvas toggles are now the only gates.
+- Lyrics active-line fix: LyricsV2 + SimpMusicLyrics position providers keyed to the live state object (stale-provider capture froze word fill after track change); LyricsEnhanced restart clobber folded into the poll loop's wrap detection.
+- Backup: stats/events.json (kotlinx-serialization payload of the event table) emitted whenever LIBRARY is excluded; restore merges it into the live DB (idempotent dedup, play-time increments); DAO helpers added.
+- AI romanisation: secondary provider dropdown lists all 7 providers; Mistral gained OpenAI-compatible completion + model fetching (previously every completion threw); model picker enabled for OpenRouter/Mistral.
+- Enhanced lyrics: SpatialFlow overlay + SimpMusic fullscreen sheet render LyricsEnhanced for the default mode; BitChord feeds scrub-position to its lyrics panel.
+- SpatialFlow player: canvas in the artwork slot + blurred canvas backdrop behind controls (AM recipe); music haptics completed — engine moved to playback/, fed by HapticsPcmProcessor (pass-through Media3 BaseAudioProcessor, SpatialFlow's analyzePcmForHaptics verbatim); no RECORD_AUDIO needed anymore; settings switch + strength slider.
+- Upstream V9 (Material Extended) / V10 (Editorial) copied verbatim from rukamori/ArchiveTune dev incl. WavySliderExpressive, ToggleSegmentButton, V9AnimatedPlaybackControls; V10Player.kt deleted (block now in PlayerComponents.kt like upstream); Player.kt integration points aligned (V10 fixed-bg/skip/peek/bg-fade + V9 canvasSource/gradientColors). CanvasSource doesn't exist in the fork's canvas module — the provider-tag String (inferredProvider()) is the type adapter.
+- Runtime icon packs: slimIconPacks gradle flag (default true) — GenerateIconPackTask emits only the default alias; IconPackRuntimeManager downloads icon-pack-v1.zip from the new build-icon-pack.yml release (digest pinned f8444fda…); IconScreen prompts + download row; runtime selection pins home-screen shortcuts (Android cannot add aliases post-install); TelegramSettings got the runtime-extension text + download pill that disappears once present.
+- SF Pro picker: live font specimen per row (cached preview download, low-data degrade).
+- CI: 3 fix rounds (CanvasSource adapter, Result inference in the pack installer, ShortcutManagerCompat API, exhaustive when, imports, variant task name in the workflow). Icon-pack release workflow green; digest pinned.
+- Branches: deleted arena/*, codex/batch-10-*, codex/batch-11-* — only main/dev/translate remain. PR #216 (dev -> main) open.
+
+Stage Summary:
+- dev @ 75ee5a5b2 (+ digest-pin commit pending): all 10 code tasks implemented, translations synced, PR open, branches cleaned.
+- build-icon-pack.yml publishes the runtime pack; the app downloads it on demand.
