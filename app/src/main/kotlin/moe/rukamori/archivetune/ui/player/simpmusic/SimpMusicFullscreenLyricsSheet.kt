@@ -109,8 +109,12 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -502,13 +506,27 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             .padding(horizontal = LyricsGutter),
                 ) {
                     if (hasLyrics) {
+                        // Mirror the card's lyrics-mode policy: the default
+                        // (Enhanced) mode renders the shared word-synced karaoke
+                        // view here too, so Enhanced lyrics are used consistently
+                        // across the SimpMusic style; only the SimpMusic renderer
+                        // keeps its own look.
+                        val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
+                        if (lyricsMode != LyricsMode.SIMPMUSIC) {
+                            LyricsEnhanced(
+                                sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
+                                lyricsSyncOffset = 0,
+                                modifier = Modifier.fillMaxSize(),
+                                textColorOverride = Color.White,
+                            )
+                        } else {
+                            SimpMusicLyrics(
 
-                        SimpMusicLyrics(
-
-                            sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
-                            lyricsSyncOffset = 0,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
+                                lyricsSyncOffset = 0,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else {
                         Box(
                             modifier = Modifier.fillMaxSize(),

@@ -74,6 +74,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -994,7 +995,22 @@ fun BitChordPlayerContent(
                             translationY = (1f - p) * 26.dp.toPx()
                         }
 
-                    val lyricsPositionProvider = remember { { null as Long? } }
+                    val latestScrubbing = rememberUpdatedState(scrubbing)
+                    val latestShownFraction = rememberUpdatedState(if (duration > 0) shown / duration else 0f)
+                    val latestDuration = rememberUpdatedState(duration)
+                    val lyricsPositionProvider = remember {
+                        // Feed the seek preview while scrubbing so every lyrics
+                        // renderer (Enhanced karaoke included) tracks the thumb
+                        // instead of the stale player position; null otherwise
+                        // falls back to player.currentPosition.
+                        {
+                            if (latestScrubbing.value) {
+                                (latestShownFraction.value * maxOf(latestDuration.value, 1L)).toLong()
+                            } else {
+                                null
+                            }
+                        }
+                    }
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
                     when (lyricsMode) {
                         LyricsMode.ENHANCED ->

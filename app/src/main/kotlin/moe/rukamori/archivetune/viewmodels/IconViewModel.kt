@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.appicon.AppIconCatalog
+import moe.rukamori.archivetune.appicon.IconPackRuntimeManager
 import moe.rukamori.archivetune.appicon.LoadAppIconsUseCase
 import moe.rukamori.archivetune.appicon.SelectAppIconUseCase
 import javax.inject.Inject
@@ -56,6 +57,10 @@ data class IconScreenUiModel(
     val searchQuery: String,
     val sortOrder: AppIconSortOrder,
     val isSortMenuExpanded: Boolean,
+    val packDownload: IconPackDownloadUi = IconPackDownloadUi.NOT_NEEDED,
+    val packDownloadPercent: Int = 0,
+    val packDownloadIndeterminate: Boolean = false,
+    val iconsAreRuntime: Boolean = false,
 )
 
 enum class AppIconSortOrder {
@@ -71,9 +76,23 @@ data class AppIconUiModel(
     val author: String?,
     val githubAuthorUrl: String?,
     @DrawableRes val previewDrawableResId: Int,
+    val previewFilePath: String? = null,
     val isSelected: Boolean,
     val isDefault: Boolean,
 )
+
+/** Whether the runtime icon pack needs a download before icons can be listed. */
+enum class IconPackDownloadUi {
+    /** Bundled build — the pack ships inside the APK. */
+    NOT_NEEDED,
+
+    /** Slim build and the pack has not been downloaded yet. */
+    NEEDED,
+
+    DOWNLOADING,
+
+    FAILED,
+}
 
 @Immutable
 data class AppIconUiCollection private constructor(
@@ -94,6 +113,7 @@ class IconViewModel
     constructor(
         private val loadAppIcons: LoadAppIconsUseCase,
         private val selectAppIcon: SelectAppIconUseCase,
+        @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     ) : ViewModel() {
         private val _state = MutableStateFlow<IconScreenState>(IconScreenState.Loading)
         val state: StateFlow<IconScreenState> = _state.asStateFlow()
@@ -103,6 +123,7 @@ class IconViewModel
 
         private var loadJob: Job? = null
         private var selectionJob: Job? = null
+        private var downloadJob: Job? = null
         private var catalogIcons: List<AppIconUiModel> = emptyList()
         private var searchQuery: String = ""
         private var sortOrder: AppIconSortOrder = AppIconSortOrder.NEW_ADDED
@@ -114,6 +135,42 @@ class IconViewModel
 
         fun retry() {
             load()
+        }
+
+        /** Downloads the runtime icon pack (slim builds) and reloads the catalog. */
+        fun downloadPack() {
+            if (downloadJob?.isActive == true) return
+            if (IconPackRuntimeManager.isBundled()) return
+            if (IconPackRuntimeManager.isInstalled(appContext)) {
+                load()
+                return
+            }
+            publishSuccess(
+                packDownload = IconPackDownloadUi.DOWNLOADING,
+                packDownloadPercent = 0,
+                packDownloadIndeterminate = true,
+            )
+            downloadJob =
+                viewModelScope.launch {
+                    val installed =
+                        IconPackRuntimeManager.install(appContext) { fraction ->
+                            publishSuccess(
+                                packDownload = IconPackDownloadUi.DOWNLOADING,
+                                packDownloadPercent = if (fraction >= 0f) (fraction * 100).toInt() else 0,
+                                packDownloadIndeterminate = fraction < 0f,
+                            )
+                        }
+                    if (installed) {
+                        _state.value = IconScreenState.Loading
+                        load()
+                    } else {
+                        publishSuccess(
+                            packDownload = IconPackDownloadUi.FAILED,
+                            packDownloadPercent = 0,
+                            packDownloadIndeterminate = false,
+                        )
+                    }
+                }
         }
 
         fun selectIcon(iconId: String) {
@@ -198,6 +255,7 @@ class IconViewModel
                         author = icon.author,
                         githubAuthorUrl = icon.githubAuthorUrl,
                         previewDrawableResId = icon.previewDrawableResId,
+                        previewFilePath = icon.previewFilePath,
                         isSelected = icon.id == selectedIconId,
                         isDefault = icon.isDefault,
                     )
@@ -208,14 +266,30 @@ class IconViewModel
         private fun publishSuccess(
             selectionInProgressId: String? =
                 (_state.value as? IconScreenState.Success)?.model?.selectionInProgressId,
+            packDownload: IconPackDownloadUi? = null,
+            packDownloadPercent: Int = 0,
+            packDownloadIndeterminate: Boolean = false,
         ) {
-            _state.value = createSuccessState(selectionInProgressId)
+            _state.value =
+                createSuccessState(
+                    selectionInProgressId = selectionInProgressId,
+                    packDownload = packDownload,
+                    packDownloadPercent = packDownloadPercent,
+                    packDownloadIndeterminate = packDownloadIndeterminate,
+                )
         }
 
-        private fun createSuccessState(selectionInProgressId: String? = null): IconScreenState.Success {
+        private fun createSuccessState(
+            selectionInProgressId: String? = null,
+            packDownload: IconPackDownloadUi? = null,
+            packDownloadPercent: Int = 0,
+            packDownloadIndeterminate: Boolean = false,
+        ): IconScreenState.Success {
             val selectedIcon =
                 catalogIcons.firstOrNull(AppIconUiModel::isSelected)
                     ?: catalogIcons.first()
+            val effectivePackDownload =
+                packDownload ?: computePackDownloadUi()
             return IconScreenState.Success(
                 IconScreenUiModel(
                     icons = AppIconUiCollection.from(visibleIcons()),
@@ -225,9 +299,20 @@ class IconViewModel
                     searchQuery = searchQuery,
                     sortOrder = sortOrder,
                     isSortMenuExpanded = isSortMenuExpanded,
+                    packDownload = effectivePackDownload,
+                    packDownloadPercent = packDownloadPercent,
+                    packDownloadIndeterminate = packDownloadIndeterminate,
+                    iconsAreRuntime = catalogIcons.any { it.previewFilePath != null },
                 ),
             )
         }
+
+        private fun computePackDownloadUi(): IconPackDownloadUi =
+            when {
+                IconPackRuntimeManager.isBundled() -> IconPackDownloadUi.NOT_NEEDED
+                IconPackRuntimeManager.isInstalled(appContext) -> IconPackDownloadUi.NOT_NEEDED
+                else -> IconPackDownloadUi.NEEDED
+            }
 
         private fun visibleIcons(): List<AppIconUiModel> {
             val defaultIcon = catalogIcons.firstOrNull(AppIconUiModel::isDefault)

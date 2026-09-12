@@ -97,6 +97,8 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
@@ -106,9 +108,11 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
@@ -183,6 +187,12 @@ internal fun SpatialFlowLyricsOverlay(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+
+    // Respect the global lyrics mode: Enhanced (the default) renders the
+    // shared word-synced karaoke view so enhanced lyrics are used in the
+    // SpatialFlow style too; every other mode keeps this style's own
+    // char-fill renderer below.
+    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
 
     var showLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
@@ -404,6 +414,14 @@ internal fun SpatialFlowLyricsOverlay(
             ) {
                 when {
                     !contentReady -> Unit
+
+                    lyricsMode == LyricsMode.ENHANCED && !syncedLyrics.isNullOrEmpty() ->
+                        LyricsEnhanced(
+                            sliderPositionProvider = { null },
+                            lyricsSyncOffset = 0,
+                            modifier = Modifier.fillMaxSize(),
+                            textColorOverride = contentColor,
+                        )
 
                     !syncedLyrics.isNullOrEmpty() ->
                         SpatialFlowSyncedLyrics(

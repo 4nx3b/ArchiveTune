@@ -27,8 +27,6 @@ package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -70,7 +68,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,6 +76,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -95,13 +93,14 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.ui.AspectRatioFrameLayout
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.source.ShuffleOrder
@@ -116,6 +115,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
@@ -123,6 +123,12 @@ import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
 import androidx.compose.foundation.layout.heightIn
 import androidx.navigation.NavController
+
+
+// Blurred canvas backdrop (behind the controls) — Apple Music player recipe.
+private const val SpatialCanvasBackdropUpscale = 6f
+private const val SpatialCanvasBackdropMaxVideoEdgePx = 480
+private val SpatialCanvasBackdropBlurRadius = 72.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -141,12 +147,13 @@ fun SpatialFlowPlayerContent(
     bottomSheetPageState: BottomSheetPageState,
     currentFormat: FormatEntity?,
     positionProvider: () -> Long,
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val view = LocalView.current
     val haptic = LocalHapticFeedback.current
 
     val isDark = isSystemInDarkTheme()
@@ -260,35 +267,12 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    val musicHaptics =
-        remember(context) {
-            SpatialFlowMusicHaptics(context, SpatialFlowHapticEngine(context))
-        }
-    var hapticsEnabled by remember { mutableStateOf(musicHaptics.isEngineEnabled()) }
-    DisposableEffect(view, musicHaptics) {
-        musicHaptics.engine.attachView(view)
-        onDispose {
-            musicHaptics.releaseVisualizer()
-            musicHaptics.engine.detachView()
-        }
-    }
-
-    val permissionLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission(),
-        ) { isGranted ->
-            if (isGranted) {
-                musicHaptics.setEnabled(true)
-                hapticsEnabled = true
-            }
-        }
-
-    LaunchedEffect(hapticsEnabled) {
-        if (hapticsEnabled) {
-            val sessionId = runCatching { playerConnection.localPlayer.audioSessionId }.getOrDefault(0)
-            musicHaptics.attachToAudioSession(sessionId)
-        }
-    }
+    // Music haptics (SpatialFlow port): toggling writes the shared preference;
+    // the engine owned by MusicService picks the change up through its prefs
+    // listener and the PCM tap inside the audio processor chain starts feeding
+    // it — no permission needed (the old Visualizer tap required RECORD_AUDIO,
+    // which is why it silently failed when the mic permission was denied).
+    var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
     Box(
         modifier =
@@ -301,6 +285,40 @@ fun SpatialFlowPlayerContent(
             artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
         )
+
+        if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
+            // Blurred canvas backdrop behind the controls — the same recipe
+            // the Apple Music player uses: the video surface is laid out at
+            // 1/6 of the footprint with a 72/6 = 12dp blur and the graphics
+            // layer upscales it back, so the blur processes a small surface
+            // while the moving canvas keeps flowing behind the whole controls
+            // column. Decode is capped at 480px — the blur cannot resolve
+            // anything finer anyway.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            scaleX = SpatialCanvasBackdropUpscale
+                            scaleY = SpatialCanvasBackdropUpscale
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying && !lyricsModeEnabled,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    visible = !lyricsModeEnabled,
+                    maxVideoEdgePx = SpatialCanvasBackdropMaxVideoEdgePx,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(1f / SpatialCanvasBackdropUpscale)
+                            .fillMaxHeight(1f / SpatialCanvasBackdropUpscale)
+                            .blur(SpatialCanvasBackdropBlurRadius / SpatialCanvasBackdropUpscale),
+                )
+            }
+        }
 
         MaterialTheme(typography = SpatialFlowTypography) {
                 val configuration = LocalConfiguration.current
@@ -366,6 +384,9 @@ fun SpatialFlowPlayerContent(
                     currentWindowIndex = currentWindowIndex,
                     userScrollEnabled = !lyricsModeEnabled && !queueExpanded,
                     artUrl = artUrl,
+                    canvasPrimaryUrl = if (lyricsModeEnabled) null else canvasPrimaryUrl,
+                    canvasFallbackUrl = if (lyricsModeEnabled) null else canvasFallbackUrl,
+                    isPlaying = isPlaying,
                     cornerRadius = 16.dp,
                     shadowElevation = 16.dp,
                     onPlaySongAtWindow = { windowIndex ->
@@ -458,19 +479,9 @@ fun SpatialFlowPlayerContent(
                         isSelected = hapticsEnabled,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            val hasPermission =
-                                androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context,
-                                    android.Manifest.permission.RECORD_AUDIO,
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                            if (!hasPermission) {
-                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                            } else {
-                                val next = !hapticsEnabled
-                                musicHaptics.setEnabled(next)
-                                hapticsEnabled = next
-                            }
+                            val next = !hapticsEnabled
+                            MusicHapticsSettings.setEnabled(context, next)
+                            hapticsEnabled = next
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
@@ -929,6 +940,9 @@ private fun SpatialFlowArtworkPager(
     currentWindowIndex: Int,
     userScrollEnabled: Boolean,
     artUrl: String?,
+    canvasPrimaryUrl: String?,
+    canvasFallbackUrl: String?,
+    isPlaying: Boolean,
     cornerRadius: androidx.compose.ui.unit.Dp,
     shadowElevation: androidx.compose.ui.unit.Dp,
     onPlaySongAtWindow: (Int) -> Unit,
@@ -984,7 +998,26 @@ private fun SpatialFlowArtworkPager(
                         .clip(RoundedCornerShape(cornerRadius)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (!pageArtUrl.isNullOrBlank() && !isError) {
+                val isCurrentPage = page == currentWindowIndex
+                val pageCanvasPrimary = if (isCurrentPage) canvasPrimaryUrl else null
+                val pageCanvasFallback = if (isCurrentPage) canvasFallbackUrl else null
+                var canvasShowing by remember(pageCanvasPrimary, pageCanvasFallback) { mutableStateOf(false) }
+                if (!pageCanvasPrimary.isNullOrBlank() || !pageCanvasFallback.isNullOrBlank()) {
+                    // Canvas (Apple Music / Spotify Canvaz loop) fills the
+                    // artwork slot on the current page — Spotify's app does the
+                    // exact same thing — and the static artwork stays beneath
+                    // it as the loading/failure fallback.
+                    CanvasArtworkPlayer(
+                        primaryUrl = pageCanvasPrimary,
+                        fallbackUrl = pageCanvasFallback,
+                        isPlaying = isPlaying,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        visible = isCurrentPage,
+                        onPlaybackAvailabilityChange = { canvasShowing = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                if (!pageArtUrl.isNullOrBlank() && !isError && !canvasShowing) {
                     AsyncImage(
                         model = pageArtUrl,
                         contentDescription = null,
@@ -992,6 +1025,10 @@ private fun SpatialFlowArtworkPager(
                         onError = { isError = true },
                         modifier = Modifier.fillMaxSize(),
                     )
+                } else if (canvasShowing) {
+                    // Canvas covers the slot — keep a transparent placeholder
+                    // so the gradient fallback below stays hidden while the
+                    // video renders on top of it.
                 } else {
                     Box(
                         modifier =

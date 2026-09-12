@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
-import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -151,11 +150,6 @@ class AlbumViewModel
             viewModelScope.launch {
 
                 if (!context.dataStore.get(AlbumCanvasEnabledKey, true)) return@launch
-
-                // Canvas is video: the global video-playback switch is a hard
-                // gate here too, so no canvas (cached or not) renders anywhere
-                // in the app while video playback is disabled.
-                if (!context.dataStore.get(EnableVideoPlaybackKey, true)) return@launch
 
                 if (context.isLowDataModeActive()) return@launch
 
