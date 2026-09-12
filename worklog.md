@@ -1838,3 +1838,73 @@ Work Log:
 
 Stage Summary:
 - All 12 follow-up items implemented on dev @ 1c23ecc24; CI compile pending.
+
+---
+Task ID: 36
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 5-item follow-up batch — icon pack download failure (log-attached),
+spatialflow canvas/control frosted blend + lyrics-page black bar + popup
+glass, enhanced-lyrics animation lag (simpmusic + spatialflow), bitchord
+one-line lyric over progress bar, Spotify playlist overflow menu clipping.
+
+Work Log:
+- Log analysis (archivetune-log-1789248894837.txt): the pack download itself
+  succeeds 3x in a row (2,666,581 bytes = exact release size, digest OK) but
+  each install ends in "Icon pack installed: version=icon-pack-v1, icons=-1"
+  and restarts — isInstalled() never became true. Root cause: catalogFile()
+  built its path from CATALOG_ENTRY.removePrefix("$ZIP_ENTRY_PREFIX/") — the
+  interpolated prefix is "icon_pack//" (double slash) so removePrefix was a
+  no-op and the catalog was read from <pack>/icon_pack/catalog.json while
+  extractZip writes <pack>/catalog.json. Fixed to removePrefix(ZIP_ENTRY_
+  PREFIX); the already-extracted on-disk pack is recognized with no
+  re-download, and AppIconRepository.loadRuntimeIcons() now finds the catalog
+  so the icons list. (Release zip structure independently verified by
+  downloading icon-pack-v1.zip and unzip -l: entries are exactly
+  icon_pack/catalog.json + icon_pack/drawables/*.png.)
+- Screenshot/VLM analysis (030809 player, 030803 lyrics page, 031841 menu)
+  plus the previous session's reference image: spatialflow needs the
+  reference's frosted-dock canvas layout (sharp video above, blurred+tinted
+  glass behind the lower-third controls, gradient blend at the boundary).
+  Implemented the 3-layer recipe in SpatialFlowPlayer: (1) frosted twin
+  canvas at 1/6 layout, 72/6=12dp blur on the small surface, 6x + 10%
+  overscan upscale, maxVideoEdgePx=480 (Apple Music's cheap backdrop
+  recipe); (2) sharp full-bleed stage with a DstIn fade over 50-65% of
+  height; (3) frost tint gradient deepening into the dock. The plain black
+  legibility gradient is gone.
+- SpatialFlow lyrics black bar: the overlay's statusBar/navigationBars/
+  vertical padding sat OUTSIDE MovingBlurBackground (matchParentSize inside
+  the padded box), so the top strip above the song title painted only the
+  dark base brush (pixel-verified: RGB(57,17,17), 140px tall, sharp edge).
+  Padding moved onto the content Column; the blur background now fills edge
+  to edge.
+- SpatialFlow lyrics popup glass: layerBackdrop wrapped ONLY the lyrics text
+  Column, so the popup's drawBackdrop sampled an essentially empty texture
+  (transparent popup, no glass — the exact reported symptom). The backdrop
+  layer now wraps the moving-blur background AND the content; the popup is a
+  later sibling outside the layer so it never self-samples. Popup anchoring
+  also loses the parent-padding offset error it used to inherit.
+- Enhanced-lyrics lag: (a) BlurWanderDrift updated its x/y/rotation states
+  every frame, each invalidating the full-footprint 64dp RenderEffect layer
+  (60 re-composites/sec against the karaoke animation) — updates now
+  throttle to ~20fps (50ms), visually identical for a 26dp/s crawl; benefits
+  the spatialflow overlay and the moving-blur lyrics screen alike. (b)
+  SimpMusic card's LyricsEnhanced kept a second karaoke view running beneath
+  the fullscreen lyrics sheet — the card renderer now suspends while the
+  sheet is open (300dp box kept for scrollability).
+- BitChord: the one-line lyric strip (CurrentLyricLine / LyricsUnavailable_
+  Line / LyricsLoadingLine) no longer renders above the progress bar while
+  the lyrics page is open.
+- Spotify playlist menu clipping: the BottomSheetMenu host capped popups at
+  40% of screen height with no scrolling, silently clipping the menu's
+  bottom rows (est. ~430dp content vs ~367dp cap on a 919dp screen).
+  Cap raised to 0.55 and NewMenuContainer (the fully-static container the
+  Spotify playlist menu uses; verified its ONLY user) scrolls within the
+  cap. The shared host Column deliberately stays non-scrollable — PlayerMenu
+  and friends embed direct LazyColumns that would crash with unbounded
+  height constraints (caught during review before push).
+- Pushed dev @ 148c1d486; CI in flight (check passed, builds running).
+
+Stage Summary:
+- All 5 items implemented on dev @ 148c1d486; icons, spatialflow canvas
+  dock, lyrics overlay visuals/glass, lyrics perf, bitchord strip, and the
+  playlist menu all fixed. CI result to be verified in the monitor loop.
