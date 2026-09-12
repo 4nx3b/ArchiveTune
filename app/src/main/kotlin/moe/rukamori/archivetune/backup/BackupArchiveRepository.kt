@@ -27,6 +27,7 @@ import kotlin.math.roundToInt
 
 enum class BackupArchiveStep {
     EXPORT_SETTINGS,
+    EXPORT_STATS,
     CHECKPOINT_DATABASE,
     COPY_DATABASE_FILE,
     COPY_CUSTOM_FONTS,
@@ -72,7 +73,11 @@ class BackupArchiveRepository
                     emptyList()
                 }
 
-            val totalUnits = (if (includeSettings) 1 else 0) + (if (includeLibrary) 1 else 0) + dbFiles.size
+            val totalUnits =
+                (if (includeSettings) 1 else 0) +
+                    (if (!includeLibrary) 1 else 0) +
+                    (if (includeLibrary) 1 else 0) +
+                    dbFiles.size
             val unitSpan = 100f / totalUnits.coerceAtLeast(1)
             var completedUnits = 0
             var lastProgress: BackupArchiveProgress? = null
@@ -103,6 +108,19 @@ class BackupArchiveRepository
                 context.contentResolver.openOutputStream(uri, "wt")
                     ?: throw IllegalStateException("Failed to open backup destination")
             output.buffered().zipOutputStream().use { zipStream ->
+                // Listening stats (Settings → Stats page) ride along in every
+                // backup: a library backup already embeds them inside song.db,
+                // so the portable JSON payload is only emitted when the library
+                // itself is excluded — every backup file carries the stats info.
+                if (!includeLibrary) {
+                    emit(BackupArchiveStep.EXPORT_STATS, indeterminate = true)
+                    val statsSnapshot = database.allEventsOnce()
+                    zipStream.putNextEntry(ZipEntry(StatsBackup.ZIP_ENTRY_NAME))
+                    zipStream.write(StatsBackup.encode(statsSnapshot).toByteArray(Charsets.UTF_8))
+                    zipStream.closeEntry()
+                    completedUnits++
+                }
+
                 if (includeSettings) {
                     emit(BackupArchiveStep.EXPORT_SETTINGS, indeterminate = true)
                     zipStream.putNextEntry(ZipEntry(SETTINGS_XML_FILENAME))

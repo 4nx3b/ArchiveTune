@@ -409,6 +409,11 @@ class MusicService :
     @Inject
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
+    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
+    @Volatile
+    var musicHapticsEngine: SpatialFlowHapticEngine? = null
+        private set
+
     @Inject
     lateinit var sponsorBlockPlaybackController: moe.rukamori.archivetune.sponsorblock.SponsorBlockPlaybackController
 
@@ -1206,6 +1211,13 @@ class MusicService :
         super.onCreate()
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
+
+        // Music haptics (SpatialFlow port): the engine is owned by the service
+        // and fed by [HapticsPcmProcessor] from the audio processor chain of
+        // every player this service builds. It reacts to the haptics_enabled /
+        // vibration_strength preferences on its own, so no further wiring is
+        // needed here.
+        musicHapticsEngine = SpatialFlowHapticEngine(this)
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -10915,6 +10927,11 @@ class MusicService :
                             150.toShort(),
                         ),
                         SonicAudioProcessor(),
+                        // SpatialFlow-style PCM tap: analyzes the decoded audio
+                        // for the music-haptics engine and passes samples
+                        // through untouched. A fresh instance per sink — an
+                        // AudioProcessor may only belong to one chain.
+                        HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                     ),
                 ).build()
         }
@@ -11337,6 +11354,8 @@ class MusicService :
 
     override fun onDestroy() {
         equalizerPlaybackController.detach(this)
+        musicHapticsEngine?.release()
+        musicHapticsEngine = null
         sponsorBlockPlaybackController.detach()
         discordServiceStopping = true
         requestDiscordSync(

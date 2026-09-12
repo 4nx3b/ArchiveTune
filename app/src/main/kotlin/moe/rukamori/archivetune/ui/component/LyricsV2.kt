@@ -468,13 +468,19 @@ fun LyricsV2(
     // Key position-owned state by the lyrics payload. A repeat keeps the same
     // payload, but the position loop below explicitly resets the values when
     // it observes the playback clock wrap back to the start.
+    // Key the position state by the lyrics payload so a new song starts from a
+    // clean zero, and key the provider by the SAME state object. An unkeyed
+    // provider would keep capturing the first (now dead) state object after a
+    // song change: the poll loop writes the new object while every word-fill
+    // reads the frozen old one — exactly the “auto-scrolls but the active line
+    // never highlights/animates” symptom on track change.
     val currentPositionMsState = remember(lyrics) { mutableLongStateOf(0L) }
     var currentPositionMs by currentPositionMsState
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
     var currentLineIndex by remember { mutableIntStateOf(0) }
 
     val currentPositionProvider: () -> Long =
-        remember { { currentPositionMsState.longValue } }
+        remember(currentPositionMsState) { { currentPositionMsState.longValue } }
 
     // rememberUpdatedState so the playback loop always sees the latest
     // sliderPositionProvider lambda. Without this, if the caller's lambda

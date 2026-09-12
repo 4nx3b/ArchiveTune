@@ -10,6 +10,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -48,6 +49,7 @@ import moe.rukamori.archivetune.constants.TelegramAccountPhoneKey
 import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.telegram.TelegramAuthState
 import moe.rukamori.archivetune.telegram.TelegramClient
+import moe.rukamori.archivetune.telegram.TdLibNativeLibrary
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -77,6 +79,13 @@ fun TelegramSettings(
     val isReady = authState is TelegramAuthState.Ready
 
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    // Runtime-extension prompt: in slim builds the Telegram engine (TDLib)
+    // is not bundled — the user has to download it once. The text and the
+    // download pill disappear as soon as the extension is present.
+    var needsEngineDownload by remember { mutableStateOf(TdLibNativeLibrary.needsDownload(context)) }
+    var engineDownloadProgress by remember { mutableStateOf<Float?>(null) }
+    var engineDownloadError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         TelegramClient.ensureStarted(context)
@@ -165,6 +174,66 @@ fun TelegramSettings(
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
+            if (needsEngineDownload) {
+                PreferenceGroup(title = stringResource(R.string.telegram_runtime_extension)) {
+                    item {
+                        PreferenceEntry(
+                            modifier = positions.modifierFor("telegram_runtime_extension"),
+                            title = { Text(stringResource(R.string.telegram_runtime_extension)) },
+                            description =
+                                when {
+                                    engineDownloadProgress != null ->
+                                        stringResource(
+                                            R.string.telegram_engine_downloading,
+                                            (engineDownloadProgress!! * 100).toInt(),
+                                        )
+
+                                    engineDownloadError != null -> engineDownloadError
+                                    else -> stringResource(R.string.telegram_runtime_extension_desc)
+                                },
+                            icon = { Icon(painterResource(R.drawable.provider_telegram), contentDescription = null) },
+                            trailingContent = {
+                                if (engineDownloadProgress != null) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        progress = { engineDownloadProgress ?: 0f },
+                                        modifier = Modifier.size(22.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    TextButton(
+                                        onClick = {
+                                            engineDownloadError = null
+                                            engineDownloadProgress = 0f
+                                            coroutineScope.launch {
+                                                val ok =
+                                                    runCatching {
+                                                        TdLibNativeLibrary.download(context) { p ->
+                                                            engineDownloadProgress = p.coerceIn(0f, 1f)
+                                                        }
+                                                    }.getOrDefault(false)
+                                                engineDownloadProgress = null
+                                                if (ok) {
+                                                    needsEngineDownload = false
+                                                    TelegramClient.ensureStarted(context)
+                                                } else {
+                                                    engineDownloadError =
+                                                        context.getString(R.string.telegram_engine_download_failed)
+                                                    needsEngineDownload =
+                                                        TdLibNativeLibrary.needsDownload(context)
+                                                }
+                                            }
+                                        },
+                                        shapes = androidx.compose.material3.ButtonDefaults.shapes(),
+                                    ) {
+                                        Text(stringResource(R.string.download))
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
             PreferenceGroup(title = stringResource(R.string.telegram_account)) {
                 if (isReady) {
                     item {

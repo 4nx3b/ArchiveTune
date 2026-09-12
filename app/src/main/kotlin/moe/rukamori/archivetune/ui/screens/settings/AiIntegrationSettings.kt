@@ -716,6 +716,8 @@ fun AiIntegrationSettings(
                             AiProvider.GEMINI,
                             AiProvider.CHATGPT,
                             AiProvider.OPENROUTER,
+                            AiProvider.MISTRAL,
+                            AiProvider.DEEPL,
                             AiProvider.CUSTOM,
                             AiProvider.NONE,
                         ),
@@ -792,7 +794,9 @@ fun AiIntegrationSettings(
                     selectedModel = romanizeSelectedModel,
                     availableModels = romanizeAvailableModels,
                     isFetching = romanizeActionState.isFetchingModels,
-                    isEnabled = romanizeProvider != AiProvider.DEEPL && romanizeProvider != AiProvider.OPENROUTER,
+                    // DeepL is translation-only and has no model list; every
+                    // chat provider (incl. OpenRouter and Mistral) can fetch.
+                    isEnabled = romanizeProvider != AiProvider.DEEPL,
                     canFetch = romanizeApiKey.isNotBlank() && !romanizeActionState.isFetchingModels,
                     onModelSelected = {
                         setRomanizeSelectedModel(it)

@@ -172,8 +172,11 @@ fun SimpMusicLyrics(
         )
     }
 
+    // Keyed by the same state object: an unkeyed provider would keep reading the
+    // first (dead) state object after a song change and the word fills would
+    // freeze while the line index / auto-scroll keep moving.
     val positionState = remember(lyrics) { mutableLongStateOf(0L) }
-    val positionProvider: () -> Long = remember { { positionState.longValue } }
+    val positionProvider: () -> Long = remember(positionState) { { positionState.longValue } }
     var currentLineIndex by remember(lyrics) { mutableIntStateOf(-1) }
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 

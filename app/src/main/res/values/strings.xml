@@ -583,6 +583,10 @@
     <string name="misc">Misc</string>
     <string name="haptics">Vibration</string>
     <string name="haptics_desc">Enable haptic feedback on interactive elements</string>
+    <string name="music_haptics">Music haptics</string>
+    <string name="music_haptics_desc">Vibrate in sync with the beat of the playing song (SpatialFlow engine)</string>
+    <string name="music_haptics_strength">Music haptics strength</string>
+    <string name="music_haptics_strength_value">%1$d%%</string>
     <string name="default_open_tab">Default open tab</string>
     <string name="navigation_bar_style">Navigation bar style</string>
     <string name="navigation_bar_style_default">Default</string>
@@ -1300,6 +1304,14 @@
     <string name="new_release_notification_more_title">More new releases</string>
     <string name="new_release_notification_more_text">And %d more from your subscribed artists</string>
     <string name="download">Download</string>
+    <string name="not_now">Not now</string>
+    <string name="icon_pack_download_title">Download icon pack?</string>
+    <string name="icon_pack_download_desc">The icon pack is downloaded once and stored on your device. After downloading you can browse and apply all community icons.</string>
+    <string name="icon_pack_download_needed">Icon pack not downloaded</string>
+    <string name="icon_pack_download_needed_desc">To use the community icons, download the icon pack first</string>
+    <string name="icon_pack_downloading">Downloading icon pack… %1$d%%</string>
+    <string name="icon_pack_download_failed">Icon pack download failed — tap to retry</string>
+    <string name="app_icon_runtime_notice">Applying a downloaded icon pins a new shortcut to your home screen with that icon — remove the original ArchiveTune icon afterwards if you want the new one only.</string>
     <string name="download_complete">Download complete</string>
     <string name="downloads">Downloads</string>
     <string name="download_in_progress">In progress</string>
@@ -1622,7 +1634,10 @@
     <string name="telegram_auth_unsupported">Unsupported login step: %1$s. Try signing in with the official Telegram app first.</string>
     <string name="telegram_runtime_failed">Telegram engine failed to start: %1$s. Check your connection and try again.</string>
     <string name="telegram_runtime_failed_unknown">unknown error</string>
-    <string name="telegram_engine_downloading">Downloading the Telegram engine (one-time setup)…</string>
+    <string name="telegram_runtime_extension">Telegram runtime extension</string>
+    <string name="telegram_runtime_extension_desc">To use the Telegram integration you\'ll need to download the runtime extension (TDLib engine, one-time download)</string>
+    <string name="telegram_engine_download_failed">Could not download the Telegram engine — check your connection and try again</string>
+    <string name="telegram_engine_downloading">Downloading the Telegram engine (one-time setup)… %1$d%%</string>
     <string name="telegram_browse_channels">Browse channels</string>
     <string name="telegram_browse_channels_description">Search Telegram channels and stream their audio files</string>
     <string name="telegram_search_channels_hint">Channel name, @username or t.me link</string>
