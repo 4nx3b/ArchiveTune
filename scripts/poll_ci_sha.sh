@@ -3,7 +3,7 @@
 # Usage: poll_ci_sha.sh <sha> [max_minutes]
 SHA=${1:?usage: poll_ci_sha.sh <sha> [max_minutes]}
 MAX_MIN=${2:-30}
-TOKEN=$(git -C /home/z/my-project config --get remote.origin.url | sed -n 's|https://[^:]*:\([^@]*\)@.*|\1|p')
+TOKEN=$(git -C /home/z/my-project/ArchiveTune config --get remote.origin.url | sed -n 's|https://\([^@]*\)@.*|\1|p' | sed 's|^[^:]*:||')
 REPO="4nx3b/ArchiveTune"
 DEADLINE=$(( $(date +%s) + MAX_MIN * 60 ))
 

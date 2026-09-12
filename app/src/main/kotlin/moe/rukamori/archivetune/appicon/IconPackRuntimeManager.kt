@@ -205,10 +205,10 @@ object IconPackRuntimeManager {
             val digest = MessageDigest.getInstance("SHA-256")
             target.parentFile?.mkdirs()
             val partial = File(target.parentFile, target.name + ".tmp")
+            var read = 0L
             partial.outputStream().use { out ->
                 body.byteStream().use { input ->
                     val buffer = ByteArray(BUFFER)
-                    var read = 0L
                     while (true) {
                         val n = input.read(buffer)
                         if (n <= 0) break

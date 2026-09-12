@@ -54,14 +54,14 @@ jobs:
         env:
           ANDROID_HOME: ${{ runner.temp }}/android-sdk
         run: |
-          ./gradlew :app:generateDebugIconPack -PslimIconPacks=false --no-daemon
+          ./gradlew :app:generateGmsMobileUniversalDebugIconPack -PslimIconPacks=false --no-daemon
 
       - name: Pack release zip
         run: |
           OUT="$RUNNER_TEMP/icon-pack-out"
           rm -rf "$OUT" && mkdir -p "$OUT/icon_pack/drawables"
-          ASSETS="app/build/generated/iconPack/debug/assets/icon_pack"
-          RES="app/build/generated/iconPack/debug/res"
+          ASSETS="app/build/generated/iconPack/gmsMobileUniversalDebug/assets/icon_pack"
+          RES="app/build/generated/iconPack/gmsMobileUniversalDebug/res"
           cp "$ASSETS/catalog.json" "$OUT/icon_pack/catalog.json"
           cp "$RES"/drawable-nodpi/icon_pack_*.png "$OUT/icon_pack/drawables/"
           (cd "$OUT" && zip -q -r -9 "$RUNNER_TEMP/icon-pack-v1.zip" icon_pack)

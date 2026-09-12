@@ -182,7 +182,6 @@ import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import kotlin.math.abs
-import moe.rukamori.archivetune.canvas.CanvasSource
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 
 private const val PlayerBackgroundMaxBlurRadius = 64f
@@ -1879,7 +1878,7 @@ fun V9PlayerContent(
     textBackgroundColor: Color,
     textButtonColor: Color,
     iconButtonColor: Color,
-    canvasSource: CanvasSource?,
+    canvasSource: String?,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     onCollapseClick: () -> Unit,
@@ -2024,7 +2023,7 @@ private fun V9PortraitContent(
     explicit: Boolean,
     artists: List<MediaMetadata.Artist>,
     artworkUrl: String?,
-    canvasSource: CanvasSource?,
+    canvasSource: String?,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     playbackState: Int,
@@ -2246,7 +2245,7 @@ private fun V9LandscapeContent(
     explicit: Boolean,
     artists: List<MediaMetadata.Artist>,
     artworkUrl: String?,
-    canvasSource: CanvasSource?,
+    canvasSource: String?,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     playbackState: Int,
@@ -2474,7 +2473,7 @@ private fun V9HeaderButton(
 @Composable
 private fun V9Artwork(
     artworkUrl: String?,
-    canvasSource: CanvasSource?,
+    canvasSource: String?,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
@@ -2500,7 +2499,6 @@ private fun V9Artwork(
 
         if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
             CanvasArtworkPlayer(
-                source = canvasSource,
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,

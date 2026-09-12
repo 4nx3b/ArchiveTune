@@ -334,6 +334,10 @@ class BackupRestoreViewModel
                                         context.getString(R.string.backup_step_export_settings)
                                     }
 
+                                    BackupArchiveStep.EXPORT_STATS -> {
+                                        context.getString(R.string.backup_step_export_stats)
+                                    }
+
                                     BackupArchiveStep.CHECKPOINT_DATABASE -> {
                                         context.getString(R.string.backup_step_checkpoint_database)
                                     }

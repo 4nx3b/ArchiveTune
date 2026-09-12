@@ -326,12 +326,14 @@ class AppIconRepository
             ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
                 .filter { it.id.startsWith("app_icon_") }
                 .forEach { shortcut ->
+                    // Pinned shortcuts cannot be removed programmatically —
+                    // disabling greys them out and frees the launcher slot.
                     ShortcutManagerCompat.disableShortcuts(
                         context,
                         listOf(shortcut.id),
                         context.getString(R.string.app_name),
                     )
-                    ShortcutManagerCompat.removeShortcuts(context, listOf(shortcut.id))
+                    ShortcutManagerCompat.removeLongLivedShortcuts(context, listOf(shortcut.id))
                 }
         }
 
