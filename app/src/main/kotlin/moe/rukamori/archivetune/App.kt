@@ -27,17 +27,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.extensions.*
+import moe.rukamori.archivetune.gatekeeper.GatekeeperResult
+import moe.rukamori.archivetune.gatekeeper.RunGatekeeperCheckUseCase
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.morideobfuscator.MoriCipherConfig
+import moe.rukamori.archivetune.morideobfuscator.MoriCipherRuntime
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -46,6 +52,7 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
+import moe.rukamori.archivetune.utils.MoriCipherUpdateScheduler
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
@@ -58,17 +65,22 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.toPlaybackAuthState
 import okhttp3.Dns
 import timber.log.Timber
+import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.net.Proxy
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
 import kotlin.system.exitProcess
 
 @HiltAndroidApp
 class App :
     Application(),
     SingletonImageLoader.Factory {
+    @Inject
+    lateinit var runGatekeeperCheckUseCase: RunGatekeeperCheckUseCase
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -105,8 +117,23 @@ class App :
         } catch (_: Exception) {
         }
 
+        initializeGatekeeper()
         initializeCriticalSync()
         initializeDeferredAsync()
+    }
+
+    private fun initializeGatekeeper() {
+        applicationScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                val result = runGatekeeperCheckUseCase()
+                when (result) {
+                    GatekeeperResult.Allowed -> return@launch
+                    GatekeeperResult.Unavailable -> Unit
+                    is GatekeeperResult.Blocked -> if (!result.retryable) return@launch
+                }
+                delay(GATEKEEPER_RETRY_INTERVAL_MILLIS)
+            }
+        }
     }
 
     override fun onTrimMemory(level: Int) {
@@ -115,6 +142,13 @@ class App :
     }
 
     private fun initializeCriticalSync() {
+        MoriCipherRuntime.initialize(
+            MoriCipherConfig(
+                cacheDirectory = File(noBackupFilesDir, "mori_cipher"),
+                proxyProvider = { YouTube.streamProxy },
+            ),
+        )
+        MoriCipherUpdateScheduler.schedule(this)
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
@@ -139,6 +173,11 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
+        applicationScope.launch(Dispatchers.IO) {
+            MoriCipherRuntime
+                .refresh(force = false)
+                .onFailure { Timber.w(it, "Mori cipher background initialization failed") }
+        }
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
@@ -172,14 +211,6 @@ class App :
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
-                }
-
-                // Pre-warm BotGuard token generator
-                val initialVisitor = prefs[VisitorDataKey] ?: YouTube.visitorData
-                if (!initialVisitor.isNullOrBlank()) {
-                    applicationScope.launch(Dispatchers.IO) {
-                        BotGuardTokenGenerator.preWarm(initialVisitor)
-                    }
                 }
 
                 // Apply random theme on startup if enabled
@@ -246,9 +277,9 @@ class App :
                     YouTube.authState = authState
                     if (previousFingerprint != authState.fingerprint) {
                         YTPlayerUtils.clearPlaybackAuthCaches()
-                        val newSessionId = authState.sessionId
-                        if (!newSessionId.isNullOrBlank()) {
-                            BotGuardTokenGenerator.preWarm(newSessionId)
+                        val sessionId = authState.sessionId
+                        if (!sessionId.isNullOrBlank()) {
+                            BotGuardTokenGenerator.preWarm(sessionId)
                         }
                     }
                 }
@@ -363,6 +394,8 @@ class App :
     }
 
     companion object {
+        private const val GATEKEEPER_RETRY_INTERVAL_MILLIS = 30_000L
+
         lateinit var instance: App
             private set
 

@@ -12,7 +12,9 @@ package moe.rukamori.archivetune.ui.screens.settings
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -20,14 +22,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.core.net.toUri
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -43,14 +53,35 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.setAppLocale
+import moe.rukamori.archivetune.viewmodels.AiContentFilterSettingsEffect
+import moe.rukamori.archivetune.viewmodels.AiContentFilterSettingsState
+import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import java.util.Locale
 
 @Composable
-fun ContentSettings(navController: NavController) {
+fun ContentSettings(
+    navController: NavController,
+    viewModel: ContentSettingsViewModel = hiltViewModel(),
+) {
     val context = LocalContext.current
+    val aiContentFilterState by viewModel.aiContentFilterState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Used only before Android 13
-    val (appLanguage, onAppLanguageChange) = rememberPreference(key = AppLanguageKey, defaultValue = SYSTEM_DEFAULT)
+    LaunchedEffect(viewModel, context) {
+        viewModel.aiContentFilterEffects.collect { effect ->
+            when (effect) {
+                is AiContentFilterSettingsEffect.ShowMessage -> {
+                    snackbarHostState.showSnackbar(context.getString(effect.messageResId))
+                }
+
+                is AiContentFilterSettingsEffect.OpenUrl -> {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, effect.url.toUri()))
+                }
+            }
+        }
+    }
+
+    val (useSystemLanguage, onUseSystemLanguageChange) = rememberPreference(key = UseSystemLanguageKey, defaultValue = true)
 
     val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
     val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
@@ -164,42 +195,27 @@ fun ContentSettings(navController: NavController) {
             }
         }
 
+        AiContentFilterPreferences(
+            state = aiContentFilterState,
+            onEnabledChange = viewModel::setAiContentFilterEnabled,
+            onIncludeModerateChange = viewModel::setAiContentFilterIncludeModerate,
+            onRefresh = viewModel::refreshAiContentFilter,
+            onOpenSource = viewModel::openAiContentFilterSource,
+        )
+
         PreferenceGroup(title = stringResource(R.string.app_language)) {
             item {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.app_language)) },
-                        icon = { Icon(painterResource(R.drawable.language), null) },
-                        onClick = {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APP_LOCALE_SETTINGS,
-                                    "package:${context.packageName}".toUri(),
-                                ),
-                            )
-                        },
-                    )
-                } else {
-                    ListPreference(
-                        title = { Text(stringResource(R.string.app_language)) },
-                        icon = { Icon(painterResource(R.drawable.language), null) },
-                        selectedValue = appLanguage,
-                        values = listOf(SYSTEM_DEFAULT) + LanguageCodeToName.keys.toList(),
-                        valueText = {
-                            LanguageCodeToName.getOrElse(it) { stringResource(R.string.system_default) }
-                        },
-                        onValueSelected = { langTag ->
-                            val newLocale =
-                                langTag
-                                    .takeUnless { it == SYSTEM_DEFAULT }
-                                    ?.let { Locale.forLanguageTag(it) }
-                                    ?: Locale.getDefault()
-
-                            onAppLanguageChange(langTag)
-                            setAppLocale(context, newLocale)
-                        },
-                    )
-                }
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.use_system_language)) },
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                    checked = useSystemLanguage,
+                    onCheckedChange = { checked ->
+                        onUseSystemLanguageChange(checked)
+                        val newLocale = if (checked) Locale.getDefault() else Locale.ENGLISH
+                        setAppLocale(context, newLocale)
+                        (context as? android.app.Activity)?.recreate()
+                    },
+                )
             }
         }
 
@@ -247,4 +263,99 @@ fun ContentSettings(navController: NavController) {
             }
         },
     )
+
+    Box(Modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+@Composable
+private fun AiContentFilterPreferences(
+    state: AiContentFilterSettingsState,
+    onEnabledChange: (Boolean) -> Unit,
+    onIncludeModerateChange: (Boolean) -> Unit,
+    onRefresh: () -> Unit,
+    onOpenSource: () -> Unit,
+) {
+    PreferenceGroup(title = stringResource(R.string.ai_content_filter)) {
+        when (state) {
+            AiContentFilterSettingsState.Loading -> {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.ai_content_filter)) },
+                        description = stringResource(R.string.loading),
+                        icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                        isEnabled = false,
+                    )
+                }
+            }
+
+            AiContentFilterSettingsState.Empty -> {
+                Unit
+            }
+
+            is AiContentFilterSettingsState.Error -> {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.ai_content_filter)) },
+                        description = stringResource(state.messageResId),
+                        icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                        onClick = onRefresh,
+                    )
+                }
+            }
+
+            is AiContentFilterSettingsState.Success -> {
+                val model = state.model
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.ai_content_filter_hide)) },
+                        description = stringResource(R.string.ai_content_filter_hide_summary),
+                        icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                        checked = model.enabled,
+                        onCheckedChange = onEnabledChange,
+                    )
+                }
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.ai_content_filter_moderate)) },
+                        description = stringResource(R.string.ai_content_filter_moderate_summary),
+                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                        checked = model.includeModerateConfidence,
+                        onCheckedChange = onIncludeModerateChange,
+                        isEnabled = model.enabled,
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.ai_content_filter_update)) },
+                        description =
+                            if (model.refreshing) {
+                                stringResource(R.string.loading)
+                            } else {
+                                stringResource(
+                                    R.string.ai_content_filter_list_counts,
+                                    model.blocklistCount,
+                                    model.warnlistCount,
+                                )
+                            },
+                        icon = { Icon(painterResource(R.drawable.sync), null) },
+                        onClick = onRefresh,
+                        isEnabled = !model.refreshing,
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.ai_content_filter_source)) },
+                        description = stringResource(R.string.ai_content_filter_source_summary),
+                        icon = { Icon(painterResource(R.drawable.info), null) },
+                        onClick = onOpenSource,
+                    )
+                }
+            }
+        }
+    }
 }

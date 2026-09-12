@@ -16,6 +16,28 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
+fun String.asBuildConfigString(): String =
+    "\"${
+        replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }\""
+
+val fallbackDataServerUrl = "archive-tune-admin-remote.vercel.app"
+val dataServerUrl =
+    rootProject
+        .file("DataServer.txt")
+        .takeIf { it.isFile }
+        ?.readText()
+        ?.trim()
+        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        ?: fallbackDataServerUrl
+val apiBearerToken = System.getenv("API_BEARER_TOKEN")?.trim()
+    ?: localProperties.getProperty("API_BEARER_TOKEN")?.trim()
+    ?: ""
+
 val discordApplicationId =
     (
         localProperties.getProperty("DISCORD_APPLICATION_ID")
@@ -35,7 +57,6 @@ val hasReleaseSigningConfig =
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
-
 android {
     namespace = "moe.rukamori.archivetune"
     compileSdk = 37
@@ -44,8 +65,8 @@ android {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 138
-        versionName = "13.7.0"
+        versionCode = 140
+        versionName = "14.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -78,6 +99,10 @@ android {
                 ?: System.getenv("EXTRACTOR_BEARER")
                 ?: ""
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
+
+        buildConfigField("String", "DATA_SERVER_URL", dataServerUrl.asBuildConfigString())
+        buildConfigField("String", "API_BEARER_TOKEN", apiBearerToken.asBuildConfigString())
+        buildConfigField("boolean", "GATEKEEPER_ENABLED", "false")
 
         val nightlyBuildHash =
             (
@@ -172,6 +197,7 @@ android {
             )
         }
         debug {
+            buildConfigField("boolean", "GATEKEEPER_ENABLED", "false")
             applicationIdSuffix = ".debug"
             isDebuggable = true
         }
@@ -292,6 +318,7 @@ dependencies {
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
 
+
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
     ksp(libs.room.compiler)
@@ -318,6 +345,7 @@ dependencies {
     implementation(project(":shazamkit"))
     implementation(project(":spotifycore"))
     implementation(project(":moriextractor"))
+    implementation(project(":morideobfuscator"))
     implementation("com.materialkolor:material-kolor:5.0.0-alpha07")
 
     implementation(libs.ktor.client.core)

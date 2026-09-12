@@ -67,6 +67,8 @@ fun BottomSheet(
     modifier: Modifier = Modifier,
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
+    onCollapsedContentClick: (() -> Unit)? = null,
+    backHandlerEnabled: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -92,7 +94,7 @@ fun BottomSheet(
                     ),
                 ),
     ) {
-        if (state.isExpandedOrExpanding) {
+        if (state.isExpandedOrExpanding && backHandlerEnabled) {
             BackHandler(onBack = state::collapseSoft)
         }
 
@@ -117,7 +119,7 @@ fun BottomSheet(
                         }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = state::expandSoft,
+                            onClick = onCollapsedContentClick ?: state::expandSoft,
                         ).fillMaxWidth()
                         .height(state.collapsedBound),
                 content = collapsedContent,
@@ -392,8 +394,9 @@ fun Modifier.bottomSheetDraggable(
                 state.dispatchRawDelta(dragAmount)
             },
             onDragCancel = {
+                val velocity = -velocityTracker.calculateVelocity().y
                 velocityTracker.resetTracking()
-                state.snapTo(state.collapsedBound)
+                state.performFling(velocity, onDismiss)
             },
             onDragEnd = {
                 val velocity = -velocityTracker.calculateVelocity().y

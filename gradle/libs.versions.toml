@@ -9,9 +9,9 @@ lifecycle = "2.11.0"
 material3 = "1.5.0-alpha23"
 media3 = "1.10.1"
 room = "2.8.4"
-hilt = "2.60"
+hilt = "2.60.1"
 ktor = "3.5.1"
-ksp = "2.3.9"
+ksp = "2.3.10"
 jsoup = "1.22.2"
 re2j = "1.8"
 coil = "3.5.0"
@@ -26,7 +26,7 @@ datastore = "1.2.1"
 workManager = "2.11.2"
 composeReorderable = "3.1.0"
 squigglyslider = "1.0.0"
-shimmer = "1.4.0"
+shimmer = "1.5.0"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
 brotli = "0.1.2"
@@ -35,7 +35,7 @@ junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
 kuromojiIpadic = "0.9.0"
-extractor = "0.26.3"
+extractor = "0.26.5"
 translator = "1.1.1"
 rhino = "1.9.1"
 markwon = "4.6.2"
@@ -44,6 +44,7 @@ accompanist = "1.0.19"
 accompanist-core = "0.4.7"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
+
 
 [libraries]
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
@@ -117,6 +118,7 @@ re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
 
 json = { module = "org.json:json", version.ref = "json" }
 okhttp_dnsoverhttps = { module = "com.squareup.okhttp3:okhttp-dnsoverhttps", version.ref = "okhttp" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 
 brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
@@ -146,6 +148,7 @@ accompanist-lyrics-ui = { module = "com.mocharealm.accompanist:lyrics-ui", versi
 accompanist-lyrics-core = { module = "com.mocharealm.accompanist:lyrics-core", version.ref = "accompanist-core" }
 androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
 aboutlibraries-core = { module = "com.mikepenz:aboutlibraries-core", version.ref = "aboutLibraries" }
+
 
 
 [plugins]

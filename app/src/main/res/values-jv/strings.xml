@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Omah</string>
     <string name="songs">Lagu</string>
@@ -49,7 +49,6 @@
     <string name="delete_playlist_confirm">Yakin ingin menghapus playlist \"%s\"?</string>
     <string name="change_playlist_cover">Ubah sampul playlist</string>
     <string name="retry">Jajal maneh</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Acak</string>
     <string name="music_recognition">Pengenalan Musik</string>
     <string name="reset">Setel ulang</string>
@@ -322,7 +321,6 @@
     <string name="playback_requires_youtube_music_confirmation">Konfirmasikan pemutaran di YouTube Music, lalu kembali ke ArchiveTune.</string>
     <string name="playback_login_refresh_required">Segarkan login YouTube Music</string>
     <string name="playback_requires_youtube_music_login_refresh">Segarkan login YouTube Music Kowe, lalu kembali ke ArchiveTune.</string>
-    <string name="could_not_open_youtube_music">Ora bisa membuka YouTube Music</string>
     <string name="content_language">Bahasa konten default</string>
     <string name="content_country">Negara konten default</string>
     <string name="system_default">Bawaan sistem</string>
@@ -393,17 +391,12 @@
     <string name="add_symbol">Tambahke simbol</string>
     <string name="enter_symbol">Masukkan simbol</string>
     <string name="equalizer">Ekualiser</string>
-    <string name="tap_to_activate_equalizer">Ketuk untuk mengaktifkan ekualiser</string>
     <string name="eq_waiting_for_audio_session">Menunggu sesi audio…</string>
     <string name="eq_open_system_equalizer">Buka ekualiser sistem</string>
     <string name="eq_presets">Preset</string>
     <string name="eq_flat">Datar</string>
     <string name="eq_profiles">Profil</string>
     <string name="eq_manage">Kelola</string>
-    <string name="eq_system_preset">Preset sistem</string>
-    <string name="eq_manual">Manual</string>
-    <string name="eq_profile_hint">Terapkan profil atau simpan pengaturan Kowe saat ini</string>
-    <string name="eq_save">Simpen</string>
     <string name="eq_save_profile">Simpen profil</string>
     <string name="eq_profile_name">Nama profil</string>
     <string name="eq_custom_profile">Profil kustom</string>
@@ -575,9 +568,7 @@
     <string name="enable_discord_debug_lines">Aktifkan baris pengaturan debug</string>
     <string name="presence_manager_running">Manajer Presence: berjalan</string>
     <string name="presence_manager_stopped">Manajer Presence: dihentikan</string>
-    <string name="filter_levels">Tingkat filter</string>
     <string name="experimental_features">Fitur Eksperimental</string>
-    <string name="reset_to_default_levels">Atur ulang ke default</string>
     <string name="no_logs">Tidak Ada Log</string>
     <string name="show_nerd_stats">Tampilake statistik nerd</string>
     <string name="description_show_nerd_stats">Menampilkan statistik pemutaran waktu nyata (codec, bitrate, buffer)</string>
@@ -609,7 +600,6 @@
     <string name="log_level_info">Informasi</string>
     <string name="log_level_warning">Peringatan</string>
     <string name="log_level_error">Kesalahan</string>
-    <string name="filter_discord_only">Discord</string>
     <string name="filter_all_logs">Kabeh</string>
     <string name="clear">Bersihkan</string>
     <string name="logs_empty_message">Log akan muncul di sini bila tersedia</string>
@@ -622,25 +612,18 @@
     <string name="playback_state_unknown">UNKNOWN</string>
     <string name="share_logs">Bagekake log</string>
     <string name="about">Babagan</string>
-    <string name="open_youtube_music">Buka YouTube Musik</string>
     <string name="new_version_available">Versi baru tersedia</string>
     <string name="updates">Pembaruan</string>
     <string name="updates_subtitle_stable">Rilis stabil dan catatan rilis</string>
-    <string name="updates_subtitle_nightly">Build nightly dan commit pengembangan terkini</string>
     <string name="current_version">Versi Saat Ini</string>
     <string name="latest_version_format">Terbaru: %s</string>
     <string name="updates_status_checking">Memeriksa rilis terbaru</string>
     <string name="updates_status_current">Kowe sedang menggunakan rilis terbaru yang tersedia</string>
     <string name="enable_update_notification">Aktifkan Pemberitahuan Pembaruan</string>
-    <string name="enable_update_notification_desc">Dapatkan pemberitahuan ketika versi stabil baru dirilis</string>
     <string name="update_channel">Saluran Pembaruan</string>
     <string name="update_channel_desc">Pilih antara rilis teruji dan cuplikan pengembangan.</string>
     <string name="channel_stable">Stabil</string>
-    <string name="channel_nightly">Nightly</string>
     <string name="recent_commits">Commit Terbaru</string>
-    <string name="updates_nightly_title">Pengiriman Nightly</string>
-    <string name="updates_nightly_description">Build Nightly melacak commit pengembangan terbaru dan mungkin mencakup perubahan yang belum selesai.</string>
-    <string name="updates_latest_commit">Commit terbaru: %s</string>
     <string name="updates_loading_commits">Ngisi commit terbaru</string>
     <string name="updates_recent_commits_count">%1$d commit terbaru</string>
     <string name="updates_no_commits">Ora ana commit terbaru yang ditemukan</string>
@@ -685,8 +668,6 @@
     <string name="session_code">Kode sesi</string>
     <string name="add_current_song">Tambahke lagu saat ini</string>
     <string name="dismiss">Tutup</string>
-    <string name="enabled">Diaktifkan</string>
-    <string name="disabled">Nonaktifkan</string>
     <string name="invalid_link">Tautan tidak valid</string>
     <string name="invalid_code">Kode tidak valid</string>
     <string name="not_allowed">Tidak diperbolehkan</string>
@@ -727,20 +708,13 @@
     <string name="po_token_gvs">Token PO (GVS)</string>
     <string name="po_token_player">Token PO (Pemutar)</string>
     <string name="visitor_data">Data Pengunjung</string>
-    <string name="supported_clients">Klien yang Didukung</string>
     <string name="generated_tokens">Token yang Dihasilkan</string>
-    <string name="token_settings">Setelan Token</string>
-    <string name="use_visitor_data">Gunakan Data Pengunjung</string>
-    <string name="use_visitor_data_desc">Gunakan data pengunjung untuk pembuatan token. Memerlukan cookie untuk dinonaktifkan.</string>
-    <string name="cookies_must_be_disabled">Cookie harus dinonaktifkan untuk menggunakan data pengunjung</string>
     <string name="regenerate">Generate ulang</string>
     <string name="regenerate_token">Regenerasi Token</string>
     <string name="source_url">URL sumber</string>
     <string name="source_url_placeholder">https://youtube.com/account</string>
-    <string name="generating_tokens">Menghasilkan token…</string>
     <string name="tokens_generated">Token berhasil dibuat</string>
     <string name="token_generation_failed">Pembuatan token gagal</string>
-    <string name="open_account_before_extract">Buka dan masuk di youtube.com/account sebelum mengekstrak</string>
     <string name="token_copied">Token disalin ke papan klip</string>
     <string name="extracting_from_url">Mengekstrak token dari URL…</string>
     <string name="po_token_account_notice_title">Gunakan akun yang sama</string>
@@ -755,12 +729,6 @@
     <string name="album_backdrop_desc">Tampilake karya seni sebagai latar belakang buram di pemutar</string>
     <string name="backdrop_blur_amount">Jumlah buram latar belakang</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">Pustaka Kowe</string>
-    <string name="library_subtitle">Musik Kowe, diatur untuk Kowe</string>
-    <string name="library_playlists_subtitle">Kabeh playlist Kowe, diatur untuk Kowe</string>
-    <string name="library_songs_subtitle">Kabeh lagu Kowe, diatur untuk Kowe</string>
-    <string name="library_artists_subtitle">Kabeh artis Kowe, di satu tempat</string>
-    <string name="library_albums_subtitle">Kabeh album Kowe, tersusun rapi</string>
     <string name="most_played_badge">PALING SERING DIPUTAR</string>
     <string name="play_all">Puter semua</string>
 </resources>

@@ -44,11 +44,67 @@ fun FormatEntity.codecLabel(): String {
     }
 }
 
-fun FormatEntity.formattedBitrate(): String = if (bitrate > 0) "${bitrate / 1000} kbps" else "Unknown"
+fun FormatEntity.formattedBitrate(): String? = bitrate.takeIf { it > 0 }?.let { "${it / 1000} kbps" }
 
 fun FormatEntity.formattedSampleRate(): String? =
     sampleRate?.takeIf { it > 0 }?.let {
         "${(it / 100.0).roundToInt() / 10.0} kHz"
     }
 
-fun FormatEntity.formattedFileSize(): String = if (contentLength > 0) "${(contentLength / 1024.0 / 1024.0).roundToInt()} MB" else ""
+fun FormatEntity.formattedFileSize(): String =
+    contentLength.takeIf { it > 0 }?.let {
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        var size = it.toDouble()
+        var unitIndex = 0
+
+        while (size >= 1024.0 && unitIndex < units.lastIndex) {
+            size /= 1024.0
+            unitIndex++
+        }
+
+        var rounded =
+            if (size >= 99.95) {
+                size.roundToInt().toDouble()
+            } else {
+                (size * 10.0).roundToInt() / 10.0
+            }
+
+        if (rounded >= 1023.95 && unitIndex < units.lastIndex) {
+            rounded = 1.0
+            unitIndex++
+        }
+
+        if (rounded == rounded.toLong().toDouble()) {
+            "${rounded.toLong()} ${units[unitIndex]}"
+        } else {
+            String.format(java.util.Locale.US, "%.1f %s", rounded, units[unitIndex])
+        }
+    } ?: ""
+
+enum class RatePriority {
+    BITRATE_FIRST,
+    SAMPLE_RATE_FIRST,
+}
+
+fun FormatEntity.autoRateDisplay(priority: RatePriority = RatePriority.BITRATE_FIRST): String {
+    val hasBitrate = bitrate > 0
+    val hasSampleRate = sampleRate != null && sampleRate > 0
+
+    return when (priority) {
+        RatePriority.BITRATE_FIRST -> {
+            when {
+                hasBitrate -> formattedBitrate() ?: ""
+                hasSampleRate -> formattedSampleRate() ?: ""
+                else -> "Unknown"
+            }
+        }
+
+        RatePriority.SAMPLE_RATE_FIRST -> {
+            when {
+                hasSampleRate -> formattedSampleRate() ?: ""
+                hasBitrate -> formattedBitrate() ?: ""
+                else -> "Unknown"
+            }
+        }
+    }
+}

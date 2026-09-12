@@ -7,6 +7,9 @@
 
 package moe.rukamori.archivetune.musicrecognition
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class RecognizedTrack(
     val trackId: String,
     val title: String,
@@ -47,6 +50,11 @@ data class RecognitionHistoryEntry(
     val searchQuery: String
         get() = "$title $artist".trim()
 }
+
+data class BackgroundRecognitionSetting(
+    val enabled: Boolean,
+    val available: Boolean,
+)
 
 enum class RecognitionPhase {
     Listening,

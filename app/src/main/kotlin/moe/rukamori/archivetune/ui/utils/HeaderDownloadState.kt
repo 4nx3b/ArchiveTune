@@ -24,6 +24,7 @@ sealed interface HeaderDownloadState {
     @Immutable
     data class Partial(
         val progress: Float,
+        val paused: Boolean,
     ) : HeaderDownloadState
 }
 
@@ -42,6 +43,8 @@ fun headerDownloadState(
     var completedCount = 0
     var progressTotal = 0f
     var hasAnyDownload = false
+    var hasRunningDownload = false
+    var hasPausedDownload = false
 
     val distinctSongIds = songIds.distinct()
 
@@ -65,6 +68,7 @@ fun headerDownloadState(
                         ?: 0f
                 progressTotal += progress.coerceIn(0f, 1f)
                 hasAnyDownload = true
+                hasRunningDownload = true
             }
 
             Download.STATE_STOPPED -> {
@@ -76,6 +80,8 @@ fun headerDownloadState(
                             ?: 0f
                     progressTotal += progress.coerceIn(0f, 1f)
                     hasAnyDownload = true
+                    hasPausedDownload =
+                        hasPausedDownload || download.stopReason == COLLECTION_PAUSE_STOP_REASON
                 }
             }
         }
@@ -87,9 +93,10 @@ fun headerDownloadState(
             HeaderDownloadState.Completed
         }
 
-        hasAnyDownload -> {
+        hasRunningDownload || hasPausedDownload -> {
             HeaderDownloadState.Partial(
                 progress = (progressTotal / distinctCount).coerceIn(0f, 1f),
+                paused = hasPausedDownload && !hasRunningDownload,
             )
         }
 
@@ -126,8 +133,17 @@ fun sendAddMissingDownloads(
 fun sendRemoveDownloads(
     context: Context,
     songIds: List<String>,
+    downloads: Map<String, Download>? = null,
 ) {
-    songIds.distinct().forEach { songId ->
+    val idsToRemove = if (downloads != null) {
+        songIds.distinct().filter { id ->
+            val download = downloads[id]
+            download != null && download.state != Download.STATE_COMPLETED
+        }
+    } else {
+        songIds.distinct()
+    }
+    idsToRemove.forEach { songId ->
         DownloadService.sendRemoveDownload(
             context,
             ExoDownloadService::class.java,
@@ -136,53 +152,6 @@ fun sendRemoveDownloads(
         )
     }
 }
-
-fun sendPauseDownloads(
-    context: Context,
-    songIds: List<String>,
-) {
-    songIds.distinct().forEach { songId ->
-        DownloadService.sendSetStopReason(
-            context,
-            ExoDownloadService::class.java,
-            songId,
-            COLLECTION_PAUSE_STOP_REASON,
-            false,
-        )
-    }
-}
-
-fun sendResumeDownloads(
-    context: Context,
-    songIds: List<String>,
-) {
-    songIds.distinct().forEach { songId ->
-        DownloadService.sendSetStopReason(
-            context,
-            ExoDownloadService::class.java,
-            songId,
-            DOWNLOAD_STOP_REASON_NONE,
-            false,
-        )
-    }
-}
-
-fun hasActiveDownloads(
-    songIds: List<String>,
-    downloads: Map<String, Download>,
-): Boolean =
-    songIds.distinct().any { songId ->
-        when (downloads[songId]?.state) {
-            Download.STATE_QUEUED,
-            Download.STATE_DOWNLOADING,
-            Download.STATE_RESTARTING,
-            -> true
-
-            Download.STATE_STOPPED -> downloads[songId]?.stopReason != DOWNLOAD_STOP_REASON_NONE
-
-            else -> false
-        }
-    }
 
 private fun Int?.shouldRequestDownload(): Boolean =
     when (this) {

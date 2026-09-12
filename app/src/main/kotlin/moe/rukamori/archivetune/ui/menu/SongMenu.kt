@@ -101,9 +101,12 @@ import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.utils.ExternalDownloaderLaunchResult
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
+import moe.rukamori.archivetune.utils.openExternalDownloader
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
@@ -118,6 +121,7 @@ fun SongMenu(
     navController: NavController,
     playlistSong: PlaylistSong? = null,
     playlistBrowseId: String? = null,
+    onChangeSource: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     isFromCache: Boolean = false,
 ) {
@@ -249,7 +253,7 @@ fun SongMenu(
 
                 coroutineScope.launch {
                     database.query {
-                        update(song.song.copy(title = newTitle))
+                        update(song.song.copy(title = newTitle, titleOverride = true))
                         val artist = song.artists.firstOrNull()
                         if (artist != null) {
                             update(artist.copy(name = newArtist))
@@ -340,7 +344,12 @@ fun SongMenu(
                     },
                     leadingContent = {
                         AsyncImage(
-                            model = splitArtist.originalArtist?.thumbnailUrl?.resize(200, 200),
+                            model =
+                                splitArtist.originalArtist?.thumbnailUrl?.resize(
+                                    width = 200,
+                                    height = 200,
+                                    ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
+                                ),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier =
@@ -531,7 +540,12 @@ fun SongMenu(
             }
         }
 
-    val showMutationSection = event != null || playlistSong != null || isFromCache || !isLocalSong
+    val showMutationSection =
+        event != null ||
+            playlistSong != null ||
+            onChangeSource != null ||
+            isFromCache ||
+            !isLocalSong
 
     LazyColumn(
         contentPadding =
@@ -673,6 +687,34 @@ fun SongMenu(
                         }
 
                         if (event != null) {
+                            HorizontalDivider(
+                                modifier = dividerModifier,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
+
+                        if (onChangeSource != null) {
+                            ListItem(
+                                headlineContent = {
+                                    Text(text = stringResource(R.string.change_song_source))
+                                },
+                                supportingContent = {
+                                    Text(text = stringResource(R.string.change_song_source_desc))
+                                },
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.sync),
+                                        contentDescription = null,
+                                    )
+                                },
+                                modifier =
+                                    Modifier.clickable {
+                                        onChangeSource()
+                                        onDismiss()
+                                    },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+
                             HorizontalDivider(
                                 modifier = dividerModifier,
                                 color = MaterialTheme.colorScheme.outlineVariant,
@@ -860,30 +902,24 @@ fun SongMenu(
                                         Modifier.clickable {
                                             onDismiss()
                                             val url = "https://music.youtube.com/watch?v=${song.id}"
-                                            if (externalDownloaderPackage.isBlank()) {
-                                                Toast
-                                                    .makeText(
-                                                        context,
-                                                        context.getString(R.string.external_downloader_not_configured),
-                                                        Toast.LENGTH_LONG,
-                                                    ).show()
-                                                return@clickable
-                                            }
-                                            val intent =
-                                                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                                    setPackage(externalDownloaderPackage)
-                                                    data = android.net.Uri.parse(url)
-                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            when (context.openExternalDownloader(externalDownloaderPackage, url)) {
+                                                ExternalDownloaderLaunchResult.STARTED -> Unit
+                                                ExternalDownloaderLaunchResult.NOT_CONFIGURED -> {
+                                                    Toast
+                                                        .makeText(
+                                                            context,
+                                                            context.getString(R.string.external_downloader_not_configured),
+                                                            Toast.LENGTH_LONG,
+                                                        ).show()
                                                 }
-                                            try {
-                                                context.startActivity(intent)
-                                            } catch (e: android.content.ActivityNotFoundException) {
-                                                Toast
-                                                    .makeText(
-                                                        context,
-                                                        context.getString(R.string.external_downloader_not_installed),
-                                                        Toast.LENGTH_SHORT,
-                                                    ).show()
+                                                ExternalDownloaderLaunchResult.NOT_INSTALLED -> {
+                                                    Toast
+                                                        .makeText(
+                                                            context,
+                                                            context.getString(R.string.external_downloader_not_installed),
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                }
                                             }
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),

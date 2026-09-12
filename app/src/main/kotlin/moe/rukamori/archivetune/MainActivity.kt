@@ -24,9 +24,11 @@ import android.provider.OpenableColumns
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -36,6 +38,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
@@ -65,6 +69,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -76,11 +81,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.PlainTooltip
@@ -182,6 +189,7 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
+import moe.rukamori.archivetune.constants.UseSystemLanguageKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.DarkModeKey
@@ -190,16 +198,17 @@ import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
-import moe.rukamori.archivetune.constants.FloatingToolbarBottomPadding
-import moe.rukamori.archivetune.constants.FloatingToolbarHeight
-import moe.rukamori.archivetune.constants.FloatingToolbarHorizontalPadding
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.HasPressedStarKey
+import moe.rukamori.archivetune.constants.AodModeEnabledKey
 import moe.rukamori.archivetune.constants.LaunchCountKey
 import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
 import moe.rukamori.archivetune.constants.NavigationBarAnimationSpec
+import moe.rukamori.archivetune.constants.NavigationBarBottomPadding
+import moe.rukamori.archivetune.constants.NavigationBarHeight
+import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
 import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
@@ -260,6 +269,7 @@ import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
+import moe.rukamori.archivetune.ui.screens.LoginScreen
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.navigationBuilder
@@ -291,11 +301,11 @@ import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.setAppLocale
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
+import moe.rukamori.archivetune.viewmodels.GatekeeperViewModel
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import moe.rukamori.archivetune.viewmodels.NetworkBannerViewModel
 import moe.rukamori.archivetune.viewmodels.NewsViewModel
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
-import moe.rukamori.archivetune.viewmodels.OnlineSearchViewModel
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -371,6 +381,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestAodMode() {
+        if (!dataStore.get(AodModeEnabledKey, true)) return
         pendingAodModeRequest = true
         startMusicServiceSafely()
         openPendingAodModeIfReady()
@@ -451,6 +462,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        if (!isMusicServiceBound || playerConnection?.aodModeEnabled?.value == true) {
+            super.onStop()
+            return
+        }
         safeUnbindMusicService()
         super.onStop()
     }
@@ -497,29 +512,28 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            val initialLocale =
-                PreferenceStore
-                    .get(AppLanguageKey)
-                    ?.takeUnless { it == SYSTEM_DEFAULT }
-                    ?.let { Locale.forLanguageTag(it) }
-                    ?: Locale.getDefault()
-            setAppLocale(this, initialLocale)
+        val initialLocale =
+            if (PreferenceStore.get(UseSystemLanguageKey) ?: true) {
+                Locale.getDefault()
+            } else {
+                Locale.ENGLISH
+            }
+        setAppLocale(this, initialLocale)
 
-            lifecycleScope.launch(Dispatchers.IO) {
-                runCatching {
-                    dataStore.data.first()[AppLanguageKey]
-                }.onSuccess { lang ->
-                    val targetLocale =
-                        lang
-                            ?.takeUnless { it == SYSTEM_DEFAULT }
-                            ?.let { Locale.forLanguageTag(it) }
-                            ?: Locale.getDefault()
-                    if (targetLocale != initialLocale) {
-                        withContext(Dispatchers.Main) {
-                            setAppLocale(this@MainActivity, targetLocale)
-                            recreate()
-                        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                dataStore.data.first().let { prefs ->
+                    if (prefs[UseSystemLanguageKey] ?: true) {
+                        Locale.getDefault()
+                    } else {
+                        Locale.ENGLISH
+                    }
+                }
+            }.onSuccess { targetLocale ->
+                if (targetLocale != initialLocale) {
+                    withContext(Dispatchers.Main) {
+                        setAppLocale(this@MainActivity, targetLocale)
+                        recreate()
                     }
                 }
             }
@@ -544,6 +558,13 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val gatekeeperViewModel: GatekeeperViewModel = hiltViewModel()
+            LaunchedEffect(Unit) {
+                gatekeeperViewModel.blockedMessages.collect { message ->
+                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                }
+            }
+
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             LaunchedEffect(Unit) {
@@ -552,31 +573,57 @@ class MainActivity : ComponentActivity() {
                 }
                 delay(500)
 
+                try {
+                    val redownload = withContext(Dispatchers.IO) {
+                        dataStore.data.first()[moe.rukamori.archivetune.constants.RedownloadOnRestoreKey] ?: false
+                    }
+                    if (redownload) {
+                        val downloaded = withContext(Dispatchers.IO) {
+                            database.downloadedSongsList()
+                        }
+                        if (downloaded.isNotEmpty()) {
+                            downloaded.forEach { song ->
+                                val downloadRequest = androidx.media3.exoplayer.offline.DownloadRequest
+                                    .Builder(song.id, song.id.toUri())
+                                    .setCustomCacheKey(song.id)
+                                    .setData(song.title.toByteArray())
+                                    .build()
+                                androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                                    this@MainActivity,
+                                    moe.rukamori.archivetune.playback.ExoDownloadService::class.java,
+                                    downloadRequest,
+                                    false,
+                                )
+                            }
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@MainActivity, "Re-downloading ${downloaded.size} offline songs...", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        withContext(Dispatchers.IO) {
+                            dataStore.edit { prefs ->
+                                prefs[moe.rukamori.archivetune.constants.RedownloadOnRestoreKey] = false
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    moe.rukamori.archivetune.utils.reportException(e)
+                }
+
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
                     System.currentTimeMillis() - Updater.lastCheckTime > 1.days.inWholeMilliseconds
                 ) {
                     val channelString = withContext(Dispatchers.IO) { dataStore.data.first()[UpdateChannelKey] }
-                    val actualChannel =
-                        channelString?.let {
-                            try {
-                                UpdateChannel.valueOf(it)
-                            } catch (_: IllegalArgumentException) {
-                                null
-                            }
-                        } ?: defaultUpdateChannel
-
-                    if (actualChannel != UpdateChannel.NIGHTLY) {
-                        val versionResult =
-                            when (actualChannel) {
-                                UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyVersionName()
-                                else -> Updater.getLatestVersionName()
-                            }
-                        versionResult.onSuccess {
-                            if (Updater.isUpdateAvailable(it, BuildConfig.VERSION_NAME)) {
-                                latestUpdateChannel = actualChannel
-                                latestVersionName = it
-                            }
+                    val actualChannel = UpdateChannel.fromStoredName(channelString, defaultUpdateChannel)
+                    val versionResult =
+                        when (actualChannel) {
+                            UpdateChannel.CANARY -> Updater.getLatestCanaryVersionName()
+                            UpdateChannel.STABLE -> Updater.getLatestVersionName()
+                        }
+                    versionResult.onSuccess {
+                        if (Updater.isUpdateAvailable(it, BuildConfig.VERSION_NAME)) {
+                            latestUpdateChannel = actualChannel
+                            latestVersionName = it
                         }
                     }
                 }
@@ -674,8 +721,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val releaseNotesResult =
                         when (latestUpdateChannel) {
-                            UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyReleaseNotes()
-                            else -> Updater.getLatestReleaseNotes()
+                            UpdateChannel.CANARY -> Updater.getLatestCanaryReleaseNotes()
+                            UpdateChannel.STABLE -> Updater.getLatestReleaseNotes()
                         }
                     releaseNotesResult
                         .onSuccess {
@@ -801,8 +848,10 @@ class MainActivity : ComponentActivity() {
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
             ) {
+                val navController = rememberNavController()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
                 val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
+                var showOnboardingLogin by rememberSaveable { mutableStateOf(false) }
                 val shouldShowOnboarding =
                     when (val state = onboardingState) {
                         OnboardingScreenState.Loading -> true
@@ -812,7 +861,25 @@ class MainActivity : ComponentActivity() {
                     }
 
                 if (shouldShowOnboarding) {
-                    OnboardingRoute(viewModel = onboardingViewModel)
+                    if (showOnboardingLogin) {
+                        CompositionLocalProvider(
+                            LocalPlayerAwareWindowInsets provides WindowInsets.systemBars,
+                        ) {
+                            LoginScreen(
+                                navController = navController,
+                                onLoginComplete = {
+                                    onboardingViewModel.onLoginCompleted()
+                                    showOnboardingLogin = false
+                                },
+                                onNavigateBack = { showOnboardingLogin = false },
+                            )
+                        }
+                    } else {
+                        OnboardingRoute(
+                            viewModel = onboardingViewModel,
+                            onLoginRequested = { showOnboardingLogin = true },
+                        )
+                    }
                     return@ArchiveTuneTheme
                 }
 
@@ -838,7 +905,6 @@ class MainActivity : ComponentActivity() {
                                 .windowSizeClass
                                 .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
-                    val navController = rememberNavController()
                     DisposableEffect(navController) {
                         this@MainActivity.navController = navController
                         onDispose {}
@@ -854,18 +920,13 @@ class MainActivity : ComponentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
-                    val onlineSearchViewModel: OnlineSearchViewModel? =
-                        if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true && navBackStackEntry != null) {
-                            hiltViewModel(navBackStackEntry!!)
-                        } else {
-                            null
-                        }
-                    val onlineSearchSort =
-                        if (onlineSearchViewModel != null) {
-                            onlineSearchViewModel.sort.collectAsStateWithLifecycle().value
-                        } else {
-                            OnlineSearchSort.DEFAULT
-                        }
+                    val onlineSearchEncodedQuery =
+                        navBackStackEntry
+                            ?.takeIf {
+                                it.destination.route?.startsWith(OnlineSearchResultRoutePrefix) == true
+                            }?.arguments
+                            ?.getString(OnlineSearchResultArgument)
+                    var onlineSearchSort by rememberSaveable { mutableStateOf(OnlineSearchSort.DEFAULT) }
                     val isYearInMusicScreen = currentRoute?.startsWith("year_in_music") == true
 
                     val navigationItems =
@@ -922,6 +983,10 @@ class MainActivity : ComponentActivity() {
                     val tvRailFocusRequester = remember { FocusRequester() }
                     val contentAreaFocusRequester = remember { FocusRequester() }
 
+                    LaunchedEffect(onlineSearchEncodedQuery) {
+                        onlineSearchSort = OnlineSearchSort.DEFAULT
+                    }
+
                     val openSearch: () -> Unit = {
                         onActiveChange(true)
                         searchBarFocusRequester.requestFocus()
@@ -963,13 +1028,13 @@ class MainActivity : ComponentActivity() {
 
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
-                            FloatingToolbarHeight
+                            NavigationBarHeight
                         } else {
                             0.dp
                         }
 
-                    val floatingBarsBottomPadding = FloatingToolbarBottomPadding
-                    val navVisibleHeight = FloatingToolbarHeight
+                    val floatingBarsBottomPadding = NavigationBarBottomPadding
+                    val navVisibleHeight = NavigationBarHeight
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
@@ -988,6 +1053,17 @@ class MainActivity : ComponentActivity() {
                                     MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
+                    var homeOverflowMenuExpanded by rememberSaveable { mutableStateOf(false) }
+                    val showHomeOverflowFab =
+                        shouldShowHomeShuffleButton &&
+                            !useRail &&
+                            (playerBottomSheetState.isDismissed || playerBottomSheetState.isCollapsed)
+
+                    LaunchedEffect(showHomeOverflowFab) {
+                        if (!showHomeOverflowFab) {
+                            homeOverflowMenuExpanded = false
+                        }
+                    }
 
                     val playerBackground by rememberEnumPreference(
                         key = PlayerBackgroundStyleKey,
@@ -1022,12 +1098,32 @@ class MainActivity : ComponentActivity() {
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                             controller.hide(WindowInsetsCompat.Type.systemBars())
-                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            @Suppress("DEPRECATION")
+                            window.addFlags(
+                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                                WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
+                                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                            )
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                setShowWhenLocked(true)
+                                setTurnScreenOn(true)
+                            }
                         } else {
                             controller.show(WindowInsetsCompat.Type.systemBars())
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            @Suppress("DEPRECATION")
+                            window.clearFlags(
+                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                                WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON or
+                                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                            )
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                setShowWhenLocked(false)
+                                setTurnScreenOn(false)
+                            }
                         }
                     }
 
@@ -1068,7 +1164,7 @@ class MainActivity : ComponentActivity() {
 
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
-                            (playerBottomSheetState.isExpanded && playerDesignStyle == PlayerDesignStyle.V7)
+                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7)
 
                     LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
@@ -1141,7 +1237,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
                     val searchScrollBehavior =
@@ -1149,7 +1245,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
                     val topAppBarScrollBehavior =
@@ -1157,7 +1253,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
 
@@ -1177,27 +1273,31 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         } else {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
+                            if (navController.currentDestination?.route != screen.route) {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
                         }
                     }
 
-                    LaunchedEffect(currentRoute) {
-                        when (currentRoute) {
-                            Screens.Home.route -> {
-                                homeScrollBehavior.state.resetHeightOffset()
-                            }
+                    LaunchedEffect(currentRoute, playerBottomSheetState.isExpanded) {
+                        if (!playerBottomSheetState.isExpanded) {
+                            when (currentRoute) {
+                                Screens.Home.route -> {
+                                    homeScrollBehavior.state.resetHeightOffset()
+                                }
 
-                            Screens.Search.route -> {
-                                searchScrollBehavior.state.resetHeightOffset()
-                            }
+                                Screens.Search.route -> {
+                                    searchScrollBehavior.state.resetHeightOffset()
+                                }
 
-                            else -> {}
+                                else -> {}
+                            }
                         }
                     }
 
@@ -1481,7 +1581,10 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Row {
                             AnimatedVisibility(
-                                visible = useRail && shouldShowNavigationBar,
+                                visible =
+                                    useRail &&
+                                        shouldShowNavigationBar &&
+                                        (isTvDevice || !playerBottomSheetState.isExpandedOrExpanding),
                                 enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 150)),
                                 exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 100)),
                             ) {
@@ -1636,7 +1739,7 @@ class MainActivity : ComponentActivity() {
                                             // so the TopAppBar fully hides), but a counter-offset
                                             // clamps the gradient's net translation to [-appBarHeight, 0]
                                             // so it parks with its top band over the status bar instead
-                                            // of sliding fully off — a legibility scrim once the header
+                                            // of sliding fully off â€” a legibility scrim once the header
                                             // is hidden.
                                             if (shouldShowBlurBackground) {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
@@ -1649,7 +1752,7 @@ class MainActivity : ComponentActivity() {
                                                                     // stays static (mirrors the header Box above and
                                                                     // matches upstream, which ships a static Library
                                                                     // gradient). Keeping it rendered avoids the
-                                                                    // Library→Home predictive-back scrim pop.
+                                                                    // Libraryâ†’Home predictive-back scrim pop.
                                                                     IntOffset(x = 0, y = 0)
                                                                 } else {
                                                                     val raw = currentScrollBehavior.state.heightOffset
@@ -1786,7 +1889,7 @@ class MainActivity : ComponentActivity() {
                                                     ) {
                                                         // Library is fixed, and floating routes
                                                         // (Home/Search) now slide rigidly via the
-                                                        // outer Box.offset — passing a behavior here
+                                                        // outer Box.offset â€” passing a behavior here
                                                         // would make M3 collapse/co-render and
                                                         // double-move the header. Only non-floating
                                                         // sub-screens use M3's collapse behavior.
@@ -1934,10 +2037,10 @@ class MainActivity : ComponentActivity() {
                                                                 contentDescription = null,
                                                             )
                                                         }
-                                                    } else if (onlineSearchViewModel != null) {
+                                                    } else if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true) {
                                                         OnlineSearchSortMenu(
                                                             selectedSort = onlineSearchSort,
-                                                            onSortSelected = onlineSearchViewModel::updateSort,
+                                                            onSortSelected = { onlineSearchSort = it },
                                                         )
                                                     }
                                                 }
@@ -2015,10 +2118,16 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
+                                        val areBottomBarsPaired =
+                                            shouldShowNavigationBar &&
+                                                !useRail &&
+                                                playerBottomSheetState.isCollapsed
+
                                         BottomSheetPlayer(
                                             state = playerBottomSheetState,
                                             navController = navController,
                                             pureBlack = pureBlack,
+                                            isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
                                         )
 
                                         if (useRail) return@Box
@@ -2061,126 +2170,15 @@ class MainActivity : ComponentActivity() {
                                             FloatingNavigationToolbar(
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
+                                                isPairedWithMiniPlayer = areBottomBarsPaired,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
                                                         .padding(
-                                                            start = FloatingToolbarHorizontalPadding,
-                                                            end = FloatingToolbarHorizontalPadding,
+                                                            start = NavigationBarHorizontalPadding,
+                                                            end = NavigationBarHorizontalPadding,
                                                             bottom = bottomInset + floatingBarsBottomPadding,
                                                         ).height(navVisibleHeight),
-                                                onShuffleClick =
-                                                    if (shouldShowHomeShuffleButton) {
-                                                        {
-                                                            val useLocalSource =
-                                                                when {
-                                                                    allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() -> {
-                                                                        Random.nextFloat() <
-                                                                            0.5f
-                                                                    }
-
-                                                                    allLocalItems.isNotEmpty() -> {
-                                                                        true
-                                                                    }
-
-                                                                    else -> {
-                                                                        false
-                                                                    }
-                                                                }
-
-                                                            coroutineScope.launch(Dispatchers.Main) {
-                                                                if (useLocalSource) {
-                                                                    when (val luckyItem = allLocalItems.random()) {
-                                                                        is Song -> {
-                                                                            playerConnection?.playQueue(
-                                                                                if (luckyItem.song.isLocal) {
-                                                                                    ListQueue(items = listOf(luckyItem.toMediaItem()))
-                                                                                } else {
-                                                                                    YouTubeQueue.radio(luckyItem.toMediaMetadata())
-                                                                                },
-                                                                            )
-                                                                        }
-
-                                                                        is Album -> {
-                                                                            val albumWithSongs =
-                                                                                withContext(Dispatchers.IO) {
-                                                                                    database.albumWithSongs(luckyItem.id).first()
-                                                                                }
-
-                                                                            albumWithSongs?.let {
-                                                                                playerConnection?.playQueue(LocalAlbumRadio(it))
-                                                                            }
-                                                                        }
-
-                                                                        is Artist -> {
-                                                                            Unit
-                                                                        }
-
-                                                                        is Playlist -> {
-                                                                            Unit
-                                                                        }
-                                                                    }
-                                                                } else {
-                                                                    when (val luckyItem = allYtItems.random()) {
-                                                                        is SongItem -> {
-                                                                            playerConnection?.playQueue(
-                                                                                YouTubeQueue.radio(luckyItem.toMediaMetadata()),
-                                                                            )
-                                                                        }
-
-                                                                        is AlbumItem -> {
-                                                                            playerConnection?.playQueue(
-                                                                                YouTubeAlbumRadio(luckyItem.playlistId),
-                                                                            )
-                                                                        }
-
-                                                                        is ArtistItem -> {
-                                                                            luckyItem.radioEndpoint?.let {
-                                                                                playerConnection?.playQueue(YouTubeQueue(it))
-                                                                            }
-                                                                        }
-
-                                                                        is PlaylistItem -> {
-                                                                            luckyItem.playEndpoint?.let {
-                                                                                playerConnection?.playQueue(YouTubeQueue.playlist(it))
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    } else {
-                                                        null
-                                                    },
-                                                shuffleIconRes = if (shouldShowHomeShuffleButton) R.drawable.shuffle else null,
-                                                shuffleContentDescription =
-                                                    if (shouldShowHomeShuffleButton) {
-                                                        stringResource(
-                                                            R.string.shuffle,
-                                                        )
-                                                    } else {
-                                                        ""
-                                                    },
-                                                onMusicRecognitionClick =
-                                                    if (shouldShowHomeShuffleButton) {
-                                                        { navController.navigate(MusicRecognitionRoute) }
-                                                    } else {
-                                                        null
-                                                    },
-                                                musicRecognitionContentDescription =
-                                                    if (shouldShowHomeShuffleButton) {
-                                                        stringResource(
-                                                            R.string.music_recognition,
-                                                        )
-                                                    } else {
-                                                        ""
-                                                    },
-                                                onMusicTogetherClick =
-                                                    if (shouldShowHomeShuffleButton) {
-                                                        { navController.navigate("settings/music_together") }
-                                                    } else {
-                                                        null
-                                                    },
                                                 isSelected = { screen ->
                                                     navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
                                                         true
@@ -2191,6 +2189,116 @@ class MainActivity : ComponentActivity() {
                                                 onSearchItemDoubleClick = {
                                                     searchSource = SearchSource.ONLINE
                                                     openSearch()
+                                                },
+                                            )
+                                        }
+
+                                        val homeOverflowFabBottomPadding =
+                                            bottomInset +
+                                                floatingBarsBottomPadding +
+                                                navVisibleHeight +
+                                                HomeOverflowFabSpacing +
+                                                if (playerBottomSheetState.isCollapsed) {
+                                                    MiniPlayerHeight + MiniPlayerBottomSpacing
+                                                } else {
+                                                    0.dp
+                                                }
+                                        HomeOverflowFabVisibility(
+                                            visible = showHomeOverflowFab,
+                                            modifier =
+                                                Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(
+                                                        end = NavigationBarHorizontalPadding,
+                                                        bottom = homeOverflowFabBottomPadding,
+                                                    ),
+                                        ) {
+                                            HomeOverflowFab(
+                                                expanded = homeOverflowMenuExpanded,
+                                                pureBlack = pureBlack,
+                                                onExpandedChange = { homeOverflowMenuExpanded = it },
+                                                onShuffleClick = {
+                                                    val useLocalSource =
+                                                        when {
+                                                            allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() -> {
+                                                                Random.nextFloat() < 0.5f
+                                                            }
+
+                                                            allLocalItems.isNotEmpty() -> {
+                                                                true
+                                                            }
+
+                                                            else -> {
+                                                                false
+                                                            }
+                                                        }
+
+                                                    coroutineScope.launch(Dispatchers.Main) {
+                                                        if (useLocalSource) {
+                                                            when (val luckyItem = allLocalItems.random()) {
+                                                                is Song -> {
+                                                                    playerConnection?.playQueue(
+                                                                        if (luckyItem.song.isLocal) {
+                                                                            ListQueue(items = listOf(luckyItem.toMediaItem()))
+                                                                        } else {
+                                                                            YouTubeQueue.radio(luckyItem.toMediaMetadata())
+                                                                        },
+                                                                    )
+                                                                }
+
+                                                                is Album -> {
+                                                                    val albumWithSongs =
+                                                                        withContext(Dispatchers.IO) {
+                                                                            database.albumWithSongs(luckyItem.id).first()
+                                                                        }
+
+                                                                    albumWithSongs?.let {
+                                                                        playerConnection?.playQueue(LocalAlbumRadio(it))
+                                                                    }
+                                                                }
+
+                                                                is Artist -> {
+                                                                    Unit
+                                                                }
+
+                                                                is Playlist -> {
+                                                                    Unit
+                                                                }
+                                                            }
+                                                        } else {
+                                                            when (val luckyItem = allYtItems.random()) {
+                                                                is SongItem -> {
+                                                                    playerConnection?.playQueue(
+                                                                        YouTubeQueue.radio(luckyItem.toMediaMetadata()),
+                                                                    )
+                                                                }
+
+                                                                is AlbumItem -> {
+                                                                    playerConnection?.playQueue(
+                                                                        YouTubeAlbumRadio(luckyItem.playlistId),
+                                                                    )
+                                                                }
+
+                                                                is ArtistItem -> {
+                                                                    luckyItem.radioEndpoint?.let {
+                                                                        playerConnection?.playQueue(YouTubeQueue(it))
+                                                                    }
+                                                                }
+
+                                                                is PlaylistItem -> {
+                                                                    luckyItem.playEndpoint?.let {
+                                                                        playerConnection?.playQueue(YouTubeQueue.playlist(it))
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                onMusicRecognitionClick = {
+                                                    navController.navigate(MusicRecognitionRoute)
+                                                },
+                                                onMusicTogetherClick = {
+                                                    navController.navigate("settings/music_together")
                                                 },
                                             )
                                         }
@@ -2319,12 +2427,13 @@ class MainActivity : ComponentActivity() {
                                         onClearUpdateBadge = { latestVersionName = BuildConfig.VERSION_NAME },
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
+                                        onlineSearchSort = onlineSearchSort,
                                     )
                                 }
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded) {
+                        BackHandler(enabled = playerBottomSheetState.isExpanded && !aodModeEnabled) {
                             playerBottomSheetState.collapseSoft()
                         }
 
@@ -2434,7 +2543,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (intent.action == ACTION_MUSIC_RECOGNITION) {
-            navController.openMusicRecognition()
+            navController.openMusicRecognition(0L)
             return
         }
         if (intent.action == ACTION_AOD_MODE) {
@@ -2750,12 +2859,14 @@ class MainActivity : ComponentActivity() {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings
+                                BackupCategory.DOWNLOADS -> R.string.backup_category_downloads
                             }
                         val descRes =
                             when (category) {
                                 BackupCategory.LIBRARY -> R.string.backup_category_library_desc
                                 BackupCategory.ACCOUNT -> R.string.backup_category_account_desc
                                 BackupCategory.SETTINGS -> R.string.backup_category_settings_desc
+                                BackupCategory.DOWNLOADS -> R.string.backup_category_downloads_desc
                             }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -2839,6 +2950,154 @@ val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
+
+private val HomeOverflowFabSize = 56.dp
+private val HomeOverflowFabSpacing = 12.dp
+private val HomeOverflowMenuIconSize = 40.dp
+
+@Composable
+private fun HomeOverflowFabVisibility(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val motionScheme = MaterialTheme.motionScheme
+
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter =
+            fadeIn(animationSpec = motionScheme.fastEffectsSpec()) +
+                scaleIn(
+                    initialScale = 0.8f,
+                    animationSpec = motionScheme.defaultSpatialSpec(),
+                ),
+        exit =
+            fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                scaleOut(
+                    targetScale = 0.8f,
+                    animationSpec = motionScheme.fastSpatialSpec(),
+                ),
+        label = "homeOverflowFabVisibility",
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun HomeOverflowFab(
+    expanded: Boolean,
+    pureBlack: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onShuffleClick: () -> Unit,
+    onMusicRecognitionClick: () -> Unit,
+    onMusicTogetherClick: () -> Unit,
+) {
+    val menuItemColors =
+        MenuDefaults.itemColors(
+            textColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
+            leadingIconColor =
+                if (pureBlack) {
+                    Color.White.copy(alpha = 0.82f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+        )
+
+    Box {
+        FloatingActionButton(
+            onClick = { onExpandedChange(!expanded) },
+            modifier = Modifier.size(HomeOverflowFabSize),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.more_horiz),
+                contentDescription = stringResource(R.string.more),
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.music_recognition)) },
+                onClick = {
+                    onExpandedChange(false)
+                    onMusicRecognitionClick()
+                },
+                leadingIcon = {
+                    HomeOverflowMenuIcon(
+                        iconRes = R.drawable.mic,
+                        contentDescription = stringResource(R.string.music_recognition),
+                        pureBlack = pureBlack,
+                    )
+                },
+                colors = menuItemColors,
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.music_together)) },
+                onClick = {
+                    onExpandedChange(false)
+                    onMusicTogetherClick()
+                },
+                leadingIcon = {
+                    HomeOverflowMenuIcon(
+                        iconRes = R.drawable.multi_user,
+                        contentDescription = null,
+                        pureBlack = pureBlack,
+                    )
+                },
+                colors = menuItemColors,
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.shuffle)) },
+                onClick = {
+                    onExpandedChange(false)
+                    onShuffleClick()
+                },
+                leadingIcon = {
+                    HomeOverflowMenuIcon(
+                        iconRes = R.drawable.shuffle,
+                        contentDescription = stringResource(R.string.shuffle),
+                        pureBlack = pureBlack,
+                    )
+                },
+                colors = menuItemColors,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeOverflowMenuIcon(
+    @DrawableRes iconRes: Int,
+    contentDescription: String?,
+    pureBlack: Boolean,
+) {
+    Surface(
+        modifier = Modifier.size(HomeOverflowMenuIconSize),
+        shape = CircleShape,
+        color =
+            if (pureBlack) {
+                Color.White.copy(alpha = 0.12f)
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            },
+        contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+            )
+        }
+    }
+}
 
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
 

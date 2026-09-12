@@ -68,24 +68,42 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlin.math.roundToInt
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
 import moe.rukamori.archivetune.constants.AodAmbientIntensityKey
 import moe.rukamori.archivetune.constants.AodArtworkGlowKey
+import moe.rukamori.archivetune.constants.AodAutoDimmingKey
+import moe.rukamori.archivetune.constants.AodAutoLockEnabledKey
+import moe.rukamori.archivetune.constants.AodAutoLockTimeoutKey
+import moe.rukamori.archivetune.constants.AodAutoStartScreenOffKey
 import moe.rukamori.archivetune.constants.AodBackgroundStyle
 import moe.rukamori.archivetune.constants.AodBackgroundStyleKey
+import moe.rukamori.archivetune.constants.AodBrightnessKey
+import moe.rukamori.archivetune.constants.AodClockStyle
+import moe.rukamori.archivetune.constants.AodClockStyleKey
 import moe.rukamori.archivetune.constants.AodContentPosition
 import moe.rukamori.archivetune.constants.AodContentPositionKey
 import moe.rukamori.archivetune.constants.AodControlSizeKey
 import moe.rukamori.archivetune.constants.AodControlStyle
 import moe.rukamori.archivetune.constants.AodControlStyleKey
+import moe.rukamori.archivetune.constants.AodGesturesEnabledKey
 import moe.rukamori.archivetune.constants.AodHorizontalPaddingKey
+import moe.rukamori.archivetune.constants.AodMarqueeTitlesKey
+import moe.rukamori.archivetune.constants.AodModeEnabledKey
+import moe.rukamori.archivetune.constants.AodMinimalLockedStateKey
+import moe.rukamori.archivetune.constants.AodPixelShiftEnabledKey
+import moe.rukamori.archivetune.constants.AodProximityBlackoutKey
+import moe.rukamori.archivetune.constants.AodShakeToUnlockKey
 import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
+import moe.rukamori.archivetune.constants.AodShowBatteryKey
+import moe.rukamori.archivetune.constants.AodShowClockKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
 import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricTickerKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
@@ -96,6 +114,8 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeKey
 import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
+import moe.rukamori.archivetune.constants.AodTouchLockEnabledKey
+import moe.rukamori.archivetune.constants.AodTrueAmbientModeKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -109,7 +129,6 @@ import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
-import kotlin.math.roundToInt
 
 @Immutable
 private data class AodPreviewSettings(
@@ -141,6 +160,7 @@ private data class AodPreviewSettings(
 @Composable
 fun AodCustomizedScreen(navController: NavController) {
     val scrollBehavior = appBarScrollBehavior()
+    val (aodModeEnabled, onAodModeEnabledChange) = rememberPreference(AodModeEnabledKey, defaultValue = true)
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
             AodThumbnailShapeKey,
@@ -187,6 +207,24 @@ fun AodCustomizedScreen(navController: NavController) {
     val (verticalSpacing, onVerticalSpacingChange) = rememberPreference(AodVerticalSpacingKey, defaultValue = 20f)
     val (titleMaxLines, onTitleMaxLinesChange) = rememberPreference(AodTitleMaxLinesKey, defaultValue = 1)
     val (ambientIntensity, onAmbientIntensityChange) = rememberPreference(AodAmbientIntensityKey, defaultValue = 0.18f)
+
+    val (touchLockEnabled, onTouchLockEnabledChange) = rememberPreference(AodTouchLockEnabledKey, defaultValue = false)
+    val (showClock, onShowClockChange) = rememberPreference(AodShowClockKey, defaultValue = true)
+    val (showLyricTicker, onShowLyricTickerChange) = rememberPreference(AodShowLyricTickerKey, defaultValue = true)
+    val (clockStyle, onClockStyleChange) = rememberEnumPreference(AodClockStyleKey, defaultValue = AodClockStyle.BOLD_DIGITAL)
+    val (showBattery, onShowBatteryChange) = rememberPreference(AodShowBatteryKey, defaultValue = true)
+    val (pixelShiftEnabled, onPixelShiftEnabledChange) = rememberPreference(AodPixelShiftEnabledKey, defaultValue = true)
+    val (autoDimming, onAutoDimmingChange) = rememberPreference(AodAutoDimmingKey, defaultValue = true)
+    val (gesturesEnabled, onGesturesEnabledChange) = rememberPreference(AodGesturesEnabledKey, defaultValue = true)
+    val (shakeToUnlock, onShakeToUnlockChange) = rememberPreference(AodShakeToUnlockKey, defaultValue = false)
+    val (autoLockEnabled, onAutoLockEnabledChange) = rememberPreference(AodAutoLockEnabledKey, defaultValue = false)
+    val (autoLockTimeout, onAutoLockTimeoutChange) = rememberPreference(AodAutoLockTimeoutKey, defaultValue = 10)
+    val (marqueeTitles, onMarqueeTitlesChange) = rememberPreference(AodMarqueeTitlesKey, defaultValue = false)
+    val (minimalLockedState, onMinimalLockedStateChange) = rememberPreference(AodMinimalLockedStateKey, defaultValue = false)
+    val (trueAmbientMode, onTrueAmbientModeChange) = rememberPreference(AodTrueAmbientModeKey, defaultValue = true)
+    val (autoStartScreenOff, onAutoStartScreenOffChange) = rememberPreference(AodAutoStartScreenOffKey, defaultValue = true)
+    val (proximityBlackout, onProximityBlackoutChange) = rememberPreference(AodProximityBlackoutKey, defaultValue = false)
+    val (aodBrightness, onAodBrightnessChange) = rememberPreference(AodBrightnessKey, defaultValue = 0.15f)
 
     val previewSettings =
         remember(
@@ -304,6 +342,19 @@ fun AodCustomizedScreen(navController: NavController) {
             }
 
             item(
+                key = "aod_mode",
+                contentType = "preference",
+            ) {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.aod_customize_mode_enabled)) },
+                    description = stringResource(R.string.aod_customize_mode_enabled_desc),
+                    icon = { Icon(painterResource(R.drawable.bedtime), null) },
+                    checked = aodModeEnabled,
+                    onCheckedChange = onAodModeEnabledChange,
+                )
+            }
+
+            item(
                 key = "aod_visibility",
                 contentType = "preference_group",
             ) {
@@ -364,6 +415,14 @@ fun AodCustomizedScreen(navController: NavController) {
                             onCheckedChange = onShowExitButtonChange,
                         )
                     }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_show_lyric_ticker)) },
+                            icon = { Icon(painterResource(R.drawable.music_note), null) },
+                            checked = showLyricTicker,
+                            onCheckedChange = onShowLyricTickerChange,
+                        )
+                    }
                 }
             }
 
@@ -385,6 +444,15 @@ fun AodCustomizedScreen(navController: NavController) {
                 contentType = "preference_group",
             ) {
                 PreferenceGroup(title = stringResource(R.string.aod_customize_layout)) {
+                    item {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.aod_customize_clock_style)) },
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            selectedValue = clockStyle,
+                            valueText = { it.label() },
+                            onValueSelected = onClockStyleChange,
+                        )
+                    }
                     item {
                         EnumListPreference(
                             title = { Text(stringResource(R.string.aod_customize_background_style)) },
@@ -529,6 +597,171 @@ fun AodCustomizedScreen(navController: NavController) {
                             valueLabel = { stringResource(R.string.aod_customize_dp_value, it.roundToInt()) },
                             onValueChange = onControlSizeChange,
                             isEnabled = showControls,
+                        )
+                    }
+                }
+            }
+
+            item(
+                key = "aod_advanced",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_security_power)) {
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_true_ambient_mode)) },
+                            description = stringResource(R.string.aod_customize_true_ambient_mode_desc),
+                            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                            checked = trueAmbientMode,
+                            onCheckedChange = onTrueAmbientModeChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_auto_start_screen_off)) },
+                            description = stringResource(R.string.aod_customize_auto_start_screen_off_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = autoStartScreenOff,
+                            onCheckedChange = onAutoStartScreenOffChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_proximity_blackout)) },
+                            description = stringResource(R.string.aod_customize_proximity_blackout_desc),
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            checked = proximityBlackout,
+                            onCheckedChange = onProximityBlackoutChange,
+                        )
+                    }
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.aod_customize_screensaver_info_title)) },
+                            description = stringResource(R.string.aod_customize_screensaver_info_desc),
+                            icon = { Icon(painterResource(R.drawable.info), null) },
+                        )
+                    }
+                    item {
+                        AodSliderPreference(
+                            title = stringResource(R.string.aod_customize_ambient_brightness),
+                            icon = { Icon(painterResource(R.drawable.sliders), null) },
+                            value = (aodBrightness * 100f).coerceIn(1f, 30f),
+                            valueRange = 1f..30f,
+                            steps = 28,
+                            valueLabel = { "${it.roundToInt()}%" },
+                            onValueChange = { onAodBrightnessChange(it / 100f) },
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_touch_lock)) },
+                            description = stringResource(R.string.aod_customize_touch_lock_desc),
+                            icon = { Icon(painterResource(R.drawable.buttons), null) },
+                            checked = touchLockEnabled,
+                            onCheckedChange = onTouchLockEnabledChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_show_clock)) },
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            checked = showClock,
+                            onCheckedChange = onShowClockChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_show_battery)) },
+                            icon = { Icon(painterResource(R.drawable.sliders), null) },
+                            checked = showBattery,
+                            onCheckedChange = onShowBatteryChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_pixel_shift)) },
+                            description = stringResource(R.string.aod_customize_pixel_shift_desc),
+                            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                            checked = pixelShiftEnabled,
+                            onCheckedChange = onPixelShiftEnabledChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_auto_dimming)) },
+                            description = stringResource(R.string.aod_customize_auto_dimming_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = autoDimming,
+                            onCheckedChange = onAutoDimmingChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_gestures)) },
+                            description = stringResource(R.string.aod_customize_gestures_desc),
+                            icon = { Icon(painterResource(R.drawable.drag_handle), null) },
+                            checked = gesturesEnabled,
+                            onCheckedChange = onGesturesEnabledChange,
+                        )
+                    }
+                }
+            }
+
+            item(
+                key = "aod_smart_lock",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_smart_lock)) {
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_shake_to_unlock)) },
+                            description = stringResource(R.string.aod_customize_shake_to_unlock_desc),
+                            icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                            checked = shakeToUnlock,
+                            onCheckedChange = onShakeToUnlockChange,
+                            isEnabled = touchLockEnabled,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_auto_lock)) },
+                            description = stringResource(R.string.aod_customize_auto_lock_desc),
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            checked = autoLockEnabled,
+                            onCheckedChange = onAutoLockEnabledChange,
+                            isEnabled = touchLockEnabled,
+                        )
+                    }
+                    if (autoLockEnabled && touchLockEnabled) {
+                        item {
+                            AodSliderPreference(
+                                title = stringResource(R.string.aod_customize_auto_lock_delay),
+                                icon = { Icon(painterResource(R.drawable.timer), null) },
+                                value = autoLockTimeout.toFloat(),
+                                valueRange = 3f..120f,
+                                steps = 23,
+                                valueLabel = { stringResource(R.string.aod_customize_auto_lock_delay_value, it.roundToInt()) },
+                                onValueChange = { onAutoLockTimeoutChange(it.roundToInt()) },
+                            )
+                        }
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_marquee_titles)) },
+                            description = stringResource(R.string.aod_customize_marquee_titles_desc),
+                            icon = { Icon(painterResource(R.drawable.drag_handle), null) },
+                            checked = marqueeTitles,
+                            onCheckedChange = onMarqueeTitlesChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_minimal_locked_view)) },
+                            description = stringResource(R.string.aod_customize_minimal_locked_view_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = minimalLockedState,
+                            onCheckedChange = onMinimalLockedStateChange,
+                            isEnabled = touchLockEnabled,
                         )
                     }
                 }
@@ -1099,12 +1332,44 @@ private fun Modifier.aodPreviewBackground(
                 }
 
                 AodBackgroundStyle.AMBIENT_GLOW -> {
-                    Brush.linearGradient(
+                    Brush.radialGradient(
                         colors =
                             listOf(
                                 accentColor.copy(alpha = 0.28f * alpha),
+                                accentColor.copy(alpha = 0.10f * alpha),
                                 Color.Black,
-                                Color(0xFF101010),
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.ADAPTIVE_ART -> {
+                    Brush.verticalGradient(
+                        colors =
+                            listOf(
+                                accentColor.copy(alpha = 0.32f * alpha),
+                                accentColor.copy(alpha = 0.12f * alpha),
+                                Color.Black,
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.FROSTED_WALLPAPER -> {
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                Color(0xFF1E1E24).copy(alpha = 0.60f * alpha),
+                                Color.Black,
+                            ),
+                    )
+                }
+
+                AodBackgroundStyle.ADAPTIVE_FROSTED -> {
+                    Brush.linearGradient(
+                        colors =
+                            listOf(
+                                accentColor.copy(alpha = 0.30f * alpha),
+                                Color(0xFF121216),
+                                Color.Black,
                             ),
                     )
                 }
@@ -1144,6 +1409,9 @@ private fun AodBackgroundStyle.label(): String =
         AodBackgroundStyle.SOFT_RADIAL -> stringResource(R.string.aod_background_soft_radial)
         AodBackgroundStyle.TONAL_EDGE -> stringResource(R.string.aod_background_tonal_edge)
         AodBackgroundStyle.AMBIENT_GLOW -> stringResource(R.string.aod_background_ambient_glow)
+        AodBackgroundStyle.ADAPTIVE_ART -> stringResource(R.string.aod_background_adaptive_art)
+        AodBackgroundStyle.FROSTED_WALLPAPER -> stringResource(R.string.aod_background_frosted_wallpaper)
+        AodBackgroundStyle.ADAPTIVE_FROSTED -> stringResource(R.string.aod_background_adaptive_frosted)
     }
 
 @Composable
@@ -1175,6 +1443,15 @@ private fun AodControlStyle.label(): String =
         AodControlStyle.FILLED -> stringResource(R.string.aod_control_filled)
         AodControlStyle.TONAL -> stringResource(R.string.aod_control_tonal)
         AodControlStyle.MINIMAL -> stringResource(R.string.aod_control_minimal)
+    }
+
+@Composable
+private fun AodClockStyle.label(): String =
+    when (this) {
+        AodClockStyle.BOLD_DIGITAL -> stringResource(R.string.aod_clock_bold_digital)
+        AodClockStyle.MINIMAL -> stringResource(R.string.aod_clock_minimal)
+        AodClockStyle.ELEGANT_THIN -> stringResource(R.string.aod_clock_elegant_thin)
+        AodClockStyle.PIXEL_STACKED -> stringResource(R.string.aod_clock_pixel_stacked)
     }
 
 private fun AodContentPosition.toBoxAlignment(): Alignment =

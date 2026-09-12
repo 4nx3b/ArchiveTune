@@ -68,7 +68,6 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SliderPreference
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -85,7 +84,7 @@ fun PlayerSettings(navController: NavController) {
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(
             PlayerStreamClientKey,
-            defaultValue = PlayerStreamClient.ANDROID_VR,
+            defaultValue = PlayerStreamClient.WEB_REMIX,
         )
     val (lowDataMode, onLowDataModeChange) =
         rememberPreference(
@@ -200,10 +199,10 @@ fun PlayerSettings(navController: NavController) {
             WakelockKey,
             defaultValue = false,
         )
+    val isArchiveTuneExtractorEnabled = false
     val playerStreamClients =
         remember {
             listOf(
-                PlayerStreamClient.ANDROID_VR,
                 PlayerStreamClient.WEB_REMIX,
                 PlayerStreamClient.ARCHIVETUNE_EXTRACTOR,
             )
@@ -212,17 +211,29 @@ fun PlayerSettings(navController: NavController) {
         if (playerStreamClient in playerStreamClients) {
             playerStreamClient
         } else {
-            PlayerStreamClient.ANDROID_VR
+            PlayerStreamClient.WEB_REMIX
         }
     val audioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
+    val isPlayerStreamClientEnabled =
+        remember(isArchiveTuneExtractorEnabled) {
+            { client: PlayerStreamClient ->
+                client != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ||
+                    isArchiveTuneExtractorEnabled
+            }
+        }
 
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
-    var showTagsManagementDialog by remember { mutableStateOf(false) }
     var showExternalDownloaderPackageDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(playerStreamClient) {
-        if (playerStreamClient !in playerStreamClients) {
-            onPlayerStreamClientChange(PlayerStreamClient.ANDROID_VR)
+    LaunchedEffect(playerStreamClient, isArchiveTuneExtractorEnabled) {
+        if (
+            playerStreamClient !in playerStreamClients ||
+            (
+                playerStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR &&
+                    !isArchiveTuneExtractorEnabled
+            )
+        ) {
+            onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
         }
     }
 
@@ -237,19 +248,13 @@ fun PlayerSettings(navController: NavController) {
         )
     }
 
-    if (showTagsManagementDialog) {
-        TagsManagementDialog(
-            onDismiss = { showTagsManagementDialog = false },
-        )
-    }
-
     if (showExternalDownloaderPackageDialog) {
         TextFieldDialog(
             initialTextFieldValue =
                 androidx.compose.ui.text.input
                     .TextFieldValue(externalDownloaderPackage),
             onDone = { pkg ->
-                onExternalDownloaderPackageChange(pkg)
+                onExternalDownloaderPackageChange(pkg.trim())
                 showExternalDownloaderPackageDialog = false
             },
             onDismiss = { showExternalDownloaderPackageDialog = false },
@@ -312,12 +317,9 @@ fun PlayerSettings(navController: NavController) {
                         selectedValue = selectedPlayerStreamClient,
                         values = playerStreamClients,
                         onValueSelected = onPlayerStreamClientChange,
+                        isValueEnabled = isPlayerStreamClientEnabled,
                         valueText = {
                             when (it) {
-                                PlayerStreamClient.ANDROID_VR -> {
-                                    stringResource(R.string.player_stream_client_android_vr)
-                                }
-
                                 PlayerStreamClient.WEB_REMIX -> {
                                     stringResource(R.string.player_stream_client_web_remix)
                                 }
@@ -335,18 +337,12 @@ fun PlayerSettings(navController: NavController) {
                         },
                         valueDescription = {
                             when (it) {
-                                PlayerStreamClient.ANDROID_VR -> {
-                                    stringResource(R.string.player_stream_client_android_vr_desc)
-                                }
-
                                 PlayerStreamClient.WEB_REMIX -> {
                                     stringResource(R.string.player_stream_client_web_remix_desc)
                                 }
 
                                 PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
-                                    stringResource(
-                                        R.string.player_stream_client_archivetune_extractor_desc,
-                                    )
+                                    "This is not available yet"
                                 }
 
                                 else -> {
@@ -354,6 +350,15 @@ fun PlayerSettings(navController: NavController) {
                                 }
                             }
                         },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.mori_cipher_settings_title)) },
+                        description = stringResource(R.string.mori_cipher_settings_description),
+                        icon = { Icon(painterResource(R.drawable.security), null) },
+                        onClick = { navController.navigate("settings/player/chiper") },
                     )
                 }
 
@@ -569,15 +574,6 @@ fun PlayerSettings(navController: NavController) {
                         description = artistSeparators.map { "\"$it\"" }.joinToString("  "),
                         icon = { Icon(painterResource(R.drawable.artist), null) },
                         onClick = { showArtistSeparatorsDialog = true },
-                    )
-                }
-
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.manage_playlist_tags)) },
-                        description = stringResource(R.string.manage_playlist_tags_desc),
-                        icon = { Icon(painterResource(R.drawable.style), null) },
-                        onClick = { showTagsManagementDialog = true },
                     )
                 }
 
