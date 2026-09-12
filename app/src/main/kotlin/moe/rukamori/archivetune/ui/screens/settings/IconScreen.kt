@@ -367,6 +367,7 @@ private fun AppIconList(
                     state = model.packDownload,
                     percent = model.packDownloadPercent,
                     indeterminate = model.packDownloadIndeterminate,
+                    error = model.packDownloadError,
                     onDownload = onDownloadPack,
                     modifier =
                         Modifier
@@ -481,6 +482,7 @@ private fun IconPackDownloadRow(
     state: IconPackDownloadUi,
     percent: Int,
     indeterminate: Boolean,
+    error: String?,
     onDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -523,6 +525,20 @@ private fun IconPackDownloadRow(
                         text = stringResource(R.string.icon_pack_download_needed_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state == IconPackDownloadUi.FAILED && !error.isNullOrBlank()) {
+                    // The concrete installer failure (HTTP code, digest
+                    // mismatch, timeout, …) straight from
+                    // IconPackRuntimeManager.lastInstallFailure() — the row
+                    // used to say only "failed" with no way to see why.
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
             }

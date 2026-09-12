@@ -182,7 +182,6 @@ val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPort
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
-val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableBiniLyricsKey = booleanPreferencesKey("enableBiniLyrics")
 
 val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
@@ -1023,14 +1022,6 @@ enum class LyricsMode {
     V2,
     ENHANCED,
     SPOTIFY,
-
-    /**
-     * SimpMusic's renderer. Used to be a boolean of its own that only the SimpMusic player style's
-     * lyrics CARD read, so picking it changed a 300dp preview and left the actual lyrics page on
-     * whatever this enum said — "it just shows the same one". It is one of the modes now, so it
-     * applies wherever lyrics are drawn, under any player style.
-     */
-    SIMPMUSIC,
 }
 
 val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_enabled")

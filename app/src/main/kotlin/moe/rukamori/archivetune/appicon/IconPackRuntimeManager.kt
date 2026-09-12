@@ -9,8 +9,8 @@ package moe.rukamori.archivetune.appicon
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import timber.log.Timber
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -42,6 +43,12 @@ object IconPackRuntimeManager {
     private const val TAG = "IconPackRuntime"
 
     const val VERSION = "icon-pack-v1"
+
+    /** How many times the zip download is attempted before giving up. */
+    private const val DOWNLOAD_ATTEMPTS = 3
+
+    /** Backoff between download attempts (per attempt index, seconds). */
+    private val DOWNLOAD_RETRY_BACKOFF_SECONDS = longArrayOf(1L, 3L)
 
     /**
      * SHA-256 of the pack zip (the release asset). Pinned from the release
@@ -81,6 +88,9 @@ object IconPackRuntimeManager {
     private val client by lazy {
         OkHttpClient
             .Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
             .callTimeout(15, TimeUnit.MINUTES)
@@ -135,17 +145,39 @@ object IconPackRuntimeManager {
                 _installState.value = InstallState.Downloading(percent = 0, indeterminate = true)
                 onProgress(-1f)
 
+                Timber.tag(TAG).i("Installing runtime icon pack %s (bundled=%b)", VERSION, isBundled())
+
                 val zipFile = File(appContext.cacheDir, "icon-pack-$VERSION.part.zip")
-                val ok =
-                    runCatching {
-                        downloadZip(appContext, zipFile, onProgress)
-                        true
-                    }.getOrElse { t ->
-                        lastFailure = t.message
-                        false
+                var ok = false
+                var lastError: Throwable? = null
+                for (attempt in 1..DOWNLOAD_ATTEMPTS) {
+                    // Stale partial files from a previous (failed or interrupted)
+                    // download are removed so an aborted .tmp can never poison
+                    // the retry — renameTo() refuses to overwrite a non-empty
+                    // target and digest checks would read half-written bytes.
+                    zipFile.delete()
+                    File(zipFile.parentFile, zipFile.name + ".tmp").delete()
+                    ok =
+                        runCatching {
+                            downloadZip(appContext, zipFile, onProgress, attempt)
+                            true
+                        }.getOrElse { t ->
+                            lastError = t
+                            Timber.tag(TAG).w(t, "Download attempt %d/%d failed", attempt, DOWNLOAD_ATTEMPTS)
+                            false
+                        }
+                    if (ok) break
+                    if (attempt < DOWNLOAD_ATTEMPTS) {
+                        val backoffSeconds = DOWNLOAD_RETRY_BACKOFF_SECONDS.getOrNull(attempt - 1) ?: 3L
+                        Timber.tag(TAG).i("Retrying icon pack download in %ds", backoffSeconds)
+                        delay(backoffSeconds * 1000L)
                     }
+                }
                 if (!ok) {
                     zipFile.delete()
+                    File(zipFile.parentFile, zipFile.name + ".tmp").delete()
+                    lastFailure = lastError?.message ?: "download failed"
+                    Timber.tag(TAG).e("Icon pack download failed after %d attempts: %s", DOWNLOAD_ATTEMPTS, lastFailure)
                     _installState.value = InstallState.Failed(lastFailure)
                     return@withLock false
                 }
@@ -156,6 +188,7 @@ object IconPackRuntimeManager {
                         true
                     }.getOrElse { t ->
                         lastFailure = t.message
+                        Timber.tag(TAG).w(t, "Icon pack extraction failed")
                         false
                     }
                 zipFile.delete()
@@ -171,6 +204,7 @@ object IconPackRuntimeManager {
                     ?.forEach { it.deleteRecursively() }
 
                 refreshState(appContext)
+                Timber.tag(TAG).i("Icon pack installed: version=%s, icons=%d", VERSION, (installState.value as? InstallState.Installed)?.iconCount ?: -1)
                 isInstalled(appContext)
             }
         }
@@ -196,8 +230,10 @@ object IconPackRuntimeManager {
         context: Context,
         target: File,
         onProgress: (Float) -> Unit,
+        attempt: Int,
     ) {
         val url = "${BuildConfig.ICON_PACK_BASE_URL.trimEnd('/')}/$VERSION.zip"
+        Timber.tag(TAG).d("Downloading icon pack (attempt %d): %s", attempt, url)
         val request =
             Request
                 .Builder()
@@ -205,14 +241,17 @@ object IconPackRuntimeManager {
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                Timber.tag(TAG).w("Icon pack download HTTP %d (redirect=%s, url=%s)", response.code, response.headers["Location"], response.request.url)
                 throw IllegalStateException("Icon pack download failed: HTTP ${response.code}")
             }
             val body = response.body ?: throw IllegalStateException("Icon pack download returned no body")
             val total = body.contentLength()
+            Timber.tag(TAG).d("Icon pack download started: reported size=%d bytes", total)
             val digest = MessageDigest.getInstance("SHA-256")
             target.parentFile?.mkdirs()
             val partial = File(target.parentFile, target.name + ".tmp")
             var read = 0L
+            var lastLoggedPercent = -1
             partial.outputStream().use { out ->
                 body.byteStream().use { input ->
                     val buffer = ByteArray(BUFFER)
@@ -229,9 +268,15 @@ object IconPackRuntimeManager {
                                 indeterminate = fraction < 0f,
                             )
                         onProgress(fraction)
+                        val loggedPercent = if (fraction >= 0f) (fraction * 100).toInt() / 25 else -1
+                        if (loggedPercent != lastLoggedPercent && loggedPercent >= 0) {
+                            lastLoggedPercent = loggedPercent
+                            Timber.tag(TAG).d("Icon pack download at %d%% (%d bytes)", loggedPercent * 25, read)
+                        }
                     }
                 }
             }
+            Timber.tag(TAG).d("Icon pack download finished: %d bytes read", read)
             if (read < MIN_PNG_BYTES) {
                 partial.delete()
                 throw IllegalStateException("Icon pack download too small")
@@ -239,6 +284,7 @@ object IconPackRuntimeManager {
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
             if (EXPECTED_SHA256.isNotBlank() && !sha.equals(EXPECTED_SHA256, ignoreCase = true)) {
                 partial.delete()
+                Timber.tag(TAG).e("Icon pack digest mismatch: expected %s, got %s", EXPECTED_SHA256, sha)
                 throw IllegalStateException("Icon pack digest mismatch (expected $EXPECTED_SHA256, got $sha)")
             }
             if (!partial.renameTo(target)) {

@@ -46,7 +46,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -77,7 +76,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -127,9 +125,6 @@ import androidx.navigation.NavController
 
 
 // Blurred canvas backdrop (behind the controls) — Apple Music player recipe.
-private const val SpatialCanvasBackdropUpscale = 6f
-private const val SpatialCanvasBackdropMaxVideoEdgePx = 480
-private val SpatialCanvasBackdropBlurRadius = 72.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -281,50 +276,58 @@ fun SpatialFlowPlayerContent(
                 .fillMaxSize()
                 .background(backgroundBrush),
     ) {
-
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
         )
 
-        if (canvasPrimaryUrl != null || canvasFallbackUrl != null) {
-            // Blurred canvas backdrop behind the controls — the same recipe
-            // the Apple Music player uses: the video surface is laid out at
-            // 1/6 of the footprint with a 72/6 = 12dp blur and the graphics
-            // layer upscales it back, so the blur processes a small surface
-            // while the moving canvas keeps flowing behind the whole controls
-            // column. Decode is capped at 480px — the blur cannot resolve
-            // anything finer anyway.
+        // Full-bleed canvas — the SpatialFlow canvas reference look: when a
+        // canvas (Apple Music / Spotify Canvaz loop) is available it owns the
+        // whole screen (RESIZE_MODE_ZOOM, edge to edge) with a bottom legibility
+        // gradient, and the controls float on top in the lower third. The static
+        // blurred backdrop stays beneath as the buffering state; the old
+        // bounded-in-artwork-slot canvas and its low-res blurred twin are gone.
+        val canvasActive = !lyricsModeEnabled && (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        if (canvasActive) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying && !lyricsModeEnabled,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                visible = !lyricsModeEnabled,
+                modifier = Modifier.matchParentSize(),
+            )
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .graphicsLayer {
-                            scaleX = SpatialCanvasBackdropUpscale
-                            scaleY = SpatialCanvasBackdropUpscale
-                        },
-                contentAlignment = Alignment.Center,
-            ) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && !lyricsModeEnabled,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    visible = !lyricsModeEnabled,
-                    maxVideoEdgePx = SpatialCanvasBackdropMaxVideoEdgePx,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth(1f / SpatialCanvasBackdropUpscale)
-                            .fillMaxHeight(1f / SpatialCanvasBackdropUpscale)
-                            .blur(SpatialCanvasBackdropBlurRadius / SpatialCanvasBackdropUpscale),
-                )
-            }
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.30f),
+                                0.10f to Color.Black.copy(alpha = 0.06f),
+                                0.46f to Color.Black.copy(alpha = 0.10f),
+                                0.72f to Color.Black.copy(alpha = 0.42f),
+                                1f to Color.Black.copy(alpha = 0.70f),
+                            ),
+                        ),
+            )
         }
 
         MaterialTheme(typography = SpatialFlowTypography) {
                 val configuration = LocalConfiguration.current
                 val screenWidth = configuration.screenWidthDp.dp
+                val screenHeight = configuration.screenHeightDp.dp
                 val albumArtSize = screenWidth * 0.9f
+
+                // SpatialFlow's exact top offset: the artwork slot is centered
+                // by formula, not by flexible spacers — `((screenHeight -
+                // albumArtSize) / 2f - 220.dp).coerceAtLeast(statusBar + 68.dp)`
+                // (FullPlayer.kt). The flexible Spacer weights that used to
+                // stand here stretched with leftover space and opened a gap
+                // between the metadata block and the seek bar.
+                val statusBarTopDp = LocalStableSystemBarsTopPadding.current
+                val minTopOffset = statusBarTopDp + 68.dp
+                val topOffset = ((screenHeight - albumArtSize) / 2f - 220.dp).coerceAtLeast(minTopOffset)
 
                 var lyricsButtonCenterInRoot by remember { mutableStateOf<Offset?>(null) }
                 val lyricsRevealProgress by animateFloatAsState(
@@ -339,7 +342,7 @@ fun SpatialFlowPlayerContent(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .padding(top = LocalStableSystemBarsTopPadding.current)
+                            .padding(top = statusBarTopDp)
                             .navigationBarsPadding()
                             .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -372,33 +375,35 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.size(48.dp))
                 }
 
-                Spacer(
-                    modifier =
-                        Modifier
-                            .heightIn(min = 12.dp)
-                            .weight(0.32f),
-                )
+                if (canvasActive) {
+                    // Canvas reference layout: the video is the whole screen,
+                    // so the metadata/controls stack is pushed to the lower
+                    // third — no artwork slot, no top offset.
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Spacer(modifier = Modifier.height(topOffset - (statusBarTopDp + 68.dp)))
+                }
 
-                SpatialFlowArtworkPager(
-                    mediaMetadata = mediaMetadata,
-                    queueWindows = queueWindows,
-                    currentWindowIndex = currentWindowIndex,
-                    userScrollEnabled = !lyricsModeEnabled && !queueExpanded,
-                    artUrl = artUrl,
-                    canvasPrimaryUrl = if (lyricsModeEnabled) null else canvasPrimaryUrl,
-                    canvasFallbackUrl = if (lyricsModeEnabled) null else canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    cornerRadius = 16.dp,
-                    shadowElevation = 16.dp,
-                    onPlaySongAtWindow = { windowIndex ->
-                        val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowArtworkPager
-                        playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
-                        playerConnection.player.playWhenReady = true
-                    },
-                    modifier = Modifier.size(albumArtSize),
-                )
+                if (!canvasActive) {
+                    SpatialFlowArtworkPager(
+                        mediaMetadata = mediaMetadata,
+                        queueWindows = queueWindows,
+                        currentWindowIndex = currentWindowIndex,
+                        userScrollEnabled = !lyricsModeEnabled && !queueExpanded,
+                        artUrl = artUrl,
+                        isPlaying = isPlaying,
+                        cornerRadius = 16.dp,
+                        shadowElevation = 16.dp,
+                        onPlaySongAtWindow = { windowIndex ->
+                            val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowArtworkPager
+                            playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                            playerConnection.player.playWhenReady = true
+                        },
+                        modifier = Modifier.size(albumArtSize),
+                    )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 Row(
                     modifier =
@@ -412,16 +417,25 @@ fun SpatialFlowPlayerContent(
                     ) {
                         Text(
                             text = mediaMetadata.title,
-                            style = MaterialTheme.typography.headlineMediumEmphasized,
+                            // Canvas reference look: HEAVEN/TWXNY use the display
+                            // scale (≈45sp heavy) floating over the video; the
+                            // artwork layout keeps the repo's own
+                            // headlineMediumEmphasized + bodyMedium pair.
+                            style =
+                                if (canvasActive) {
+                                    MaterialTheme.typography.displayMedium
+                                } else {
+                                    MaterialTheme.typography.headlineMediumEmphasized
+                                },
                             fontWeight = FontWeight.Bold,
                             color = contentColor,
                             maxLines = 1,
                             modifier = Modifier.basicMarqueeWithFadedEdges(),
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(if (canvasActive) 6.dp else 4.dp))
                         Text(
                             text = mediaMetadata.artists.joinToString { it.name },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = if (canvasActive) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
                             color = contentSecondary,
                             maxLines = 1,
                             modifier =
@@ -616,12 +630,10 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.width(12.dp))
                 }
 
-                Spacer(
-                    modifier =
-                        Modifier
-                            .heightIn(min = 24.dp)
-                            .weight(0.68f),
-                )
+                // Fixed 24dp, straight from FullPlayer.kt — a weighted spacer
+                // here grew with leftover space and produced the "empty space
+                // between the seek bar and the song title" report.
+                Spacer(modifier = Modifier.height(24.dp))
 
                 WavySliderWithLabels(
                     currentPositionProvider = positionProvider,
@@ -846,6 +858,7 @@ fun SpatialFlowPlayerContent(
                     currentPositionProvider = positionProvider,
                     contentReady = lyricsContentReady,
                     backgroundBrush = lyricsBackgroundBrush,
+                    movingBlurColors = palette.colors,
                     revealProgressProvider = { lyricsRevealProgress },
                     revealCenterProvider = { lyricsButtonCenterInRoot },
                     contentColor = contentColor,
@@ -941,8 +954,6 @@ private fun SpatialFlowArtworkPager(
     currentWindowIndex: Int,
     userScrollEnabled: Boolean,
     artUrl: String?,
-    canvasPrimaryUrl: String?,
-    canvasFallbackUrl: String?,
     isPlaying: Boolean,
     cornerRadius: androidx.compose.ui.unit.Dp,
     shadowElevation: androidx.compose.ui.unit.Dp,
@@ -999,26 +1010,7 @@ private fun SpatialFlowArtworkPager(
                         .clip(RoundedCornerShape(cornerRadius)),
                 contentAlignment = Alignment.Center,
             ) {
-                val isCurrentPage = page == currentWindowIndex
-                val pageCanvasPrimary = if (isCurrentPage) canvasPrimaryUrl else null
-                val pageCanvasFallback = if (isCurrentPage) canvasFallbackUrl else null
-                var canvasShowing by remember(pageCanvasPrimary, pageCanvasFallback) { mutableStateOf(false) }
-                if (!pageCanvasPrimary.isNullOrBlank() || !pageCanvasFallback.isNullOrBlank()) {
-                    // Canvas (Apple Music / Spotify Canvaz loop) fills the
-                    // artwork slot on the current page — Spotify's app does the
-                    // exact same thing — and the static artwork stays beneath
-                    // it as the loading/failure fallback.
-                    CanvasArtworkPlayer(
-                        primaryUrl = pageCanvasPrimary,
-                        fallbackUrl = pageCanvasFallback,
-                        isPlaying = isPlaying,
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                        visible = isCurrentPage,
-                        onPlaybackAvailabilityChange = { canvasShowing = it },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                if (!pageArtUrl.isNullOrBlank() && !isError && !canvasShowing) {
+                if (!pageArtUrl.isNullOrBlank() && !isError) {
                     AsyncImage(
                         model = pageArtUrl,
                         contentDescription = null,
@@ -1026,10 +1018,6 @@ private fun SpatialFlowArtworkPager(
                         onError = { isError = true },
                         modifier = Modifier.fillMaxSize(),
                     )
-                } else if (canvasShowing) {
-                    // Canvas covers the slot — keep a transparent placeholder
-                    // so the gradient fallback below stays hidden while the
-                    // video renders on top of it.
                 } else {
                     Box(
                         modifier =

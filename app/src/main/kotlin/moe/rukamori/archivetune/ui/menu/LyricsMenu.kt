@@ -1763,6 +1763,13 @@ fun AnchoredLyricsOverflowMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     backdrop: PlatformBackdrop? = null,
 
+    /**
+     * Full-screen scrim behind the popup. Defaults to the classic dim-black;
+     * callers whose lyrics surface has its own tinted backdrop (SpatialFlow)
+     * pass the surface colour so the scrim dims in the same hue instead of
+     * flashing pure black over it.
+     */
+    scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
 
     var dismissed by remember { mutableStateOf(false) }
@@ -1859,7 +1866,7 @@ fun AnchoredLyricsOverflowMenu(
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { anchorSpaceHeightPx = it.height }
-                .background(Color.Black.copy(alpha = 0.45f * alpha))
+                .background(scrimColor.copy(alpha = scrimColor.alpha * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1908,11 +1915,22 @@ fun AnchoredLyricsOverflowMenu(
                     }
 
                     .then(
-                        frostedBlurModifier
-                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
+                        if (frostedBlurModifier != null) {
+                            // Liquid glass is the surface: the live frosted
+                            // backdrop plus a whisper of tint for contrast.
+                            // (An opaque 0.55-alpha black used to be painted
+                            // ON TOP of the glass, burying it — the popup
+                            // looked like plain translucent black.)
+                            frostedBlurModifier.then(
+                                Modifier.background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.10f),
+                                ),
+                            )
+                        } else {
+                            Modifier.background(Color.Black.copy(alpha = 0.65f * alpha))
+                        },
                     )
 
-                    .background(Color.Black.copy(alpha = 0.55f))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

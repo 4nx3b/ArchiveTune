@@ -60,6 +60,7 @@ data class IconScreenUiModel(
     val packDownload: IconPackDownloadUi = IconPackDownloadUi.NOT_NEEDED,
     val packDownloadPercent: Int = 0,
     val packDownloadIndeterminate: Boolean = false,
+    val packDownloadError: String? = null,
     val iconsAreRuntime: Boolean = false,
 )
 
@@ -168,6 +169,7 @@ class IconViewModel
                             packDownload = IconPackDownloadUi.FAILED,
                             packDownloadPercent = 0,
                             packDownloadIndeterminate = false,
+                            packDownloadError = IconPackRuntimeManager.lastInstallFailure(),
                         )
                     }
                 }
@@ -269,6 +271,7 @@ class IconViewModel
             packDownload: IconPackDownloadUi? = null,
             packDownloadPercent: Int = 0,
             packDownloadIndeterminate: Boolean = false,
+            packDownloadError: String? = null,
         ) {
             _state.value =
                 createSuccessState(
@@ -276,6 +279,7 @@ class IconViewModel
                     packDownload = packDownload,
                     packDownloadPercent = packDownloadPercent,
                     packDownloadIndeterminate = packDownloadIndeterminate,
+                    packDownloadError = packDownloadError,
                 )
         }
 
@@ -284,6 +288,7 @@ class IconViewModel
             packDownload: IconPackDownloadUi? = null,
             packDownloadPercent: Int = 0,
             packDownloadIndeterminate: Boolean = false,
+            packDownloadError: String? = null,
         ): IconScreenState.Success {
             val selectedIcon =
                 catalogIcons.firstOrNull(AppIconUiModel::isSelected)
@@ -302,6 +307,7 @@ class IconViewModel
                     packDownload = effectivePackDownload,
                     packDownloadPercent = packDownloadPercent,
                     packDownloadIndeterminate = packDownloadIndeterminate,
+                    packDownloadError = packDownloadError,
                     iconsAreRuntime = catalogIcons.any { it.previewFilePath != null },
                 ),
             )

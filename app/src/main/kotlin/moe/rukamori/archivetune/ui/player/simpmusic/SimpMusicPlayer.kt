@@ -138,8 +138,6 @@ import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
-import moe.rukamori.archivetune.constants.LyricsMode
-import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.extensions.metadata
@@ -159,7 +157,6 @@ import moe.rukamori.archivetune.ui.player.rememberInlineLyricLines
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import java.util.Locale
 
 private val Backdrop = Color(0xFF121212)
@@ -970,7 +967,6 @@ private fun SimpMusicLyricsCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
     val lyricsPositionProvider = remember { { null as Long? } }
 
     val lyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
@@ -1037,17 +1033,10 @@ private fun SimpMusicLyricsCard(
                 if (!renderLyrics) {
                     // Deliberately empty, and deliberately still 300dp: the height is what keeps
                     // the page scrollable so `renderLyrics` can ever become true.
-                } else if (lyricsMode == LyricsMode.SIMPMUSIC) {
-                    SimpMusicLyrics(
-                        sliderPositionProvider = lyricsPositionProvider,
-                        lyricsSyncOffset = 0,
-                        textSizeSp = CARD_LYRICS_SIZE_SP,
-                        modifier = Modifier.fillMaxSize(),
-                    )
                 } else {
-                    // Every other mode renders as Enhanced here on purpose: the card is a 300dp
-                    // preview, and the karaoke sweep the other renderers are built around needs a
-                    // full screen to read as anything but flicker.
+                    // Always the Enhanced renderer: the style's own Classic
+                    // lyrics mode was removed (2026-09-12) and Enhanced is the
+                    // default everywhere.
                     LyricsEnhanced(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,
