@@ -151,7 +151,6 @@ class PlayerConnection(
             service.currentMediaMetadata.value = player.currentMetadata
         }
 
-        // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
         connectionScope.launch {
             service.playerFlow.collect { newPlayer ->
                 if (newPlayer != null && newPlayer !== attachedPlayer) {

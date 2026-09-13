@@ -45,13 +45,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +78,8 @@ import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 const val TELEGRAM_LOGIN_ROUTE = "settings/telegram/login"
 
@@ -104,8 +104,6 @@ fun TelegramLoginScreen(navController: NavController) {
         callingCode = defaultCallingCode(context)
         if (!TelegramClient.ensureStartedAwait(context)) {
             val state = TelegramClient.authState.value
-            // runtime failures stay on-screen with their detail instead of
-            // bouncing the user back to settings
             if (state !is TelegramAuthState.RuntimeFailed &&
                 state !is TelegramAuthState.Unsupported
             ) {

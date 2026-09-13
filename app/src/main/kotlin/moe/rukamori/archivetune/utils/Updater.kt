@@ -473,20 +473,12 @@ object Updater {
         return "$StableReleaseBaseUrl/latest/download/$artifactName"
     }
 
-    // The nightly workflow embeds the build's monotonic versionCode in the release notes as
-    // "at-build:<n>". Fall back to the numeric patch segment of the release name ("Canary 13.7.<n>")
-    // for older releases that predate the marker.
     private val canaryBuildMarkerRegex = Regex("""at-build:(\d+)""")
 
     internal fun canaryBuildNumber(release: ReleaseInfo): Int? =
         release.body?.let { canaryBuildMarkerRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() }
             ?: parseSemVerOrNull(release.name)?.patch
 
-    /**
-     * Converts a Canary release into the same build-number form used everywhere in the updater.
-     * Never compare a Canary release name as SemVer: names contain the commit count in the patch
-     * position, which makes an already-installed build look newer than its fixed display version.
-     */
     internal fun getCanaryReleaseVersionName(release: ReleaseInfo): String {
         val buildNumber = canaryBuildNumber(release)
         return if (buildNumber != null) {

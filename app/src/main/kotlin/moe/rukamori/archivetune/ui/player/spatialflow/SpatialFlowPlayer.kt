@@ -5,24 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style.
- *
- * A port of SpatialFlow's FullPlayer (github.com/MythicalSHUB/SpatialFlow,
- * GPL-3.0, ui/player/FullPlayer.kt) as a fully self-contained player style:
- * its layout, icons, behaviour, dimensions and component set are
- * SpatialFlow's own — the "NOW PLAYING" header, the 0.9-screen artwork pager,
- * the marquee metadata row, the horizontally-scrolling pill-chip row (split
- * like/dislike, Music Haptics, Lyrics, Share, Download), the premium wavy
- * seek bar, the M3 Expressive ButtonGroup transport with animated corners,
- * the swipe-up queue handle, the circular-reveal lyrics overlay, the embedded
- * sliding queue drawer and the sleep-timer sheet. It deliberately shares NO
- * components with the app's other player styles; what it shares is the app's
- * one playback substrate (PlayerConnection queue, like state, lyrics store,
- * download manager) — the same self-containment rule BitChord/TikTok/SimpMusic
- * follow.
- */
-
 package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.content.Intent
@@ -70,11 +52,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -129,27 +109,15 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
-import androidx.compose.foundation.layout.heightIn
 import androidx.navigation.NavController
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
-
-// Blurred canvas backdrop (behind the controls) — Apple Music player recipe.
-//
-// The frosted twin renders at 1/6 of the player with a 12dp blur on that
-// small surface (72/6), upscaled 6x (plus a 10% overscan to hide the blur's
-// edge falloff) by the wrapping graphics layer — the blur never processes
-// more than a sixth of the pixels, and the decode is capped at 480px since
-// the blur cannot resolve anything finer anyway.
 private const val SfCanvasBackdropUpscale = 6f
 private const val SfCanvasBackdropOverscan = 1.10f
 private val SfCanvasBackdropBlurRadius = 72.dp
 private const val SfCanvasBackdropMaxVideoEdgePx = 480
 
-// Apple Music's exact canvas scrim (AppleMusicPlayer.kt's backdropScrimBrush
-// canvas branch): black at 25% / 40% / 65% down the player. This replaces the
-// old five-stop "frost tint" — the reported "liquid blur is too bright" —
-// with the colors the Apple Music player style itself uses. Shared with the
-// lyrics overlay's moving-blur backdrop (same AM colors behind the lyrics).
 internal val SfCanvasScrimBrush =
     Brush.verticalGradient(
         0f to Color.Black.copy(alpha = 0.25f),
@@ -157,24 +125,14 @@ internal val SfCanvasScrimBrush =
         1f to Color.Black.copy(alpha = 0.65f),
     )
 
-// Apple Music's exact sharp-stage fade (AppleMusicSharpArtwork's fadeBottom
-// artworkFadeBrush): the sharp video stays crisp for the top 62% of the stage
-// and dissolves into the frosted continuation over the last 38%, so the
-// canvas ends around the song-title text instead of running behind the whole
-// control dock.
+private const val SfSharpStageFadeStart = 0.62f
+
 private val SfSharpStageFadeBrush =
     Brush.verticalGradient(
-        0.62f to Color.Black,
+        SfSharpStageFadeStart to Color.Black,
         1f to Color.Transparent,
     )
 
-// Lyrics backdrop morph — Apple Music's AmLyricsBackdropMorphMs. When lyrics
-// open, the canvas layers fade out over this duration and rendering is then
-// fully stopped (texture surface dropped + ExoPlayer paused — no decode, no
-// composition). Closing lyrics makes the canvas visible again immediately;
-// because the CanvasArtworkPlayer composables (and their ExoPlayers) are
-// never disposed while lyrics are open, the video resumes from the EXACT
-// position it was paused at.
 private const val SfLyricsBackdropMorphMs = 650
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
@@ -314,25 +272,8 @@ fun SpatialFlowPlayerContent(
         }
     }
 
-    // Music haptics (SpatialFlow port): toggling writes the shared preference;
-    // the engine owned by MusicService picks the change up through its prefs
-    // listener and the PCM tap inside the audio processor chain starts feeding
-    // it — no permission needed (the old Visualizer tap required RECORD_AUDIO,
-    // which is why it silently failed when the mic permission was denied).
     var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
-    // ---- Canvas gating (Apple Music recipe) --------------------------------
-    //
-    // The canvas layers (frosted twin + sharp stage) STAY in composition while
-    // lyrics are open; rendering stops in two steps. Playback freezes the
-    // instant lyrics open — the decoder and both TextureView composites quit
-    // immediately (the canvas kept decoding behind the opaque lyrics overlay
-    // for the whole fade window — "the lyrics lag for the first few seconds",
-    // fine after close/reopen once everything was warm) — while the surfaces
-    // keep the frozen last frame for the circular reveal, then drop after the
-    // fade window. Closing lyrics resumes playback + surfaces immediately; the
-    // ExoPlayers are never disposed while lyrics are open, so the canvas
-    // resumes from the exact paused position.
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
     var canvasPlayingForLyrics by remember { mutableStateOf(true) }
     var canvasSurfacesForLyrics by remember { mutableStateOf(true) }
@@ -353,10 +294,6 @@ fun SpatialFlowPlayerContent(
         label = "SfLyricsCanvasFade",
     )
 
-    // Sharp-stage bound: the stage's bottom edge tracks the song-title row's
-    // top edge (measured from the content Column below) so the sharp canvas
-    // always ends around the title text — the same structural split the Apple
-    // Music style gets from its artwork-box / controls-column layout.
     val density = LocalDensity.current
     var playerRootTopY by remember { mutableStateOf(0f) }
     var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
@@ -374,51 +311,52 @@ fun SpatialFlowPlayerContent(
     ) {
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
-            // When the canvas owns the player the AM scrim (below) replaces
-            // this backdrop's own gradient — stacking both made the frosted
-            // dock darker than the Apple Music reference.
             withScrim = !canvasAvailable,
             modifier = Modifier.matchParentSize(),
         )
 
         if (canvasAvailable) {
-            // 1) Frosted twin (Apple Music's cheap blurred-canvas backdrop):
-            // the SAME canvas, decoded at 1/6 scale with a 72/6 = 12dp blur on
-            // the small surface, upscaled 6x (+10% overscan). It runs the FULL
-            // height of the player so the same canvas keeps playing, blurred,
-            // behind the bottom controls — and fades out + stops rendering
-            // while the lyrics overlay is up.
+            val configuration = LocalConfiguration.current
+            val stageFraction =
+                sharpStageHeight?.let { (it / configuration.screenHeightDp.dp).coerceIn(0.1f, 1f) } ?: 0.55f
+            val frostFraction = (1f - SfSharpStageFadeStart * stageFraction).coerceIn(0.2f, 1f)
             Box(
                 modifier =
                     Modifier
-                        .matchParentSize()
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(frostFraction)
                         .graphicsLayer {
-                            val scale = SfCanvasBackdropOverscan * SfCanvasBackdropUpscale
-                            scaleX = scale
-                            scaleY = scale
                             alpha = 1f - lyricsBackdropProgress
                         },
-                contentAlignment = Alignment.Center,
             ) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasPlayingForLyrics,
-                    visible = canvasSurfacesForLyrics,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
+                Box(
                     modifier =
                         Modifier
-                            .fillMaxWidth(1f / SfCanvasBackdropUpscale)
-                            .fillMaxHeight(1f / SfCanvasBackdropUpscale)
-                            .blur(SfCanvasBackdropBlurRadius / SfCanvasBackdropUpscale),
-                )
+                            .matchParentSize()
+                            .graphicsLayer {
+                                val scale = SfCanvasBackdropOverscan * SfCanvasBackdropUpscale
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CanvasArtworkPlayer(
+                        primaryUrl = canvasPrimaryUrl,
+                        fallbackUrl = canvasFallbackUrl,
+                        isPlaying = isPlaying && canvasPlayingForLyrics,
+                        visible = canvasSurfacesForLyrics,
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                        maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(1f / SfCanvasBackdropUpscale)
+                                .fillMaxHeight(1f / SfCanvasBackdropUpscale)
+                                .blur(SfCanvasBackdropBlurRadius / SfCanvasBackdropUpscale),
+                    )
+                }
             }
 
-            // 2) Apple Music's exact canvas scrim: black at 0.25 / 0.40 / 0.65
-            // down the player — the colors the Apple Music player style itself
-            // paints over its blurred canvas backdrop (the old five-stop
-            // "frost tint" read as "the liquid blur is too bright").
             Box(
                 modifier =
                     Modifier
@@ -426,12 +364,6 @@ fun SpatialFlowPlayerContent(
                         .background(SfCanvasScrimBrush),
             )
 
-            // 3) Sharp stage: the crisp canvas plays edge to edge from the top
-            // of the player down to the song-title row, then dissolves into the
-            // frosted twin through Apple Music's exact 0.62→1.0 DstIn fade —
-            // the same fadeBottom the Apple Music style applies to its sharp
-            // artwork, giving the seamless canvas→frost→controls blend. Like
-            // AM's layer order the scrim sits UNDER the sharp video.
             Box(
                 modifier =
                     Modifier
@@ -440,8 +372,6 @@ fun SpatialFlowPlayerContent(
                             if (sharpStageHeight != null) {
                                 Modifier.height(sharpStageHeight)
                             } else {
-                                // Pre-measurement default: Apple Music's
-                                // sharpArtworkHeight = 0.55 * player height.
                                 Modifier.fillMaxHeight(0.55f)
                             },
                         )
@@ -471,12 +401,6 @@ fun SpatialFlowPlayerContent(
                 val screenHeight = configuration.screenHeightDp.dp
                 val albumArtSize = screenWidth * 0.9f
 
-                // SpatialFlow's exact top offset: the artwork slot is centered
-                // by formula, not by flexible spacers — `((screenHeight -
-                // albumArtSize) / 2f - 220.dp).coerceAtLeast(statusBar + 68.dp)`
-                // (FullPlayer.kt). The flexible Spacer weights that used to
-                // stand here stretched with leftover space and opened a gap
-                // between the metadata block and the seek bar.
                 val statusBarTopDp = LocalStableSystemBarsTopPadding.current
                 val minTopOffset = statusBarTopDp + 68.dp
                 val topOffset = ((screenHeight - albumArtSize) / 2f - 220.dp).coerceAtLeast(minTopOffset)
@@ -528,10 +452,6 @@ fun SpatialFlowPlayerContent(
                 }
 
                 if (canvasAvailable) {
-                    // Canvas layout: the sharp video owns the area above the
-                    // title row (see the sharp stage behind this Column), so
-                    // the metadata/controls stack is pushed to the lower
-                    // third — no artwork slot, no top offset.
                     Spacer(modifier = Modifier.weight(1f))
                 } else {
                     Spacer(modifier = Modifier.height(topOffset - (statusBarTopDp + 68.dp)))
@@ -563,8 +483,6 @@ fun SpatialFlowPlayerContent(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 4.dp)
-                            // Feeds the sharp stage's height bound: the canvas
-                            // ends where the song title begins.
                             .onGloballyPositioned { titleTopInRootY = it.positionInRoot().y },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -573,10 +491,6 @@ fun SpatialFlowPlayerContent(
                     ) {
                         Text(
                             text = mediaMetadata.title,
-                            // Canvas reference look: HEAVEN/TWXNY use the display
-                            // scale (≈45sp heavy) floating over the video; the
-                            // artwork layout keeps the repo's own
-                            // headlineMediumEmphasized + bodyMedium pair.
                             style =
                                 if (canvasAvailable) {
                                     MaterialTheme.typography.displayMedium
@@ -701,14 +615,6 @@ fun SpatialFlowPlayerContent(
                     val realDownloaded = download?.state == Download.STATE_COMPLETED
                     val realDownloadProgress =
                         if (download?.state == Download.STATE_DOWNLOADING) {
-                            // While PRDownloader buffers the whole stream to its
-                            // temp file Media3 reports 0% — combine in the live
-                            // fetch progress so the label reflects the network
-                            // download instead of a fake "Downloading 0%".
-                            // media3's percentDownloaded is a Java float; the
-                            // elvis must stay Float (a 0.0 Double fallback
-                            // widens the type to Number&Comparable, which no
-                            // maxOf overload accepts).
                             val media3Percent = (download?.percentDownloaded ?: 0f).toDouble()
                             val fetchPercent = fetchProgressMap[downloadUtil
                                 .currentSourceDownloadTarget(mediaMetadata.id)
@@ -737,10 +643,6 @@ fun SpatialFlowPlayerContent(
                         isSelected = realDownloaded || isDownloading,
                         progress = if (isDownloading) (realDownloadProgress ?: 0) / 100f else null,
                         onClick = {
-                            // Source-scoped request ids ("ytm:<id>", …) everywhere:
-                            // remove must target the SAME entry the menus queue,
-                            // otherwise a running download can never be cancelled
-                            // from here ("infinite download").
                             val target = downloadUtil.currentSourceDownloadTarget(mediaMetadata.id)
                             when (download?.state) {
                                 Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
@@ -786,9 +688,6 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.width(12.dp))
                 }
 
-                // Fixed 24dp, straight from FullPlayer.kt — a weighted spacer
-                // here grew with leftover space and produced the "empty space
-                // between the seek bar and the song title" report.
                 Spacer(modifier = Modifier.height(24.dp))
 
                 WavySliderWithLabels(

@@ -39,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -47,7 +46,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.datasource.cache.CacheSpan
 import androidx.compose.ui.Modifier
@@ -122,6 +120,8 @@ import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import moe.rukamori.archivetune.utils.toggleSpeedDialPin
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private data class CanvasSourceOption(
     val label: String,
@@ -144,9 +144,6 @@ fun SongMenu(
     val songState = database.song(originalSong.id).collectAsStateWithLifecycle(initialValue = originalSong)
     val song = songState.value ?: originalSong
     val downloadUtil = LocalDownloadUtil.current
-    // Per-source download state — "Download" vs "Remove download" tracks the
-    // CURRENT source (per-song pin first, else the download priority order's
-    // top entry), so switching a song's source re-evaluates the offline copy.
     val downloadStateIds = remember(originalSong.id) { downloadUtil.currentSourceDownloadIds(originalSong.id) }
     val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
     val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
@@ -609,8 +606,6 @@ fun SongMenu(
                     onClick = {
                         when (download?.state) {
                             Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                                // Remove by the ACTUAL entry id so only the
-                                // current source's copy is removed.
                                 download?.let { dl ->
                                     DownloadService.sendRemoveDownload(
                                         context,
@@ -632,9 +627,6 @@ fun SongMenu(
                                         false,
                                     )
                                 }
-                                // Clear stale spans for the CURRENT target
-                                // source only — other sources' completed
-                                // downloads coexist as their own offline copies.
                                 downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                 val downloadId = downloadUtil
                                     .currentSourceDownloadTarget(song.id).key
@@ -735,8 +727,9 @@ fun SongMenu(
                             )
 
                             HorizontalDivider(
-                                modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -757,8 +750,9 @@ fun SongMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -788,8 +782,9 @@ fun SongMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -916,7 +911,7 @@ fun SongMenu(
         if (showMutationSection) {
             item {
                 MenuSurfaceSection {
-                    val dividerModifier = Modifier.padding(start = 56.dp)
+                    val dividerModifier = Modifier.padding(horizontal = 16.dp)
                     Column {
                         if (event != null) {
                             ListItem(
@@ -947,7 +942,8 @@ fun SongMenu(
                         if (event != null) {
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -1003,7 +999,8 @@ fun SongMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -1032,7 +1029,8 @@ fun SongMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -1115,11 +1113,6 @@ fun SongMenu(
                                                     )
                                                 }
 
-                                                // Clear stale spans for the CURRENT target
-                                                // source only — other sources' completed
-                                                // downloads coexist as their own offline
-                                                // copies (one entry per source in the
-                                                // export/offline pages).
                                                 downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                                 val downloadId = downloadUtil
                                                     .currentSourceDownloadTarget(song.id).key
@@ -1164,8 +1157,9 @@ fun SongMenu(
                             }
                             if (externalDownloaderEnabled) {
                                 HorizontalDivider(
-                                    modifier = Modifier.padding(start = 56.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                    thickness = 0.5.dp,
                                 )
                                 ListItem(
                                     headlineContent = { Text(text = stringResource(R.string.open_with_downloader)) },
@@ -1243,8 +1237,9 @@ fun SongMenu(
 
                     if (song.song.albumId != null) {
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -1265,8 +1260,9 @@ fun SongMenu(
                     }
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -1367,8 +1363,9 @@ fun SongMenu(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -1420,8 +1417,9 @@ fun SongMenu(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     if (!isLocalSong) {
@@ -1452,8 +1450,9 @@ fun SongMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 

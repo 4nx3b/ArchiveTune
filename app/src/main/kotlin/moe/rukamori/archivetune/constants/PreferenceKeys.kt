@@ -244,13 +244,6 @@ object DownloadSourceConfig {
     val REQUIRES_POOL: Set<DownloadSource> =
         setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
 
-    /**
-     * Source-scoped cache-key prefix for YouTube Music downloads. The plain
-     * mediaId key is reserved for PLAYBACK caching; YouTube downloads live
-     * under "ytm:<mediaId>" so they never collide with (nor get served from)
-     * the playback cache — which can hold an arbitrary itag chosen by the
-     * player, including an unexportable WebM/Opus stream.
-     */
     val YOUTUBE_MUSIC_CACHE_KEY_PREFIX = "ytm:"
 
     val CACHE_KEY_PREFIXES: List<String> =
@@ -268,8 +261,6 @@ object DownloadSourceConfig {
     fun downloadCacheKey(source: DownloadSource, mediaId: String): String =
         cacheKeyPrefix(source)?.let { "$it$mediaId" } ?: mediaId
 
-    /** Strips any known source-scoped download-key prefix (incl. "ytm:")
-     * from a download index id / cache key. Plain YouTube ids have no colon. */
     fun downloadIdToSongId(id: String): String {
         for (prefix in CACHE_KEY_PREFIXES) {
             if (id.startsWith(prefix)) return id.removePrefix(prefix)
@@ -277,8 +268,6 @@ object DownloadSourceConfig {
         return id
     }
 
-    /** Every download index id a song's entries can live under: all
-     * source-scoped ids plus the legacy plain mediaId id. */
     fun songIdToDownloadIds(songId: String): List<String> =
         CACHE_KEY_PREFIXES.map { "$it$songId" } + songId
 
@@ -876,19 +865,6 @@ enum class PlayerDesignStyle {
     APPLE_MUSIC,
     V10,
 
-    /**
-     * Self-contained styles: their layout, controls, lyrics surface and backdrop live in their own
-     * package and share nothing with the numbered styles above.
-     *
-     * [BITCHORD] is the BitChord "Now Playing" screen — a mesh-gradient field with the artwork
-     * dissolving into it. [TIKTOK] is a full-screen vertical feed where each queue entry is one
-     * page: swipe up for the next song, down for the previous. [SIMPMUSIC] is SimpMusic's default
-     * now-playing screen — a diagonal palette wash with the sleeve on a queue-backed pager.
-     * [SPATIALFLOW] is the SpatialFlow player (github.com/MythicalSHUB/SpatialFlow, GPL-3.0) —
-     * artwork pager, pill-chip control row, wavy seek bar, M3 Expressive transport, embedded
-     * sliding queue drawer, circular-reveal lyrics overlay and music haptics. All four are views
-     * over the app's one playback engine and queue, not players of their own.
-     */
     BITCHORD,
     TIKTOK,
     SIMPMUSIC,
@@ -993,7 +969,6 @@ val HISTORY_DURATION_RANGE = HISTORY_DURATION_MIN.toFloat()..HISTORY_DURATION_MA
 val HISTORY_DURATION_LEGACY_FLOAT_KEY = floatPreferencesKey("historyDuration")
 val HistoryDuration = intPreferencesKey("historyDuration")
 
-/** How many upcoming songs are resolved + cached ahead of playback (0 = off). */
 const val PRELOAD_SONGS_MAX = 10
 val PRELOAD_SONGS_RANGE = 0f..PRELOAD_SONGS_MAX.toFloat()
 val PreloadSongsCountKey = intPreferencesKey("preloadSongsCount")
@@ -1085,16 +1060,10 @@ val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")
 val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_url")
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 
-/** Which service the Library's sections read from — see [moe.rukamori.archivetune.constants.LibrarySource]. */
 val LibrarySourceKey = stringPreferencesKey("library_source")
 
-/**
- * The Apple Music Experience: the iOS-inspired hero on playlist, album and library detail pages —
- * a big left-aligned title with pink accent pills, in place of the artwork backdrop.
- */
 val AppleMusicExperienceKey = booleanPreferencesKey("apple_music_experience")
 
-/** The player design style [AppleMusicExperienceKey] displaced, so switching it off can restore it. */
 val StyleBeforeAppleMusicKey = stringPreferencesKey("style_before_apple_music")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
@@ -1110,7 +1079,6 @@ val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEn
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
 
-// Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
 
 val TidalVerifiedInstancesKey = stringPreferencesKey("tidalVerifiedInstances")

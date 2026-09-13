@@ -89,9 +89,6 @@ class ManageDownloadsUseCase
         private fun mapSnapshot(snapshot: DownloadRepositorySnapshot): DownloadLibraryUiModel {
             val now = SystemClock.elapsedRealtime()
             val speeds = calculateSpeeds(snapshot.downloads, now)
-            // Download index ids are source-scoped ("ytm:<id>", "qobuz:<id>",
-            // ... plus legacy plain "<id>"); DB groupings key off the RAW song
-            // id, so normalize once here and map back for actions.
             val songsById = snapshot.songs.associateBy { it.song.id }
             val downloadIdsByRawSongId: Map<String, List<String>> =
                 snapshot.downloads.keys.groupBy { DownloadSourceConfig.downloadIdToSongId(it) }
@@ -203,8 +200,6 @@ class ManageDownloadsUseCase
                 .mapNotNull { playlist ->
                     val rawSongIds = groupSongIds[playlist.id].orEmpty().distinct()
                     if (!rawSongIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
-                    // Expand raw ids to their per-source download ids so
-                    // pause/resume/remove act on every offline copy.
                     val songIds = rawSongIds.flatMap { downloadIdsByRawSongId[it].orEmpty() }.ifEmpty { rawSongIds }
                     buildEntry(
                         id = "playlist:${playlist.id}",
@@ -259,10 +254,6 @@ class ManageDownloadsUseCase
             songIds
                 .mapNotNull { songId ->
                     val download = downloads[songId] ?: return@mapNotNull null
-                    // songId is a source-scoped download id — DB lookups use the
-                    // raw song id, and the supporting text carries the source
-                    // label ("Qobuz", "YouTube Music", ...) so the offline page
-                    // shows one entry per downloaded source, as intended.
                     val rawSongId = DownloadSourceConfig.downloadIdToSongId(songId)
                     val song = songsById[rawSongId]
                     val sourceLabel = downloadSourceLabel(songId)
@@ -378,9 +369,6 @@ class ManageDownloadsUseCase
             requireCompleted: Boolean,
         ): Boolean {
             if (size < MIN_COLLECTION_SIZE || none(relevantIds::contains)) return false
-            // rawSongIds here; resolve each to its per-source download ids for
-            // the state check (a collection shows as downloaded only when every
-            // member has a completed offline copy from SOME source).
             val membersDownloadIds = mapNotNull { rawId ->
                 val ids = DownloadSourceConfig.songIdToDownloadIds(rawId).filter { it in downloads }
                 ids.firstOrNull { downloads[it]?.state == Download.STATE_COMPLETED } ?: ids.firstOrNull()

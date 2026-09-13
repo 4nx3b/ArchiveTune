@@ -17,29 +17,10 @@ import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import kotlin.math.abs
 
-/**
- * Pass-through Media3 audio processor that taps the decoded PCM graph and
- * feeds the SpatialFlow music-haptics engine — a faithful port of the
- * analysis half of SpatialFlow's StereoBalanceProcessor
- * (github.com/MythicalSHUB/SpatialFlow, AudioPlaybackService#
- * analyzePcmForHaptics, GPL-3.0):
- *
- *  - 1st-order IIR crossover filters split the mono-mixed signal into
- *    sub-bass / bass / mid / high band states,
- *  - the loop downsamples to every 8th frame to keep the CPU cost negligible,
- *  - mean absolute band values are scaled x4 and coerced into the engine's
- *    0..1 inputs — exactly the normalization SpatialFlow uses.
- *
- * Because the tap sits inside Media3's audio processor chain, it sees the
- * same decoded audio that reaches the speakers (local and streamed alike)
- * and requires NO runtime permission. Samples are never rewritten: the
- * processor copies its input through untouched.
- */
 class HapticsPcmProcessor(
     private val engineProvider: () -> SpatialFlowHapticEngine?,
 ) : BaseAudioProcessor() {
 
-    // Filter states for the pure-PCM premium real-time haptics crossover.
     private var subBassFilterState = 0f
     private var bassFilterState = 0f
     private var midFilterState = 0f
@@ -50,7 +31,6 @@ class HapticsPcmProcessor(
         ) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        // Pass-through: analysis never rewrites samples.
         return inputAudioFormat
     }
 
@@ -82,7 +62,6 @@ class HapticsPcmProcessor(
         var sumHigh = 0f
         var count = 0
 
-        // Downsample by processing every 8th frame to save CPU.
         val step = 8
         val bytesPerSample = if (is16Bit) 2 else 4
         val bytesPerFrame = bytesPerSample * (if (isStereo) 2 else 1)
@@ -103,8 +82,6 @@ class HapticsPcmProcessor(
                     (left + right) / 2f
                 }
 
-            // Running DSP crossover filters (1st-order IIR) — SpatialFlow's
-            // exact coefficients.
             subBassFilterState = 0.007f * sampleVal + 0.993f * subBassFilterState
             bassFilterState = 0.028f * sampleVal + 0.972f * bassFilterState
             midFilterState = 0.42f * sampleVal + 0.58f * midFilterState
@@ -122,8 +99,6 @@ class HapticsPcmProcessor(
         }
 
         if (count > 0) {
-            // Map the accumulated band absolute averages to normalized
-            // visualizer-equivalent inputs (0 to 1 range).
             val subBassEnergy = (sumSubBass / count) * 4f
             val bassEnergy = (sumBass / count) * 4f
             val midEnergy = (sumMid / count) * 4f

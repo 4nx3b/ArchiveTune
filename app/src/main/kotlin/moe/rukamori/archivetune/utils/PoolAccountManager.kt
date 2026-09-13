@@ -134,13 +134,6 @@ object PoolAccountManager {
 
     private const val ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000L
 
-    /**
-     * How long a FAILED feed fetch (revoked key / network error) suppresses
-     * further non-forced refresh attempts. Without this, every prewarm,
-     * source-check and periodic refresh re-hits the pool with the same dead
-     * key, spamming "Pool account feed rejected the presented key (HTTP 401)"
-     * for the whole session.
-     */
     private const val FEED_FAILURE_BACKOFF_MS = 5 * 60 * 1000L
 
     private val accountCooldownUntil = ConcurrentHashMap<String, Long>()
@@ -237,8 +230,6 @@ object PoolAccountManager {
                 return@withContext true
             }
             if (!force && now - lastFeedFailureAt < FEED_FAILURE_BACKOFF_MS) {
-                // A recent feed failure (401/timeout) is still backing off —
-                // serve from the on-disk cache instead of hammering the pool.
                 return@withContext hasAccounts()
             }
 
@@ -257,7 +248,6 @@ object PoolAccountManager {
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
 
-                    // The read key is baked in at build time; there is no on-device override.
                     val readKey = BuildConfig.SOURCE_PROVIDER_KEY
                     poolApiKey = readKey.ifBlank { null }
 
@@ -289,9 +279,6 @@ object PoolAccountManager {
                             else -> "Pool feed returned HTTP ${result.code}."
                         }
 
-                    // Back off after a failed feed fetch so non-forced callers
-                    // (download prewarms, source checks, periodic refreshes) stop
-                    // re-requesting with the same dead key for a few minutes.
                     lastFeedFailureAt = if (result.succeeded) 0L else System.currentTimeMillis()
                 }
 

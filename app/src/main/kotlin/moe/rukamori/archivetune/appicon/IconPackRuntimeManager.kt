@@ -25,38 +25,15 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
-/**
- * Runtime-downloadable icon pack — the icon-pack twin of [moe.rukamori.archivetune.telegram.TdLibNativeLibrary].
- *
- * Slim builds (`-PslimIconPacks=true`, opt-in since 15.0 — the pack is now
- * baked in by default) bake neither
- * the pack's launcher aliases nor its rasterized icons into the APK. The pack
- * (catalog.json + per-icon PNGs) is published as a GitHub release zip by
- * `.github/workflows/build-icon-pack.yml` and downloaded here on demand, the
- * first time the user opens the app-icon customization screen.
- *
- * Layout on disk (filesDir/icon-pack/<version>/):
- *  - `icon_pack/catalog.json` — the generated pack catalog
- *  - `icon_pack/drawables/<drawableResourceName>.png` — rasterized icons
- */
 object IconPackRuntimeManager {
     private const val TAG = "IconPackRuntime"
 
     const val VERSION = "icon-pack-v1"
 
-    /** How many times the zip download is attempted before giving up. */
     private const val DOWNLOAD_ATTEMPTS = 3
 
-    /** Backoff between download attempts (per attempt index, seconds). */
     private val DOWNLOAD_RETRY_BACKOFF_SECONDS = longArrayOf(1L, 3L)
 
-    /**
-     * SHA-256 of the pack zip (the release asset). Pinned from the release
-     * built by build-icon-pack.yml — same digest-pinning scheme as TDLib.
-     * The workflow packs the zip deterministically (fixed mtimes + sorted
-     * entries), so this pin only moves when the pack CONTENT changes.
-     * (Re-run the workflow after an IconPack submodule bump, then re-pin.)
-     */
     const val EXPECTED_SHA256 = "ff4cfc1114cf0a8ef0d0df45fbc1e544fd14f23efbc59a7b3fcbdb53de9c519d"
 
     private const val ZIP_ENTRY_PREFIX = "icon_pack/"
@@ -101,11 +78,6 @@ object IconPackRuntimeManager {
 
     fun packDirectory(context: Context): File = File(File(context.filesDir, "icon-pack"), VERSION)
 
-    // NOTE: ZIP_ENTRY_PREFIX already ends in '/', so interpolating it with an
-    // extra '/' ("icon_pack//") made removePrefix a no-op and pointed the
-    // catalog at <pack>/icon_pack/catalog.json while extractZip writes
-    // <pack>/catalog.json — isInstalled() then never became true and the pack
-    // re-downloaded forever. Strip the plain prefix instead.
     fun catalogFile(context: Context): File = File(packDirectory(context), CATALOG_ENTRY.removePrefix(ZIP_ENTRY_PREFIX))
 
     private fun drawablesDirectory(context: Context): File =
@@ -116,25 +88,18 @@ object IconPackRuntimeManager {
         drawableResourceName: String,
     ): File = File(drawablesDirectory(context), "$drawableResourceName.png")
 
-    /** True when the pack ships inside the APK (non-slim builds). */
     fun isBundled(): Boolean = BuildConfig.ICON_PACK_BUNDLED
 
-    /** True when the runtime pack is present and loadable. */
     fun isInstalled(context: Context): Boolean =
         !isBundled() &&
             catalogFile(context).isFile &&
             catalogFile(context).length() >= 64 &&
             drawablesDirectory(context).isDirectory
 
-    /** True when the pack needs a runtime download before the icon screen can list it. */
     fun needsDownload(context: Context): Boolean = !isBundled() && !isInstalled(context)
 
     fun lastInstallFailure(): String? = lastFailure
 
-    /**
-     * Downloads + extracts the pack. Safe to call repeatedly: concurrent calls
-     * collapse into one and an already-installed pack is a no-op.
-     */
     suspend fun install(
         context: Context,
         onProgress: (Float) -> Unit = {},
@@ -158,10 +123,6 @@ object IconPackRuntimeManager {
                 var ok = false
                 var lastError: Throwable? = null
                 for (attempt in 1..DOWNLOAD_ATTEMPTS) {
-                    // Stale partial files from a previous (failed or interrupted)
-                    // download are removed so an aborted .tmp can never poison
-                    // the retry — renameTo() refuses to overwrite a non-empty
-                    // target and digest checks would read half-written bytes.
                     zipFile.delete()
                     File(zipFile.parentFile, zipFile.name + ".tmp").delete()
                     ok =
@@ -205,7 +166,6 @@ object IconPackRuntimeManager {
                     return@withLock false
                 }
 
-                // Drop any other (stale) pack versions.
                 File(appContext.filesDir, "icon-pack")
                     .listFiles { f -> f.isDirectory && f.name != VERSION }
                     ?.forEach { it.deleteRecursively() }

@@ -21,10 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -52,6 +50,8 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val MeshFallbackColors = listOf(
     Color(0xFF3A1C71),
@@ -164,9 +164,6 @@ internal fun rememberTikTokArtworkColors(imageUrl: String?): TikTokMeshPalette {
             .data(imageUrl)
             .size(128)
             .allowHardware(false)
-            // Explicit cache keys: the raw thumbnail URL is the same entry the
-            // other player styles use for their palette extraction, so repeat
-            // views resolve from the memory/disk cache instead of re-fetching.
             .memoryCacheKey(imageUrl)
             .diskCacheKey(imageUrl)
             .diskCachePolicy(CachePolicy.ENABLED)

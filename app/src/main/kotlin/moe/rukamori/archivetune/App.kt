@@ -162,13 +162,6 @@ class App :
     private fun initializeDiskBackedComponents() {
         runCatching {
             val config = com.downloader.PRDownloaderConfig.newBuilder()
-                // 90s between socket reads (was 300s): a healthy media CDN
-                // stream delivers bytes continuously, so 90 s of socket
-                // silence is a dead connection, not a slow one. The stall
-                // watchdog in PRDownloaderDataSource catches even the
-                // "connection alive but zero bytes" case at 90 s too —
-                // together they keep wedged googlevideo fetches from holding
-                // a download slot "in progress" for minutes on end.
                 .setReadTimeout(90_000)
                 .setConnectTimeout(15_000)
                 .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
@@ -176,6 +169,7 @@ class App :
             com.downloader.PRDownloader.initialize(this, config)
         }
         JapaneseLanguagePackManager.initialize(this)
+        moe.rukamori.archivetune.lyrics.AiLyricsRomanization.attach(this)
         CanvasArtworkPlaybackCache.init(this)
     }
 
@@ -207,11 +201,6 @@ class App :
                 ?: PoolAccountManager.appleMusicAccounts().firstOrNull()?.mediaUserToken
         }
 
-        // Every log() call inside the Spotify client — the whole GraphQL and REST layer — went
-        // nowhere: Spotify.logger was declared and never assigned, so the token refreshes, the
-        // home-feed parse counts and the "unhandled __typename" diagnostics all evaluated their
-        // message strings and dropped them. Routed into GlobalLog like every other provider, so
-        // the Spotify layer can actually be debugged from a log dump.
         Spotify.logger = { level, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(
                 when (level) {
@@ -224,11 +213,6 @@ class App :
             )
         }
 
-        // Spotify Canvas. The canvas module deliberately has no dependency on the
-        // app's Spotify code, so it takes the access token and the song → Spotify
-        // track mapping as injected callbacks. Both yield null when the user has
-        // no Spotify session, in which case the provider falls back to the
-        // kouzu.in resolver on its own.
         SpotifyCanvasProvider.logger = { message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(
                 android.util.Log.INFO,
@@ -258,9 +242,6 @@ class App :
             }
         }
 
-        // Only resumes an existing session — see TelegramClient.startIfSessionExists. Starting the
-        // client unconditionally mapped TDLib's 21.7 MB native library and started its threads for
-        // every user, signed in to Telegram or not.
         applicationScope.launch(Dispatchers.IO) {
             startupReadiness.awaitReady()
             runCatching { moe.rukamori.archivetune.telegram.TelegramClient.startIfSessionExists(this@App) }
@@ -308,13 +289,6 @@ class App :
                     prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                         YouTube.locale = YouTube.locale.copy(hl = lang)
                     }
-                    // Restore the YouTube Music region override. BOTH halves have to come back: the
-                    // `gl` locale override *and* `regionSpooferActive`, which is what forces the
-                    // region-sensitive endpoints (home, search, charts, explore, moods, new releases)
-                    // to go out anonymously so `gl` is authoritative. Restoring only `gl` — as this
-                    // used to — meant spoofing silently stopped working after the very first restart,
-                    // including the automatic one that picking a region triggers: the account context
-                    // came back and YouTube went on serving the account's home country.
                     prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { regionValue ->
                         YouTube.locale = YouTube.locale.copy(gl = regionValue)
                         YouTube.regionSpooferActive = true
@@ -347,7 +321,6 @@ class App :
                         YouTube.useLoginForBrowse = true
                     }
 
-                    // Apply random theme on startup if enabled
                     if (prefs[RandomThemeOnStartupKey] == true) {
                         val randomPalette = ThemePalettes.generateRandomPalette()
                         val seedPalette =
@@ -401,11 +374,6 @@ class App :
             }
         }
 
-        // Re-install the rotating proxy pool when the user left IP rotation on. Without
-        // this the toggle in Internet Settings read as ON after every restart while no
-        // proxy was actually installed, so rotation appeared to do nothing. Fetching and
-        // validating the pool is network-bound, so it runs after the first frame.
-        // A pool that validates to nothing leaves rotation off, exactly as before.
         applicationScope.launch(Dispatchers.IO) {
             startupReadiness.runOptional {
                 if (dataStore.data.first()[IpRotationEnabledKey] == true) {
@@ -415,8 +383,6 @@ class App :
             }
         }
 
-        // Restore the Qobuz health-probe track so the settings "Test" action can distinguish a
-        // fully-working instance from a preview-only (unsubscribed) one on the first probe.
         applicationScope.launch(Dispatchers.IO) {
             try {
                 if (dataStore.get(QobuzEnabledKey, false)) {
@@ -567,8 +533,6 @@ class App :
                 .maxSizeBytes(imageCacheConfig.maxSizeBytes)
                 .build()
 
-        // Coil owns the journal and enforces maxSizeBytes with LRU eviction.
-        // Deleting files beneath an active DiskCache corrupts its accounting.
 
         val imageHttpClient =
             OkHttpClient

@@ -59,11 +59,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -114,6 +112,8 @@ import moe.rukamori.archivetune.viewmodels.YearInMusicUiState
 import moe.rukamori.archivetune.viewmodels.YearInMusicViewModel
 import java.text.NumberFormat
 import kotlin.coroutines.resume
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val RecapBlack = Color(0xFF070707)
 private val RecapSurfaceHigh = Color(0xFF1D1D1D)
@@ -129,11 +129,6 @@ private val RecapPink = Color(0xFFFF8BDE)
 private val RecapLime = Color(0xFFDFFF3E)
 private val RecapInk = Color(0xFF151515)
 
-/**
- * The device's physical display size in real pixels (including system bars and
- * cutouts) — the capture target for the recap share so the exported image
- * matches the phone's original screen dimensions at full resolution.
- */
 private fun realScreenPixels(context: android.content.Context): Pair<Int, Int> {
     return runCatching {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -279,14 +274,6 @@ private fun YearInMusicRecapScreen(
                                 raw
                             }
 
-                        // Export at the device's REAL screen dimensions (full
-                        // pixel resolution, original aspect ratio) instead of a
-                        // hardcoded 1080x1920 letterbox: the fixed target both
-                        // downscaled the capture on tall screens (9:16 vs the
-                        // phone's 20:9) and painted black bars around a card
-                        // that suddenly read "small". coverBitmap fills the
-                        // target edge to edge, so the share is exactly what the
-                        // screen showed, at the display's native resolution.
                         val (screenW, screenH) = realScreenPixels(context)
                         val fitted =
                             ComposeToImage.coverBitmap(

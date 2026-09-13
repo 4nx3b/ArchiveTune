@@ -63,7 +63,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -101,6 +100,7 @@ import moe.rukamori.archivetune.viewmodels.DownloadLibraryEvent
 import moe.rukamori.archivetune.viewmodels.DownloadLibraryScreenState
 import moe.rukamori.archivetune.viewmodels.DownloadLibraryTab
 import moe.rukamori.archivetune.viewmodels.DownloadLibraryViewModel
+import androidx.compose.runtime.getValue
 
 @Composable
 fun DownloadLibraryScreen(

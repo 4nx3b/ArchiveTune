@@ -44,9 +44,6 @@ class SpotifyLibraryViewModel
 
         val hiddenPlaylistIds: StateFlow<Set<String>> =
             repository.hiddenPlaylistIds.stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
-        // Songs, artists and albums back the Library's other sections on the Spotify source. Held
-        // here rather than in the repository because, unlike playlists, they are not cached to disk
-        // and nothing outside the Library reads them — a screen that is never opened never fetches.
         private val _likedSongs = MutableStateFlow(SpotifyLibrarySectionState<SpotifyTrack>())
         val likedSongs = _likedSongs.asStateFlow()
 
@@ -56,7 +53,6 @@ class SpotifyLibraryViewModel
         private val _albums = MutableStateFlow(SpotifyLibrarySectionState<SpotifyAlbum>())
         val albums = _albums.asStateFlow()
 
-        // Play history, for the Spotify pill on the History screen.
         private val _recentlyPlayed = MutableStateFlow(SpotifyLibrarySectionState<SpotifyPlayHistory>())
         val recentlyPlayed = _recentlyPlayed.asStateFlow()
 
@@ -99,12 +95,6 @@ class SpotifyLibraryViewModel
         fun hiddenSpotifyPlaylistsSnapshot(): List<SpotifyPlaylist> = repository.hiddenSpotifyPlaylists()
 
         suspend fun ensureAccessToken(): String? = repository.ensureAccessToken()
-        /**
-         * Loads a section's contents, skipping the fetch when it already holds something unless
-         * [force] — so paging back and forth between the Library's tabs does not re-fetch the whole
-         * library each time, while pull-to-refresh still does.
-         */
-        /** Successful empty sections are cached too; only [force] requests a refresh. */
         fun loadLikedSongs(force: Boolean = false) = load(force, _likedSongs) { repository.likedSongs() }
 
         fun loadArtists(force: Boolean = false) = load(force, _artists) { repository.libraryArtists() }
@@ -152,7 +142,6 @@ internal suspend fun <T> loadSpotifySection(
         currentCoroutineContext().ensureActive()
         target.value = previous.copy(errorMessage = error.message ?: error.javaClass.simpleName)
     } finally {
-        // An account change may already have reset the state or started its replacement request.
         if (target.value === loading) target.value = previous
     }
 }

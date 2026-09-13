@@ -213,8 +213,6 @@ abstract class InternalDatabase : RoomDatabase() {
                 }
                 .build()
 
-            // Room opens on its query/transaction executor, not while Hilt builds
-            // the activity graph. The helper keeps the same repair-before-reset policy.
             return MusicDatabase(delegate = db)
         }
     }

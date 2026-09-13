@@ -108,10 +108,6 @@ class BackupArchiveRepository
                 context.contentResolver.openOutputStream(uri, "wt")
                     ?: throw IllegalStateException("Failed to open backup destination")
             output.buffered().zipOutputStream().use { zipStream ->
-                // Listening stats (Settings → Stats page) ride along in every
-                // backup: a library backup already embeds them inside song.db,
-                // so the portable JSON payload is only emitted when the library
-                // itself is excluded — every backup file carries the stats info.
                 if (!includeLibrary) {
                     emit(BackupArchiveStep.EXPORT_STATS, indeterminate = true)
                     val statsSnapshot = database.allEventsOnce()

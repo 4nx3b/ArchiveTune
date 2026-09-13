@@ -5,22 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * The SimpMusic player style's type.
- *
- * SimpMusic (github.com/maxrave-dev/SimpMusic, GPL-3.0) renders its whole UI in
- * Poppins Medium (composeResources/font/poppins_medium.ttf, shipped here as
- * res/font/simpmusic_poppins.ttf) with weights expressed per style rather than
- * per font file. Its ui/theme/Typo.kt builds a Typography on that family with
- * fixed sizes/weights; this is that mapping, one-for-one, for the styles the
- * player screen reads. Only the simpmusic package uses it; the rest of the app
- * keeps its own typography.
- *
- * SimpMusic's typo() also bakes text COLORS into its styles (pure white titles,
- * #A8A8A8 body) because its player is force-dark. Here only the metrics travel
- * through MaterialTheme.typography — color stays explicit at every call site,
- * which the existing port already does.
- */
 
 package moe.rukamori.archivetune.ui.player.simpmusic
 

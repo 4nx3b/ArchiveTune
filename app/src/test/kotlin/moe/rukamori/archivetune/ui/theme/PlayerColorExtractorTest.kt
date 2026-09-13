@@ -31,9 +31,6 @@ class PlayerColorExtractorTest {
     private fun hueOf(color: Color): Float = hslOf(color)[0]
 
     private fun saturationOf(color: Color): Float = hslOf(color)[1]
-
-    private fun lightnessOf(color: Color): Float = hslOf(color)[2]
-
     private fun hueDistance(
         a: Float,
         b: Float,

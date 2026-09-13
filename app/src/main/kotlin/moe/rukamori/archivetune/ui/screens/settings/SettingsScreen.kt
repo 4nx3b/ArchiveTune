@@ -47,11 +47,9 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -82,6 +80,8 @@ import moe.rukamori.archivetune.ui.screens.glassHeaderSource
 import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
     buildMap {
@@ -129,7 +129,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         )
 
         own("appearance", "lyrics", "lyrics_background_style")
-        // The lyrics translator shipped alongside the Discord experiments and still lives there.
         own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
 
         own(
@@ -144,7 +143,6 @@ private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
         own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
         own("qobuz", "sources", "qobuz")
         own("tidal", "sources", "tidal")
-
 
         own("navigation_bar", "appearance", "frosted_nav_bar", "liquid_glass_nav_bar", "hide_navigation_bar_labels")
         own("appearance_extras", "appearance", "show_home_category_chips")

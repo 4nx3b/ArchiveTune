@@ -5,21 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style — the full-screen lyrics overlay.
- *
- * A port of SpatialFlow's FullScreenLyricsOverlay + the circular-reveal
- * modifier (github.com/MythicalSHUB/SpatialFlow, GPL-3.0,
- * ui/player/FullScreenLyricsOverlay.kt): the overlay reveals with a circular
- * clip expanding from the Lyrics chip, carries the centred "LYRICS • Synced
- * Lyrics" header with the song title, the auto-scrolling synced lines (active
- * 38sp Bold, inactive 20sp dimmed, tap to seek), the plain-lyrics fallback and
- * the metadata footer. Dimensions, colors and reveal timing are SpatialFlow's
- * own. The lyric DATA comes from ArchiveTune's own lyrics store
- * (playerConnection.currentLyrics parsed by LyricsUtils) — real providers, no
- * second lyrics implementation.
- */
-
 package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.os.Build
@@ -71,11 +56,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -142,6 +125,8 @@ import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private fun Modifier.circularRevealFrom(
     progressProvider: () -> Float,
@@ -215,18 +200,11 @@ internal fun SpatialFlowLyricsOverlay(
     val playerConnection = LocalPlayerConnection.current ?: return
     val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
-    // Respect the global lyrics mode: Enhanced (the default) renders the
-    // shared word-synced karaoke view so enhanced lyrics are used in the
-    // SpatialFlow style too; every other mode keeps this style's own
-    // char-fill renderer below.
     val lyricsMode by rememberEnumPreference(LyricsModeKey, defaultValue = LyricsMode.ENHANCED)
 
     var showLyricsMenu by remember { mutableStateOf(false) }
     var moreIconBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
-    // The lyrics overflow popup only gets a live liquid-glass backdrop when
-    // the liquid glass preference is enabled; otherwise it renders with the
-    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
@@ -330,36 +308,16 @@ internal fun SpatialFlowLyricsOverlay(
                     onClick = {},
                 ),
     ) {
-        // The backdrop layer wraps EVERY visual in the overlay — the moving-
-        // blur background AND the content — so the lyrics overflow popup's
-        // drawBackdrop() samples the actual on-screen pixels behind it
-        // (gradient + moving blur + text), not just the text column over a
-        // transparent base (which is what the popup used to sample: an empty
-        // texture = "transparent popup, no liquid glass"). The popup itself
-        // stays OUTSIDE this box, as a later sibling, so it never feeds back
-        // into its own sample. (Same pattern as AppleMusicPlayer.)
-        //
-        // The padding that used to sit on THIS box now lives on the content
-        // Column inside: back then MovingBlurBackground was inset by the
-        // status-bar padding, so the strip above the song title showed only
-        // the dark scrim/base brush — the reported "black bar above the
-        // song's name". The blur background now fills edge to edge.
         Box(
             modifier =
                 Modifier.fillMaxSize().let { base ->
-                    if (popupBackdrop != null) {
+                    if (popupBackdrop != null && showLyricsMenu) {
                         base.layerBackdrop(popupBackdrop)
                     } else {
                         base
                     }
                 },
         ) {
-        // The lyrics backdrop is Apple Music's exact moving-blur recipe: the
-        // artwork at 64dp blur, slowly drifting and scaling up as the overlay
-        // settles in, with AM's scrim colors (0.25/0.40/0.65 black) over it.
-        // The previous palette-gradient + vibrancy renderer read as "the
-        // liquid blur is too bright". The solid backgroundBrush beneath stays
-        // the reveal/crop base colour and the no-artwork fallback.
         SpatialFlowLyricsMovingBlur(
             artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
@@ -548,9 +506,6 @@ internal fun SpatialFlowLyricsOverlay(
         }
 
         if (showLyricsMenu) {
-            // Dim in the lyrics surface's own hue instead of flashing pure
-            // black over the moving-blur backdrop (task report: "a black
-            // overlay appears as background").
             val scrimBase = (backgroundBrush as? SolidColor)?.value ?: Color.Black
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = moreIconBounds,
@@ -946,18 +901,6 @@ private fun SpatialFlowInterludeItem(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Lyrics moving-blur backdrop — Apple Music's exact recipe
-// ---------------------------------------------------------------------------
-// The AM player's lyrics backdrop: the artwork image sized to the drift
-// footprint, blurred 64dp (AmBackdropBlurRadius), slowly wandering
-// (blurWander — the "moving" part) and scaling from the rest scale (1.2,
-// AmCoverBlurScale) up to the lyrics drift scale (2.4, AmLyricsBlurDriftScale)
-// as the overlay settles in, with AM's canvas scrim colors over it. The
-// previous renderer (MovingBlurBackground) boosted saturation 1.6x and laid a
-// bright palette gradient over the artwork — the reported "liquid blur is too
-// bright". Pre-S devices render a pre-blurred bitmap instead (Modifier.blur is
-// a no-op below S), same as AM's preBlurredBitmap path.
 private const val SfLyricsBlurRestScale = 1.2f
 private const val SfLyricsBlurDriftScale = 2.4f
 private val SfLyricsBlurRadius = 64.dp
@@ -973,11 +916,6 @@ private fun SpatialFlowLyricsMovingBlur(
     val blurWander = rememberBlurWanderDrift(active = !isPreS)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
-    // AM's lyricsBackdropProgress equivalent: 0 → 1 as the overlay appears,
-    // driving the rest → drift scale morph and ramping the wander in.
-    // animateFloatAsState would snap straight to 1f on the first composition
-    // (its initial value IS the first target), so this uses an Animatable
-    // launched on appearance instead.
     val morph = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         morph.animateTo(1f, animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing))
@@ -1056,9 +994,6 @@ private fun SpatialFlowLyricsMovingBlur(
                     contentAlignment = Alignment.Center,
                 ) {
                     AsyncImage(
-                        // Offline-artwork request builder for parity with the
-                        // player's other backdrops (raw strings render empty
-                        // for offline-only tracks).
                         model = rememberOfflineArtworkImageRequest(artUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
@@ -1083,7 +1018,6 @@ private fun SpatialFlowLyricsMovingBlur(
             }
         }
 
-        // Apple Music's exact scrim colors over the blurred artwork.
         Box(
             modifier =
                 Modifier

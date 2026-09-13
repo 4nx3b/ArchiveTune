@@ -55,12 +55,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -104,6 +102,8 @@ import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private object QobuzHealthUiCache {
     val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()

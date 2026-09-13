@@ -92,33 +92,20 @@ object SfProFontCatalog {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use null
                     val bytes = response.body?.bytes() ?: return@use null
-                    // Guard against HTML error pages masquerading as fonts.
                     if (bytes.size < 1024) null else bytes
                 }
             }.getOrNull()
         }
 }
 
-/**
- * Lazily-downloaded previews for the SF Pro font picker.
- *
- * Each font in the catalog is downloaded exactly once into [Context.cacheDir]
- * (small, system-reclaimable, excluded from backups) and turned into a
- * [FontFamily] so the picker can render a live specimen of the real font
- * below its name — the user sees how the font looks *before* committing to
- * the full download+apply flow.
- */
 object SfProFontPreview {
     private const val PREVIEW_DIR = "sf_pro_previews"
     private const val MIN_FONT_BYTES = 1024
 
     private val inFlight = Mutex()
 
-    // Main-thread only: built from composition during row rendering.
     private val loadedFamilies = HashMap<String, FontFamily>()
 
-    // Font previews are small but there can be ~47 rows scrolling through the
-    // picker; keep at most 3 concurrent preview downloads.
     private val client =
         OkHttpClient
             .Builder()
@@ -159,11 +146,6 @@ object SfProFontPreview {
         entry: SfProFontCatalog.FontEntry,
     ): Boolean = previewFile(context, entry).length() >= MIN_FONT_BYTES
 
-    /**
-     * Downloads the font for preview if not cached yet. Returns true when the
-     * preview file is available afterwards. Thread-safe; concurrent calls for
-     * the same entry are collapsed.
-     */
     suspend fun ensureDownloaded(
         context: Context,
         entry: SfProFontCatalog.FontEntry,
@@ -188,10 +170,6 @@ object SfProFontPreview {
             file.length() >= MIN_FONT_BYTES
         }
 
-    /**
-     * Builds (and caches) the [FontFamily] for a preview file that already
-     * exists on disk. Must be called from the main thread.
-     */
     fun fontFamilyFor(
         context: Context,
         entry: SfProFontCatalog.FontEntry,

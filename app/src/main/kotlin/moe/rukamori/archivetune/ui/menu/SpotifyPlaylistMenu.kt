@@ -212,12 +212,10 @@ fun SpotifyPlaylistMenu(
                             headlineContent = { Text(text = stringResource(R.string.play_next)) },
                             onClick = onPlayNext,
                         )
-                        // Row dividers, same recipe as the songs overflow menu
-                        // (start inset aligns under the headline after the
-                        // leading icon; 30% ink stays visible on the glass).
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                         NewMenuItem(
                             leadingContent = { Icon(painter = painterResource(R.drawable.queue_music), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
@@ -225,8 +223,9 @@ fun SpotifyPlaylistMenu(
                             onClick = onAddToQueue,
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                         NewMenuItem(
                             leadingContent = { Icon(painter = painterResource(R.drawable.visibility_off), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },

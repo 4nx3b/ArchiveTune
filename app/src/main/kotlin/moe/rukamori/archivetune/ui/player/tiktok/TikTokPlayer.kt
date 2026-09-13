@@ -48,12 +48,10 @@ import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import moe.rukamori.archivetune.ui.utils.resize
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,6 +94,8 @@ import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.AppleMusicQueueSheet
 import moe.rukamori.archivetune.ui.player.LocalVideoArtworkState
 import moe.rukamori.archivetune.ui.player.LocalVideoFullscreenState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 internal val TIKTOK_TOP_NAV_HEIGHT = 44.dp
 
@@ -203,11 +203,6 @@ fun TikTokPlayerContent(
         }
     }
 
-    // Artwork prefetch: the pager only composes one page beyond the viewport,
-    // so a fast swipe lands on a page whose 1080px cover has just started
-    // fetching. Warm the next two pages' covers ahead of the swipe so the
-    // artwork is in the memory/disk cache (or already in flight) by the time
-    // the page settles — same explicit cache keys as the page's own request.
     val prefetchContext = LocalContext.current
     LaunchedEffect(currentWindowIndex, queueWindows) {
         val imageLoader = prefetchContext.imageLoader
@@ -270,10 +265,6 @@ fun TikTokPlayerContent(
 
     val videoFullscreenHolder = LocalVideoFullscreenState.current
     val videoState = LocalVideoArtworkState.current
-    // True when the current track's music video is live on the feed — the quality +
-    // fullscreen pill then sits on the video's bottom-right corner (TikTokSongPage),
-    // so the top navigation's fullscreen button is hidden to avoid a duplicate control.
-    // Non-video tracks keep the header button (it toggles the feed's immersive mode).
     val videoControlsShowing =
         videoState != null && !videoState.hasPlaybackFailed && !lyricsOpen
     var immersive by rememberSaveable { mutableStateOf(false) }
@@ -324,9 +315,6 @@ fun TikTokPlayerContent(
         label = "tiktokQueueFeedBlur",
     )
 
-    // The lyrics overflow popup only gets a live liquid-glass backdrop when
-    // the liquid glass preference is enabled; otherwise it renders with the
-    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
@@ -552,10 +540,6 @@ private fun TikTokTopNavigation(
     state: BottomSheetState,
     isLoading: Boolean,
     onFullscreen: () -> Unit,
-    // While the current track plays its music video, the fullscreen + quality pill
-    // already lives on the video's bottom-right corner — the header button would be a
-    // duplicate fullscreen entry, so it yields its slot (a same-size spacer keeps the
-    // Home/Library tabs centered).
     showFullscreenButton: Boolean = true,
     modifier: Modifier = Modifier,
 ) {

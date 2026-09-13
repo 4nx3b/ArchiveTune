@@ -5,35 +5,12 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SimpMusic's fullscreen lyrics page.
- *
- * A port of SimpMusic's `FullscreenLyricsSheet` (its ui/component/LyricsView.kt,
- * https://github.com/maxrave-dev/SimpMusic, GPL-3.0): a full-height black sheet whose
- * background is the artwork palette colour bleeding into black through a slowly wandering
- * five-stop linear gradient (angle ±45° over 24 s, offsets ±1500/±1000 over 32 s — the
- * original 6 s / 8 s sweeps read as a fast strobe on a phone screen and were slowed 4x
- * 2026-09-05, user report: "the background changes at extremely fast speed" — the stops
- * easing toward new palette colours over 1200 ms), an Apple-Music-style header (45 dp sleeve,
- * marquee'd title, artist row that navigates to the artist page, like / share-lyrics /
- * more-vert), SimpMusic's own Classic lyrics renderer filling the middle, and a bottom
- * control block — slider with the 8×18 dp thumb, time row, transport, info/queue buttons —
- * that AUTO-HIDES after four seconds and comes back on any tap, exactly like the original.
- *
- * Only the SimpMusic player style reaches this: the lyrics card's "Show" affordance opens it
- * (user request 2026-09-05 — it previously opened the app's shared LyricsScreen instead of
- * SimpMusic's own lyrics page). The lyric DATA is the same store every other renderer reads
- * (playerConnection.currentLyrics through SimpMusicLyrics) — real providers, no second
- * implementation.
- */
-
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -71,12 +48,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,8 +72,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import kotlin.math.cos
-import kotlin.math.sin
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -131,6 +104,8 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.Locale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val LyricsGutter = 50.dp
 
@@ -154,9 +129,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
         mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
     }
 
-    // The lyrics overflow popup only gets a live liquid-glass backdrop when
-    // the liquid glass preference is enabled; otherwise it renders with the
-    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
@@ -249,11 +221,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val midColor1 by animateColorAsState(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
     val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
     val endColor by animateColorAsState(Color.Black, tween(1200, easing = FastOutSlowInEasing))
-    // The gradient is deliberately STATIC (user request 2026-09-12: "the
-    // background shouldn't move behind the lyrics"): the angle/offset drift
-    // animations that used to live here made the backdrop crawl while the
-    // lyrics scrolled. Only the palette colours still transition on song
-    // change (the animateColorAsState values above).
 
     var queueOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -329,9 +296,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                                     ),
                                 start =
                                     Offset(
-                                        // Fixed diagonal at the animation's
-                                        // centre (offset 0, angle 0) — same
-                                        // composition, frozen in place.
                                         x = 0f,
                                         y = 0f,
                                     ),
@@ -474,10 +438,6 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             .padding(horizontal = LyricsGutter),
                 ) {
                     if (hasLyrics) {
-                        // Always the Enhanced renderer (2026-09-12): the style's
-                        // own Classic lyrics mode was removed, so the shared
-                        // word-synced karaoke view is what the fullscreen sheet
-                        // renders.
                         LyricsEnhanced(
                             sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,

@@ -66,9 +66,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,6 +112,8 @@ import moe.rukamori.archivetune.viewmodels.IconViewModel
 import java.io.File
 import androidx.compose.material3.IconButton as MaterialIconButton
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun IconScreen(
@@ -292,8 +292,6 @@ private fun IconScreenContent(
             }
 
             is IconScreenState.Success -> {
-                // "Ask me if I want to download the Icon Pack" — once per
-                // not-yet-downloaded pack, every time the screen is opened.
                 if (state.model.packDownload == IconPackDownloadUi.NEEDED) {
                     var promptDismissed by rememberSaveable { mutableStateOf(false) }
                     if (!promptDismissed) {
@@ -528,10 +526,6 @@ private fun IconPackDownloadRow(
                     )
                 }
                 if (state == IconPackDownloadUi.FAILED && !error.isNullOrBlank()) {
-                    // The concrete installer failure (HTTP code, digest
-                    // mismatch, timeout, …) straight from
-                    // IconPackRuntimeManager.lastInstallFailure() — the row
-                    // used to say only "failed" with no way to see why.
                     Text(
                         text = error,
                         style = MaterialTheme.typography.bodySmall,

@@ -635,13 +635,6 @@ class HomeViewModel
                     }
 
                     launchHomeSection {
-                        // Recently played — chronological recents, used by the
-                        // "Recently Played" square-card row. Filter out blocked
-                        // artists and cap at 30 so the row has enough to draw
-                        // from without over-fetching. (The "Jump back in" hero
-                        // at the top of the home page now uses `heroPicks` —
-                        // random songs from listening preference — instead of
-                        // the top 3 of this list.)
                         recentlyPlayed.value =
                             database
                                 .recentSongs(limit = 30)
@@ -1069,8 +1062,6 @@ class HomeViewModel
                             .toPlaybackAuthState()
                     YouTube.authState = authState
 
-                    // The account observer reacts to DataSyncId and owns identity,
-                    // playlists and Home reloads for channel changes too.
                     if (forceSyncOnSwitch && context.dataStore.getAsync(YtmSyncKey, true) && authState.hasLoginCookie) {
                         syncUtils.performFullSync(authoritative = true)
                     }

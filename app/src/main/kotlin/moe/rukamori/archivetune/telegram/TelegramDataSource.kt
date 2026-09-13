@@ -139,11 +139,6 @@ class TelegramDataSource : BaseDataSource(true) {
         bytesRemaining = C.LENGTH_UNSET.toLong()
     }
 
-    /**
-     * Resolves the message's current TdApi.File. v2 media ids have no local
-     * file id, so the last known id is validated by unique id and re-resolved
-     * from the message whenever it doesn't match.
-     */
     private suspend fun resolveFile(decoded: TelegramMediaId): TdApi.File? {
         cachedFileId(decoded)?.let { return it }
         Timber
@@ -222,7 +217,6 @@ class TelegramDataSource : BaseDataSource(true) {
 
         private const val MAX_RETAINED_DOWNLOADS = 3
 
-        /** chat/message -> last known TDLib file id (session-local). */
         private val fileCache = ConcurrentHashMap<Pair<Long, Long>, Int>()
 
         private val retainedFileIds = LinkedHashSet<Int>()

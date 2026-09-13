@@ -62,13 +62,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,6 +106,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {
@@ -116,7 +116,6 @@ private tailrec fun Context.findActivity(): Activity? =
         else -> null
     }
 
-/** Auto-hide delay for the inline tap-to-show video controls while playing. */
 private const val INLINE_VIDEO_CONTROLS_AUTO_HIDE_MS = 3500L
 
 @Stable
@@ -155,18 +154,6 @@ fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
     }
 }
 
-/**
- * The floating controls pill shared by every inline video surface: the video-quality
- * picker (only when YouTube offered more than one height) and the fullscreen toggle.
- *
- * Extracted from [InlineVideoPlayer] so hosts that render the video surface in one layer
- * (e.g. the TikTok player style, which layers its tap-to-pause artwork above the video)
- * can hoist the pill into a layer where its buttons stay tappable, and anchor it wherever
- * that layout needs it — without duplicating the pill + sheet wiring.
- *
- * All state defaults come from the video CompositionLocals, so a bare call with just a
- * Modifier is enough.
- */
 @Composable
 fun InlineVideoControlsPill(
     preferredHeight: Int? = LocalVideoPreferredHeight.current,
@@ -188,9 +175,6 @@ fun InlineVideoControlsPill(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Quality picker — only render if YouTube offered more than one height.
-        // Opens the same VideoQualitySheet the fullscreen overlay uses, so the two
-        // surfaces offer identical choices.
         if (availableHeights.size > 1) {
             IconButton(
                 onClick = { qualityMenuOpen = true },
@@ -205,8 +189,6 @@ fun InlineVideoControlsPill(
             }
         }
 
-        // Fullscreen toggle — writes to the hoisted holder so the
-        // host can render the FullscreenVideoOverlay.
         IconButton(
             onClick = { fullscreenHolder.isFullscreen = true },
             modifier = Modifier.size(40.dp),
@@ -220,9 +202,6 @@ fun InlineVideoControlsPill(
         }
     }
 
-    // The sheet is a window of its own, so it lives outside the pill Row — that way it is
-    // not torn down by any visibility animation applied to the pill itself, and fullscreen
-    // can be entered while it is up without tearing it down mid-animation.
     if (qualityMenuOpen) {
         VideoQualitySheet(
             preferredHeight = preferredHeight,
@@ -244,20 +223,7 @@ fun InlineVideoPlayer(
     modifier: Modifier = Modifier,
     onPlaybackFailed: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
-    /**
-     * When false, the quality/fullscreen pill is NOT rendered here — for hosts that layer
-     * other input-consuming surfaces above the video (the TikTok player style layers its
-     * tap-to-pause artwork on top) and render [InlineVideoControlsPill] themselves in a
-     * layer where the buttons stay tappable.
-     */
     showControls: Boolean = true,
-    /**
-     * When true, a single tap on the video reveals the controls overlay — the
-     * quality/fullscreen pill PLUS a center play/pause button — and a second tap
-     * hides them again. When false (default) the pill is always visible, which
-     * preserves the legacy behavior for small surfaces whose parent rows own the
-     * tap events (e.g. thumbnail/miniplayer rows).
-     */
     controlsOnTap: Boolean = false,
 ) {
     if (state == null) {
@@ -293,9 +259,6 @@ fun InlineVideoPlayer(
                     },
                 ),
         ) {
-            // Auto-hide the tap-to-show controls a few seconds after the last
-            // reveal while playing — paused playback keeps them up so the play
-            // button stays reachable (mirrors the fullscreen overlay's cadence).
             if (controlsOnTap) {
                 LaunchedEffect(controlsVisible, isPlaying) {
                     if (controlsVisible && isPlaying) {
@@ -326,10 +289,6 @@ fun InlineVideoPlayer(
                 }
             }
 
-            // Center play/pause revealed together with the pill while the controls
-            // are up. Hidden while the stream is loading so it never stacks on the
-            // video's loading spinner. Fades/scales in and out — the previous hard
-            // pop in/out read as abrupt.
             AnimatedVisibility(
                 visible = controlsOnTap && controlsVisible && !isLoadingState(state) && playerConnection != null,
                 enter =
@@ -366,10 +325,6 @@ fun InlineVideoPlayer(
                 }
             }
 
-            // Controls overlay: quality picker + fullscreen button, grouped in a single
-            // dark pill so the inline and fullscreen controls look consistent.
-            // Animated only for the tap-to-reveal hosts; the legacy always-visible
-            // pill path keeps its exact prior behavior.
             if (controlsOnTap) {
                 AnimatedVisibility(
                     visible = showControls && controlsVisible,
