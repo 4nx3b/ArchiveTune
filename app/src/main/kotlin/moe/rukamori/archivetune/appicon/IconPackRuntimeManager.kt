@@ -53,9 +53,11 @@ object IconPackRuntimeManager {
     /**
      * SHA-256 of the pack zip (the release asset). Pinned from the release
      * built by build-icon-pack.yml — same digest-pinning scheme as TDLib.
+     * The workflow packs the zip deterministically (fixed mtimes + sorted
+     * entries), so this pin only moves when the pack CONTENT changes.
      * (Re-run the workflow after an IconPack submodule bump, then re-pin.)
      */
-    const val EXPECTED_SHA256 = "f8444fdaf096d5f4712ce2ec4a79cd1f5251d19477234c787b68c9e082025fc0"
+    const val EXPECTED_SHA256 = "ff4cfc1114cf0a8ef0d0df45fbc1e544fd14f23efbc59a7b3fcbdb53de9c519d"
 
     private const val ZIP_ENTRY_PREFIX = "icon_pack/"
     private const val CATALOG_ENTRY = "icon_pack/catalog.json"

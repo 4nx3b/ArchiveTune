@@ -64,7 +64,14 @@ jobs:
           RES="app/build/generated/iconPack/gmsMobileUniversalDebug/res"
           cp "$ASSETS/catalog.json" "$OUT/icon_pack/catalog.json"
           cp "$RES"/drawable-nodpi/icon_pack_*.png "$OUT/icon_pack/drawables/"
-          (cd "$OUT" && zip -q -r -9 "$RUNNER_TEMP/icon-pack-v1.zip" icon_pack)
+          # Deterministic archive: fixed mtimes + sorted entry order. zip embeds
+          # each file's mtime, so an un-normalized rebuild used to shift the
+          # archive's SHA-256 even when the pack content was identical — which
+          # silently invalidated the digest pinned in
+          # IconPackRuntimeManager.EXPECTED_SHA256. With normalization the
+          # digest only changes when the pack content actually changes.
+          find "$OUT/icon_pack" -exec touch -d "2000-01-01 00:00:00 UTC" {} +
+          (cd "$OUT" && LC_ALL=C find icon_pack -type f | LC_ALL=C sort | zip -q -9 "$RUNNER_TEMP/icon-pack-v1.zip" -@)
           sha256sum "$RUNNER_TEMP/icon-pack-v1.zip" | tee "$OUT/icon-pack-v1.zip.sha256"
           cp "$OUT/icon-pack-v1.zip.sha256" "$RUNNER_TEMP/"
 
