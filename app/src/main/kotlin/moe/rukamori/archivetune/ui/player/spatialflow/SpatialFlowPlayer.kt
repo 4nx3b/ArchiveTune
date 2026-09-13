@@ -237,12 +237,17 @@ fun SpatialFlowPlayerContent(
             SolidColor(finalColor)
         }
 
+    // The lyrics sheet is a dark media surface by design (it always draws the
+    // blurred artwork under the dark SfCanvasScrimBrush), so it keeps the dark
+    // surface derivation in BOTH themes — the lyrics text is constant white.
+    // (The light* parameters are required by the signature but unused when
+    // isDark = true.)
     val lyricsBackgroundBrush =
-        remember(playerBackgroundColor, surfaceIsDark) {
+        remember(playerBackgroundColor) {
             val finalColor =
                 deriveArtworkSurfaceColor(
                     sourceColor = playerBackgroundColor,
-                    isDark = surfaceIsDark,
+                    isDark = true,
                     darkLightness = 0.145f,
                     lightLightness = 0.825f,
                     darkSaturationRange = 0.32f..0.54f,
@@ -513,7 +518,10 @@ fun SpatialFlowPlayerContent(
                         artUrl = artUrl,
                         isPlaying = isPlaying,
                         cornerRadius = 16.dp,
-                        shadowElevation = 16.dp,
+                        // No elevation shadow: the 16dp drop shadow read as a
+                        // black border/background hugging the artwork, glaring
+                        // on the light backdrop. The sheet stays flat.
+                        shadowElevation = 0.dp,
                         onPlaySongAtWindow = { windowIndex ->
                             val window = queueWindows.getOrNull(windowIndex) ?: return@SpatialFlowArtworkPager
                             playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
@@ -522,7 +530,11 @@ fun SpatialFlowPlayerContent(
                         modifier = Modifier.size(albumArtSize),
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // Breathing room between the artwork and the title stack:
+                    // the artwork sits a bit higher while the bottom controls
+                    // stay pinned exactly where they sit while the canvas
+                    // plays (the weighted spacer above absorbs the shift).
+                    Spacer(modifier = Modifier.height(36.dp))
                 }
 
                 Row(
@@ -964,8 +976,10 @@ fun SpatialFlowPlayerContent(
                     artUrl = artUrl,
                     revealProgressProvider = { lyricsRevealProgress },
                     revealCenterProvider = { lyricsButtonCenterInRoot },
-                    contentColor = contentColor,
-                    contentSecondary = contentSecondary,
+                    // Constant-white lyrics text over the constant dark
+                    // backdrop, independent of theme and canvas state.
+                    contentColor = Color.White,
+                    contentSecondary = Color.White.copy(alpha = 0.6f),
                     onSeekTo = onSeek,
                     onDismiss = { lyricsModeEnabled = false },
                     modifier = Modifier.fillMaxSize(),

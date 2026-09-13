@@ -261,7 +261,12 @@ fun BottomSheetMenu(
                             glassModifier.background(glassTint)
                         } else {
                             Modifier
-                                .background(fallbackColor)
+                                // The fill MUST carry FloatingMenuShape: a
+                                // shapeless background draws a square rectangle
+                                // whose sharp corners overlap the rounded
+                                // border/shadow and read as sharp edges on the
+                                // sheet. The glass path is untouched.
+                                .background(fallbackColor, FloatingMenuShape)
                                 .border(1.dp, fallbackBorderColor, FloatingMenuShape)
                         },
                     )
