@@ -2372,3 +2372,47 @@ Stage Summary:
 - dev: light-mode-correct + layout-pinned spatialflow player, exact-15.0
   release plumbing, updated changelog; CI green before merge.
 - Glass-mode floating popups remain untouched (no menu component edits).
+
+---
+Task ID: 45
+Agent: Super Z (main agent, session web-e130fa90)
+Task: spatialflow constant-white lyrics text, artwork upshift + shadow
+removal, unglassed popup rounded-corner fix (screenshots
+20260913-223220/223327/223450), changelogs.md update, re-run the stable
+release with exact version 15.0 + changelogs.md attached; builds monitored
+max 7 minutes then proceed
+
+Work Log:
+- Pixel forensics on the three uploads: 223220 = lyrics overlay in LIGHT
+  mode with dark text on the scrimmed blurred artwork (needs constant
+  white); 223327 = no-canvas player in light mode — artwork bottom-edge
+  scan + VLM confirm a 16dp drop-shadow halo (the "black border/background
+  attached with the artwork"); 223450 = unglassed overflow popup — ASCII
+  corner map shows the sheet's light fill spanning the full square width
+  from the very top row while the border/shadow use the 28dp rounded shape.
+- Lyrics: SpatialFlowLyricsOverlay now receives Color.White /
+  White@0.6 directly and lyricsBackgroundBrush always derives the DARK
+  surface (isDark = true, light params dropped) — the lyrics sheet is a
+  dark media surface by design (constant black scrim over the blurred
+  artwork), so the text is constant white in both themes.
+- Artwork: shadowElevation 16dp -> 0dp on SpatialFlowArtworkPager (flat
+  sheet, no halo) and the artwork->title spacer 12dp -> 36dp so the
+  thumbnail sits a bit higher while the bottom controls stay pinned (the
+  weighted spacer absorbs the shift).
+- Unglassed popup: BottomSheetMenu's fallback fill was
+  Modifier.background(fallbackColor) with NO shape — a square rectangle
+  whose sharp corners overlapped the rounded border/shadow/clip and read
+  as sharp edges. Now .background(fallbackColor, FloatingMenuShape). The
+  glass path (glassModifier.background(glassTint)) is untouched.
+- changelogs.md: solid-sheet Appearance bullet extended with the rounded
+  fill; artwork-layout bullet extended with the upshift + shadow removal;
+  new constant-white lyrics bullet. No duplicates.
+- Release round 2: the first v15.0 dispatch (run 34769750455, from main
+  without these fixes) was CANCELLED before publishing; new commit pushed
+  to dev, PR dev->main merged, release.yml re-dispatched on main so v15.0
+  ships every fix.
+
+Stage Summary:
+- dev: constant-white lyrics, flat higher artwork, properly-rounded
+  unglassed popups; changelog current.
+- Release v15.0 (exact) re-dispatched from the merged main.
