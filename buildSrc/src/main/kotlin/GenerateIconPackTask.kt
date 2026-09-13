@@ -54,10 +54,12 @@ abstract class GenerateIconPackTask : DefaultTask() {
     abstract val excludedIconIds: SetProperty<String>
 
     /**
-     * When true (the default, mirroring slimTdlib) the pack is NOT baked into
-     * the APK: only the default launcher alias is generated (so the app keeps
-     * a launcher icon) and the pack itself is downloaded at runtime from the
-     * GitHub release built by build-icon-pack.yml — see IconPackRuntimeManager.
+     * When true the pack is NOT baked into the APK: only the default launcher
+     * alias is generated (so the app keeps a launcher icon) and the pack itself
+     * is downloaded at runtime from the GitHub release built by
+     * build-icon-pack.yml — see IconPackRuntimeManager. The default is false:
+     * per-icon activity-aliases + resources are compiled in so applying an
+     * icon switches the real launcher icon (a downloaded bitmap alone cannot).
      */
     @get:Input
     abstract val slimMode: Property<Boolean>
