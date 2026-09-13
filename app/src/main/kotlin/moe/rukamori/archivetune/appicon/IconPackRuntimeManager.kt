@@ -335,11 +335,9 @@ object IconPackRuntimeManager {
     }
 
     /**
-     * Pinned launcher shortcut support: runtime packs have no baked-in
-     * activity-alias, so switching the launcher icon uses a pinned home-screen
-     * shortcut with an adaptive icon built from the downloaded bitmap. This is
-     * the only permissionless way to change a launcher icon whose resources
-     * are not compiled into the installed APK.
+     * Pinned launcher shortcut support — kept for the legacy-shortcut sweep in
+     * AppIconRepository (icons applied before the alias-based switcher pinned
+     * "app_icon_" shortcuts on the home screen; those get disabled on apply).
      */
     fun supportsPinnedShortcuts(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
 }

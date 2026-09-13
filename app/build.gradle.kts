@@ -47,8 +47,8 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-val baseVersionName = "14.0.0"
-val baseVersionCode = 1400
+val baseVersionName = "15.0.0"
+val baseVersionCode = 1500
 
 val discordApplicationId =
     (
@@ -156,13 +156,15 @@ android {
                 ?: "https://github.com/4nx3B/ArchiveTune/releases/download/tdlight-2b51b33"}\"",
         )
 
-        // Icon packs follow the same runtime-download model as TDLib: the
-        // generated pack resources (aliases + rasterized icons + catalog) are
-        // NOT bundled — the pack is downloaded on demand from this repo's
-        // GitHub release (see IconPackRuntimeManager) the first time the user
-        // opens the app-icon customization screen. Pass -PslimIconPacks=false
-        // to bake the pack into the APK like before.
-        val slimIconPacks = (project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true
+        // Icon packs ship baked into the APK by default: the generated pack
+        // resources (per-icon activity-aliases + rasterized icons + catalog)
+        // are compiled in so applying an icon switches the REAL app icon
+        // (home screen + app drawer) via PackageManager component switching —
+        // a runtime-downloaded bitmap alone cannot replace a launcher icon on
+        // stock Android. Pass -PslimIconPacks=true for a minimal APK where the
+        // pack is downloaded at runtime instead (see IconPackRuntimeManager);
+        // those builds can only list/preview icons, not switch them.
+        val slimIconPacks = (project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: false
         buildConfigField("boolean", "ICON_PACK_BUNDLED", "${!slimIconPacks}")
         buildConfigField(
             "String",
@@ -551,7 +553,7 @@ androidComponents {
                 svgDirectory.set(rootProject.layout.projectDirectory.dir("IconPack/svg"))
                 applicationId.set(variant.applicationId)
                 targetActivityClassName.set("moe.rukamori.archivetune.MainActivity")
-                slimMode.set((project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true)
+                slimMode.set((project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: false)
                 excludedIconIds.set(
                     listOf(
                         // Retired launcher icons — removed from the shipped pack.

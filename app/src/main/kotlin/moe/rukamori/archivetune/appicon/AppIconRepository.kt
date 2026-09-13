@@ -9,24 +9,17 @@ package moe.rukamori.archivetune.appicon
 
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.annotation.DrawableRes
-import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import moe.rukamori.archivetune.MainActivity
 import moe.rukamori.archivetune.R
-import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -93,7 +86,7 @@ class AppIconRepository
                     icons.firstOrNull { icon -> icon.id == iconId }
                         ?: throw IllegalArgumentException("Unknown app icon ID.")
                 if (selectedIcon.runtime) {
-                    applyRuntimeSelection(selectedIcon)
+                    applyRuntimeSelection(icons, selectedIcon)
                 } else if (!isSelectionApplied(icons.filterNot { it.runtime }, selectedIcon)) {
                     applySelection(icons, selectedIcon)
                 }
@@ -170,7 +163,13 @@ class AppIconRepository
                     githubAuthorUrl = generated.githubAuthorUrl.takeIf(String::isNotBlank),
                     previewDrawableResId = 0,
                     previewFilePath = iconFile.absolutePath,
-                    aliasClassName = "",
+                    // The pack catalog carries the per-icon alias class so a
+                    // downloaded icon resolves to the SAME launcher alias the
+                    // APK was built with — applying it switches the real app
+                    // icon, exactly like a bundled icon (see
+                    // applyRuntimeSelection). Blank only if the pack predates
+                    // aliases; those icons cannot be applied.
+                    aliasClassName = generated.aliasClassName,
                     isDefault = false,
                     runtime = true,
                 )
@@ -265,62 +264,60 @@ class AppIconRepository
 
         private fun AppIcon.componentName(): ComponentName = ComponentName(context.packageName, aliasClassName)
 
-        // ── Runtime (pinned-shortcut) selection ──
+        // ── Runtime (downloaded pack) selection ──
         //
-        // Slim builds ship no per-icon activity-aliases, so launcher switching
-        // uses a pinned home-screen shortcut whose adaptive icon is built from
-        // the downloaded pack bitmap — the only permissionless way to change a
-        // launcher icon whose resources are not compiled into the APK.
+        // Applying a downloaded icon switches the REAL app icon — the
+        // per-icon activity-alias compiled into the APK is enabled via
+        // PackageManager component switching, so the icon changes everywhere
+        // the launcher shows it (home screen AND app drawer). The pack catalog
+        // carries the alias class names, so a downloaded icon resolves to the
+        // same alias a bundled icon would use.
 
         private fun findSelectedRuntimeIcon(icons: List<AppIcon>): AppIcon {
-            val selectedId = runtimeSelectionPrefs().getString(KEY_RUNTIME_SELECTED, null) ?: DefaultIconId
-            return icons.firstOrNull { it.id == selectedId } ?: icons.first { it.id == DefaultIconId }
+            // Component state is the source of truth once an alias switch has
+            // been applied; the pref only seeds the very first load (and slim
+            // builds whose aliases are not present in the APK).
+            val prefId = runtimeSelectionPrefs().getString(KEY_RUNTIME_SELECTED, null)
+            return icons.firstOrNull { it.id == prefId && it.componentExists() }
+                ?: findSelectedIcon(icons)
         }
 
         private fun runtimeSelectionPrefs() =
             context.getSharedPreferences("icon_pack_runtime", Context.MODE_PRIVATE)
 
-        private fun applyRuntimeSelection(selectedIcon: AppIcon) {
-            val prefs = runtimeSelectionPrefs()
-            if (!selectedIcon.isDefault && !IconPackRuntimeManager.supportsPinnedShortcuts()) {
-                throw IllegalStateException("This Android version does not support pinned shortcuts")
-            }
+        private fun applyRuntimeSelection(
+            icons: List<AppIcon>,
+            selectedIcon: AppIcon,
+        ) {
+            // Sweep legacy pinned shortcuts created by the old shortcut-based
+            // apply path — the real launcher icon is what changes now.
+            runCatching { removeIconShortcuts() }
 
             if (selectedIcon.isDefault) {
-                // Back to the baked-in default alias: remove every pinned icon
-                // shortcut we own; the regular launcher entry takes over again.
-                runCatching { removeIconShortcuts() }
-                prefs.edit().putString(KEY_RUNTIME_SELECTED, DefaultIconId).apply()
+                // Back to the baked-in default alias: re-enable it (and disable
+                // every other one) so the regular launcher entry takes over.
+                applySelection(icons, selectedIcon)
+                runtimeSelectionPrefs().edit().putString(KEY_RUNTIME_SELECTED, DefaultIconId).apply()
                 return
             }
 
-            val bitmap =
-                selectedIcon.previewFilePath?.let { path ->
-                    runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
-                }
-            if (bitmap == null) throw IllegalStateException("Icon bitmap for ${selectedIcon.id} is missing")
-
-            val shortcutId = iconShortcutId(selectedIcon.id)
-            val intent =
-                Intent(context, MainActivity::class.java).apply {
-                    action = Intent.ACTION_MAIN
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                }
-            val info =
-                ShortcutInfoCompat
-                    .Builder(context, shortcutId)
-                    .setShortLabel(context.getString(R.string.app_name))
-                    .setIcon(IconCompat.createWithAdaptiveBitmap(bitmap))
-                    .setIntent(intent)
-                    .build()
-            val pinned = ShortcutManagerCompat.requestPinShortcut(context, info, null)
-            if (!pinned) {
-                throw IllegalStateException("The launcher refused the icon shortcut — is pinning supported?")
+            if (selectedIcon.aliasClassName.isBlank() || !selectedIcon.componentExists()) {
+                throw IllegalStateException(
+                    "Icon ${selectedIcon.id} has no launcher alias in this build — " +
+                        "the app icon can only be switched with the pack compiled into the APK.",
+                )
             }
-            prefs.edit().putString(KEY_RUNTIME_SELECTED, selectedIcon.id).apply()
+            applySelection(icons, selectedIcon)
+            runtimeSelectionPrefs().edit().putString(KEY_RUNTIME_SELECTED, selectedIcon.id).apply()
         }
 
-        private fun iconShortcutId(iconId: String) = "app_icon_$iconId"
+        /** Whether this icon's launcher alias is actually present in the installed APK. */
+        private fun AppIcon.componentExists(): Boolean =
+            aliasClassName.isNotBlank() &&
+                runCatching {
+                    packageManager.getActivityInfo(componentName(), 0)
+                    true
+                }.getOrDefault(false)
 
         private fun removeIconShortcuts() {
             ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
