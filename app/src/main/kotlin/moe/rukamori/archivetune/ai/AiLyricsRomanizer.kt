@@ -29,9 +29,6 @@ class AiLyricsRomanizer {
         val out = arrayOfNulls<String>(lines.size)
 
         val batches = indexed.chunkedByBudget()
-        // Batches are independent: run up to a few concurrently so a
-        // multi-batch song resolves in one round-trip window instead of
-        // batch1_latency + batch2_latency + ...
         val batchResults =
             if (batches.size <= 1) {
                 listOf(romanizeBatchResilient(config, batches.firstOrNull().orEmpty()))
@@ -110,9 +107,6 @@ class AiLyricsRomanizer {
     }
 
     private companion object {
-        // A typical song (30–60 lines) now fits in ONE request; longer
-        // documents split into a handful of large batches instead of many
-        // small ones.
         const val MaxItemsPerBatch = 160
         const val MaxCharsPerBatch = 16000
         const val MaxConcurrentBatches = 3

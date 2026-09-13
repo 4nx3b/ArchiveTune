@@ -42,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -92,6 +91,7 @@ import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import moe.rukamori.archivetune.viewmodels.OnlineSearchViewModel
+import androidx.compose.runtime.getValue
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -234,18 +234,6 @@ fun OnlineSearchResult(
                         onClick = {
                             when (item) {
                                 is SongItem -> {
-                                    // Playing from the Videos category: the user picked
-                                    // the VIDEO rendition of the track, so the player
-                                    // must play the actual YouTube video — never the
-                                    // (possibly cached) canvas. Two holes fixed here:
-                                    // 1) the seed metadata may not carry the OMV/UGC
-                                    //    endpoint type, so the video intent is lost and
-                                    //    playback falls back to song+canvas — force
-                                    //    isMusicVideo on the seed;
-                                    // 2) when the SAME track is already playing as a
-                                    //    song, the plain same-id branch only toggled
-                                    //    play/pause — the video never started. Re-queue
-                                    //    as a video instead.
                                     val playAsVideo = searchFilter == FILTER_VIDEO
                                     val sameTrack = item.id == mediaMetadata?.id
                                     val currentIsVideo = sameTrack && mediaMetadata?.isMusicVideo == true

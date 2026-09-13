@@ -72,13 +72,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +115,8 @@ import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
 import moe.rukamori.archivetune.viewmodels.NewReleaseContent
 import moe.rukamori.archivetune.viewmodels.NewReleaseUiState
 import moe.rukamori.archivetune.viewmodels.NewReleaseViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -505,11 +505,6 @@ fun NewReleaseScreen(
                 modifier =
                     Modifier
                         .padding(horizontal = 16.dp, vertical = 12.dp)
-                        // Player-aware bottom inset (same source as the grid's
-                        // contentPadding): when the mini player is visible the
-                        // controls lift above it instead of being overlapped.
-                        // The Scaffold content's bottom padding already folds
-                        // in nav bar + mini player height.
                         .padding(bottom = paddingValues.calculateBottomPadding())
                         .fillMaxWidth(),
             ) {
@@ -517,10 +512,6 @@ fun NewReleaseScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 ) {
-                    // Weight + ellipsis: when the row runs out of room the
-                    // count shrinks ("2 selec…"), the buttons never wrap —
-                    // the mark-as-read pill keeps its single-line height
-                    // instead of stacking its label into a tall column.
                     Text(
                         text = stringResource(R.string.selected_count, selectedReleaseIds.size),
                         style = MaterialTheme.typography.titleMedium,
@@ -811,9 +802,6 @@ private fun SelectableReleaseItem(
             isPlaying = isPlaying,
             fillMaxWidth = fillMaxWidth,
             coroutineScope = coroutineScope,
-            // Edit mode: the thumbnail play affordance disappears — the tile's
-            // click now toggles selection, so a play glyph would read as a
-            // playable control and fight the selection checkbox.
             showPlayOverlay = !isSelectionMode,
             modifier =
                 Modifier.combinedClickable(
@@ -863,11 +851,6 @@ private fun SelectableReleaseItem(
                     modifier = Modifier.size(20.dp),
                 )
             }
-            // Selection border — drawn LAST (over the scrim) as an INSET
-            // overlay (2dp from the cell edges) instead of a modifier on the
-            // container, so the content never re-flows when edit mode toggles
-            // and adjacent cells' borders keep a 4dp gap between them instead
-            // of colliding into one merged 2dp line.
             Box(
                 modifier =
                     Modifier

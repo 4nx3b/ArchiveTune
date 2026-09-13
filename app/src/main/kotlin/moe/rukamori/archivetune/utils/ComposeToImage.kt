@@ -180,12 +180,6 @@ object ComposeToImage {
         return out
     }
 
-    /**
-     * Scales the source to COVER targetWidth x targetHeight (scale = max of
-     * the two axes) and center-crops the overflow — the opposite of
-     * [fitBitmap]'s letterboxing. Used by the share exports that must fill
-     * the device's real screen dimensions with no black bars.
-     */
     fun coverBitmap(
         source: Bitmap,
         targetWidth: Int,

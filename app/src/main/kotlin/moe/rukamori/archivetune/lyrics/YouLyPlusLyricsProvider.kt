@@ -12,8 +12,8 @@ import android.util.Log
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.utils.GlobalLog
 import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.youlyplus.YouLyPlus
+import moe.rukamori.archivetune.utils.get
 
 object YouLyPlusLyricsProvider : LyricsProvider {
     init {

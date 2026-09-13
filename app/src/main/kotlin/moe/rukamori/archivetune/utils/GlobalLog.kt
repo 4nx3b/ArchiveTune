@@ -92,7 +92,6 @@ object GlobalLog {
     }
 }
 
-/** Timber Tree that forwards logs to GlobalLog */
 class GlobalLogTree : Timber.Tree() {
     override fun log(
         priority: Int,

@@ -52,8 +52,6 @@ internal class RecoveringOpenHelper(
             open(helper, writable)
         } catch (error: Exception) {
             if (!shouldRecover(error)) throw error
-            // Serialize repair with every opener so no query can see a partially
-            // repaired file or reopen it between close and replacement.
             runCatching { helper.close() }
             repair(error)
             helper = replacement()

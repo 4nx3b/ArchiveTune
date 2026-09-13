@@ -63,8 +63,6 @@ internal class LazyCache(
             cache ?: create().also { cache = it }
         }
 
-    // Media3 releases its own monitor while waiting for a hole span. An outer
-    // monitor here would prevent the writer from committing or releasing that span.
     private inline fun <T> withDelegate(block: (Cache) -> T): T = block(delegate())
 
     override fun addListener(
@@ -145,8 +143,6 @@ internal class LazyCache(
     override fun release() {
         val toRelease = synchronized(lock) {
             if (released) return
-            // Storage migration releases these process-scoped caches before moving
-            // their directories and restarting. Never reopen the old directory.
             released = true
             cache.also { cache = null }
         }

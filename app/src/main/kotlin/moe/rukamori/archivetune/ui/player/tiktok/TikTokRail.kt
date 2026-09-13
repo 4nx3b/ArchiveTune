@@ -33,12 +33,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -83,6 +81,8 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 internal val TIKTOK_RED = Color(0xFFFE2C55)
 
@@ -105,11 +105,6 @@ private object TikTokLikeCountCache {
     private fun Int.toLabel(): String = formatCompactCount(this.toLong())
 }
 
-/**
- * In-memory cache for the artist profile-picture URLs resolved for the TikTok
- * rail avatar. Misses are stored as null sentinels so an artist with no
- * YouTube art is not looked up again on every page swipe.
- */
 private object TikTokArtistAvatarCache {
     private val cache = ConcurrentHashMap<String, Optional<String>>()
 
@@ -308,16 +303,6 @@ private fun TikTokArtistAvatar(
     val libraryArtist by artistFlow.collectAsStateWithLifecycle(initialValue = null)
     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
-    // The avatar must show the ARTIST's profile picture, not the song
-    // thumbnail. MediaMetadata.Artist.thumbnailUrl is only populated from
-    // library songs (Song.toMediaMetadata); songs streamed from search or
-    // browse pages carry null artist thumbnails, which previously made the
-    // avatar silently fall back to the song artwork. Resolution order:
-    // 1) the metadata's own artist thumbnail,
-    // 2) the library's ArtistEntity thumbnail (already collected above for
-    //    the subscribe button),
-    // 3) an on-demand YouTube artist-page lookup (cached in memory),
-    // 4) the song thumbnail as a last resort.
     val libraryArtistThumbnail = libraryArtist?.artist?.thumbnailUrl
     val resolvedAvatarUrl by
         produceState<String?>(
@@ -526,10 +511,6 @@ private fun TikTokLikeRailButton(
                 )
             }
 
-            // Fixed-height count slot: keeps the button's footprint (and the
-            // breathing room to the comment button below) stable whether or
-            // not the like count ever loads — real TikTok reserves this slot
-            // too, so a missing count never reflows the rail.
             AnimatedVisibility(
                 visible = likeCountLabel != null,
                 enter =

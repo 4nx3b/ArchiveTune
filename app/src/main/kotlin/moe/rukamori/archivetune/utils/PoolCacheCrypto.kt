@@ -1,8 +1,3 @@
-/*
- * ArchiveTune (2026)
- * Copyright notice: see project license and git history.
- */
-
 package moe.rukamori.archivetune.utils
 
 import android.security.keystore.KeyGenParameterSpec

@@ -71,12 +71,6 @@ class BoundedSyncWorkersTest {
         val result = runCatching {
             forEachBoundedIndexed(listOf(1, 2, 3)) { _, _ -> throw failure }
         }
-        // The contract: the caller must observe the failure. Depending on the
-        // interleaving, coroutineScope's completion machinery can hand the
-        // original exception back directly OR wrapped in the scope's
-        // JobCancellationException — accept both shapes, everything else is a
-        // real defect. The messages keep the full shape in the CI log so a
-        // regression is diagnosable from the failure line alone.
         assertTrue(
             "worker failure was swallowed: result=$result",
             result.isFailure,

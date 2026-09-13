@@ -69,7 +69,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,7 +77,6 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -157,6 +155,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.navigation.NavController
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 internal const val ART_PX = 1200
 
@@ -643,9 +643,6 @@ fun BitChordPlayerContent(
                             )
                         },
                 ) {
-                    // Canvas in the hero slot blends into the controls below
-                    // through the exact same DstIn fade the static artwork uses
-                    // — nothing different, per the style's own recipe.
                     if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
                         CanvasArtworkPlayer(
                             primaryUrl = canvasPrimaryUrl,
@@ -903,10 +900,6 @@ fun BitChordPlayerContent(
                         }
                         var cardCanvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
                         if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                            // Canvas fills the artwork card exactly like the
-                            // static sleeve does — same clip, same rounded
-                            // corners, same shadow — so it blends with the
-                            // surrounding controls nothing-different.
                             CanvasArtworkPlayer(
                                 primaryUrl = canvasPrimaryUrl,
                                 fallbackUrl = canvasFallbackUrl,
@@ -1039,10 +1032,6 @@ fun BitChordPlayerContent(
                     val latestShownFraction = rememberUpdatedState(if (duration > 0) shown / duration else 0f)
                     val latestDuration = rememberUpdatedState(duration)
                     val lyricsPositionProvider = remember {
-                        // Feed the seek preview while scrubbing so every lyrics
-                        // renderer (Enhanced karaoke included) tracks the thumb
-                        // instead of the stale player position; null otherwise
-                        // falls back to player.currentPosition.
                         {
                             if (latestScrubbing.value) {
                                 (latestShownFraction.value * maxOf(latestDuration.value, 1L)).toLong()
@@ -1125,12 +1114,6 @@ fun BitChordPlayerContent(
 
                     .offset(y = 6.dp),
             ) {
-                // The one-line strip is the collapsed-state teaser for the
-                // lyrics page. When the lyrics page is open it kept rendering
-                // above the progress bar (task report: "one line lyrics
-                // shouldn't display over the progress bar when I open lyrics
-                // page") — the page already shows the full lyrics, so the
-                // strip steps aside entirely.
                 if (!lyricsOpen) {
                     if (!lyrics.isNullOrEmpty()) {
                         CurrentLyricLine(

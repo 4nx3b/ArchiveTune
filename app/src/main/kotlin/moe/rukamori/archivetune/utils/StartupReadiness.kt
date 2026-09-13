@@ -62,8 +62,6 @@ class StartupReadiness {
         }
     }
 
-    // Service, widget and download entrypoints wait for configuration only,
-    // never for an activity or a rendered frame.
     suspend fun awaitReady() = (result.value ?: result.filterNotNull().first()).getOrThrow()
 
     fun onFirstFrame() {

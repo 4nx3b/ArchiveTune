@@ -10,10 +10,8 @@ package moe.rukamori.archivetune.ui.player
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
 import coil3.request.CachePolicy
@@ -26,6 +24,8 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.ui.utils.YTThumbQuality
 import moe.rukamori.archivetune.ui.utils.buildYTThumbnailUrl
 import timber.log.Timber
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Immutable
 data class ThumbnailSwapState(

@@ -55,7 +55,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -66,7 +65,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
@@ -158,57 +156,25 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
-// ──────────────────────────────────────────────────────────────────────
-// Constants
-// ──────────────────────────────────────────────────────────────────────
-
-/** Lead time offset for LRC-style line-synced lyrics (ms). */
 private const val LRC_LEAD_MS = 300L
 
-/** Lead time offset for TTML word-synced lyrics (ms). */
 private const val TTML_LEAD_MS = 0L
 
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
 
-/**
- * Minimum duration (ms) for the per-word letter-by-letter sweep animation.
- * Without this floor, very short words (< ~50ms) can be skipped entirely
- * between 16ms position polls, causing the word to jump from 0% to 100%
- * with no visible sweep. 180ms is long enough to be clearly visible while
- * short enough not to lag noticeably behind the audio for typical words.
- */
 private const val MIN_SWEEP_MS = 180L
 
-/**
- * Backward jump in the player's clock that counts as a restart (REPEAT_MODE_ONE
- * wrapping from duration back to 0, or an explicit backward seek) rather than
- * playback jitter or an ExoPlayer position correction.
- */
 private const val V2_POSITION_RESET_BACKWARD_THRESHOLD_MS = 1_000L
 
-/** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
-// The lines stay transparent until the active one has been placed, then fade
-// in over this long. See `awaitingFirstFocus`.
 private const val V2_FIRST_FOCUS_FADE_MS = 200
-// Hard ceiling on how long the lines may stay hidden waiting for that placement.
 private const val V2_FIRST_FOCUS_TIMEOUT_MS = 400L
 
-/** Sentinel entry prepended so auto-scroll has headroom above the first line. */
 private val HEAD_LYRICS_ENTRY = LyricsEntry(time = 0L, text = "")
 
-/**
- * Per-Composable cache for [LyricsUtils.hasTrueWordSync] results. The check allocates
- * several Lists (filter, map, distinct) per call and is pure — same entry → same result
- * for the lifetime of the lyrics. Without this cache it was being recomputed for every
- * visible word-synced line on every 16 ms position tick.
- *
- * Keyed by entry identity (LyricsEntry is a stable data class instance held in the
- * parsed lyrics list). Cleared implicitly when the lyrics list changes because the
- * entries themselves are GC'd, and the cache is held in `remember` so it dies with the
- * LyricsV2 composable.
- */
 private class WordSyncCache {
     private val cache = HashMap<LyricsEntry, Boolean>()
 
@@ -237,10 +203,6 @@ private fun isRtlText(text: String): Boolean {
     return false
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Main Composable
-// ──────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun LyricsV2(
@@ -259,22 +221,15 @@ fun LyricsV2(
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
-    // ── Preferences ──
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsScroll) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
-    // Modifier.blur() is applied to every visible line continuously while lyrics is
-    // open (see the .blur() call below) -- it is the heaviest per-frame cost in this
-    // view. Default OFF so word-synced lyrics are smooth out of the box.
     val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (bounceFactorPreference) = rememberPreference(LyricsV2BounceFactorKey, defaultValue = 1f)
     val (glowFactorPreference) = rememberPreference(LyricsV2GlowFactorKey, defaultValue = 1f)
     val (fillTransitionWidth) = rememberPreference(LyricsV2FillTransitionWidthKey, defaultValue = 8f)
     val (lrcBounceEnabledPreference) = rememberPreference(LyricsV2LrcBounceEnabledKey, defaultValue = true)
-    // The V2 renderer never honored the reduce-animations setting: on low-RAM devices (where it
-    // defaults on) the per-word glow shadows, bounce springs and line blur are the difference
-    // between smooth and stuttering karaoke, so gate them all here.
     val v2AnimationsDisabled = LocalAnimationsDisabled.current
     val bounceFactor = if (v2AnimationsDisabled) 0f else bounceFactorPreference
     val glowFactor = if (v2AnimationsDisabled) 0f else glowFactorPreference
@@ -306,15 +261,11 @@ fun LyricsV2(
     val lyricsFontFamily = rememberArchiveTuneLyricsFontFamily()
     val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
 
-    // ── Text colour derived from background style ──
-    // Apple Music style and all lyrics backgrounds always use white text so that
-    // lyrics remain readable on the dark blurred backdrop regardless of system theme.
     val textColor = textColorOverride ?: Color.White
     val lyricsLineBlur = (lyricsLineBlurOverride ?: lyricsLineBlurPreference) && !v2AnimationsDisabled
 
     val inactiveAlpha = 0.35f
 
-    // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
     val selectedIndices = remember { mutableStateListOf<Int>() }
     var showMaxSelectionToast by remember { mutableStateOf(false) }
@@ -323,7 +274,6 @@ fun LyricsV2(
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }
 
-    // ── Lyrics data ──
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = currentLyrics?.lyrics
     val showTranslations =
@@ -331,14 +281,9 @@ fun LyricsV2(
             currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
         }
 
-    // ── Parse lyrics into entries ──
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics!!) }
 
-    // Parsed off the composition thread — same reason as LyricsEnhanced: a word-synced TTML file
-    // is an XML parse plus one object per syllable, and running it in composition put the whole
-    // cost on the frame the Apple Music COVER->LYRICS morph starts. `null` means "not parsed yet",
-    // which the render path below shows as the shimmer rather than "lyrics not found".
     var parsedEntries by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
     LaunchedEffect(lyrics) {
         val text = lyrics
@@ -370,20 +315,11 @@ fun LyricsV2(
 
     val entriesWithWords: List<LyricsEntry> = lyricsEntries
 
-    // Per-entry cache for hasTrueWordSync() — avoids re-running the (allocating) word-sync
-    // detection on every 16 ms position tick for every visible line.
     val wordSyncCache = rememberWordSyncCache()
 
-    // ── AI romanisation ──
-    // One batched request per track (network + billed), so it cannot hang off the per-line pass
-    // below. Results are pushed into the same `romanizedTextFlow` the built-in engines write to, so
-    // the render path and the fade-in behaviour are identical whichever engine produced them.
     val aiRomanizationSessionKey =
         remember(mediaMetadata?.id, lyrics) { AiLyricsRomanization.sessionKey(mediaMetadata?.id, lyrics) }
     val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
-    // Resolved by line text, not by index — this renderer's entry list carries a head entry and
-    // instrumental breaks that LyricsEnhanced's does not, and both derive the same session key. See
-    // AiLyricsRomanization.Result.
     val aiRomanizedLines: List<String?> =
         remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, aiRomanizationSettings.configKey, entriesWithWords) {
             if (!aiRomanizationSettings.active) {
@@ -415,12 +351,8 @@ fun LyricsV2(
         }
     }
 
-    // ── Romanization ──
     LaunchedEffect(entriesWithWords, romanizationPreferences) {
         if (!romanizationPreferences.isEnabled) {
-            // Guard against clobbering AI results: when the AI engine owns romanisation the effect
-            // above is the writer, and blanking the flows here would erase it on every recomposition
-            // that changed `entriesWithWords`.
             if (aiRomanizationSettings.active) return@LaunchedEffect
             entriesWithWords.forEach { entry ->
                 if (entry.romanizedTextFlow.value != null) {
@@ -446,8 +378,6 @@ fun LyricsV2(
                 return@forEach
             }
 
-            // Off the UI thread: one romanization per line on Main used to queue dozens of
-            // dispatcher hops right as the karaoke animation started.
             launch(Dispatchers.Default) {
                 val romanized =
                     try {
@@ -463,21 +393,7 @@ fun LyricsV2(
         }
     }
 
-    // ── Playback position tracking ──
     val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
-    // Hold the position in an explicit MutableState so we can expose a stable provider lambda
-    // that reads the current value. The lambda identity is stable across position updates, so
-    // passing it to child composables never by itself triggers their recomposition — only the
-    // composables that actually invoke the lambda (active / near-active lines) re-read it.
-    // Key position-owned state by the lyrics payload. A repeat keeps the same
-    // payload, but the position loop below explicitly resets the values when
-    // it observes the playback clock wrap back to the start.
-    // Key the position state by the lyrics payload so a new song starts from a
-    // clean zero, and key the provider by the SAME state object. An unkeyed
-    // provider would keep capturing the first (now dead) state object after a
-    // song change: the poll loop writes the new object while every word-fill
-    // reads the frozen old one — exactly the “auto-scrolls but the active line
-    // never highlights/animates” symptom on track change.
     val currentPositionMsState = remember(lyrics) { mutableLongStateOf(0L) }
     var currentPositionMs by currentPositionMsState
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
@@ -486,14 +402,6 @@ fun LyricsV2(
     val currentPositionProvider: () -> Long =
         remember(currentPositionMsState) { { currentPositionMsState.longValue } }
 
-    // rememberUpdatedState so the playback loop always sees the latest
-    // sliderPositionProvider lambda. Without this, if the caller's lambda
-    // identity changes between recompositions (e.g. in the Apple Music
-    // player where the lyrics overlay sits inside an AnimatedVisibility
-    // whose parent recomposes on every position tick), the LaunchedEffect
-    // would keep capturing the OLD lambda and never see new positions —
-    // making the V2 lyrics appear frozen ("don't animate at all").
-    // LyricsEnhanced already does this; V2 was missing it.
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
 
     var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
@@ -501,40 +409,17 @@ fun LyricsV2(
 
     LaunchedEffect(entriesWithWords, isSynced, leadMs, lyricsSyncOffset) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
-        // 16 ms recomposes every visible word ~60×/s; with animations disabled a coarser tick is
-        // indistinguishable (fills snap anyway) and much cheaper.
         val pollIntervalMs =
             when {
                 v2AnimationsDisabled -> 100L
                 isTtmlFormat -> 16L
                 else -> 50L
             }
-        // For the high-frequency TTML path, drive the poll from the choreographer frame clock
-        // instead of a fixed `delay(16)`. When the device is under GPU pressure (most commonly
-        // because a Spotify Canvas video is compositing on a TextureView alongside the lyrics),
-        // the frame clock naturally drops to 30/24 fps; `delay(16)` would keep firing at 60 Hz
-        // and pile up recompositions on top of the slow frames, which is what makes the karaoke
-        // fill animation lag visibly behind the audio. `withFrameNanos` ties the poll cadence to
-        // the actual frame rate so the two stay in lock-step.
         val useFrameClock = !v2AnimationsDisabled && isTtmlFormat
         while (isActive) {
             val sliderPos = latestSliderPositionProvider.value()
             val pos = sliderPos ?: player.currentPosition
 
-            // REPEAT_MODE_ONE remains in STATE_READY, so lifecycle/state based
-            // restart detection never fires. Re-key the word subtree on the
-            // actual backward clock discontinuity to give every Animatable a
-            // fresh zero value for the next play-through.
-            //
-            // The discontinuity is measured against the PLAYER's clock, not the
-            // value returned by `sliderPositionProvider`. The previous version
-            // additionally required `sliderPos == null`, which silently disabled
-            // repeat detection in the Apple Music player: that player always
-            // installs a slider provider, so the branch never ran. The scroll
-            // still snapped back to the first line (currentLineIndex recomputes
-            // from the position) but every word kept its completed sweep, so the
-            // lyrics sat frozen until the overlay was closed and reopened —
-            // exactly the "resets but never animates" symptom.
             val rawPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
             if (lastRawPositionMs - rawPlayerPositionMs > V2_POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 playbackResetTick++
@@ -553,44 +438,14 @@ fun LyricsV2(
         }
     }
 
-    // ── Scroll State ──
-    // Recreated on a repeat/backward-seek for the same reason the item keys below include
-    // [playbackResetTick]: that tick changes EVERY item key at once, so the LazyColumn's
-    // bookkeeping (its remembered first-visible key, its item animations, the pending
-    // animateScrollToItem target) all refer to items that no longer exist. Carrying the
-    // old state across that swap left the list anchored to a vanished key while the
-    // position loop kept feeding it a new play-through — visible as lyrics that snap back
-    // to the start and then never move. A fresh state starts cleanly at the top, and the
-    // auto-scroll effect takes over from the first active line.
     val listState = key(playbackResetTick) { rememberLazyListState() }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
-    // ── First-frame placement ──
-    // A fresh LazyListState starts at line 0 and the auto-scroll effect below
-    // animates it to the active line, so opening the view showed the first verse
-    // for a moment and then scrolled itself to wherever the song actually is.
-    // That is the "lyrics reposition themselves every time I open lyrics"
-    // report; it is most obvious in the Apple Music player, which composes this
-    // view from scratch on every open.
-    //
-    // Hold the list transparent until the active line is placed — the first
-    // placement is an instant scroll, since there is nothing on screen to
-    // animate — then fade in.
-    //
-    // The key must NOT include the line count. `entriesWithWords` is derived from an off-thread
-    // parse, so it is always empty on the first composition and always grows one or two frames
-    // later; keying on its size re-ran this `remember` after the view was already visible and
-    // handed back a fresh `mutableStateOf(true)`, snapping the alpha from 1 back to 0 with a
-    // zero-duration tween. The lyrics blinked out and faded back in on every open — worst in the
-    // Apple Music player, which composes this view from scratch each time. `isSynced` is derived
-    // synchronously from the raw lyrics text, so arming on it is already correct on frame 1, and
-    // `playbackResetTick` still re-arms for a new track / repeat.
     var awaitingFirstFocus by
         remember(playbackResetTick) {
             mutableStateOf(isSynced)
         }
-    // Safety net: never leave the lyrics hidden because a placement never came.
     LaunchedEffect(awaitingFirstFocus) {
         if (!awaitingFirstFocus) return@LaunchedEffect
         delay(V2_FIRST_FOCUS_TIMEOUT_MS)
@@ -607,7 +462,6 @@ fun LyricsV2(
             label = "lyrics-v2-first-focus-alpha",
         )
 
-    // Detect manual scrolling
     val nestedScrollConnection =
         remember {
             object : NestedScrollConnection {
@@ -624,7 +478,6 @@ fun LyricsV2(
             }
         }
 
-    // Resume auto-scroll after timeout
     LaunchedEffect(isManualScrolling, lastManualScrollTime) {
         if (isManualScrolling) {
             delay(MANUAL_SCROLL_TIMEOUT_MS)
@@ -632,38 +485,22 @@ fun LyricsV2(
         }
     }
 
-    // Forward the user-scroll signal up to LyricsScreen via LocalLyricsScrollListener so the
-    // Apple Music-style bottom controls can slide in when the user scrolls lyrics.
     val onLyricsScroll = LocalLyricsScrollListener.current
     LaunchedEffect(isManualScrolling) {
         onLyricsScroll(isManualScrolling)
     }
 
-    // Auto-scroll to active line.
-    //
-    // `entriesWithWords.size` is part of the key so the first-focus placement below still runs when
-    // the off-thread parse publishes without changing `currentLineIndex` (the common case: the view
-    // opens mid-song, the index loop resolves the same line the list already thinks is current).
-    // Re-running this effect on content changes is cheap — unlike re-running the `remember` that
-    // owns `awaitingFirstFocus`, which is what caused the flicker.
     LaunchedEffect(currentLineIndex, isManualScrolling, lyricsScroll, entriesWithWords.size) {
         if (!lyricsScroll || isManualScrolling || !isSynced) {
             awaitingFirstFocus = false
             return@LaunchedEffect
         }
         if (currentLineIndex < 0 || currentLineIndex >= entriesWithWords.size) {
-            // Nothing to place yet: either the parse hasn't published (empty list) or playback
-            // hasn't reached the first line. Only release the gate in the second case — while the
-            // list is still empty the effect will re-run as soon as an index becomes valid, and
-            // releasing here would let line 0 draw and then visibly walk to the active line.
             if (entriesWithWords.isNotEmpty()) awaitingFirstFocus = false
             return@LaunchedEffect
         }
 
         if (awaitingFirstFocus) {
-            // Wait for the first measure so the 35% anchor is computed against a
-            // real viewport, then jump straight there while the list is still
-            // transparent.
             val viewportHeight =
                 listState.layoutInfo.viewportSize.height.takeIf { it > 0 }
                     ?: snapshotFlow { listState.layoutInfo.viewportSize.height }.first { it > 0 }
@@ -677,11 +514,10 @@ fun LyricsV2(
 
         val visibleInfo = listState.layoutInfo
         val viewportHeight = visibleInfo.viewportSize.height
-        val targetOffset = (viewportHeight * 0.35f).toInt() // Center bias at 35% from top
+        val targetOffset = (viewportHeight * 0.35f).toInt()
 
         val distance = abs(currentLineIndex - (listState.firstVisibleItemIndex))
         if (distance > 15) {
-            // Far jump — snap first, then settle
             listState.scrollToItem(
                 (currentLineIndex - 2).coerceAtLeast(0),
                 0,
@@ -710,7 +546,6 @@ fun LyricsV2(
         }
     }
 
-    // ── Keep screen alive ──
     val activity = context as? android.app.Activity
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -719,22 +554,12 @@ fun LyricsV2(
         }
     }
 
-    // ── Render ──
     BoxWithConstraints(
         contentAlignment = Alignment.TopCenter,
         modifier =
             modifier
                 .fillMaxSize()
                 .padding(bottom = 12.dp)
-                // Draw-phase read — holds everything back until the active line has been placed
-                // (see awaitingFirstFocus), then fades it in.
-                //
-                // The gate covers the whole subtree rather than just the LazyColumn because the
-                // branches below swap while it is armed: shimmer first, then the lines once the
-                // off-thread parse publishes. Gating only the list meant the shimmer drew at full
-                // opacity and then vanished the instant the lines took over — the "lyrics appear,
-                // blink out, come back" symptom. When nothing needs placing (no lyrics, plain
-                // lyrics, not-found) the gate is never armed and this is a no-op.
                 .graphicsLayer { alpha = firstFocusAlpha.value },
     ) {
         if (lyrics == LYRICS_NOT_FOUND) {
@@ -752,8 +577,6 @@ fun LyricsV2(
             return@BoxWithConstraints
         }
 
-        // parsedEntries == null: the off-thread parse hasn't published yet. Shimmer on that
-        // state so the "lyrics not found" branch below doesn't flash while it runs.
         if (lyrics == null || parsedEntries == null) {
             ShimmerHost {
                 repeat(6) {
@@ -792,8 +615,6 @@ fun LyricsV2(
         ) {
             itemsIndexed(
                 items = entriesWithWords,
-                // Include repeat resets so a repeated word receives a new
-                // Animatable instead of retaining its completed sweep.
                 key = { index, entry -> "${playbackResetTick}_${index}_${entry.time}" },
                 contentType = { _, entry ->
                     when {
@@ -809,7 +630,6 @@ fun LyricsV2(
                     return@itemsIndexed
                 }
 
-                // ── Instrumental break icon ──
                 if (item.isInstrumental && isSynced) {
                     InstrumentalBreakRow(
                         item = item,
@@ -828,8 +648,6 @@ fun LyricsV2(
                     return@itemsIndexed
                 }
 
-                // ── Agent-based positioning ──
-                // v1 or null -> Start, v2 -> End, others -> Center
                 val textAlign =
                     when (item.agent?.lowercase()) {
                         "v1", null -> TextAlign.Start
@@ -848,7 +666,6 @@ fun LyricsV2(
                 val isFuture = isSynced && index > currentLineIndex
                 val isSelected = selectedIndices.contains(index)
 
-                // Distance-based alpha for non-active lines
                 val distanceFromActive = if (isSynced) abs(index - currentLineIndex) else 0
                 val lineAlpha =
                     when {
@@ -919,9 +736,6 @@ fun LyricsV2(
                         ),
                     label = "v2LineAlpha",
                 )
-                // Spotify mode: the incoming line rises into place while the
-                // outgoing one keeps its fade — together with the list glide
-                // this reads as "lines drift up smoothly" instead of a snap.
                 val spotifyRise = remember { Animatable(0f) }
                 LaunchedEffect(isActive, spotifyStyle) {
                     if (!spotifyStyle) return@LaunchedEffect
@@ -955,7 +769,6 @@ fun LyricsV2(
                         }
                     }
 
-                // Background vocal detection
                 val hasBackgroundWords = item.words?.any { it.isBackground } == true
                 val isAllBackground = item.words?.all { it.isBackground || it.text.isBlank() } == true
                 val baseLayoutDirection = LocalLayoutDirection.current
@@ -1049,11 +862,6 @@ fun LyricsV2(
                         horizontalAlignment = horizontalAlignment,
                     ) {
                         val romanizedText =
-                            // `showsRomanization`, not `isEnabled`: the latter is false whenever the
-                            // AI engine owns romanisation (that is what tells the built-in pass to
-                            // stand down), so gating on it meant the AI results pushed into
-                            // `romanizedTextFlow` above were never composed at all — romanisation
-                            // simply never appeared in this renderer with AI romanisation on.
                             if (romanizationPreferences.showsRomanization) {
                                 val value by item.romanizedTextFlow.collectAsStateWithLifecycle()
                                 value
@@ -1169,13 +977,11 @@ fun LyricsV2(
                 }
             }
 
-            // Bottom spacer for overscroll
             item {
                 Spacer(modifier = Modifier.height(300.dp))
             }
         }
 
-        // ── Resume auto-scroll button ──
         if (isManualScrolling && isSynced) {
             androidx.compose.material3.FilledTonalButton(
                 onClick = {
@@ -1396,10 +1202,6 @@ fun LyricsV2(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Line-level composable: renders words with fluid fill animation
-// ──────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricsLineV2(
@@ -1426,7 +1228,6 @@ private fun LyricsLineV2(
             else -> Arrangement.Start
         }
 
-    // Split words into main and background
     val mainWords = words.filter { !it.isBackground }
     val bgWords = words.filter { it.isBackground }
 
@@ -1440,7 +1241,6 @@ private fun LyricsLineV2(
             0L
         }
 
-    // 1. Render main words First (if any)
     if (mainWords.isNotEmpty()) {
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -1484,13 +1284,12 @@ private fun LyricsLineV2(
         }
     }
 
-    // 2. Render background words explicitly on a NEW line, noticeably smaller
     if (bgWords.isNotEmpty()) {
         val spacerHeight = if (mainWords.isNotEmpty()) 4.dp else 0.dp
         if (mainWords.isNotEmpty()) Spacer(modifier = Modifier.height(spacerHeight))
 
         FlowRow(
-            modifier = Modifier.fillMaxWidth().alpha(0.85f), // Slightly dimmer overall
+            modifier = Modifier.fillMaxWidth().alpha(0.85f),
             horizontalArrangement = arrangement,
         ) {
             bgWords.forEachIndexed { wordIndex, word ->
@@ -1515,8 +1314,8 @@ private fun LyricsLineV2(
                     currentPositionMs = effectivePositionMs,
                     textColor = textColor,
                     inactiveAlpha = inactiveAlpha,
-                    fontSize = baseFontSize * 0.65f, // ~65% size of main text
-                    isBackground = true, // Force dimmer styling inside AnimatedWordV2
+                    fontSize = baseFontSize * 0.65f,
+                    isBackground = true,
                     lyricsFontFamily = lyricsFontFamily,
                     isRtl = isRtl,
                     bounceFactor = bounceFactor,
@@ -1527,10 +1326,6 @@ private fun LyricsLineV2(
         }
     }
 }
-
-// ──────────────────────────────────────────────────────────────────────
-// Word-level composable: liquid fill sweep + glow + bounce
-// ──────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AnimatedWordV2(
@@ -1556,25 +1351,10 @@ private fun AnimatedWordV2(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // ── Sweep progress: Animatable-driven for robustness ──
-    // Previously, progress was computed directly from currentPositionMs:
-    //   progress = (currentPositionMs - wordStartMs) / wordDuration
-    // This broke for very short words (< ~50ms): the 16ms position poll
-    // could skip the entire isWordActive window, causing the word to jump
-    // from 0% to 100% with no letter-by-letter sweep. The user reported
-    // "sometimes words don't animate letter by letter" — this is the cause.
-    //
-    // Fix: drive the sweep with an Animatable that starts when the word
-    // becomes active and runs for max(wordDuration, MIN_SWEEP_MS). This
-    // guarantees a visible sweep even for 1-frame words, and decouples
-    // the animation smoothness from the position-poll cadence.
     val sweepAnimatable = remember(word) { androidx.compose.animation.core.Animatable(0f) }
     androidx.compose.runtime.LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {
             isWordComplete && sweepAnimatable.value < 1f -> {
-                // Snap to 1 if we missed the active window entirely (very
-                // short word skipped between polls). Use a quick tween
-                // instead of snapTo so there's at least a flicker of motion.
                 sweepAnimatable.animateTo(
                     1f,
                     androidx.compose.animation.core.tween(
@@ -1584,9 +1364,6 @@ private fun AnimatedWordV2(
                 )
             }
             isWordActive -> {
-                // Animate from current value to 1 over the remaining word
-                // duration, but at least MIN_SWEEP_MS so short words still
-                // get a visible sweep.
                 val remainingMs = (wordEndMs - currentPositionMs).coerceAtLeast(1L)
                 val animDurationMs = maxOf(remainingMs, MIN_SWEEP_MS)
                 sweepAnimatable.animateTo(
@@ -1598,22 +1375,15 @@ private fun AnimatedWordV2(
                 )
             }
             else -> {
-                // Word not yet started — reset to 0 so the next active
-                // window begins fresh.
                 sweepAnimatable.snapTo(0f)
             }
         }
     }
     val progress = if (isWordComplete) 1f else sweepAnimatable.value
 
-    // ── Bounce and Float animation ──
-    // Subtle scale up peaking halfway through the word. Exact timing sync!
     val sinProgress = kotlin.math.sin(progress * kotlin.math.PI).toFloat()
     val wordScale = 1f + (0.015f * bounceFactor * sinProgress)
 
-    // Float is only applied when the word is actively sung, making it pop from the line.
-    // We use animateFloatAsState so that when it finishes (and drops to 0f),
-    // it smoothly decays back into place rather than a harsh mathematical snap.
     val targetFloat = if (isWordActive) -4f * bounceFactor * sinProgress else 0f
     val floatOffset by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetFloat,
@@ -1625,9 +1395,6 @@ private fun AnimatedWordV2(
         label = "v2FloatOffset",
     )
 
-    // ── Glow intensity ──
-    // "lines and words that are done animating shouldnt continue to glow"
-    // Make glow build up faster: reach max intensity at 50% progress
     val glowProgress = (progress * 2f).coerceAtMost(1f)
     val glowAlpha = if (isWordActive) glowProgress * 0.45f * glowFactor else 0f
     val glowRadius = if (isWordActive) glowProgress * 12f * glowFactor else 0f
@@ -1648,9 +1415,6 @@ private fun AnimatedWordV2(
             )
         }
 
-    // ── Cached gradient colors for the liquid-sweep mask ──
-    // listOf(Color.Transparent, Color.Black) was being allocated every frame for every active
-    // word inside drawWithContent. Precompute the two immutable color lists (LTR + RTL) once.
     val sweepColors =
         if (isRtl) {
             remember { listOf(Color.Transparent, Color.Black) }
@@ -1658,7 +1422,6 @@ private fun AnimatedWordV2(
             remember { listOf(Color.Black, Color.Transparent) }
         }
 
-    // ── Two-layer rendering: dim base + liquid fill overlay ──
     Box(
         modifier =
             Modifier
@@ -1686,7 +1449,6 @@ private fun AnimatedWordV2(
                     scaleY = wordScale
                 },
     ) {
-        // Layer 1: Base text (always dimmed)
         Text(
             text = word.text,
             style = baseTextStyle,
@@ -1694,10 +1456,7 @@ private fun AnimatedWordV2(
             modifier = Modifier.padding(glowPadding),
         )
 
-        // Layer 2: Filled overlay with liquid sweep mask + glow
         if (isWordComplete || isWordActive || isLinePast) {
-            // Only rebuild the overlay style (with shadow) when glow is actually visible —
-            // avoids allocating a Shadow + copying the style on every frame for completed/past words.
             val overlayTextStyle =
                 if (glowAlpha > 0f) {
                     remember(baseTextStyle, glowAlpha, glowRadius, textColor) {
@@ -1751,13 +1510,6 @@ private fun AnimatedWordV2(
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Spotify-style word rendering: a rounded background pill fills behind
-// each word of the active line in sync with its timing, over a
-// dim→bright text sweep. No glow/bounce — motion lives in the pill
-// sweep and the line rise/fade transitions.
-// ──────────────────────────────────────────────────────────────────────
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LyricsLineSpotify(
@@ -1794,8 +1546,6 @@ private fun LyricsLineSpotify(
             0L
         }
 
-    // Pills only on the active line; non-active lines keep the same word
-    // geometry (padding included) so nothing reflows when a line activates.
     val pillVisible = isActive && !isPast
 
     if (mainWords.isNotEmpty()) {
@@ -1836,7 +1586,6 @@ private fun LyricsLineSpotify(
         }
     }
 
-    // Background vocals on their own line, noticeably smaller (mirrors LyricsLineV2).
     if (bgWords.isNotEmpty()) {
         if (mainWords.isNotEmpty()) Spacer(modifier = Modifier.height(4.dp))
         FlowRow(
@@ -1895,8 +1644,6 @@ internal fun SpotifyWord(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // Same Animatable-driven sweep as AnimatedWordV2: guarantees a visible
-    // fill even for words shorter than the position-poll interval.
     val sweepAnimatable = remember(word) { Animatable(0f) }
     LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {
@@ -1949,12 +1696,10 @@ internal fun SpotifyWord(
                 .drawBehind {
                     if (!pillVisible) return@drawBehind
                     val r = pillRadius.toPx()
-                    // resting slot behind the whole word
                     drawRoundRect(
                         color = textColor.copy(alpha = 0.15f),
                         cornerRadius = CornerRadius(r),
                     )
-                    // sung fill, sweeps LTR (or RTL) with the word timing
                     val pillWidth = size.width
                     val fillPx = pillWidth * progress
                     if (fillPx > 0f) {
@@ -1969,15 +1714,12 @@ internal fun SpotifyWord(
                 }
                 .padding(horizontal = pillPaddingHorizontal, vertical = pillPaddingVertical),
     ) {
-        // Layer 1: dim unsung text (the resting look for the whole line)
         Text(
             text = word.text,
             style = textStyle,
             color = textColor.copy(alpha = if (isBackground) inactiveAlpha * 0.75f else (inactiveAlpha + 0.1f).coerceAtMost(1f)),
         )
 
-        // Layer 2: bright sung text, clipped to the same sweep as the pill.
-        // Only composed while the word is animating or done on the active line.
         if (pillVisible && (isWordComplete || isWordActive) && isLineActive) {
             Text(
                 text = word.text,
@@ -1988,8 +1730,6 @@ internal fun SpotifyWord(
                         Modifier
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
-                                // Align the text clip edge with the pill fill edge:
-                                // pill spans [textWidth + 2*pillPaddingHorizontal].
                                 val padHpx = pillPaddingHorizontal.toPx()
                                 val pillWidth = size.width + padHpx * 2f
                                 val fillPx = pillWidth * progress
@@ -1997,9 +1737,6 @@ internal fun SpotifyWord(
                                 val rawLeft = pillLeft - padHpx
                                 val solidFraction = (rawLeft / size.width).coerceIn(0f, 1f)
                                 drawContent()
-                                // Hard-edge alpha mask at the sweep position (same edge as the pill),
-                                // via DstIn like AnimatedWordV2 — drawContent() cannot be called
-                                // inside a nested clipRect receiver, so mask instead of clip.
                                 drawRect(
                                     brush =
                                         if (isRtl) {
@@ -2027,10 +1764,6 @@ internal fun SpotifyWord(
         }
     }
 }
-
-// ──────────────────────────────────────────────────────────────────────
-// LRC bounce: word-by-word spring bounce for line-synced lyrics
-// ──────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -2161,18 +1894,6 @@ private fun LrcBouncingWord(
     )
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Instrumental break icon: music-note filled bottom-to-top over the gap
-// ──────────────────────────────────────────────────────────────────────
-
-/**
- * Extracted wrapper for the instrumental-break row.
- *
- * Reads [playbackPositionProvider] internally so the parent `itemsIndexed` lambda doesn't
- * subscribe to the 16 ms position tick. Without this extraction, every visible item (word-synced
- * lines included) would recompose on every position update because Compose tracks snapshot-state
- * reads at the composable-call scope, not per-control-flow branch.
- */
 @Composable
 private fun InstrumentalBreakRow(
     item: LyricsEntry,

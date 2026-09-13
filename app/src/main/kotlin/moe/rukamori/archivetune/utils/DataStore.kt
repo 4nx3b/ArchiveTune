@@ -78,10 +78,6 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // SimpMusic's lyrics renderer used to be a boolean of its own, then a
-            // LyricsMode entry; both are gone now and the SimpMusic style renders
-            // Enhanced lyrics — carry anyone who had it switched on to ENHANCED,
-            // and rewrite any stale stored SIMPMUSIC value the same way.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[LEGACY_SIMPMUSIC_LYRICS_KEY] == true ||
@@ -97,10 +93,6 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
                 override suspend fun cleanUp() {}
             },
-            // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
-            // (without). The option has been removed along with the gatekeeper machinery
-            // that conditioned it; rewrite stale values to WEB_REMIX so existing users
-            // don't land on an unknown enum value.
             object : DataMigration<Preferences> {
                 override suspend fun shouldMigrate(currentData: Preferences): Boolean =
                     currentData[PlayerStreamClientKey] in
@@ -117,7 +109,6 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     },
 )
 
-/** The retired `simpMusicLyrics` boolean, kept only so the migration above can read it. */
 private val LEGACY_SIMPMUSIC_LYRICS_KEY = androidx.datastore.preferences.core.booleanPreferencesKey("simpMusicLyrics")
 
 object PreferenceStore {
@@ -169,8 +160,6 @@ object PreferenceStore {
 operator fun <T> DataStore<Preferences>.get(key: Preferences.Key<T>): T? {
     val snapshot = PreferenceStore.snapshot
     if (snapshot != null) return snapshot[key]
-    // UI startup awaits readiness without blocking. Keep the bounded fallback
-    // for synchronous, headless Android entrypoints rather than silently using defaults.
     return runBlocking(Dispatchers.IO) {
         withTimeoutOrNull(1500) { data.first()[key] }
     }
@@ -207,12 +196,6 @@ fun <T> rememberPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
-    // Seeded from the in-memory snapshot, not from [defaultValue]. DataStore's flow is
-    // asynchronous, so seeding with the default paints one frame of the default before the stored
-    // value arrives — visible as a flash of the wrong screen whenever a preference chooses WHICH ui
-    // to show (the Home tab briefly rendering the YouTube page before the stored Spotify one).
-    // [PreferenceStore] keeps a hot copy of the whole Preferences object for exactly this, so the
-    // first frame is already correct; the fallback still applies before the store has loaded.
     val initial = remember { PreferenceStore.get(key) ?: defaultValue }
 
     val state =
@@ -246,7 +229,6 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
-    // See [rememberPreference] — same first-frame seeding, same reason.
     val initial = remember { PreferenceStore.get(key).toEnum(defaultValue = defaultValue) }
 
     val state =

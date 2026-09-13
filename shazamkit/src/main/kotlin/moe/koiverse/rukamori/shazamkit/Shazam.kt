@@ -397,7 +397,6 @@ object Shazam {
         val signature: String,
         val sampleDurationMs: Long,
     ) {
-        private val mutex = Mutex()
         private var result: Result<RecognitionResult>? = null
         private var isCompleted = false
 

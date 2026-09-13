@@ -25,11 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +48,8 @@ import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.tidal.TidalCanvasCheck
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private const val SPOTIFY_ROW_KEY = "spotify-account"
 private const val APPLE_MUSIC_ROW_KEY = "apple-music"

@@ -32,10 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,6 +73,8 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 typealias PlatformBackdrop = LayerBackdrop
 
@@ -94,17 +94,6 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 val LocalMenuGlassBackdrop = compositionLocalOf<Backdrop?> { null }
 
-/**
- * How often the real-time menu-glass recorder may re-record the app subtree
- * while a glass popup is showing: 100 ms (~10 fps). The frost samples this
- * layer through a 32 dp blur, which low-passes the image so heavily that a
- * 10 fps refresh of moving content behind the popup is visually
- * indistinguishable from 30 fps — while cutting the full-screen
- * GraphicsLayer record (the dominant per-frame cost of the live popup, and
- * it ran on every mini-player progress tick) by ~3x. Popup open/close, its
- * own scroll and all its interactions are unaffected: only the *background
- * sampling* rate changes.
- */
 internal const val ThrottledLayerBackdropDefaultIntervalMillis = 100L
 
 @Stable

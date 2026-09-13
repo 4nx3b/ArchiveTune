@@ -74,11 +74,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,6 +142,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private data class DashboardTheme(
     val pageBackground: Color,
@@ -621,10 +621,6 @@ fun LastFmDashboardScreen(
                 ),
             )
 
-            // The glass search field no longer renders at the top (that left a
-            // tall gap between the floating glass header and the bar); it opens
-            // IN PLACE of the header pills further down instead.
-
             if (!searchVisible || glassHeader.liquidGlassActive) {
                 HeroStatsCard(
                     userInfo = userInfo,
@@ -657,11 +653,6 @@ fun LastFmDashboardScreen(
                     .padding(horizontal = 16.dp),
             ) {
                 if (searchVisible && glassHeader.liquidGlassActive) {
-                    // Open the search bar IN PLACE of the header pills — the
-                    // bar takes the pills' exact spot under the stats card, no
-                    // floating field at the top with dead space under the glass
-                    // header. The field sits inside this already-16dp-padded
-                    // column, so its own horizontal inset is zeroed out.
                     LastFmGlassSearchField(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },

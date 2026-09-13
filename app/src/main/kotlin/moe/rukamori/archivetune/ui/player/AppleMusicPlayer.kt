@@ -73,14 +73,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -177,6 +175,8 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
@@ -195,25 +195,10 @@ private const val AmLyricsBackdropMorphMs = 650
 
 private val AmBackdropBlurRadius = 64.dp
 
-/**
- * The Apple Music blurred backdrop renders the playing canvas at this
- * fraction of the footprint with a proportionally divided blur radius, then
- * upscales via the graphics layer — visually identical to the full-size
- * render (a 72dp-blurred result is featureless) while the per-frame
- * RenderEffect and video compositing costs drop by the square of this
- * factor, which keeps canvas playback from janking the whole app.
- */
 private const val AmCanvasBackdropUpscale = 6f
 
 private val AmCanvasBackdropBlurRadius = 72.dp
 
-/**
- * Selection-level cap on the backdrop canvas' decoded video variant (see
- * CanvasArtworkPlayer.maxVideoEdgePx). The backdrop renders on a 1/6
- * footprint behind a 72/6 = 12dp blur, so nothing above ~480px survives the
- * blur — the backdrop decoder must not pay full-resolution decode cost for
- * pixels the blur throws away.
- */
 private const val AmCanvasBackdropMaxVideoEdgePx = 480
 
 private const val AppleMusicLyricsContentDeferMs = 160L
@@ -552,9 +537,6 @@ fun AppleMusicPlayerContent(
 
     var tapAreaRootOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    // The lyrics overflow popup only gets a live liquid-glass backdrop when
-    // the liquid glass preference is enabled; otherwise it renders with the
-    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
         if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
@@ -725,21 +707,6 @@ fun AppleMusicPlayerContent(
             }
 
             if (useCanvasBackdrop) {
-                // Cheap blurred-canvas backdrop (see AmCanvasBackdropUpscale):
-                // the video surface is laid out at 1/6 of the footprint with a
-                // 72/6 = 12dp blur, and the graphics layer upscales it back
-                // (folded with the existing AmCoverBlurScale overscan and the
-                // lyrics-progress alpha). Modifier order matters: the blur sits
-                // INSIDE the scaling layer, so it processes the small surface.
-                //
-                // The backdrop runs the FULL height of the player: the same
-                // canvas, blurred, keeps moving behind the bottom controls —
-                // for both BetterLyrics/ArchiveTune and Spotify canvases (the
-                // sharp stage's fadeBottom dissolves the video into this
-                // blurred continuation). The static blurred artwork underneath
-                // stays as the buffering/failure fallback, and the decode is
-                // capped at AmCanvasBackdropMaxVideoEdgePx since the blur
-                // cannot resolve anything finer anyway.
                 Box(
                     modifier =
                         Modifier
@@ -1889,20 +1856,6 @@ private fun AppleMusicQualityChip(
     }
 }
 
-/**
- * Position-scoped leaf for the seek bar, the elapsed/remaining time labels
- * and the quality chip.
- *
- * The live playback position is a state that updates ~10x per second. It
- * used to be read (`positionProvider()`) in the middle of the big controls
- * composable, which made the ENTIRE lower player — transport row, output
- * selector, title actions, like button — recompose on every tick and made
- * the whole app feel laggy while the Apple Music style was active (the
- * other styles read the position in much smaller subtrees). Reading it
- * here, inside this leaf, confines the per-tick recomposition to the
- * seek bar and the two time labels, which are exactly the elements whose
- * content changes with the position anyway.
- */
 @Composable
 private fun AppleMusicPositionSection(
     positionProvider: () -> Long,

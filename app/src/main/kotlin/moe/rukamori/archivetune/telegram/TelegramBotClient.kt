@@ -59,7 +59,6 @@ object TelegramBotClient {
             MutableSharedFlow(replay = 0, extraBufferCapacity = 64)
         }.asSharedFlow()
 
-    /** Routed from TdEngine's dispatch of TdApi.UpdateNewMessage. */
     internal fun onNewMessage(message: TdApi.Message) {
         val chatId = message.chatId
         if (chatId == 0L || message.id == 0L) return
@@ -110,7 +109,6 @@ object TelegramBotClient {
         )
     }
 
-    /** Stripped profile photo of the bot (patched to a displayable JPEG), if any. */
     suspend fun resolveBotPhoto(username: String): ByteArray? {
         val cleaned = username.removePrefix("@").trim().lowercase()
         if (cleaned.isEmpty()) return null

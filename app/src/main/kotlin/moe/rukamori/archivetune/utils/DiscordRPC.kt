@@ -59,14 +59,12 @@ class DiscordRPC(
             "https://raw.githubusercontent.com/rukamori/ArchiveTune/main/fastlane/metadata/android/en-US/images/icon.png"
         private const val TAG = "DiscordRPC"
 
-        /** Cooldown after a rate-limited (429) translation request. */
         private const val TRANSLATION_COOLDOWN_MS = 5 * 60 * 1000L
     }
 
     private val translationCache: MutableMap<String, String> = mutableMapOf()
     private var lastSongId: String? = null
 
-    /** Set when the translation API answers 429; skips further attempts briefly. */
     @Volatile
     private var translationCooldownUntilMs = 0L
 
@@ -247,9 +245,6 @@ class DiscordRPC(
         val translatorEnabled = context.dataStore[EnableTranslatorKey] ?: false
         if (!translatorEnabled) return emptyMap()
 
-        // Rate-limited recently (429 Too Many Requests)? Skip translation for a
-        // few minutes instead of re-triggering the error on every song change —
-        // the untranslated title/artist is served meanwhile.
         if (System.currentTimeMillis() < translationCooldownUntilMs) return emptyMap()
 
         val contextList =
@@ -288,9 +283,6 @@ class DiscordRPC(
                             if (isRateLimited) {
                                 translationCooldownUntilMs =
                                     System.currentTimeMillis() + TRANSLATION_COOLDOWN_MS
-                                // One quiet line, no stack trace: rate-limiting is
-                                // expected under frequent song switches and the
-                                // fallback below keeps the presence working.
                                 Timber.tag(TAG).w(
                                     "Translation rate-limited (429) — pausing translations for %d minutes",
                                     TRANSLATION_COOLDOWN_MS / 60000,

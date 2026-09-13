@@ -41,7 +41,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Animatable
@@ -76,7 +75,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
@@ -115,14 +113,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -165,7 +161,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAny
@@ -377,6 +372,8 @@ import java.util.Locale
 import javax.inject.Inject
 
 import kotlin.time.Duration.Companion.days
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Suppress("DEPRECATION", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
 @AndroidEntryPoint
@@ -426,7 +423,6 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                // The binding remains registered; Android can reconnect it until unbindService.
                 pendingAodModeJob?.cancel()
                 pendingAodModeJob = null
                 playerConnection?.dispose()
@@ -525,28 +521,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Qobuz cache staleness fix: clear the transient failure cache and
-        // instance cooldowns on app foreground so Qobuz is retried without
-        // requiring a force-stop. Also clear the resolved-sources record
-        // for the currently-playing song so the "Play from" source picker
-        // reflects fresh availability.
-        //
-        // Root cause: QobuzAudioProvider.failureCache (10-min TTL) and
-        // instanceCooldownUntilMs (up to 10-min) are process-lived. When
-        // the user backgrounded the app and came back, these caches were
-        // still live, so Qobuz resolution returned null immediately
-        // without retrying. Force-stop cleared the process (and all
-        // in-memory caches), which is why re-opening the app fixed it.
-        // This provides the same cache-clearing effect without force-stop.
         QobuzAudioProvider.clearTransientCaches()
         playerConnection?.service?.let { service ->
             val currentMediaId = playerConnection?.mediaMetadata?.value?.id
             service.clearResolvedSources(currentMediaId)
         }
 
-        // Refresh pool accounts in the background (non-forced — respects
-        // the 30-min throttle). This ensures Qobuz tokens are fresh when
-        // the user returns to the app, without hammering the pool API.
         lifecycleScope.launch(Dispatchers.IO) {
             App.startupReadiness.runOptional {
                 runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
@@ -602,52 +582,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Tracks whether the activity is currently in PiP mode, exposed as
-     *  Compose state so the player UI can adapt (hide controls, etc.). */
     var isInPictureInPictureModeState by mutableStateOf(false)
         private set
 
-    /**
-     * Returns true if the current playback session is eligible for PiP:
-     * the setting is on, video playback is on, and the current media is a
-     * non-local music video that is actively playing.
-     *
-     * Called from [onUserLeaveHint] (and could be called from anywhere
-     * else that needs to know). Safe to call from the main thread.
-     */
     private fun isPipEligible(): Boolean {
-        // PiP requires API 26+ (O). The app's minSdk is 26, so this check
-        // is always true — kept for defensive clarity.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
         val pipEnabled = dataStore.get(EnablePipModeKey, false)
         if (!pipEnabled) return false
-        // Fork default ON (restored 2026-09-08 — the vossgraves port flipped
-        // this to false, breaking music-video PiP eligibility the same way it
-        // broke video playback itself).
         val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true)
         if (!videoPlaybackEnabled) return false
         val connection = playerConnection ?: return false
         val metadata = connection.mediaMetadata.value ?: return false
         if (metadata.isMusicVideo != true) return false
         if (metadata.id.isLocalMediaId()) return false
-        // Only enter PiP if playback is actually playing — entering PiP
-        // for a paused video would show a frozen frame.
         if (!connection.isPlaying.value) return false
         return true
     }
 
-    /**
-     * Computes the [PictureInPictureParams] for the current playback.
-     *
-     * Uses a 16:9 aspect ratio (the standard for music videos on YouTube)
-     * since the actual video surface bounds aren't easily accessible from
-     * the activity. 16:9 (1.78) is well within Android's supported range
-     * of [1.0, 2.39].
-     *
-     * PiP requires API 26+ (Build.VERSION_CODES.O); the app's minSdk is 26
-     * so no version guard is needed.
-     */
     private fun buildPipParams(): PictureInPictureParams =
         PictureInPictureParams
             .Builder()
@@ -660,9 +612,6 @@ class MainActivity : ComponentActivity() {
             try {
                 enterPictureInPictureMode(buildPipParams())
             } catch (e: IllegalStateException) {
-                // Some OEMs throw ISE if PiP is attempted while the
-                // activity isn't in a valid state. Swallow and continue —
-                // the user simply won't get PiP this time.
                 reportException(e)
             } catch (e: Exception) {
                 reportException(e)
@@ -677,7 +626,6 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         isInPictureInPictureModeState = isInPictureInPictureMode
     }
-    // ── End Picture-in-Picture ────────────────────────────────────────────
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -698,14 +646,6 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // ── High-refresh smoothness ──
-        // Many OEMs run non-game apps at 60 Hz even on 90/120 Hz panels
-        // unless the window explicitly asks for a higher mode. Pin the
-        // window to the display's fastest mode at the CURRENT resolution —
-        // every Compose animation (player morphs, lyrics sweeps, popup
-        // springs, scroll flings) then renders at the panel's full rate
-        // instead of 60 fps. Best-effort: on failure the window keeps the
-        // default mode.
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val display =
@@ -799,8 +739,6 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val channelString = withContext(Dispatchers.IO) { dataStore.data.first()[UpdateChannelKey] }
                     val userSelectedChannel = UpdateChannel.fromStoredName(channelString, defaultUpdateChannel)
-                    // Lock canary builds to canary updates regardless of the user's
-                    // selection — see the comment on effectiveUpdateChannel above.
                     val actualChannel =
                         if (isCanaryBuild) UpdateChannel.CANARY else userSelectedChannel
                     val versionResult =
@@ -817,19 +755,10 @@ class MainActivity : ComponentActivity() {
                 }
                 moe.rukamori.archivetune.utils.UpdateNotificationManager
                     .checkForUpdates(this@MainActivity)
-                // Subscribed-artist new-release notifications: a unique
-                // periodic WorkManager job — network + battery constrained,
-                // 12h cadence. Scheduling is unconditional; the worker itself
-                // no-ops in one Room read when the user has no subscribed
-                // artists, so there is no setting to gate on.
                 moe.rukamori.archivetune.utils.NewReleaseNotificationManager
                     .schedulePeriodicCheck(this@MainActivity)
             }
 
-            // Use remembered instances so the same state object is used everywhere
-            // (previously retrieving the composition local directly created different
-            // instances in different composition scopes which caused the update
-            // bottom sheet to not appear and overlay interactions to be blocked).
             val bottomSheetPageState =
                 remember {
                     moe.rukamori.archivetune.ui.component
@@ -840,22 +769,8 @@ class MainActivity : ComponentActivity() {
                     moe.rukamori.archivetune.ui.component
                         .MenuState()
                 }
-            // BitChord home redesign (2026-09-03): shared Haze state for the Home
-            // route's progressive top-fade blur. HomeScreen tags its root Box as
-            // the haze source; the top bar renders the blurred strip (see the
-            // topBar slot). Provided to the tree via LocalHomeHazeState.
             val homeHazeState = remember { HazeState() }
-            // Search-page redesign: the Search route's own haze state —
-            // SearchScreen tags its root Box as the source and the top bar
-            // renders the SAME progressive top-fade blur over the Search
-            // route. Separate instance so the two tabs never cross-sample
-            // while both compose during the slide transition.
             val searchHazeState = remember { HazeState() }
-            // Library-tab redesign: the Library route's own haze state —
-            // LibraryScreen tags its root Box as the source and the top bar
-            // renders the SAME progressive top-fade blur over the Library
-            // route. Separate instance so the top-level tabs never
-            // cross-sample during the fade-through transition.
             val libraryHazeState = remember { HazeState() }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val currentVersionMarker = remember {
@@ -865,7 +780,6 @@ class MainActivity : ComponentActivity() {
                 rememberPreference(NeverShowUpdatePopupKey, defaultValue = "")
             val neverShowUpdatePopup = neverShowUpdatePopupMarker == currentVersionMarker
             val updateSheetContent: @Composable ColumnScope.() -> Unit = {
-                // receiver: ColumnScope
                 Text(
                     text = stringResource(R.string.new_update_available),
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
@@ -955,7 +869,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // fetch release notes and show sheet when a new version is detected
             LaunchedEffect(latestVersionName, latestUpdateChannel, effectiveUpdateChannel, neverShowUpdatePopup) {
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
@@ -987,8 +900,6 @@ class MainActivity : ComponentActivity() {
                 DisableAnimationsKey,
                 defaultValue = defaultDisableAnimations,
             )
-            // Task 8: app-wide scrollbar toggle. Provided via LocalHideScrollbar so any
-            // composable that draws a scrollbar can opt-out when the user has hidden them.
             val hideScrollbar by rememberPreference(
                 moe.rukamori.archivetune.constants.HideScrollbarKey,
                 defaultValue = false,
@@ -1141,9 +1052,6 @@ class MainActivity : ComponentActivity() {
                     return@ArchiveTuneTheme
                 }
                 val navController = rememberNavController()
-                // Keep top-level list state outside destination content. MainActivity unbinds the
-                // music service in onStop; HomeScreen otherwise disappears while the connection is
-                // null and is recreated at offset zero when the app returns to the foreground.
                 val homeListState = rememberLazyListState()
                 val searchListState = rememberLazyListState()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
@@ -1180,9 +1088,6 @@ class MainActivity : ComponentActivity() {
                     return@ArchiveTuneTheme
                 }
 
-                // App-open animation: the first time the main UI appears it fades in while
-                // gently scaling up from 96%, so launching the app feels like a smooth reveal
-                // rather than an abrupt cut. Runs once per process and honors "disable animations".
                 val appOpenProgress = remember { Animatable(if (disableAnimations) 1f else 0f) }
                 LaunchedEffect(Unit) {
                     if (!disableAnimations && appOpenProgress.value < 1f) {
@@ -1222,17 +1127,6 @@ class MainActivity : ComponentActivity() {
                                 .windowSizeClass
                                 .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
-                    // UI scale — applied via a LocalDensity override. It scales TEXT ONLY: only
-                    // `fontScale` is touched, so `dp` sizes (icons, paddings, artwork) are
-                    // unchanged and text grows or shrinks within the existing layout. The comment
-                    // here used to claim it scaled the whole tree; scaling `density` as well would
-                    // make it genuinely DPI-like, but that would resize every screen for everyone
-                    // already running a non-default value, so it stays text-only until asked for.
-                    //
-                    // Multiplied onto the system font scale rather than replacing it, so the
-                    // device's own font-size setting still applies. The slider in Appearance
-                    // Settings clamps to [0.85, 1.30]; we additionally guard here in case a
-                    // backup-restore injects an out-of-range value.
                     val (uiScaleRaw) = rememberPreference(UiScaleFactorKey, defaultValue = 1.0f)
                     val uiScale = uiScaleRaw.coerceIn(0.85f, 1.30f)
                     val scaledDensity = remember(density, uiScale) {
@@ -1254,7 +1148,6 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
-                    // Hoisted profile-menu state.
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
@@ -1468,14 +1361,9 @@ class MainActivity : ComponentActivity() {
                             0.dp
                         }
 
-                    // FLOATING detaches the bar into a pill: bigger bottom margin, tighter width.
-                    // Every consumer below (collapsed player anchor, slide distance, insets, FAB
-                    // padding) derives from these two values so the styles stay in sync.
                     val isFloatingNavBar = navigationBarStyle == NavigationBarStyle.FLOATING
                     val floatingBarsBottomPadding =
                         if (isFloatingNavBar) FloatingNavigationBarBottomPadding else NavigationBarBottomPadding
-                    // Task 6: respect the user's navigation bar height multiplier so the bottom
-                    // sheet anchor and the rendered bar stay aligned.
                     val (navBarHeightMultiplier) = rememberPreference(
                         moe.rukamori.archivetune.constants.NavigationBarHeightKey,
                         defaultValue = moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT,
@@ -1484,9 +1372,6 @@ class MainActivity : ComponentActivity() {
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
 
-                    // Frosted backdrop (nav bar + mini player + tablet rail): allocated whenever
-                    // any frosted surface can run (RenderEffect available). The bottom toolbar and
-                    // the tablet-mode NavigationRail both consume it via LocalNavigationBarBackdrop.
                     val miniPlayerBgStyle by rememberEnumPreference(
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
@@ -1509,16 +1394,6 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
-                    // ── Real-time menu glass ─────────────────────────────
-                    // A ThrottledLayerBackdrop the overflow menu samples
-                    // instead of the outer app-wide layer: this one re-records
-                    // at most every ~33ms rather than only when Compose
-                    // re-executes the parent's draw block, so sub-layer
-                    // animations behind the popup (the mini player's progress
-                    // line, artwork crossfades, a playing canvas) keep
-                    // flowing through the frost — the frost stays LIVE, not a
-                    // frozen snapshot. Throttling to ~30fps keeps the record
-                    // cost off the popup's own scroll frame budget.
                     val menuGlassBackdrop: ThrottledLayerBackdrop? =
                         if (liquidGlassActive) {
                             rememberThrottledLayerBackdrop()
@@ -1526,11 +1401,6 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
-                    // Keep the recorder attached slightly past the menu's own
-                    // close (the popup plays a ~200ms exit fade while
-                    // menuState.isVisible is already false); detaching the
-                    // recorder clears the layer coordinates instantly, which
-                    // would blank the frost mid-fade.
                     var menuGlassRecordingActive by remember { mutableStateOf(false) }
                     LaunchedEffect(menuState.isVisible) {
                         if (menuState.isVisible) {
@@ -1541,16 +1411,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // ── Glass-pipeline pre-warm ──────────────────────────
-                    // The first popup open in a process pays three cold costs
-                    // — the AGSL vibrancy shader + blur RenderEffect compile,
-                    // the recorder's first full-screen GraphicsLayer record,
-                    // and the menu rows' JIT. Warm all three ONCE ~2s after
-                    // launch: attach the throttled recorder for ~450ms and
-                    // let the pre-warm strip sample it with the real
-                    // vibrancy + 32dp blur recipe. The first REAL popup open
-                    // then composes into warm pipelines instead of compiling
-                    // inside its first scroll frames.
                     var glassPrewarmActive by remember { mutableStateOf(false) }
                     LaunchedEffect(Unit) {
                         delay(2000)
@@ -1559,16 +1419,6 @@ class MainActivity : ComponentActivity() {
                         glassPrewarmActive = false
                     }
 
-                    // ── Root-overlay back-priority guard ─────────────────
-                    // True while ANY root-level overlay is showing over the
-                    // app surface: the overflow glass menu or the details
-                    // BottomSheetPage — plus the 260ms exit-fade tail
-                    // (menuGlassRecordingActive already tracks exactly that
-                    // window for the frost recorder). Provided to the tree as
-                    // LocalRootOverlayActive; the player-collapse
-                    // BackHandlers gate on it so the back gesture can never
-                    // minimize the player out from under an open popup — it
-                    // closes the popup instead.
                     val rootOverlayActive by remember {
                         derivedStateOf {
                             menuGlassRecordingActive || bottomSheetPageState.isVisible
@@ -1651,9 +1501,6 @@ class MainActivity : ComponentActivity() {
                         if (!isPlayingNow) return@LaunchedEffect
                         if (playerBottomSheetState.isExpanded) return@LaunchedEffect
                         if (playerBottomSheetState.isDismissed) return@LaunchedEffect
-                        // Wait the configured number of seconds; if the user opens the player
-                        // or pauses playback during the wait, the keys above change and the
-                        // effect is cancelled (delay throws CancellationException internally).
                         delay(aodAutoTimerSeconds * 1000L)
                         requestAodMode()
                     }
@@ -1671,9 +1518,6 @@ class MainActivity : ComponentActivity() {
                         if (playerBottomSheetState.isExpanded) return@LaunchedEffect
                         if (playerBottomSheetState.isDismissed) return@LaunchedEffect
 
-                        // Read the system screen-off timeout (e.g. 30 s). On most phones this is
-                        // 15 s – 2 min. Clamp to a sane range so a misconfigured device doesn't
-                        // either fire instantly or wait forever.
                         val systemTimeoutMs =
                             Settings.System
                                 .getLong(
@@ -1688,10 +1532,6 @@ class MainActivity : ComponentActivity() {
                             delay(triggerDelayMs)
                             requestAodMode()
                         } finally {
-                            // Release the flag so the OS can manage screen-off normally again.
-                            // AOD's own LaunchedEffect(aodModeEnabled) will re-add it if AOD
-                            // actually engaged; if the timer was cancelled (e.g. the user
-                            // expanded the player sheet), we want the OS to dim/off normally.
                             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         }
                     }
@@ -1752,31 +1592,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Cache the status bar top inset observed while the status bar is VISIBLE.
-                    // When shouldHideStatusBars becomes true, WindowInsets.statusBars reports 0
-                    // (the controller hides the bar), but the shared TopAppBar (further below)
-                    // uses WindowInsets.safeDrawing which still reports displayCutout top —
-                    // causing the TopAppBar and the content to drift apart by ~displayCutout
-                    // top, and the profile picture / "ArchiveTune" header collide with the
-                    // content beneath (album cards slide under the header).
-                    //
-                    // By remembering the last non-zero top inset and substituting it for
-                    // systemBars when the status bar is hidden, both the TopAppBar and the
-                    // content use a consistent inset source and stay aligned.
-                    //
-                    // In addition to the status-bar cache, we also floor the effective top
-                    // with WindowInsets.displayCutout's top inset. The displayCutout inset
-                    // is reported independently of status-bar visibility (it tracks the
-                    // physical notch / punch-hole / camera cutout), so it remains non-zero
-                    // even when the user enables "Hide status bar" app-wide from launch —
-                    // precisely the case where the status-bar cache never gets seeded.
-                    // Taking the max guarantees content always sits below every phone's
-                    // notch, mirroring the proven pattern in QueueComponents.kt:1720-1722.
-                    //
-                    // WindowInsets.statusBars / displayCutout are @Composable properties,
-                    // so we read them in the composable scope (not inside snapshotFlow)
-                    // and update the cached values via a simple LaunchedEffect keyed on
-                    // the observed px values.
                     val currentStatusBarTopPx = WindowInsets.statusBars.getTop(density)
                     val currentDisplayCutoutTopPx = WindowInsets.displayCutout.getTop(density)
                     var cachedStatusBarTop by remember { mutableStateOf(0.dp) }
@@ -1793,15 +1608,11 @@ class MainActivity : ComponentActivity() {
                     }
                     val liveStatusBarTop = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
                     val liveDisplayCutoutTop = with(density) { WindowInsets.displayCutout.getTop(density).toDp() }
-                    // Effective top inset = max of (cached-or-live status bar, cached-or-live
-                    // display cutout). When the status bar is hidden, the live status-bar
-                    // value drops to 0 but the cached value (or the live display-cutout
-                    // value, which always tracks the physical notch) keeps the floor > 0.
                     val effectiveStatusBarTop =
                         maxOf(
                             if (shouldHideStatusBars) cachedStatusBarTop else liveStatusBarTop,
                             if (shouldHideStatusBars) cachedDisplayCutoutTop else liveDisplayCutoutTop,
-                            liveDisplayCutoutTop, // displayCutout is always reported regardless of status bar hide
+                            liveDisplayCutoutTop,
                         )
                     val effectiveWindowsInsets =
                         WindowInsets(
@@ -2221,9 +2032,6 @@ class MainActivity : ComponentActivity() {
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
-                        // BitChord home redesign (2026-09-03): the haze state shared
-                        // between HomeScreen's hazeSource and the top bar's progressive
-                        // fade blur over the Home route.
                         moe.rukamori.archivetune.ui.screens.LocalHomeHazeState provides homeHazeState,
                         moe.rukamori.archivetune.ui.screens.LocalSearchHazeState provides searchHazeState,
                         moe.rukamori.archivetune.ui.screens.LocalLibraryHazeState provides libraryHazeState,
@@ -2236,21 +2044,6 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                         moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                     ) {
-                        // ── Real-time menu glass: while the overflow menu
-                        // (or the pre-warm strip) is active, the menu-glass
-                        // backdrop records this whole subtree (the recording
-                        // itself is draw-phase only, so attaching/detaching
-                        // the modifier never re-lays-out the app). The
-                        // floating menu popup is composed as a SIBLING below
-                        // (never inside this Row), so it can safely sample
-                        // the layer with kyant drawBackdrop — the
-                        // non-reentrant case. The conditional attach keeps
-                        // the cost at zero whenever no glass popup is
-                        // showing; while attached the layer stays live
-                        // (throttled to ~30fps), so the popup's frost
-                        // follows the mini player's animated progress line /
-                        // artwork crossfades and anything else moving behind
-                        // it.
                         Row(
                             modifier =
                                 Modifier.let { base ->
@@ -2304,10 +2097,6 @@ class MainActivity : ComponentActivity() {
                                         },
                                     )
                                 } else {
-                                    // Tablet-mode rail. honour the same nav-bar style
-                                    // toggles the bottom toolbar does (frosted /
-                                    // tinted-frosted / liquid glass) so the user's
-                                    // preference is respected in tablet mode too.
                                     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
                                     val canRailBlur =
                                         (navigationBarFrostedBlur || navigationBarTintFrostedBlur) &&
@@ -2410,13 +2199,6 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                         if (canRailLiquidGlass && liquidGlassBackdrop != null) {
-                                            // Apply the kyant liquid-glass backdrop sampler to the
-                                            // rail area so the user sees the same glassy refraction
-                                            // effect as the bottom toolbar in phone mode. We use
-                                            // `drawBackdrop` with a simple blur effect — the
-                                            // refraction / lens effects from the bottom toolbar
-                                            // require per-item geometry that doesn't translate to
-                                            // the rail's vertical layout.
                                             Box(
                                                 modifier =
                                                     Modifier
@@ -2457,20 +2239,10 @@ class MainActivity : ComponentActivity() {
 
                                                 Screens.Search.route -> searchScrollBehavior
 
-                                                // Library hits else but is offset 0 (self-contained);
-                                                // sub-screens use the shared shell behavior.
                                                 else -> topAppBarScrollBehavior
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
-                                        // Home keeps its bar pinned so content scrolls under it into
-                                        // the progressive blur. The title stays put with it — see the
-                                        // note on AutoResizeText below for why the fade that came with
-                                        // this design was wrong here.
                                         val isHomeRoute = navBackStackEntry?.destination?.route == Screens.Home.route
-                                        // Search-page redesign: the Search route follows the Home
-                                        // route's behaviour exactly — pinned transparent bar,
-                                        // content scrolling under it into the progressive
-                                        // top-fade blur, centered page title.
                                         val isSearchRoute = navBackStackEntry?.destination?.route == Screens.Search.route
                                         val homeBarScrolled by remember(isHomeRoute) {
                                             derivedStateOf {
@@ -2501,19 +2273,9 @@ class MainActivity : ComponentActivity() {
                                                     .onSizeChanged { size ->
                                                         if (size.height > 0) headerHeightPx = size.height
                                                     }
-                                                    // The inline `Modifier.offset { IntOffset(...) }`
-                                                    // this replaces ran in the LAYOUT phase on every
-                                                    // scroll frame and invalidated the top-app-bar
-                                                    // subtree for re-layout. Folding the Y translation
-                                                    // into `graphicsLayer` moves the work to the DRAW
-                                                    // phase; the layout pass stays cached while the
-                                                    // user scrolls.
                                                     .graphicsLayer {
                                                         translationY =
                                                             if (isLibraryRoute || isHomeRoute || isSearchRoute) {
-                                                                // Library, Home and Search all keep the
-                                                                // bar pinned: content scrolls under
-                                                                // it into the progressive blur.
                                                                 0f
                                                             } else {
                                                                 currentScrollBehavior.state.heightOffset
@@ -2526,13 +2288,6 @@ class MainActivity : ComponentActivity() {
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {
-                                                    // ── BitChord TopFadeBlur ──────────────────
-                                                    // Full blur along the top edge ramping to nothing on the
-                                                    // way down (progressive vertical gradient, EaseOutCubic,
-                                                    // peak 0.75), over the HazeState the active tab tags its
-                                                    // content with. A modest readability scrim sits over
-                                                    // the blur so the bar's glyphs keep a floor whatever
-                                                    // scrolls beneath them.
                                                     HomeTopFadeBlur(
                                                         hazeState =
                                                             when {
@@ -2548,10 +2303,6 @@ class MainActivity : ComponentActivity() {
                                                 Box(
                                                     modifier =
                                                         Modifier
-                                                            // Same layout-phase offset → draw-phase
-                                                            // graphicsLayer conversion as the outer
-                                                            // Box above. This is the blur background
-                                                            // overlay under the top app bar.
                                                             .graphicsLayer {
                                                                 if (!isLibraryRoute && !isHomeRoute && !isSearchRoute) {
                                                                     val raw = currentScrollBehavior.state.heightOffset
@@ -2587,11 +2338,6 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         ) + WindowInsetsSides.Top,
                                                     ),
-                                                // ── Home header ──
-                                                // Plain profile avatar, no pill around it —
-                                                // the same menu the avatar button opens, so no
-                                                // functionality moves; it only exists on the
-                                                // Home route.
                                                 navigationIcon = {
                                                     if (isHomeRoute) {
                                                         IconButton(
@@ -2599,8 +2345,6 @@ class MainActivity : ComponentActivity() {
                                                             onLongClick = {},
                                                             modifier = Modifier.padding(start = 10.dp),
                                                         ) {
-                                                            // avatar 36dp; the fallback person glyph
-                                                            // scales with it (24dp).
                                                             Surface(
                                                                 modifier = Modifier.size(36.dp),
                                                                 shape = CircleShape,
@@ -2631,11 +2375,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 title = {
                                                     if (isLibraryRoute) {
-                                                        // ── Library title (centered) ──
-                                                        // The big bold "Library" text, horizontally
-                                                        // centered in the bar; the bar stays pinned
-                                                        // and content scrolls under it into the
-                                                        // progressive top-fade blur.
                                                         Box(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             contentAlignment = Alignment.Center,
@@ -2652,14 +2391,6 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isHomeRoute) {
-                                                        // ── Home title (centered) ──
-                                                        // Just the "Home" text, horizontally centered
-                                                        // in the bar, always visible, and NO app logo
-                                                        // in front of it. The fillMaxWidth centers it
-                                                        // in the space between the avatar and the
-                                                        // settings icon — the two side elements are
-                                                        // nearly equal width, so the title reads as
-                                                        // screen-centered.
                                                         Box(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             contentAlignment = Alignment.Center,
@@ -2674,14 +2405,6 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         }
                                                     } else if (isSearchRoute) {
-                                                        // ── Search title (centered) ──
-                                                        // The Search route follows the Home route's
-                                                        // header exactly: just the "Search" text,
-                                                        // horizontally centered in the bar, always
-                                                        // visible — with NO app logo on the left and
-                                                        // NO trailing icon. The search entry stays
-                                                        // the in-feed SearchEntryField; this bar only
-                                                        // owns the page identity + the haze.
                                                         Box(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             contentAlignment = Alignment.Center,
@@ -2697,7 +2420,6 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     } else {
                                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            // app icon — visible on every non-Home route
                                                             Icon(
                                                                 painter = painterResource(R.drawable.about_appbar),
                                                                 contentDescription = null,
@@ -2722,21 +2444,10 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    // The settings-update badge is computed once
-                                                    // for the Home route's liquid-glass settings
-                                                    // icon. Settings is reachable from the Home
-                                                    // top-end icon only.
                                                     val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
                                                         latestUpdateChannel == effectiveUpdateChannel &&
                                                         Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                     if (isHomeRoute) {
-                                                        // ── Home header settings ──
-                                                        // The ONLY top-end action on the Home route
-                                                        // is the settings icon in a liquid-glass
-                                                        // pill. The search entry point stays the
-                                                        // Search tab in the bottom navigation. The
-                                                        // small accent dot on the icon carries over
-                                                        // the update-available badge.
                                                         val liquidGlassBackdrop =
                                                             LocalLiquidGlassBackdrop.current
                                                         if (liquidGlassBackdrop != null) {
@@ -2785,17 +2496,11 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                     }
-                                                    // Non-Home routes (Search / Library) render
-                                                    // no profile avatar in the top bar. The
-                                                    // profile menu remains reachable from the
-                                                    // Home tab's avatar.
                                                     if (profileMenuExpanded) {
                                                         ProfileMenuDialog(
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
                                                             items = listOf(
-                                                                // History entry removed — it already lives in the
-                                                                // Library tab, so duplicating it here was redundant.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.newspaper,
                                                                     label = stringResource(R.string.news),
@@ -2821,8 +2526,6 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate("lastfm_dashboard")
                                                                     },
                                                                 ),
-                                                                // Music Recognition + Listen Together moved here from the
-                                                                // removed Home FAB. The third FAB action (Shuffle) is dropped entirely.
                                                                 ProfileMenuItem(
                                                                     icon = R.drawable.mic,
                                                                     label = stringResource(R.string.music_recognition),
@@ -2839,10 +2542,6 @@ class MainActivity : ComponentActivity() {
                                                                         navController.navigate("settings/music_together")
                                                                     },
                                                                 ),
-                                                                // Settings entry removed — the Home route's
-                                                                // top-end settings icon in liquid glass is
-                                                                // now the sole entry point, and it carries
-                                                                // the update-available badge.
                                                             ),
                                                             onDismiss = { profileMenuExpanded = false },
                                                         )
@@ -2866,10 +2565,6 @@ class MainActivity : ComponentActivity() {
                                                             } else {
                                                                 MaterialTheme.colorScheme.surface
                                                             },
-                                                        // Task 9: header should always be transparent
-                                                        // when scrolling — never paint a solid color
-                                                        // background. Pure-black keeps its black
-                                                        // header for OLED contrast.
                                                         scrolledContainerColor =
                                                             if (pureBlack) {
                                                                 Color.Black
@@ -2890,9 +2585,6 @@ class MainActivity : ComponentActivity() {
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
                                     ) {
-                                        // ── In-app voice search side effect ──
-                                        // When the GMS/Foss VoiceSearchController emits a Result, fill
-                                        // the search box and submit the query. On Error, show a toast.
                                         val voiceSearchController = remember {
                                             VoiceSearchControllerLocator.get(this@MainActivity)
                                         }
@@ -2902,7 +2594,7 @@ class MainActivity : ComponentActivity() {
                                                 is VoiceSearchState.Result -> {
                                                     onQueryChange(TextFieldValue(s.text))
                                                     onSearch(s.text)
-                                                    voiceSearchController.cancel() // reset to Idle
+                                                    voiceSearchController.cancel()
                                                 }
                                                 is VoiceSearchState.Error -> {
                                                     Toast.makeText(this@MainActivity, s.message, Toast.LENGTH_SHORT).show()
@@ -2984,11 +2676,6 @@ class MainActivity : ComponentActivity() {
                                             },
                                             trailingIcon = {
                                                 Row {
-                                                    // In-app voice search mic button. Uses Google Play
-                                                    // Services speech (gms flavor) so the user does NOT
-                                                    // need to install the standalone Google app.
-                                                    // `voiceSearchController` and `voiceSearchState` come
-                                                    // from the outer scope (declared just above TopSearch).
                                                     val micPermissionLauncher = rememberLauncherForActivityResult(
                                                         ActivityResultContracts.RequestPermission(),
                                                     ) { granted ->
@@ -3030,8 +2717,6 @@ class MainActivity : ComponentActivity() {
                                                         )
                                                     }
 
-                                                    // Mic button is always visible (collapsed and active search bar)
-                                                    // so users can voice-search regardless of search state.
                                                     IconButton(
                                                         onClick = {
                                                             if (ContextCompat.checkSelfPermission(
@@ -3131,7 +2816,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
-                                        // A floating pill never docks with the mini player.
                                         val areBottomBarsPaired =
                                             shouldShowNavigationBar &&
                                                 !useRail &&
@@ -3158,21 +2842,6 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
-                                                    // Liquid-glass nav lag fix (ported from 4nx3b
-                                                    // batch-8, 2026-08-29): `Modifier.offset` runs in
-                                                    // the LAYOUT phase, so every spring frame (nav
-                                                    // bar height animating when the mini player docks)
-                                                    // and every sheet-drag frame (player progress)
-                                                    // re-laid-out the entire FloatingNavigationToolbar
-                                                    // subtree — cascading to every onGloballyPositioned
-                                                    // callback, re-positioning the kyant drawBackdrop
-                                                    // shaders and invalidating the app-wide
-                                                    // layerBackdrop recording on the NavHost root.
-                                                    // graphicsLayer runs in the DRAW phase only:
-                                                    // layout coordinates stay stable, callbacks don't
-                                                    // fire, the shader chain doesn't recompute per
-                                                    // frame. Visual identical; liquid glass surfaces
-                                                    // are NOT sacrificed.
                                                     .graphicsLayer {
                                                         translationY =
                                                             if (bottomNavigationBarHeight == 0.dp) {
@@ -3275,29 +2944,12 @@ class MainActivity : ComponentActivity() {
                                         } else if (initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Fluid Material-style fade-through for bottom-nav
-                                            // switches. The outgoing page is still partly visible
-                                            // (~50% alpha) when the incoming page starts to fade
-                                            // in — the two animations overlap continuously so
-                                            // there's no visible "gap" between the two screens,
-                                            // which is what makes a transition feel abrupt.
-                                            // - exit: 220ms LinearOutSlowInEasing — gentle,
-                                            //   decelerating fade-out (no scale; the outgoing
-                                            //   page is just dissolving away).
-                                            // - enter: 260ms FastOutSlowInEasing with 60ms
-                                            //   delay, scaled up from 0.94→1.0 — the small
-                                            //   delay lets the outgoing page establish before
-                                            //   the incoming settles in, and the cubic-bezier
-                                            //   easing keeps both motions buttery.
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
                                                     initialScale = 0.94f,
                                                 )
                                         } else {
-                                            // Detail route (e.g. tapping a song → album screen).
-                                            // Same fluid fade-through as bottom-nav so the whole
-                                            // app has a single, consistent motion language.
                                             fadeIn(tween(260, delayMillis = 60, easing = FastOutSlowInEasing)) +
                                                 scaleIn(
                                                     animationSpec = tween(260, delayMillis = 60, easing = FastOutSlowInEasing),
@@ -3364,8 +3016,6 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                // Frosted nav bar: capture the app content into a
-                                                // layer each frame so the bar can draw it blurred.
                                                 if (navBarFrostedBackdrop != null) {
                                                     Modifier
                                                         .onGloballyPositioned { coordinates ->
@@ -3382,13 +3032,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             ).then(
                                                 if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen) {
-                                                    // Suspend the outer app-wide layerBackdrop while the
-                                                    // full-screen lyrics overlay is open. The overlay is
-                                                    // opaque, so nothing visible samples this backdrop
-                                                    // (the nav bar + mini player are hidden when the
-                                                    // player is expanded). Recording the entire NavHost
-                                                    // into a GraphicsLayer every frame steals GPU budget
-                                                    // from the 60 Hz karaoke sweep on top.
                                                     Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
@@ -3415,11 +3058,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // Player-collapse BACK FALLBACK — gated on the
-                        // root-overlay guard so the back gesture never
-                        // minimizes the full player out from under an open
-                        // root popup (overflow menu / details sheet): back
-                        // closes the popup instead, the player stays.
                         BackHandler(
                             enabled =
                                 playerBottomSheetState.isExpanded &&
@@ -3435,14 +3073,6 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
 
-                        // Glass-pipeline pre-warm strip: while active, a
-                        // 1dp / 2%-alpha strip samples the throttled recorder
-                        // with the real vibrancy + 32dp blur recipe and
-                        // composes two real menu rows — compiling the
-                        // shaders, running the first full-screen record and
-                        // JIT-ing the row machinery BEFORE the user ever
-                        // opens a popup. Composed AFTER BottomSheetMenu so
-                        // it draws above it (it is invisible either way).
                         GlassPipelinePrewarm(
                             backdrop = menuGlassBackdrop,
                             active = glassPrewarmActive,
@@ -3964,14 +3594,6 @@ val LocalPlayerConnection =
     staticCompositionLocalOf<PlayerConnection?> { error("No PlayerConnection provided") }
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
-/**
- * Status-bar top inset that does NOT collapse to 0 when the status bar is transiently hidden
- * (overflow menu, V7/APPLE_MUSIC expanded player, bottom-sheet page, etc.). Screens should use
- * this instead of `WindowInsets.systemBars.asPaddingValues().calculateTopPadding()` whenever the
- * value is meant to anchor content below a pinned TopAppBar / search bar so that the content
- * stays put when the system bars flicker. The first frame before the cache is populated falls
- * back to 0.dp, which is fine because the system bars are visible at that point.
- */
 val LocalStableSystemBarsTopPadding = compositionLocalOf<Dp> { 0.dp }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }

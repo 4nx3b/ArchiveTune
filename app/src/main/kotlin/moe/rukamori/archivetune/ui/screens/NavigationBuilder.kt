@@ -16,8 +16,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -114,6 +112,8 @@ import moe.rukamori.archivetune.ui.screens.settings.DownloadsSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -131,10 +131,6 @@ fun NavGraphBuilder.navigationBuilder(
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
-        // Two separate home pages behind one tab, picked by HomeSourceKey and switched from the
-        // HomeSourceSwitcher that both of them render. They are not layered: whichever is showing
-        // owns the tab and leaves the other one exactly as it was.
-        // rememberHomeSource already resolves SPOTIFY back to YOUTUBE when there is no session.
         if (rememberHomeSource() == HomeSource.SPOTIFY) {
             SpotifyHomeScreen(navController, headerScrollConnection = homeScrollConnection)
             return@composable

@@ -20,7 +20,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -34,6 +33,7 @@ import moe.rukamori.archivetune.viewmodels.CreatePlaylistEvent
 import moe.rukamori.archivetune.viewmodels.CreatePlaylistScreenState
 import moe.rukamori.archivetune.viewmodels.CreatePlaylistUiData
 import moe.rukamori.archivetune.viewmodels.CreatePlaylistViewModel
+import androidx.compose.runtime.getValue
 
 @Composable
 fun CreatePlaylistDialog(
@@ -71,12 +71,6 @@ fun CreatePlaylistDialog(
         }
     }
 
-    // Single stable composition: the dialog content must be ONE call whose
-    // parameters update with the state. Rendering a `when` over the state
-    // put each branch at a different composition slot, so every
-    // Loading -> Success transition disposed the old TextFieldDialog subtree
-    // and composed a brand-new one — recreating the platform dialog window
-    // mid-open, which read as the popup flickering.
     val resolvedData: CreatePlaylistUiData =
         when (val state = screenState) {
             is CreatePlaylistScreenState.Success -> state.data

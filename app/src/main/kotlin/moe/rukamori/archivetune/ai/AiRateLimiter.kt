@@ -26,10 +26,6 @@ object AiRateLimiter {
         val maxPerHour: Int,
         val smoothingWaitMs: Long,
     ) {
-        // Lyrics calls are batched (one request covers up to a full song), so
-        // the spacing/budget only needs to guard provider bursts — the old
-        // 1s spacing / 60-per-hour budget serialized multi-batch songs and
-        // made auto-translate/auto-romanise feel extremely slow.
         LYRICS_TRANSLATION(label = "lyrics translation", minIntervalMs = 150L, maxPerHour = 240, smoothingWaitMs = 1_000L),
 
         LYRICS_ROMANIZATION(

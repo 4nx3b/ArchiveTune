@@ -5,20 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style — the embedded sliding queue drawer.
- *
- * A port of SpatialFlow's SlidingQueueDrawer + QueueListItem + DragDropState
- * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0, ui/player/SlidingQueueDrawer.kt
- * and ui/QueueBottomSheet.kt): the drawer slides up over the player as a full
- * screen surface, carries the "Playing From / QUEUE" header strip, the
- * segmented-list queue rows (drag handle + move menu, playing row tinted), and
- * the connected bottom tray with the M3 Expressive ButtonGroup holding
- * shuffle / loop / sleep-timer. Dimensions, springs, colors and layout are
- * SpatialFlow's own; only the data source was adapted to ArchiveTune's
- * PlayerConnection queue.
- */
-
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 
 package moe.rukamori.archivetune.ui.player.spatialflow
@@ -71,12 +57,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,6 +87,8 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.models.MediaMetadata
 import kotlin.math.abs
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 enum class SpatialFlowSleepTimerMode {
     OFF,
@@ -301,7 +287,11 @@ fun SlidingQueueDrawer(
                     }
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    thickness = 0.5.dp,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
 
                 LazyColumn(
                     state = lazyListState,
@@ -830,4 +820,3 @@ fun Modifier.dragContainer(
         },
     )
 }
-

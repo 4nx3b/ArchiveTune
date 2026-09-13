@@ -28,12 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -55,6 +53,8 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.BottomSheetAnimationSpec
 import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun BottomSheet(
@@ -196,16 +196,6 @@ class BottomSheetState(
         value == collapsedBound
     }
 
-    // Tolerance, not exact equality: a drag cancelled mid-slop (system
-    // gesture stealing the pointer, multi-touch, recomposition during the
-    // drag) can leave the Animatable a hair below the upper bound with no
-    // settle scheduled — visually indistinguishable from expanded, but the
-    // exact-equality check read false forever. Every consumer gated on
-    // isExpanded (SimpMusic's full-page verticalScroll is the notable one)
-    // then stopped responding until the sheet was collapsed and re-opened,
-    // and the preUpPostDown nested-scroll latch stopped self-healing because
-    // its reset path also reads isExpanded. `value` is bounded above by
-    // upperBound, so a half-dp tolerance only widens the check.
     val isExpanded by derivedStateOf {
         value >= animatable.upperBound!! - 0.5.dp
     }
@@ -231,10 +221,6 @@ class BottomSheetState(
 
     fun expand(animationSpec: AnimationSpec<Dp>) {
         updateAnchor(EXPANDED_ANCHOR)
-        // A freshly expanded sheet must not inherit the last drag's
-        // isTopReached latch: the latch is what routes finger-down deltas into
-        // the sheet drag instead of the content scroll, and a stale one left
-        // the SimpMusic player unresponsive after re-expansion.
         sheetScrollConnection.resetLatch()
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(animatable.upperBound!!, animationSpec)
@@ -322,27 +308,11 @@ class BottomSheetState(
         }
     }
 
-    /**
-     * One instance per sheet, deliberately — this used to be a `get()` that minted a fresh
-     * connection on every read.
-     *
-     * `isTopReached` is per-GESTURE state: it latches when the inner scrollable can give no more,
-     * and it is what lets the rest of that same drag pull the sheet down. Call sites write
-     * `Modifier.nestedScroll(state.preUpPostDownNestedScrollConnection)`, which re-reads the
-     * property on every recomposition — so a new object arrived mid-drag, `nestedScroll` swapped
-     * it in, and the latch reset to false. The drag then finished scrolling nothing and the sheet
-     * never collapsed. Only the SimpMusic style showed it, because it is the only player style
-     * with a full-page `verticalScroll` inside the sheet; everywhere else the drag reaches the
-     * sheet's own draggable without passing through here.
-     */
     private val sheetScrollConnection = PreUpPostDownNestedScrollConnection(this)
 
     val preUpPostDownNestedScrollConnection: NestedScrollConnection get() = sheetScrollConnection
 }
 
-/**
- * One instance per sheet, deliberately — see the property it backs.
- */
 private class PreUpPostDownNestedScrollConnection(
     private val sheet: BottomSheetState,
 ) : NestedScrollConnection {

@@ -178,9 +178,6 @@ object YTPlayerUtils {
         val audioQuality: AudioQuality,
         val networkMetered: Boolean,
         val authFingerprint: String,
-        // Download resolutions (preferM4A=true) must not be served from a
-        // playback-cached OPUS entry — that turned every download taken right
-        // after playing a song into an un-exportable .webm file.
         val preferM4A: Boolean = false,
     )
 
@@ -964,9 +961,6 @@ object YTPlayerUtils {
         val audioTwinItag = ITAG.highQualityTwinOf(itag)
         val preferM4AFormat: PlayerResponse.StreamingData.Format? =
             if (preferM4A) {
-                // Downloads need a jaudiotagger-readable container (.m4a), not
-                // .webm — pick the best AAC/MP4 audio format when one exists,
-                // mirroring codecRankPreferM4A in the native resolver path.
                 formatList
                     .filter { it.isAudio && it.url.isNullOrEmpty().not() }
                     .maxWithOrNull(
@@ -1687,24 +1681,6 @@ object YTPlayerUtils {
             ).onSuccess { Timber.tag(logTag).d("Successfully fetched metadata") }
             .onFailure { Timber.tag(logTag).e(it, "Failed to fetch metadata") }
     }
-
-    private fun findFormat(
-        playerResponse: PlayerResponse,
-        audioQuality: AudioQuality,
-        connectivityManager: ConnectivityManager,
-
-        networkMetered: Boolean? = null,
-        preferM4A: Boolean = false,
-    ): PlayerResponse.StreamingData.Format? {
-        val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
-        return selectAudioFormatCandidates(
-            playerResponse,
-            audioQuality,
-            isMetered,
-            preferM4A = preferM4A,
-        ).firstOrNull()
-    }
-
     private fun selectAudioFormatCandidates(
         playerResponse: PlayerResponse,
         audioQuality: AudioQuality,
@@ -1821,8 +1797,6 @@ object YTPlayerUtils {
         videoId: String,
         authState: PlaybackAuthState,
     ): Boolean {
-        // Ported from vossgraves/ArchiveTune: the web-client gate is decided by the
-        // request profile (TV / web-music families), not by the GVS support table.
         val isWebClient = StreamClientUtils.isWebClient(client.clientName)
         val isCiphered = isCipheredFormat(format)
         val hasGvsPoToken = !authState.resolveGvsPoToken(client, videoId).isNullOrBlank()
@@ -1852,12 +1826,6 @@ object YTPlayerUtils {
             else -> 1
         }
 
-    /**
-     * Ported from vossgraves/ArchiveTune: variant of [codecRank] that prefers
-     * MP4A/AAC over OPUS. Used for downloads where the file must be .m4a
-     * (jaudiotagger-readable) rather than .webm (jaudiotagger-unreadable, would
-     * silently skip metadata tagging).
-     */
     private fun codecRankPreferM4A(codec: String?): Int =
         when {
             codec.isNullOrBlank() -> 0
@@ -1875,9 +1843,6 @@ object YTPlayerUtils {
         return approx in 1L..(minOf(90_000L, (expectedDurationMs * 9L) / 10L))
     }
 
-    /**
-     * Wrapper around the [NewPipeUtils.getSignatureTimestamp] function which reports exceptions
-     */
     private suspend fun getSignatureTimestampOrNull(videoId: String): Int? {
         Timber.tag(logTag).i("Getting signature timestamp for videoId: $videoId")
         return NewPipeUtils
@@ -1889,11 +1854,6 @@ object YTPlayerUtils {
             }.getOrNull()
     }
 
-    /**
-     * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
-     * Ported from vossgraves/ArchiveTune: also patches `cver` on the resolved URL to
-     * the client version actually used, preventing version-mismatch 403s.
-     */
     private suspend fun findUrl(
         format: PlayerResponse.StreamingData.Format,
         videoId: String,

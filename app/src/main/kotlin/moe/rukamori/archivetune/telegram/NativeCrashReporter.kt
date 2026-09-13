@@ -15,24 +15,6 @@ import timber.log.Timber
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-/**
- * Logcat black box for the TDLight engine's native deaths.
- *
- * A native abort or SIGSEGV inside libtdjni.so kills the process before
- * ANY Kotlin error handler can run: no Java stack trace, no in-app crash
- * screen, and TDLib's own fatal log note is only written when the death
- * went through TDLib's logger. What ALWAYS survives — for a while — is
- * the logcat ring buffer: Android restricts unprivileged logcat reads to
- * the calling app's own uid, which is exactly the uid the dying process
- * ran under, so right after the restart the previous process's fatal
- * lines (libc/ART abort and signal headers, our own Timber lines) are
- * still readable.
- *
- * [maybeCapture] is therefore called at the top of every engine start
- * attempt, BEFORE anything can crash again: it persists the interesting
- * lines to `filesDir/tdlib-native/last-logcat.txt` and the tail is
- * surfaced through the RuntimeFailed detail once the crash budget trips.
- */
 internal object NativeCrashReporter {
     private const val TAG = "NativeCrashReporter"
     private const val MAX_PERSISTED_CHARS = 24_000
@@ -53,11 +35,6 @@ internal object NativeCrashReporter {
     fun evidenceFile(context: Context): File =
         File(File(context.applicationContext.filesDir, "tdlib-native"), "last-logcat.txt")
 
-    /**
-     * Reads the app's own logcat once per process and persists the crash
-     * pattern lines plus the context around the newest fatal line.
-     * Never throws; every failure is swallowed at Timber level.
-     */
     suspend fun maybeCapture(context: Context) {
         if (capturedInThisProcess) return
         capturedInThisProcess = true
@@ -119,10 +96,6 @@ internal object NativeCrashReporter {
         return ""
     }
 
-    /**
-     * Compact one-line summary of the captured evidence for the
-     * RuntimeFailed detail: the newest fatal signal / abort message line.
-     */
     fun summarize(context: Context): String? =
         runCatching {
             val target = evidenceFile(context)

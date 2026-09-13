@@ -36,13 +36,6 @@ data class HeaderDownloadItem(
     val title: String,
 )
 
-/**
- * The download entry for a song id as tracked by the download index. Download
- * requests are keyed by their source-scoped ids ("ytm:<id>", "qobuz:<id>", …,
- * or the legacy plain id), so a plain song id never matches a map keyed by
- * request ids — every helper below resolves through
- * [DownloadSourceConfig.songIdToDownloadIds] instead.
- */
 private fun Map<String, Download>.forSongId(songId: String): Download? =
     DownloadSourceConfig.songIdToDownloadIds(songId).firstNotNullOfOrNull { this[it] }
 
@@ -140,9 +133,6 @@ fun sendAddMissingDownloads(
         .distinctBy { it.id }
         .filter { item -> !downloads.isDownloadingSong(item.id) && downloads.forSongId(item.id)?.state.shouldRequestDownload() }
         .forEach { item ->
-            // Source-scoped request id — the SAME id the single-song download
-            // menus queue. The old plain-id request created a second, invisible
-            // (and uncancellable) download entry beside the source-scoped one.
             val downloadId = downloadUtil.currentSourceDownloadTarget(item.id).key
             val downloadRequest =
                 DownloadRequest
@@ -164,9 +154,6 @@ fun sendRemoveDownloads(
     songIds: List<String>,
 ) {
     songIds.distinct().forEach { songId ->
-        // Remove every source-scoped variant (plus the legacy plain entry):
-        // the header's visible state counts any variant, so removal must clear
-        // them all — sendRemoveDownload is a no-op for ids that do not exist.
         DownloadSourceConfig.songIdToDownloadIds(songId).forEach { downloadId ->
             DownloadService.sendRemoveDownload(
                 context,

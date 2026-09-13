@@ -45,12 +45,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,6 +95,8 @@ import moe.rukamori.archivetune.ui.player.isLoadingState
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 internal val TIKTOK_INACTIVE_GRAY = Color(0xFFA9A9B2)
 
@@ -156,19 +156,11 @@ internal fun TikTokSongPage(
             )
         }
 
-    // Full-resolution artwork with a quality-fallback chain: maxresdefault
-    // 404s on a large share of ytimg-hosted videos, and without a fallback
-    // the artwork slot used to sit empty indefinitely (perceived as "the
-    // thumbnail never loads"). On error the URL steps down
-    // maxres -> hq720 -> mq, exactly like the V7 player backdrop.
     var artworkModel by remember(artUrl) { mutableStateOf(artUrl) }
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkModel)
 
     Box(modifier = Modifier.fillMaxSize().background(TIKTOK_EMPTY_BACKDROP)) {
 
-        // Video state is read before the backdrop layers so the page knows up
-        // front whether the music video is live and must float on a pitch-black
-        // backdrop instead of the animated mesh gradient.
         val videoState = LocalVideoArtworkState.current
         val videoShowing =
             isCurrentPage &&
@@ -178,14 +170,8 @@ internal fun TikTokSongPage(
         val videoFullscreenHolder = LocalVideoFullscreenState.current
         val videoRatio = videoState?.videoAspectRatio ?: TIKTOK_VIDEO_FALLBACK_RATIO
 
-        // True while the current track's music video is resolving/buffering —
-        // mirrors the exact condition InlineVideoPlayer uses to show its loading
-        // spinner, so hosts can keep other overlays from stacking on top of it.
         val videoLoading = videoState != null && isLoadingState(videoState)
 
-        // Tap-to-show video controls: a single tap on the video reveals the
-        // controls overlay (center play/pause + the quality/fullscreen pill) and
-        // a second tap hides it. Reset per song.
         var videoControlsVisible by remember(pageMetadata.id) { mutableStateOf(false) }
 
         val meshColors = rememberTikTokArtworkColors(pageMetadata.thumbnailUrl)
@@ -195,11 +181,6 @@ internal fun TikTokSongPage(
             reduceAnimation = LocalAnimationsDisabled.current,
         )
 
-        // Pitch-black backdrop while the music video is on screen: the letterbox
-        // area around the video must stay pure black, with none of the mesh
-        // gradient bleeding around the video's edges. Crossfades over 300ms —
-        // the same cadence as the square artwork's fade — so the video reveal
-        // stays smooth when the stream becomes ready.
         val videoBackdropAlpha by animateFloatAsState(
             targetValue = if (videoShowing) 1f else 0f,
             animationSpec = tween(300),
@@ -232,21 +213,6 @@ internal fun TikTokSongPage(
             )
         }
 
-        // A music video on the current page plays in the canvas's slot at its
-        // ORIGINAL dimensions. Player.kt's videoMediaId gate provides the state
-        // only for the current track, so non-current feed pages keep rendering
-        // their own artwork; the canvas itself never loads for a music video (it
-        // is disabled for them), so the two never compete for the slot.
-        //
-        // Geometry: the surface is sized to the video's intrinsic aspect ratio
-        // (from VideoArtworkState.videoAspectRatio, 16:9 until the first frame
-        // reports its size) and centered, with RESIZE_MODE_FIT inside. A 16:9
-        // video therefore letterboxes in the portrait feed instead of being
-        // zoom-cropped by the previous full-bleed ZOOM geometry (which cropped a
-        // landscape video down to ~27% of its width). The surface carries NO
-        // corner clip — square edges over the pitch-black backdrop layer — stays
-        // hidden while the inline lyrics pane is open, and the square artwork
-        // fades out over it exactly as it does over a playing canvas.
         if (videoShowing) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -327,13 +293,6 @@ internal fun TikTokSongPage(
                                                                 HapticFeedbackType.TextHandleMove,
                                                             )
                                                             if (videoShowing) {
-                                                                // While the music video is on
-                                                                // screen a single tap reveals/
-                                                                // hides the video controls overlay
-                                                                // (play/pause + quality + fullscreen)
-                                                                // instead of toggling playback —
-                                                                // pause lives on the overlay's
-                                                                // center button now.
                                                                 videoControlsVisible = !videoControlsVisible
                                                             } else {
                                                                 onTogglePlayPause()
@@ -384,10 +343,6 @@ internal fun TikTokSongPage(
                                             ),
                                 )
 
-                                // Artwork-slot pause indicator — only when no music
-                                // video is on screen (the video case renders its own
-                                // copy anchored to the video's geometry above, which
-                                // fixed the icon floating near the video's upper edge).
                                 TikTokPausedOverlay(
                                     visible =
                                         isCurrentPage &&
@@ -455,11 +410,6 @@ internal fun TikTokSongPage(
             Spacer(Modifier.height(if (immersive) 0.dp else bottomChromeHeight))
         }
 
-        // The paused-state indicator for the on-video music video is anchored to
-        // THE VIDEO's geometry (root-centered aspectRatio box, identical to the
-        // video surface above). Centering it in the square artwork slot instead
-        // made the icon float near the letterboxed video's upper edge — the
-        // "second pause icon near the top of the video" double-indicator.
         if (videoShowing && !videoFullscreenHolder.isFullscreen) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -478,18 +428,6 @@ internal fun TikTokSongPage(
             }
         }
 
-        // Quality + fullscreen controls for the on-video music video, anchored to the
-        // video's bottom-right corner. Rendered ABOVE the Column (whose tap-to-pause
-        // artwork layer would otherwise swallow the pill's taps) as an invisible
-        // anchor box with exactly the video's geometry — the same centering + aspect
-        // ratio — so the pill tracks the letterboxed video, not the full screen. The
-        // end clearance keeps the pill left of the TikTok action rail (48dp buttons +
-        // 10dp rail padding = 58dp from the screen edge, + 8dp gap). The whole overlay
-        // only appears while the user has tapped the video once (videoControlsVisible);
-        // a second tap on the video hides it again. It fades/scales in and out (the
-        // abrupt pop in/out felt jarring) and auto-hides a few seconds after the last
-        // interaction while playing — paused playback keeps it up so the play button
-        // stays reachable.
         if (videoShowing && !videoFullscreenHolder.isFullscreen) {
             LaunchedEffect(videoControlsVisible, isPlaying) {
                 if (videoControlsVisible && isPlaying) {
@@ -515,9 +453,6 @@ internal fun TikTokSongPage(
                                 scaleOut(targetScale = 0.92f, animationSpec = tween(180)),
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // Center play/pause — hidden while the stream is still
-                            // loading so it never stacks on the video's loading
-                            // spinner. Its own fade keeps the swap smooth.
                             AnimatedVisibility(
                                 visible = !videoLoading,
                                 enter = fadeIn(tween(200)),
@@ -848,16 +783,10 @@ internal const val TIKTOK_ART_PX = 1080
 
 internal val TIKTOK_CANVAS_CORNER = 20.dp
 
-/** Aspect ratio used to size the inline video surface before the first frame reports
- * the video's true dimensions (and whenever they are degenerate). */
 internal val TIKTOK_VIDEO_FALLBACK_RATIO = 16f / 9f
 
-/** Distance between the video's right edge and the inline controls pill, sized to clear
- * the TikTok action rail (48dp buttons inset 10dp from the screen edge) plus a gap. */
 internal val TIKTOK_VIDEO_CONTROLS_END_CLEARANCE = 66.dp
 
-/** Auto-hide delay for the tap-to-show video controls overlay while playing;
- * paused playback keeps the overlay up so the play button stays reachable. */
 internal const val TIKTOK_VIDEO_CONTROLS_AUTO_HIDE_MS = 3500L
 
 internal val TIKTOK_EMPTY_BACKDROP = Color(0xFF0B0B0F)

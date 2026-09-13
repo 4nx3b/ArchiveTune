@@ -33,10 +33,8 @@ data class TelegramTrack(
     val chatId: Long,
     val messageId: Long,
 
-    /** TDLib-local file id (session-scoped; used to drive downloads). */
     val fileId: Int,
 
-    /** Server-stable unique file id ("<docId>:<dcId>"), persisted in media ids. */
     val fileUniqueId: String,
     val title: String,
     val performer: String?,
@@ -47,7 +45,6 @@ data class TelegramTrack(
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
 
-    /** TDLib file id of the album-cover/document thumbnail. */
     val thumbnailFileId: Int,
     val hasThumbnail: Boolean = false,
 ) {
