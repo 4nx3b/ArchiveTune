@@ -1306,7 +1306,7 @@
     <string name="icon_pack_download_needed_desc">To use the community icons, download the icon pack first</string>
     <string name="icon_pack_downloading">Downloading icon pack… %1$d%%</string>
     <string name="icon_pack_download_failed">Icon pack download failed — tap to retry</string>
-    <string name="app_icon_runtime_notice">Applying an icon switches the app\'s launcher icon itself — home screen and app drawer — instead of pinning a shortcut. The app may close briefly while the launcher refreshes the change.</string>
+    <string name="app_icon_runtime_notice">This slim build downloads the icon pack instead of bundling it, so icons can be browsed and previewed but the launcher icon can\'t be switched — install the full (non-slim) build to switch the app icon.</string>
     <string name="download_complete">Download complete</string>
     <string name="downloads">Downloads</string>
     <string name="download_in_progress">In progress</string>
