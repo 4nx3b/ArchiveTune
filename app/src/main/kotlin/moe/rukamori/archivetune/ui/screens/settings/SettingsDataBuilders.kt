@@ -320,6 +320,7 @@ fun buildSettingsGroups(
                 SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")),
                 SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "qobuz audio quality", "hi-res", "flac", "cd quality", "24 bit")),
                 SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")),
+                SettingsChild("Backup resolver endpoints", "qobuz_backup_endpoints", listOf("qobuz backup endpoints", "backup mirror", "backup url", "resolver endpoint", "mirror list", "kouzu")),
                 SettingsChild("Manage Qobuz instances", "qobuz_manage_instances", listOf("qobuz instances", "qobuz server", "qobuz endpoint", "manage instances")),
                 SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")),
                 SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),

@@ -82,6 +82,21 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - Bounded YouTube download retries
 - Fixed Apple Music player crash, YouTube playback stalls, lyrics lag and
   misalignment, queue controls, and Last.fm decoding
+- SpatialFlow lyrics: no more opaque colour flash when opening lyrics — the
+  blurred artwork backdrop is pre-warmed and composes on the first frame
+- Floating popup menus with Liquid Glass OFF: fully opaque surface with proper
+  theme colours (no ghosting of controls through the card, no translucent
+  action tiles)
+- Default player: the three-dot song overflow menu returns next to the
+  "Now Playing" header, top right
+- Qobuz backup: the community mirror went dark — resolvers now walk a
+  user-configurable endpoint chain (Settings → Sources → Qobuz backup), with a
+  10-minute circuit breaker so a dead mirror never slows playback
+- Lossless tracks no longer randomly mute (silence-skip processor removed —
+  bit-perfect output)
+- SpatialFlow queue reordering works (optimistic drag with commit on release)
+- Update notifications: tap the action to download with live progress in the
+  notification bar and an install prompt on completion
 
 ---
 

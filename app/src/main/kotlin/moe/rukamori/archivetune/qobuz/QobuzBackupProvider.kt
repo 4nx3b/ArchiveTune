@@ -16,9 +16,68 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object QobuzBackupProvider {
-    private const val BASE_URL = "https://mlc-ytify.kouzu.in"
+    /**
+     * The community mirror this source shipped against
+     * (`mlc-ytify.kouzu.in`, a Vercel front for a ytify-based FLAC service)
+     * went dark in September 2026 — the Vercel deployment now serves a
+     * Hugging Face 404 page, and the HF space behind it is deleted. The
+     * resolver therefore walks an ENDPOINT CHAIN: any live instance of the
+     * same `/api/stream` + `/api/search` API (the mirror operator's own
+     * deployment, a friend's, or a self-host) can be plugged in from
+     * Settings → Sources → Qobuz backup → "Backup resolver endpoints",
+     * one URL per line, no app update needed.
+     */
+    private const val DEFAULT_ENDPOINT = "https://mlc-ytify.kouzu.in"
+
+    @Volatile
+    var configuredEndpoints: List<String> = emptyList()
+
+    private fun endpointChain(): List<String> {
+        val custom =
+            configuredEndpoints
+                .map { it.trim().trimEnd('/') }
+                .filter { it.startsWith("http") }
+        return (custom + DEFAULT_ENDPOINT).distinct()
+    }
+
+    // Circuit breaker: an endpoint that failed three consecutive resolutions
+    // is skipped for ten minutes, so a dead mirror no longer adds a full
+    // HTTP round-trip to EVERY song's source chain (that is what made the
+    // backup both "not working" and slow). Any success resets the breaker.
+    private const val FAILURE_THRESHOLD = 3
+    private const val COOLDOWN_MS = 10 * 60 * 1000L
+
+    private val failureCounts = ConcurrentHashMap<String, AtomicInteger>()
+    private val cooldownUntil = ConcurrentHashMap<String, Long>()
+
+    private fun endpointAvailable(endpoint: String, now: Long = System.currentTimeMillis()): Boolean =
+        (cooldownUntil[endpoint] ?: 0L) < now
+
+    private fun recordFailure(endpoint: String) {
+        val count = failureCounts.getOrPut(endpoint) { AtomicInteger(0) }.incrementAndGet()
+        if (count >= FAILURE_THRESHOLD) {
+            cooldownUntil[endpoint] = System.currentTimeMillis() + COOLDOWN_MS
+            Timber.tag("QobuzBackup")
+                .w("endpoint %s failed %d times — cooling down for %d min", endpoint, count, COOLDOWN_MS / 60000)
+        }
+    }
+
+    private fun recordSuccess(endpoint: String) {
+        failureCounts.remove(endpoint)
+        cooldownUntil.remove(endpoint)
+    }
+
+    private fun activeEndpoints(): List<String> {
+        val now = System.currentTimeMillis()
+        return endpointChain().filter { endpointAvailable(it, now) }
+    }
+
+    /** The full endpoint chain (custom + default) for settings/diagnostics UI. */
+    fun endpointList(): List<String> = endpointChain()
+
     private const val USER_AGENT = "ArchiveTune-Android"
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
 
@@ -115,8 +174,24 @@ object QobuzBackupProvider {
         query: String,
         limit: Int,
     ): List<Candidate> {
+        for (base in activeEndpoints()) {
+            val candidates = fetchSearchFrom(base, query, limit)
+            if (candidates.isNotEmpty()) {
+                recordSuccess(base)
+                return candidates
+            }
+            recordFailure(base)
+        }
+        return emptyList()
+    }
+
+    private fun fetchSearchFrom(
+        base: String,
+        query: String,
+        limit: Int,
+    ): List<Candidate> {
         val url =
-            "$BASE_URL/api/search"
+            "$base/api/search"
                 .toHttpUrl()
                 .newBuilder()
                 .addQueryParameter("q", query)
@@ -204,34 +279,43 @@ object QobuzBackupProvider {
             return null
         }
 
-        val candidates = fetchMirrorCandidates(id, client)
-        if (candidates.isEmpty()) return null
-
-        val resolved = candidates.firstNotNullOfOrNull { candidate -> probeMirror(candidate, client) }
-        if (resolved == null) {
-            Timber.tag("QobuzBackup").d(
-                "CDN miss for %s: no candidate mirror served audio (tried %d)",
-                id,
-                candidates.size,
-            )
-            return null
+        for (base in activeEndpoints()) {
+            val candidates = fetchMirrorCandidates(id, base, client)
+            if (candidates.isEmpty()) {
+                recordFailure(base)
+                continue
+            }
+            val resolved = candidates.firstNotNullOfOrNull { candidate -> probeMirror(candidate, client) }
+            if (resolved != null) {
+                recordSuccess(base)
+                Timber.tag("QobuzBackup").i(
+                    "resolved %s via %s → %s [%s%s]",
+                    id,
+                    base,
+                    resolved.uri.take(80),
+                    resolved.contentType,
+                    if (resolved.isLossless) ", lossless" else "",
+                )
+                return resolved
+            }
+            recordFailure(base)
         }
-        Timber.tag("QobuzBackup").i(
-            "resolved %s → %s [%s%s]",
+
+        Timber.tag("QobuzBackup").w(
+            "no live endpoint resolved %s (chain: %s)",
             id,
-            resolved.uri.take(80),
-            resolved.contentType,
-            if (resolved.isLossless) ", lossless" else "",
+            endpointChain().joinToString(", "),
         )
-        return resolved
+        return null
     }
 
     private fun fetchMirrorCandidates(
         videoId: String,
+        base: String,
         client: OkHttpClient,
     ): List<String> {
         val url =
-            "$BASE_URL/api/stream"
+            "$base/api/stream"
                 .toHttpUrl()
                 .newBuilder()
                 .addQueryParameter("id", videoId)

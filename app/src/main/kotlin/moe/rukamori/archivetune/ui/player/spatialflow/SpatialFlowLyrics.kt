@@ -56,7 +56,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -909,13 +908,69 @@ private const val SfLyricsBlurRestScale = 1.2f
 private const val SfLyricsBlurDriftScale = 2.4f
 private val SfLyricsBlurRadius = 64.dp
 
+/**
+ * LRU for the pre-blurred lyrics backdrop bitmaps. [SpatialFlowPlayerContent]
+ * pre-warms this cache the moment a song's artwork is known, so the very
+ * first frame of the lyrics overlay already composes against a ready bitmap
+ * instead of flashing the opaque palette fill while the async blur lands
+ * (the "solid color for a split second" the reveal used to show).
+ */
+internal object SfLyricsBlurBitmapCache {
+    private const val MAX_ENTRIES = 4
+
+    private val cache = object : LinkedHashMap<String, Bitmap>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean = size > MAX_ENTRIES
+    }
+
+    fun get(url: String): Bitmap? = synchronized(cache) { cache[url] }
+
+    fun put(url: String, bitmap: Bitmap) {
+        synchronized(cache) { cache[url] = bitmap }
+    }
+}
+
+internal suspend fun loadSfLyricsBlurredBitmap(
+    context: android.content.Context,
+    artUrl: String,
+): Bitmap? {
+    SfLyricsBlurBitmapCache.get(artUrl)?.let { return it }
+    val bitmap =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request =
+                    ImageRequest
+                        .Builder(context)
+                        .data(artUrl)
+                        .allowHardware(false)
+                        .memoryCacheKey("$artUrl#sflyricsblur")
+                        .diskCacheKey("$artUrl#sflyricsblur")
+                        .size(CoilSize(720, 720))
+                        .build()
+                val result = context.imageLoader.execute(request)
+                if (result is SuccessResult) {
+                    val raw =
+                        result.image
+                            .toBitmap()
+                            .copy(Bitmap.Config.ARGB_8888, true)
+                    val density = context.resources.displayMetrics.density
+                    ImageBlurUtils.blur(raw, SfLyricsBlurRadius.value * density)
+                } else {
+                    null
+                }
+            }.getOrNull()
+        }
+    if (bitmap != null) {
+        SfLyricsBlurBitmapCache.put(artUrl, bitmap)
+    }
+    return bitmap
+}
+
 @Composable
 private fun SpatialFlowLyricsMovingBlur(
     artUrl: String?,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val imageLoader = context.imageLoader
     val blurWander = rememberBlurWanderDrift(active = true)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
@@ -941,32 +996,15 @@ private fun SpatialFlowLyricsMovingBlur(
             }
 
         if (artUrl != null) {
-            val preBlurredBitmap by produceState<Bitmap?>(null, artUrl) {
-                value =
-                    withContext(Dispatchers.IO) {
-                        runCatching {
-                            val request =
-                                ImageRequest
-                                    .Builder(context)
-                                    .data(artUrl)
-                                    .allowHardware(false)
-                                    .memoryCacheKey("$artUrl#sflyricsblur")
-                                    .diskCacheKey("$artUrl#sflyricsblur")
-                                    .size(CoilSize(720, 720))
-                                    .build()
-                            val result = imageLoader.execute(request)
-                            if (result is SuccessResult) {
-                                val bitmap =
-                                    result.image
-                                        .toBitmap()
-                                        .copy(Bitmap.Config.ARGB_8888, true)
-                                val density = context.resources.displayMetrics.density
-                                ImageBlurUtils.blur(bitmap, SfLyricsBlurRadius.value * density)
-                            } else {
-                                null
-                            }
-                        }.getOrNull()
-                    }
+            // Synchronous cache read first: a pre-warmed bitmap composes on the
+            // overlay's FIRST frame, so the reveal never shows the flat fill.
+            var preBlurredBitmap by remember(artUrl) {
+                mutableStateOf(SfLyricsBlurBitmapCache.get(artUrl))
+            }
+            LaunchedEffect(artUrl) {
+                if (preBlurredBitmap == null) {
+                    preBlurredBitmap = loadSfLyricsBlurredBitmap(context, artUrl)
+                }
             }
             preBlurredBitmap?.let { bmp ->
                 Box(

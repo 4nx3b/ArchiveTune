@@ -1130,6 +1130,14 @@ val QobuzEnabledKey = booleanPreferencesKey("qobuzEnabled")
 
 val QobuzBackupEnabledKey = booleanPreferencesKey("qobuzBackupEnabled")
 
+/**
+ * User-editable Qobuz backup resolver endpoints, one URL per line. The
+ * shipped community mirror can go dark without notice; custom endpoints let
+ * a live instance of the same `/api/stream` + `/api/search` API take over
+ * without an app update. Tried before the default, in order.
+ */
+val QobuzBackupEndpointsKey = stringPreferencesKey("qobuzBackupEndpoints")
+
 val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
 val QobuzVerifiedInstancesKey = stringPreferencesKey("qobuzVerifiedInstances")

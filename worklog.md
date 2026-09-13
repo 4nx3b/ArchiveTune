@@ -2212,3 +2212,49 @@ Stage Summary:
   ~3 per-frame render sources, overflow menu no longer tints the
   background, updates download in-app with notification progress, icon
   pack payload cut ~96% with real switching preserved everywhere.
+
+---
+Task ID: 42
+Agent: Super Z (main agent, session web-e130fa90)
+Task: four-fix batch — spatialflow lyrics opaque flash, qobuz backup server
+dead mirror, glitched unglassed floating popup, missing three-dot song
+overflow icon; changelogs update; PR dev→main; stable release round
+
+Work Log:
+- Lyrics flash (spatialflow): the overlay's moving-blur bitmap was loaded
+  via produceState — 1-3 frames of the opaque palette fill showed before
+  the blur landed ("solid colour for a split second"). Added
+  SfLyricsBlurBitmapCache (LRU 4) + loadSfLyricsBlurredBitmap shared
+  loader; SpatialFlowLyricsMovingBlur now reads the cache SYNCHRONOUSLY
+  in remember(artUrl) so the first frame composes against a ready bitmap;
+  SpatialFlowPlayerContent pre-warms the cache on artwork resolve.
+- Qobuz backup: logs showed HTTP 404 from mlc-ytify.kouzu.in; live probe
+  confirmed the Vercel front now serves a Hugging Face 404 (the
+  veltrixcode-ytify HF space behind it is deleted) and no equivalent
+  public FLAC mirror exists. QobuzBackupProvider reworked into an
+  endpoint chain: user-configured mirrors (new QobuzBackupEndpointsKey,
+  one URL per line, edited in Settings → Sources → Qobuz backup) before
+  the default; a circuit breaker skips an endpoint for 10 min after 3
+  consecutive failures (a dead mirror no longer taxes every song);
+  SourceCheck probes each endpoint and names the dead ones; MusicService
+  refreshes the chain on each backup resolve; settings search index
+  updated.
+- Unglassed popup glitch: BottomSheetMenu painted 0xF01C1C1E (94% alpha —
+  player controls ghosted through) AND kept wrapping menu content in the
+  glass color scheme (transparent surfaceContainerHigh tiles, 12%-alpha
+  dividers) even with liquid glass off. Fallback is now fully opaque
+  0xFF1C1C1E / surfaceContainer, and the glass-ink scheme applies only
+  when glass is actually active or a caller pinned an explicit
+  background (SimpMusicFullscreenLyricsSheet keeps its fixed ink).
+- Missing overflow icon: default player's Thumbnail header ("Now
+  Playing" + queue title, centered) gained a trailing three-dot
+  more_vert button in a balanced weighted Row (text stays optically
+  centered); opens the PlayerMenu via menuState. Wired at both the
+  portrait default and landscape Thumbnail call sites in Player.kt.
+- changelogs.md: appended the seven fix bullets from this and the
+  previous round to the Fixes section.
+
+Stage Summary:
+- dev carries the four fixes; canary CI + PR dev→main + new stable
+  release to follow (old v15.0.6371 stable and the Claude branch get
+  deleted, changelogs.md attached to the new release).
