@@ -387,11 +387,15 @@ fun LyricsEnhanced(
     val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
 
     val aiRomanizedLines: List<String?> =
-        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, lyricsEntries) {
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, aiRomanizationSettings.configKey, lyricsEntries) {
             if (!aiRomanizationSettings.active) {
                 emptyList()
             } else {
-                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, lyricsEntries.map { it.text })
+                AiLyricsRomanization.linesFor(
+                    aiRomanizationSessionKey,
+                    lyricsEntries.map { it.text },
+                    aiRomanizationSettings,
+                )
             }
         }
     LaunchedEffect(aiRomanizationSessionKey, lyricsEntries, aiRomanizationSettings) {
