@@ -62,6 +62,11 @@ class AppIconRepository
 
         suspend fun loadCatalog(): AppIconCatalog =
             withContext(Dispatchers.IO) {
+                // Sweep legacy pinned shortcuts from the pre-15 shortcut-based
+                // apply path (the default build was slim then, so upgraders can
+                // have "app_icon_" shortcuts on their home screen). The real
+                // launcher icon is what changes now.
+                runCatching { removeIconShortcuts() }
                 val icons = loadIcons()
                 val aliasIcons = icons.filterNot { it.runtime }
                 val selectedIcon =
@@ -208,7 +213,11 @@ class AppIconRepository
             icons: List<AppIcon>,
             selectedIcon: AppIcon,
         ) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // The batched setComponentEnabledSettings(List<ComponentEnabledSetting>)
+            // overload (and its ComponentEnabledSetting type) only exists from
+            // API 35 — guarding on TIRAMISU (33) made API 33/34 devices crash
+            // with NoSuchMethodError the moment an icon was applied.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
                 packageManager.setComponentEnabledSettings(
                     icons.map { icon ->
                         PackageManager.ComponentEnabledSetting(
@@ -289,18 +298,6 @@ class AppIconRepository
             icons: List<AppIcon>,
             selectedIcon: AppIcon,
         ) {
-            // Sweep legacy pinned shortcuts created by the old shortcut-based
-            // apply path — the real launcher icon is what changes now.
-            runCatching { removeIconShortcuts() }
-
-            if (selectedIcon.isDefault) {
-                // Back to the baked-in default alias: re-enable it (and disable
-                // every other one) so the regular launcher entry takes over.
-                applySelection(icons, selectedIcon)
-                runtimeSelectionPrefs().edit().putString(KEY_RUNTIME_SELECTED, DefaultIconId).apply()
-                return
-            }
-
             if (selectedIcon.aliasClassName.isBlank() || !selectedIcon.componentExists()) {
                 throw IllegalStateException(
                     "Icon ${selectedIcon.id} has no launcher alias in this build — " +

@@ -4,10 +4,12 @@ name: Build icon pack release
 # IconPack submodule, exactly as GenerateIconPackTask renders them, and
 # publishes it as a GitHub release (tag icon-pack-v1).
 #
-# Slim builds (-PslimIconPacks, the default) bake neither the pack's launcher
-# aliases nor its icons into the APK; the app downloads this zip on demand the
-# first time the user opens the app-icon customization screen
-# (see IconPackRuntimeManager.kt).
+# Since 15.0 the pack is baked into the APK by default (-PslimIconPacks=false);
+# this zip only matters for opt-in slim builds (-PslimIconPacks=true), which
+# bake neither the pack's launcher aliases nor its icons and download this zip
+# on demand the first time the user opens the app-icon customization screen
+# (see IconPackRuntimeManager.kt). The zip is packed deterministically so the
+# digest pinned in IconPackRuntimeManager only changes with the content.
 
 on:
   workflow_dispatch:

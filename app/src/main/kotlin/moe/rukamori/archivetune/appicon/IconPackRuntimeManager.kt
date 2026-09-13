@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.appicon
 
 import android.content.Context
-import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +28,8 @@ import java.util.zip.ZipInputStream
 /**
  * Runtime-downloadable icon pack — the icon-pack twin of [moe.rukamori.archivetune.telegram.TdLibNativeLibrary].
  *
- * Slim builds (`-PslimIconPacks=false` NOT passed, the default) bake neither
+ * Slim builds (`-PslimIconPacks=true`, opt-in since 15.0 — the pack is now
+ * baked in by default) bake neither
  * the pack's launcher aliases nor its rasterized icons into the APK. The pack
  * (catalog.json + per-icon PNGs) is published as a GitHub release zip by
  * `.github/workflows/build-icon-pack.yml` and downloaded here on demand, the
@@ -336,10 +336,4 @@ object IconPackRuntimeManager {
         }
     }
 
-    /**
-     * Pinned launcher shortcut support — kept for the legacy-shortcut sweep in
-     * AppIconRepository (icons applied before the alias-based switcher pinned
-     * "app_icon_" shortcuts on the home screen; those get disabled on apply).
-     */
-    fun supportsPinnedShortcuts(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
 }
