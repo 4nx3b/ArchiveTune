@@ -576,4 +576,5 @@ jobs:
             --title "${VERSION}" \
             --notes-file release_notes.md \
             "$MOBILE_UNIVERSAL_APK" \
-            $OTHER_APKS
+            $OTHER_APKS \
+            changelogs.md
