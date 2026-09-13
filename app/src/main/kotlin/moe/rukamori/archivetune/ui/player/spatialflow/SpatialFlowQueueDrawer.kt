@@ -35,8 +35,6 @@ import androidx.compose.foundation.layout.size
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListItemInfo
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,19 +54,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -77,16 +74,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.extensions.metadata
+import moe.rukamori.archivetune.extensions.move
 import moe.rukamori.archivetune.models.MediaMetadata
+import androidx.media3.common.Timeline
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.abs
-import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -101,7 +97,7 @@ enum class SpatialFlowSleepTimerMode {
 fun SlidingQueueDrawer(
     isQueueExpanded: Boolean,
     onQueueExpandedChange: (Boolean) -> Unit,
-    queue: List<Pair<MediaMetadata, Int>>,
+    queueWindows: List<Timeline.Window>,
     currentSongIndex: Int,
     isShuffleEnabled: Boolean,
     repeatMode: Int,
@@ -212,13 +208,71 @@ fun SlidingQueueDrawer(
             val boxScope = this
             val lazyListState = rememberLazyListState()
 
-            val dragDropState =
-                rememberDragDropState(lazyListState = lazyListState) { from, to ->
-                    onReorderQueue(from, to)
+            val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
+            var dragInfo by remember { mutableStateOf<SfQueueDragInfo?>(null) }
+
+            val currentPlayingUid =
+                remember(currentSongIndex, queueWindows) {
+                    queueWindows.getOrNull(currentSongIndex)?.uid
                 }
 
+            val reorderableState =
+                rememberReorderableLazyListState(lazyListState = lazyListState) onMove@{ from, to ->
+                    val fromQueueIndex = from.index
+                    val toQueueIndex = to.index
+                    if (
+                        fromQueueIndex !in mutableQueueWindows.indices ||
+                        toQueueIndex !in mutableQueueWindows.indices
+                    ) {
+                        return@onMove
+                    }
+
+                    val draggedItemUid = dragInfo?.draggedItemUid ?: mutableQueueWindows[fromQueueIndex].uid
+                    val actualFromQueueIndex = mutableQueueWindows.indexOfFirst { it.uid == draggedItemUid }
+                    if (actualFromQueueIndex == -1) return@onMove
+
+                    mutableQueueWindows.move(actualFromQueueIndex, toQueueIndex)
+                    dragInfo =
+                        SfQueueDragInfo(
+                            draggedItemUid = draggedItemUid,
+                            destination =
+                                if (toQueueIndex == 0) {
+                                    SfQueueDragDestination.Start
+                                } else {
+                                    SfQueueDragDestination.After(
+                                        itemUid = mutableQueueWindows[toQueueIndex - 1].uid,
+                                    )
+                                },
+                        )
+                }
+
+            LaunchedEffect(queueWindows, reorderableState.isAnyItemDragging) {
+                if (reorderableState.isAnyItemDragging) return@LaunchedEffect
+
+                val completedDrag = dragInfo
+                if (completedDrag != null) {
+                    val sourceIndex = queueWindows.indexOfFirst { it.uid == completedDrag.draggedItemUid }
+                    val destinationIndex = completedDrag.destination.resolveIndex(queueWindows, sourceIndex)
+                    dragInfo = null
+
+                    if (
+                        sourceIndex != -1 &&
+                        destinationIndex != null &&
+                        sourceIndex != destinationIndex
+                    ) {
+                        onReorderQueue(sourceIndex, destinationIndex)
+                        return@LaunchedEffect
+                    }
+                }
+
+                Snapshot.withMutableSnapshot {
+                    mutableQueueWindows.clear()
+                    mutableQueueWindows.addAll(queueWindows)
+                }
+            }
+
             LaunchedEffect(isQueueExpanded) {
-                if (isQueueExpanded && currentSongIndex in queue.indices) {
+                if (isQueueExpanded && currentSongIndex in queueWindows.indices) {
                     val distance = abs(lazyListState.firstVisibleItemIndex - currentSongIndex)
                     if (distance > 24) {
                         lazyListState.scrollToItem(currentSongIndex)
@@ -279,7 +333,7 @@ fun SlidingQueueDrawer(
                         }
 
                         Text(
-                            text = "${queue.size} tracks",
+                            text = "${queueWindows.size} tracks",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -303,43 +357,42 @@ fun SlidingQueueDrawer(
                     verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
                 ) {
                     itemsIndexed(
-                        items = queue,
-                        key = { index, entry -> "${entry.first.id}_$index" },
+                        items = mutableQueueWindows,
+                        key = { _, window -> window.sfQueueItemKey },
                         contentType = { _, _ -> "queue-song" },
-                    ) { index, entry ->
-                        val (song, _) = entry
-                        val isPlaying = index == currentSongIndex
-                        val shapes = ListItemDefaults.segmentedShapes(index = index, count = queue.size)
-                        val isDragging = index == dragDropState.currentIndexOfDraggedItem
-                        val displacement = if (isDragging) dragDropState.elementDisplacement ?: 0f else 0f
+                    ) { index, window ->
+                        val song = window.mediaItem?.metadata as? MediaMetadata ?: return@itemsIndexed
+                        val isPlaying = window.uid == currentPlayingUid
+                        val shapes =
+                            ListItemDefaults.segmentedShapes(index = index, count = mutableQueueWindows.size)
 
-                        Box(
-                            modifier =
-                                Modifier
-                                    .animateItem()
-                                    .zIndex(if (isDragging) 1f else 0f)
-                                    .graphicsLayer {
-                                        translationY = displacement
-                                        if (isDragging) {
-                                            scaleX = 1.02f
-                                            scaleY = 1.02f
-                                        }
-                                    },
+                        ReorderableItem(
+                            state = reorderableState,
+                            key = window.sfQueueItemKey,
                         ) {
+                            val dragHandleModifier =
+                                if (isQueueExpanded) {
+                                    Modifier.draggableHandle(
+                                        onDragStarted = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        },
+                                    )
+                                } else {
+                                    Modifier
+                                }
                             SpatialFlowQueueListItem(
                                 song = song,
                                 isPlaying = isPlaying,
                                 shapes = shapes,
                                 showReorderControls = true,
-                                dragDropState = if (isQueueExpanded) dragDropState else null,
-                                index = index,
+                                dragHandleModifier = dragHandleModifier,
                                 onMoveUp = {
                                     if (index > 0) {
                                         onReorderQueue(index, index - 1)
                                     }
                                 },
                                 onMoveDown = {
-                                    if (index < queue.size - 1) {
+                                    if (index < mutableQueueWindows.size - 1) {
                                         onReorderQueue(index, index + 1)
                                     }
                                 },
@@ -532,9 +585,8 @@ fun SpatialFlowQueueListItem(
     showReorderControls: Boolean,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    dragDropState: DragDropState? = null,
-    index: Int = -1,
     @SuppressLint("ModifierParameter")
+    dragHandleModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -634,30 +686,9 @@ fun SpatialFlowQueueListItem(
                         contentDescription = "Drag to reorder",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier =
-                            Modifier
+                            dragHandleModifier
                                 .size(32.dp)
-                                .padding(4.dp)
-                                .pointerInput(dragDropState) {
-                                    if (dragDropState == null || index < 0) return@pointerInput
-                                    detectDragGestures(
-                                        onDragStart = { offset ->
-                                            val item =
-                                                dragDropState.lazyListState.layoutInfo.visibleItemsInfo
-                                                    .find { it.index == index }
-                                            if (item != null) {
-                                                dragDropState.onDragStart(
-                                                    androidx.compose.ui.geometry.Offset(offset.x, offset.y + item.offset),
-                                                )
-                                            }
-                                        },
-                                        onDragEnd = { dragDropState.onDragInterrupted() },
-                                        onDragCancel = { dragDropState.onDragInterrupted() },
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            dragDropState.onDrag(dragAmount)
-                                        },
-                                    )
-                                },
+                                .padding(4.dp),
                     )
                 }
             }
@@ -675,148 +706,39 @@ fun SpatialFlowQueueListItem(
     )
 }
 
-class DragDropState(
-    val lazyListState: LazyListState,
-    private val scope: CoroutineScope,
-    private val onMove: (Int, Int) -> Unit,
-) {
-    var draggedDistance by mutableFloatStateOf(0f)
-    var initiallyDraggedElement by mutableStateOf<LazyListItemInfo?>(null)
-    var currentIndexOfDraggedItem by mutableStateOf<Int?>(null)
-    private var autoScrollJob: Job? = null
-    private var autoScrollDeltaPx: Float = 0f
-    private var lastTargetIndex: Int? = null
+@Immutable
+private data class SfQueueDragInfo(
+    val draggedItemUid: Any,
+    val destination: SfQueueDragDestination,
+)
 
-    val elementDisplacement: Float?
-        get() =
-            currentIndexOfDraggedItem?.let { currentIndex ->
-                lazyListState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.index == currentIndex }
-                    ?.let { item ->
-                        (initiallyDraggedElement?.offset ?: 0).toFloat() + draggedDistance - item.offset
-                    }
-            }
+@Immutable
+private sealed interface SfQueueDragDestination {
+    data object Start : SfQueueDragDestination
 
-    fun onDragStart(offset: androidx.compose.ui.geometry.Offset) {
-        stopAutoScroll()
-        lastTargetIndex = null
-        lazyListState.layoutInfo.visibleItemsInfo
-            .firstOrNull { item -> offset.y.toInt() in item.offset..(item.offset + item.size) }
-            ?.also {
-                initiallyDraggedElement = it
-                currentIndexOfDraggedItem = it.index
-            }
-    }
+    data class After(
+        val itemUid: Any,
+    ) : SfQueueDragDestination
+}
 
-    fun onDragInterrupted() {
-        initiallyDraggedElement = null
-        currentIndexOfDraggedItem = null
-        draggedDistance = 0f
-        lastTargetIndex = null
-        stopAutoScroll()
-    }
-
-    fun onDrag(dragAmount: androidx.compose.ui.geometry.Offset) {
-        draggedDistance += dragAmount.y
-
-        val initialOffset = initiallyDraggedElement?.offset ?: return
-        val currentOffset = initialOffset + draggedDistance
-        val size = initiallyDraggedElement?.size ?: return
-
-        val currentCenter = currentOffset + size / 2f
-
-        val currentIndex = currentIndexOfDraggedItem ?: return
-        val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
-
-        val targetItem =
-            visibleItems.minByOrNull { item ->
-                abs((item.offset + item.size / 2f) - currentCenter)
-            }
-
-        if (
-            targetItem != null &&
-            targetItem.index != currentIndex &&
-            targetItem.index != lastTargetIndex
-        ) {
-            lastTargetIndex = targetItem.index
-
-            onMove(currentIndex, targetItem.index)
-            currentIndexOfDraggedItem = targetItem.index
-
-            initiallyDraggedElement =
-                lazyListState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.index == targetItem.index }
-            draggedDistance = 0f
-        }
-
-        val viewportStart = lazyListState.layoutInfo.viewportStartOffset.toFloat()
-        val viewportEnd = lazyListState.layoutInfo.viewportEndOffset.toFloat()
-        val overscrollThreshold = 80f
-
-        val scrollDelta =
+private fun SfQueueDragDestination.resolveIndex(
+    queueWindows: List<Timeline.Window>,
+    sourceIndex: Int,
+): Int? =
+    when (this) {
+        SfQueueDragDestination.Start -> if (queueWindows.isEmpty()) null else 0
+        is SfQueueDragDestination.After -> {
+            val anchorIndex = queueWindows.indexOfFirst { it.uid == itemUid }
             when {
-                currentOffset < viewportStart + overscrollThreshold -> -20f
-                currentOffset + size > viewportEnd - overscrollThreshold -> 20f
-                else -> 0f
+                sourceIndex !in queueWindows.indices -> null
+                anchorIndex == -1 -> null
+                sourceIndex < anchorIndex -> anchorIndex
+                else -> (anchorIndex + 1).coerceAtMost(queueWindows.lastIndex)
             }
-        updateAutoScroll(scrollDelta)
-    }
-
-    private fun updateAutoScroll(scrollDeltaPx: Float) {
-        if (scrollDeltaPx == 0f) {
-            stopAutoScroll()
-            return
         }
-        autoScrollDeltaPx = scrollDeltaPx
-        if (autoScrollJob?.isActive == true) return
-
-        autoScrollJob =
-            scope.launch {
-                while (currentIndexOfDraggedItem != null) {
-                    val delta = autoScrollDeltaPx
-                    if (delta == 0f) break
-                    lazyListState.scrollBy(delta)
-                    delay(16L.milliseconds)
-                }
-            }
     }
 
-    private fun stopAutoScroll() {
-        autoScrollDeltaPx = 0f
-        autoScrollJob?.cancel()
-        autoScrollJob = null
-    }
-}
-
-@Composable
-fun rememberDragDropState(
-    lazyListState: LazyListState,
-    onMove: (Int, Int) -> Unit,
-): DragDropState {
-    val scope = rememberCoroutineScope()
-    val state =
-        remember(lazyListState) {
-            DragDropState(lazyListState, scope, onMove)
-        }
-    return state
-}
-
-fun Modifier.dragContainer(
-    dragDropState: DragDropState,
-    enabled: Boolean,
-): Modifier {
-    if (!enabled) return this
-    return this.then(
-        Modifier.pointerInput(dragDropState) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { offset -> dragDropState.onDragStart(offset) },
-                onDragEnd = { dragDropState.onDragInterrupted() },
-                onDragCancel = { dragDropState.onDragInterrupted() },
-                onDrag = { change, dragAmount ->
-                    change.consume()
-                    dragDropState.onDrag(dragAmount)
-                },
-            )
-        },
-    )
-}
+private val Timeline.Window.sfQueueItemKey: Long
+    get() =
+        (uid.hashCode().toLong() shl Int.SIZE_BITS) xor
+            (mediaItem.mediaId.hashCode().toLong() and UInt.MAX_VALUE.toLong())

@@ -2111,3 +2111,264 @@ Stage Summary:
   cache, comment-free codebase with 24 fewer dead declarations and 368 net
   fewer imports, changelogs.md + 422-proof release notes. Push pending
   final CI compile validation.
+
+---
+Task ID: 40
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI validation round + 15.0 stable release dispatch and verification.
+
+Work Log:
+- Commit 426775e92 pushed to dev: PR #219 opened. First CI round caught one
+  break my local compile could not reach (app module needs >10 min on this
+  2-core box): the unused-import sweep removed Mockito's backticked
+  `import org.mockito.Mockito.`when`` from PlayerConnectionTest — \b word
+  boundaries never match a backtick after whitespace, so the usage search
+  found nothing. Import restored (fcc639645); cleaner patched to search
+  backticked names literally. The main-sources compile itself passed CI on
+  the FIRST round (Build APKs success on 426775e92) — all cleanup surgery
+  (comments/imports/dead code, 292 files) is compile-clean.
+- PR #219 merged after green PR/nightly/APK checks. The user's own
+  pre-merge release dispatch (34752022123, old main code) was cancelled —
+  it would have re-hit the 422 — and the release workflow re-dispatched on
+  the merged main (4f16c760).
+- v15.0.6371 published: 7 APK assets, stable (not draft/prerelease).
+  Release body verified as the short summary + blob/v15.0.6371/changelogs.md
+  link + v14.0.5362 compare link — the 125k-char 422 failure is gone.
+  changelogs.md resolves at the tag (200).
+
+Stage Summary:
+- 15.0 stable is out with the changelog-file release flow; dev and main are
+  in sync at 4f16c760; all 8 user items for this batch are complete.
+
+---
+Task ID: 41
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 4-item batch — spatialflow queue reorder + lyrics performance +
+popup background shift, in-notification update flow, icon-pack size,
+lossless muting
+
+Work Log:
+- Lossless mute root-caused from the uploaded log: the fork's custom
+  SilenceSkippingAudioProcessor(1.5s, 0.35, 0.5s, 10, 150) in
+  MusicService.buildAudioSink MUTES output to 10% volume whenever >=1.5s
+  of audio sits below -46.8 dBFS; lossless masters (Qobuz perceptual
+  loudness -6..-7.5 LUFS vs YouTube's -7.45 with heavy compression) trip
+  it constantly, and only a source switch (setMediaItems+prepare) resets
+  the sink — exactly the user's workaround. Removed the processor from
+  the DefaultAudioProcessorChain (Sonic + HapticsPcmProcessor kept).
+- SpatialFlow queue reordering never worked because (a) LazyColumn keys
+  were "<id>_<index>" so every reorder disposed every row (killing the
+  in-flight drag gesture on the handle) and (b) each threshold crossing
+  committed moveMediaItem mid-drag. Ported the standard Queue.kt
+  architecture: sh.calvin.reorderable (ReorderableItem +
+  draggableHandle), uid-stable queueItemKeys, optimistic local
+  mutableQueueWindows reordered visually during drag, single commit via
+  onReorderQueue on drag end (After-uid destination resolution). Drawer
+  now takes List<Timeline.Window>; custom 145-line DragDropState deleted.
+- SpatialFlow lyrics heaviness: three fixes. (1) The moving blur backdrop
+  now uses the pre-blurred bitmap path on ALL API levels (was: 64dp
+  RenderEffect blur re-rendered on a screen*2.4 offscreen layer on S+);
+  wander drift kept via cheap layer translation. (2) The main player
+  column (wavy slider wave-phase animation, marquees, pills) is dropped
+  from composition once the lyrics reveal reaches 1f — it was fully
+  covered by the opaque lyrics overlay but kept animating invisibly
+  every frame. (3) Karaoke word-sweep overlay: per-character
+  layout.getPathForRange paths are now built once per layout in
+  drawWithCache instead of 40+ path allocations per frame.
+- Lyrics overflow menu background color shift: the spatialflow caller
+  passed scrimColor = the lyrics background color at 45% alpha (a tinted
+  full-screen scrim that reads as a color change); now uses the default
+  black scrim like AppleMusicPlayer. Popup-gated layerBackdrop kept (it
+  records, not redraws — no pixel change).
+- Update flow: new AppUpdateService (foreground, dataSync) — the update
+  notification's action now starts an in-app download (GMS builds) that
+  morphs the same notification into a determinate progress bar with a
+  cancel action; on completion it attempts the package-installer prompt
+  directly and always leaves a "tap to install" notification whose
+  contentIntent is the installer (Android 10+ blocks background activity
+  starts, so the tap is the compliant path). AppUpdateInstaller gained
+  public download()/installApk()/installPendingIntent(). Non-GMS builds
+  keep the browser action. Manifest + strings added.
+- Icon pack: launcher alias icons must be compiled resources (Android
+  cannot back an activity-alias icon with a runtime-downloaded file), so
+  "downloadable but still switches the real icon" is impossible; instead
+  the pack now costs ~1/8: GenerateIconPackTask encodes WebP lossy via
+  sejda webp-imageio (same-package WebPBridge for the package-private
+  encoder), slim mode (now the default) rasterizes 432px q0.86 = ~100KB
+  total for 13 icons (was 2.7MB PNG at 1024px), non-slim 1024px q0.92 =
+  ~220KB. Slim mode now generates the FULL manifest aliases + adaptive
+  XMLs + catalog, so real icon switching works in every build;
+  ICON_PACK_BUNDLED is always true and the runtime-download machinery
+  stays coherent-but-dormant (webp-aware, zip workflow updated).
+- Verified locally: buildSrc compiles; generateIconPack task runs in
+  both modes (13 webps, 14 aliases, catalog); :app:compileGmsMobileUniversal
+  DebugKotlin, processGmsMobileUniversalDebugResources, and
+  processGmsMobileUniversalDebugManifest all BUILD SUCCESSFUL (local SDK
+  installed at /home/z/android-sdk).
+
+Stage Summary:
+- All 4 user items landed on dev: lossless mute fixed at the sink,
+  spatialflow reorder works like the standard queue, lyrics screen sheds
+  ~3 per-frame render sources, overflow menu no longer tints the
+  background, updates download in-app with notification progress, icon
+  pack payload cut ~96% with real switching preserved everywhere.
+
+---
+Task ID: 42
+Agent: Super Z (main agent, session web-e130fa90)
+Task: four-fix batch — spatialflow lyrics opaque flash, qobuz backup server
+dead mirror, glitched unglassed floating popup, missing three-dot song
+overflow icon; changelogs update; PR dev→main; stable release round
+
+Work Log:
+- Lyrics flash (spatialflow): the overlay's moving-blur bitmap was loaded
+  via produceState — 1-3 frames of the opaque palette fill showed before
+  the blur landed ("solid colour for a split second"). Added
+  SfLyricsBlurBitmapCache (LRU 4) + loadSfLyricsBlurredBitmap shared
+  loader; SpatialFlowLyricsMovingBlur now reads the cache SYNCHRONOUSLY
+  in remember(artUrl) so the first frame composes against a ready bitmap;
+  SpatialFlowPlayerContent pre-warms the cache on artwork resolve.
+- Qobuz backup: logs showed HTTP 404 from mlc-ytify.kouzu.in; live probe
+  confirmed the Vercel front now serves a Hugging Face 404 (the
+  veltrixcode-ytify HF space behind it is deleted) and no equivalent
+  public FLAC mirror exists. QobuzBackupProvider reworked into an
+  endpoint chain: user-configured mirrors (new QobuzBackupEndpointsKey,
+  one URL per line, edited in Settings → Sources → Qobuz backup) before
+  the default; a circuit breaker skips an endpoint for 10 min after 3
+  consecutive failures (a dead mirror no longer taxes every song);
+  SourceCheck probes each endpoint and names the dead ones; MusicService
+  refreshes the chain on each backup resolve; settings search index
+  updated.
+- Unglassed popup glitch: BottomSheetMenu painted 0xF01C1C1E (94% alpha —
+  player controls ghosted through) AND kept wrapping menu content in the
+  glass color scheme (transparent surfaceContainerHigh tiles, 12%-alpha
+  dividers) even with liquid glass off. Fallback is now fully opaque
+  0xFF1C1C1E / surfaceContainer, and the glass-ink scheme applies only
+  when glass is actually active or a caller pinned an explicit
+  background (SimpMusicFullscreenLyricsSheet keeps its fixed ink).
+- Missing overflow icon: default player's Thumbnail header ("Now
+  Playing" + queue title, centered) gained a trailing three-dot
+  more_vert button in a balanced weighted Row (text stays optically
+  centered); opens the PlayerMenu via menuState. Wired at both the
+  portrait default and landscape Thumbnail call sites in Player.kt.
+- changelogs.md: appended the seven fix bullets from this and the
+  previous round to the Fixes section.
+
+Stage Summary:
+- dev carries the four fixes; canary CI + PR dev→main + new stable
+  release to follow (old v15.0.6371 stable and the Claude branch get
+  deleted, changelogs.md attached to the new release).
+
+---
+Task ID: 43
+Agent: Super Z (main agent, session web-e130fa90)
+Task: spatialflow NOW-PLAYING three-dot overflow icon (still missing after
+task 42 — that round only wired the DEFAULT player), full redesign of the
+unglassed floating popup (still looked broken), comprehensive changelogs.md
+sweep, PR dev→main, delete old stable release + Claude branch, new stable
+release with changelogs.md attached
+
+Work Log:
+- Task 42 gap analysis: commit 5d6cdd959 added the overflow icon to
+  Player.kt's default Thumbnail only — SpatialFlowPlayer.kt's header right
+  side was still Spacer(48.dp). VLM analysis of both uploaded screenshots
+  confirmed: shot 2 (spatialflow now-playing) has no icon next to NOW
+  PLAYING; shot 1 (home song popup, glass off) shows the grey-on-grey
+  card-in-card stack (pixel samples: near-black header #060709 on #1C1C1E
+  card, warm dynamic-color tiles (50,40,38), grey #3A3A3C@0.92 section).
+- SpatialFlow overflow: new spatialflow_ic_more_vert.xml (960-viewport
+  Material Symbols glyph, same family as spatialflow_ic_keyboard_arrow_down,
+  fill #e3e3e3); the header's right Spacer replaced with an IconButton
+  (28dp icon, contentColor@0.8, mirroring the collapse button) opening the
+  full PlayerMenu through menuState + bottomSheetPageState (ShowMediaInfo
+  for details), exact BitChordPlayer wiring.
+- Unglassed popup redesign ("solid sheet", glass path byte-identical —
+  every change is gated on glassModifier == null / LocalGlassMenuContent):
+  * BottomSheetMenu: fallback surface is now ONE elevated theme surface
+    (surfaceContainerHigh, follows dynamic color) instead of flat
+    #1C1C1E; hairline outlineVariant@0.5 edge; 32x4dp centred drag-handle
+    pill above the content (solid-mode signature cue).
+  * MuzoSongMenuHeader: flat on the sheet (transparent) in solid mode —
+    the old surfaceContainerLow card drew a near-black rectangle inside
+    the popup.
+  * MenuSurfaceSection: transparent in solid mode (was #3A3A3C@0.92 grey
+    card banding on the sheet); glass keeps its transparent section.
+  * NewActionButton: solid mode renders outlined tiles — transparent fill
+    + 1dp outlineVariant@0.8 border + 16dp corners (glass keeps the
+    translucent squareShape ghost tiles).
+- changelogs.md: comprehensive sweep per user request — every change/fix/
+  removal from all rounds now represented, deduplicated: extended player
+  styles (upstream V9/V10), music haptics PCM tap, TikTok robustness, AI
+  parallel batches + provider-scoped romanisation cache, canvas
+  independence + BitChord canvas gate, frost-region canvas twin, shared
+  HTTP client, start-timeout removal, bounded downloads, lyrics
+  active-line freeze, spatialflow lyrics perf/canvas freeze/AM-exact
+  layering, quality pill pinned, full-row dividers, compact glass cap +
+  glass dividers, main-exact lyrics popup, 96% smaller icon pack, font
+  specimens, Weblate merge, stats backup detail, About links; replaced
+  the superseded unglassed-popup bullet with the solid-sheet redesign and
+  extended the overflow-menu bullet to cover SpatialFlow; dead-code bullet
+  quantified; compare link retargeted to main (v15.0 tag never existed).
+- Release flow (to follow the push): PR #220 already open dev→main and
+  absorbs the new commits; old stable release v15.0.6371 + tag deleted;
+  claude/archivetune-pi-backup-continue-ka9fso branch deleted; release.yml
+  dispatched on main → new stable release with changelogs.md asset.
+
+Stage Summary:
+- dev: spatialflow overflow icon + unglassed solid-sheet redesign +
+  comprehensive changelogs.md, one commit ready to push.
+- Glass-mode floating popups untouched by design (all deltas gated).
+
+---
+Task ID: 44
+Agent: Super Z (main agent, session web-e130fa90)
+Task: spatialflow light-mode font colours + no-canvas layout pinning
+(reference screenshots 20260913-214546/214746), changelogs.md update,
+delete old stable release + Claude branch, new stable release with the
+exact version number 15.0 and changelogs.md attached; builds monitored
+max 7 minutes then proceed
+
+Work Log:
+- Screenshot forensics (VLM + pixel row-profile on both uploads):
+  214746 = canvas playing (controls bottom-pinned, white text on the
+  scrimmed canvas — the reference position); 214546 = queue drawer open.
+  Both dark-mode, so the light-mode font bug was deduced from code.
+- Light-mode font root cause #1: SpatialFlowPlayerContent derived
+  contentColor/contentSecondary/accent/brushes from raw
+  isSystemInDarkTheme() while the canvas stack always paints the dark
+  SfCanvasScrimBrush behind the content — light mode rendered near-black
+  text (#1C1B1F) over the darkened canvas. Introduced surfaceIsDark =
+  appIsDark || canvasAvailable and switched every on-surface derivation
+  (text, secondary, dynamic accent, background + lyrics brushes, chip/
+  slider/button alphas, play-button icon) to it; the queue drawer keeps
+  the real app theme (its own surface).
+- Light-mode font root cause #2: with no canvas the blurred artwork
+  backdrop always got a BLACK scrim — over a dark artwork the light
+  surface sank into an unreadable dark wash under light-mode dark text.
+  SpatialFlowBlurredBackdrop scrim is now theme-aware (white gradient in
+  light theme, black kept for dark), isDark param added.
+- Theme-source root cause #3: the player used isSystemInDarkTheme() but
+  the app has a DarkMode ON/OFF/AUTO preference — BottomSheetPlayer
+  already resolves useDarkTheme; new appIsDark parameter now passes it
+  into SpatialFlowPlayerContent from both call sites.
+- Layout: the !canvasAvailable branch used a fixed
+  topOffset-(statusBar+68) spacer, leaving the artwork + controls
+  floating mid-screen and jumping when the canvas resolved. Both
+  branches now share Spacer(weight(1f)) so the thumbnail and the bottom
+  controls sit exactly where they sit while the canvas plays;
+  topOffset/minTopOffset/screenHeight dead calc removed.
+- changelogs.md: two new fix bullets (light-mode surfaces + artwork
+  layout pinning); all previous rounds were already covered by the task
+  43 sweep, verified against commits 593598f59/5d6cdd959/1502a6c9d.
+- Version: baseVersionName 15.0.0 -> 15.0 and release.yml
+  NEW_VERSION=${MAJOR_MINOR} (was ${MAJOR_MINOR}.${COMMIT_COUNT}) so the
+  stable release carries the exact version number 15.0; versionCode
+  still = commit count (strictly increasing upgrade path).
+- Release flow: commit pushed to dev (PR #220 absorbs it), PR merged to
+  main, v15.0.6371 release + tag deleted, claude/* branch deleted,
+  release.yml dispatched on main -> v15.0 with changelogs.md asset.
+
+Stage Summary:
+- dev: light-mode-correct + layout-pinned spatialflow player, exact-15.0
+  release plumbing, updated changelog; CI green before merge.
+- Glass-mode floating popups remain untouched (no menu component edits).

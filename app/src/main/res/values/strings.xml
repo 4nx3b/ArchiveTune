@@ -1293,6 +1293,15 @@
     <string name="update_notification_channel_desc">Notifications for new app updates</string>
     <string name="update_notification_title">Update Available</string>
     <string name="update_notification_text">ArchiveTune %s is now available</string>
+    <string name="update">Update</string>
+    <string name="update_download_channel_name">Update downloads</string>
+    <string name="update_download_channel_desc">Progress for in-app update downloads</string>
+    <string name="update_download_notification_title">Updating ArchiveTune</string>
+    <string name="update_download_progress_text">Downloading update — %1$d%%</string>
+    <string name="update_download_progress_text_with_version">%1$s — %2$d%% downloaded</string>
+    <string name="update_download_complete_title">Update ready to install</string>
+    <string name="update_download_complete_text">ArchiveTune %1$s was downloaded. Tap to install.</string>
+    <string name="update_download_failed">Update download failed</string>
     <string name="new_release_notification_channel_name">New Releases</string>
     <string name="new_release_notification_channel_desc">Notifications when an artist you subscribed to releases new music</string>
     <string name="new_release_notification_title">New release from %s</string>
