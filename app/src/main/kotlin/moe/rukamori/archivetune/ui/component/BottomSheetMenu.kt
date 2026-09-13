@@ -166,11 +166,15 @@ fun BottomSheetMenu(
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
         }
 
+    // Fully opaque when liquid glass is off: the previous 0xF0 (94%) fill let
+    // the player's controls behind ghost through the card (the "glitched"
+    // look), and the light 0.97 fill was near enough that it only banding-diffed.
+    // Callers that pass an explicit background keep full control of the alpha.
     val fallbackColor =
         when {
             !background.isUnspecified -> background
-            dark -> Color(0xF01C1C1E)
-            else -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+            dark -> Color(0xFF1C1C1E)
+            else -> MaterialTheme.colorScheme.surfaceContainer
         }
 
     val contentInk =
@@ -261,19 +265,37 @@ fun BottomSheetMenu(
 
             val unglassedColorScheme = MaterialTheme.colorScheme
 
+            // Glass ink theme only when there is actual glass (or the caller
+            // pinned an explicit background — that surface may not match the
+            // app theme, so the fixed white/dark ink keeps text readable).
+            // With liquid glass OFF and no explicit background the popup is an
+            // opaque theme surface: menu content must keep the app's regular
+            // color scheme, otherwise action tiles (surfaceContainerHigh →
+            // white@8%), section cards and dividers (outlineVariant →
+            // white@12%) render as translucent ghost shapes on the solid
+            // card — the "weird and glitched out" unglassed popup.
+            val useGlassInk = glassModifier != null || !background.isUnspecified
+            val menuContent: @Composable () -> Unit = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    state.content(this)
+                }
+            }
+
             CompositionLocalProvider(
-                LocalContentColor provides contentInk,
+                LocalContentColor provides if (useGlassInk) contentInk else unglassedColorScheme.onSurface,
 
                 LocalGlassMenuContent provides (glassModifier != null),
 
                 LocalUnglassColorScheme provides unglassedColorScheme,
             ) {
-                MaterialTheme(colorScheme = glassColorScheme) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        state.content(this)
+                if (useGlassInk) {
+                    MaterialTheme(colorScheme = glassColorScheme) {
+                        menuContent()
                     }
+                } else {
+                    menuContent()
                 }
             }
         }

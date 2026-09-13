@@ -68,9 +68,13 @@
     <string name="source_search_play_no_yt_match">Couldn\'t find a matching YouTube track to seed the queue — try a different result or use the automatic source</string>
 
     <string name="source_qobuz_backup">Qobuz Backup</string>
-    <string name="qobuz_backup_specific">Qobuz backup (kouzu.in)</string>
+    <string name="qobuz_backup_specific">Qobuz backup (community mirror)</string>
     <string name="qobuz_backup_enable">Enable Qobuz backup server</string>
-    <string name="qobuz_backup_enable_description">Streams lossless audio from the community-hosted mlc.kouzu.in backup server using a YouTube video id. Separate from the regular Qobuz source — toggle, reorder and per-song pin each independently.</string>
+    <string name="qobuz_backup_enable_description">Streams lossless audio from a community backup mirror using a YouTube video id. Separate from the regular Qobuz source — toggle, reorder and per-song pin each independently.</string>
+    <string name="qobuz_backup_endpoints">Backup resolver endpoints</string>
+    <string name="qobuz_backup_endpoints_desc">Add or replace the backup mirror URL chain (one URL per line)</string>
+    <string name="qobuz_backup_endpoints_hint">https://your-mirror.example</string>
+    <string name="qobuz_backup_endpoints_help">One URL per line, tried top-down before the built-in mirror. Each URL must serve the same API (/api/stream?id= and /api/search?q=). Endpoints that fail 3 times in a row are skipped for 10 minutes so a dead mirror never slows playback down.</string>
 
     <string name="check_source">Check source</string>
     <string name="check_source_description">Run a health probe to verify this source is reachable and configured correctly</string>

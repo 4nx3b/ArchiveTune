@@ -182,6 +182,16 @@ fun SpatialFlowPlayerContent(
     val palette = rememberMeshPalette(artUrl)
     val playerBackgroundColor = palette.colors.firstOrNull() ?: Color(0xFF202022)
 
+    // Pre-warm the lyrics blur bitmap the moment the artwork is known: the
+    // full-screen lyrics overlay reads the cache synchronously on its first
+    // frame, so opening lyrics never flashes the opaque palette fill while
+    // an async blur would have been landing.
+    LaunchedEffect(artUrl) {
+        if (artUrl != null && SfLyricsBlurBitmapCache.get(artUrl) == null) {
+            loadSfLyricsBlurredBitmap(context, artUrl)
+        }
+    }
+
     val dynamicAccentColor =
         remember(playerBackgroundColor, isDark) {
             val hsl = FloatArray(3)
