@@ -284,12 +284,17 @@ internal fun SpatialFlowLyricsOverlay(
             aiRomanizationResult,
             aiRomanizationSessionKey,
             aiRomanizationSettings.active,
+            aiRomanizationSettings.configKey,
             syncedLyrics,
         ) {
             if (!aiRomanizationSettings.active || syncedLyrics == null) {
                 emptyList()
             } else {
-                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, syncedLyrics.map { it.text })
+                AiLyricsRomanization.linesFor(
+                    aiRomanizationSessionKey,
+                    syncedLyrics.map { it.text },
+                    aiRomanizationSettings,
+                )
             }
         }
     LaunchedEffect(aiRomanizationSessionKey, syncedLyrics, aiRomanizationSettings) {

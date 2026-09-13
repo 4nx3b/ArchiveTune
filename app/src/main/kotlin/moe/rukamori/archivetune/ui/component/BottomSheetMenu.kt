@@ -211,12 +211,13 @@ fun BottomSheetMenu(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
 
-    // 0.55 of the screen: enough for the tall playlist menus (header + action
-    // grid + divider + list rows) to fit without scrolling on most devices;
-    // anything taller now SCROLLS instead of being clipped by the heightIn
-    // cap (task report: "Spotify playlist overflow menu is not scrollable and
-    // the bottom text is cut off").
-    val maxPopupHeight = configuration.screenHeightDp.dp * 0.55f
+    // 0.40 of the screen: the compact popup height the user expects. Menus
+    // taller than the cap SCROLL instead of growing the popup — NewMenuContainer
+    // (SpotifyPlaylistMenu) has verticalScroll, and PlayerMenu and friends embed
+    // their own LazyColumns — so no bottom rows get cut off here (the earlier
+    // 0.40 -> 0.55 bump made every tall menu suddenly eat 15% more screen —
+    // "it got taller all of a sudden").
+    val maxPopupHeight = configuration.screenHeightDp.dp * 0.40f
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Box(modifier = modifier.fillMaxSize()) {

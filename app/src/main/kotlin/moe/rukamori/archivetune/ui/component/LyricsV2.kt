@@ -385,11 +385,15 @@ fun LyricsV2(
     // instrumental breaks that LyricsEnhanced's does not, and both derive the same session key. See
     // AiLyricsRomanization.Result.
     val aiRomanizedLines: List<String?> =
-        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, entriesWithWords) {
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, aiRomanizationSettings.configKey, entriesWithWords) {
             if (!aiRomanizationSettings.active) {
                 emptyList()
             } else {
-                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, entriesWithWords.map { it.text })
+                AiLyricsRomanization.linesFor(
+                    aiRomanizationSessionKey,
+                    entriesWithWords.map { it.text },
+                    aiRomanizationSettings,
+                )
             }
         }
     LaunchedEffect(aiRomanizationSessionKey, entriesWithWords, aiRomanizationSettings) {
