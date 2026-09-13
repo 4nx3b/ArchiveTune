@@ -240,6 +240,8 @@ fun SpatialFlowPlayerContent(
     // The lyrics sheet is a dark media surface by design (it always draws the
     // blurred artwork under the dark SfCanvasScrimBrush), so it keeps the dark
     // surface derivation in BOTH themes — the lyrics text is constant white.
+    // (The light* parameters are required by the signature but unused when
+    // isDark = true.)
     val lyricsBackgroundBrush =
         remember(playerBackgroundColor) {
             val finalColor =
@@ -247,7 +249,9 @@ fun SpatialFlowPlayerContent(
                     sourceColor = playerBackgroundColor,
                     isDark = true,
                     darkLightness = 0.145f,
+                    lightLightness = 0.825f,
                     darkSaturationRange = 0.32f..0.54f,
+                    lightSaturationRange = 0.30f..0.48f,
                 )
             SolidColor(finalColor)
         }
