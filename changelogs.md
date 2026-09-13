@@ -12,7 +12,9 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - Floating popups with Liquid Glass OFF: redesigned "solid sheet" — one opaque
   elevated theme surface with a hairline edge, a drag handle, a flat header,
   outlined action tiles and flat sections with hairline dividers (replaces the
-  old grey-on-grey translucent card stack; the glass mode is unchanged)
+  old grey-on-grey translucent card stack; the glass mode is unchanged); the
+  sheet fill now carries the rounded menu shape so no sharp square corners
+  peek past the rounded border, shadow and clip
 - Hide status bar
 - Canvas playback in the albums page
 - Show Lyrics toggle, Auto Enter AOD, Enter AOD when screen dims
@@ -144,7 +146,13 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
   control stack pin to the bottom of the player exactly where the bottom
   controls sit while the canvas plays — no more floating mid-screen or
   jumping when the canvas resolves (the fixed top-offset calculation is
-  removed)
+  removed); the artwork also sits a touch higher with breathing room above
+  the title, and the 16dp drop shadow is gone — it read as a black
+  border/background hugging the cover, glaring on light backdrops
+- SpatialFlow lyrics: the text is constant white over a constant dark
+  backdrop in both dark and light mode — the lyrics sheet always renders the
+  blurred artwork under the dark scrim, so light mode no longer paints dark
+  lyrics text on it
 - Default and SpatialFlow players: the three-dot song overflow menu sits next
   to the "Now Playing" header, top right, opening the full song menu
 - BitChord canvas actually plays now (the canvas resolver used to clear the
