@@ -1969,3 +1969,61 @@ Stage Summary:
   full-height twin, AM scrim colors, canvas pause/exact-resume, drifting
   64dp-blur lyrics backdrop, icon-anchored popup), and every liquid-glass
   popup now shows the songs-menu hairlines. CI to be monitored.
+
+Task ID: 38
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 15.0 stable release batch — real launcher icon switching for icon
+packs, canvas freeze on lyrics open, version 15.0 bump, README credits,
+PR research + curated stable release notes. (Batch-5 commit 0ee4b72df —
+compact glass popup, provider-scoped romanisation, upstream about links —
+landed at the end of the previous session without a worklog entry; CI was
+green on check/build, nightly/release matrix in flight.)
+
+Work Log:
+- 709f02e1e: SpatialFlow lyrics-open teardown now two-phase — decode stops
+  the instant lyrics open (canvasPlayingForLyrics=false pauses ExoPlayer)
+  while surfaces hold the frozen frame for the reveal, dropping after
+  SfLyricsBackdropMorphMs; close restores both. Fixes "lyrics lag for the
+  first few seconds".
+- 4a40c0d0a: icon packs apply the REAL launcher icon now. slimIconPacks
+  default flipped to false (pack baked into every release APK — aliases +
+  rasterized icons + catalog; a runtime-downloaded bitmap can't replace a
+  launcher icon on stock Android). AppIconRepository: runtime icons carry
+  their catalog aliasClassName, apply validates the component exists then
+  reuses applySelection's PackageManager switching; requestPinShortcut
+  path deleted; selection truth = component state with the pref as seed.
+  Version 14.0.0/1400 -> 15.0.0/1500. README credits: SimpMusic (player
+  style + lyrics API), SpatialFlow (player style + haptics), Vivi Music
+  (AM morph animations, JioSaavn, Listen Together server), Muzo (fonts
+  API, Spotify Canvas, Qobuz backup, design), BitChord (player style) —
+  all with repository links. PR #216 retitled/re-described for 15.0.
+- 3fb0fc851: icon-pack zip packing made deterministic (touch 2000-01-01 +
+  sorted files-only zip -@ list) after the workflow's rebuild on
+  GenerateIconPackTask.kt shifted the zip SHA (mtime drift) and silently
+  staled the pinned digest; EXPECTED_SHA256 re-pinned (ff4cfc11…),
+  reproduced locally with identical commands; CI-republished zip verified
+  byte-identical.
+- 4849200ce: review round. CRASH fix — batched setComponentEnabledSettings
+  only exists from API 35, TIRAMISU guard made API 33/34 crash with
+  NoSuchMethodError on apply; legacy app_icon_ shortcut sweep moved to
+  loadCatalog (was unreachable in bundled builds — exactly where 14.x
+  upgraders live); unreachable isDefault branch dropped;
+  supportsPinnedShortcuts deleted; header comments updated; slim-build
+  notice reworded honestly (preview-only).
+- Changelog research: fetched all 216 PRs (127 merged since v14.0.5362 /
+  PR #78), verified feature claims against the codebase (SponsorBlock,
+  PiP, sleep timer, Listen Together module, JioSaavn, haptics, TDLight
+  final state, Echo-Music; DabMusic removed post-#128). Curated,
+  deduplicated, concise release notes at
+  /home/z/my-project/download/release-notes-v15.0.md.
+- Release mechanics mapped: release.yml is workflow_dispatch on main,
+  derives 15.0.<commit-count> + tag from baseVersionName, builds APK
+  matrix, auto-generates commit changelog, maintainer edits body (in-app
+  updater shows body verbatim). release_v15.py prepared: merge PR #216,
+  dispatch workflow, poll for release, apply curated body.
+
+Stage Summary:
+- dev carries the full 15.0 payload: real icon switching (no shortcuts,
+  API 33-34 crash fixed), canvas freeze fix, v15 bump, README credits,
+  deterministic icon-pack release. CI monitored; release dispatch pending
+  green.
