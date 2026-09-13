@@ -4,11 +4,10 @@ name: Build icon pack release
 # IconPack submodule, exactly as GenerateIconPackTask renders them, and
 # publishes it as a GitHub release (tag icon-pack-v1).
 #
-# Since 15.0 the pack is baked into the APK by default (-PslimIconPacks=false);
-# this zip only matters for opt-in slim builds (-PslimIconPacks=true), which
-# bake neither the pack's launcher aliases nor its icons and download this zip
-# on demand the first time the user opens the app-icon customization screen
-# (see IconPackRuntimeManager.kt). The zip is packed deterministically so the
+# Since the 15.x slim-by-default change every APK compiles the pack's launcher
+# aliases plus compressed WebP rasters directly (real icon switching in every
+# build, ~1/8 of the old PNG payload), so this zip is a dormant capability kept
+# for future runtime distribution. The zip is packed deterministically so the
 # digest pinned in IconPackRuntimeManager only changes with the content.
 
 on:
@@ -65,7 +64,7 @@ jobs:
           ASSETS="app/build/generated/iconPack/gmsMobileUniversalDebug/assets/icon_pack"
           RES="app/build/generated/iconPack/gmsMobileUniversalDebug/res"
           cp "$ASSETS/catalog.json" "$OUT/icon_pack/catalog.json"
-          cp "$RES"/drawable-nodpi/icon_pack_*.png "$OUT/icon_pack/drawables/"
+          cp "$RES"/drawable-nodpi/icon_pack_*.webp "$OUT/icon_pack/drawables/"
           # Deterministic archive: fixed mtimes + sorted entry order. zip embeds
           # each file's mtime, so an un-normalized rebuild used to shift the
           # archive's SHA-256 even when the pack content was identical — which

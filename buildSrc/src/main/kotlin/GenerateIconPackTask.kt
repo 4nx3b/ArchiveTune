@@ -28,6 +28,7 @@ import org.gradle.api.tasks.TaskAction
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
@@ -82,10 +83,8 @@ abstract class GenerateIconPackTask : DefaultTask() {
         assetsDirectory.mkdirs()
         manifestFile.parentFile.mkdirs()
 
-        if (slimMode.get()) {
-            manifestFile.writeText(buildManifest(emptyList()))
-            return
-        }
+        val iconRasterSize = if (slimMode.get()) SlimIconRasterSize else IconRasterSize
+        val iconWebpQuality = if (slimMode.get()) SlimIconWebpQuality else BundledIconWebpQuality
 
         val seenIds = mutableSetOf<String>()
         val seenHashes = mutableSetOf<String>()
@@ -139,13 +138,14 @@ abstract class GenerateIconPackTask : DefaultTask() {
                         }
                     }
                 val drawableName = "icon_pack_$hash"
-                val targetFile = File(resourcesDirectory, "drawable-nodpi/$drawableName.png")
+                val rasterized = rasterizeSvg(sourceFile, iconRasterSize)
+                val targetFile = File(resourcesDirectory, "drawable-nodpi/$drawableName.webp")
                 targetFile.parentFile.mkdirs()
-                rasterizeSvg(sourceFile, targetFile)
+                targetFile.writeBytes(encodeWebP(rasterized.image, iconWebpQuality, sourceFile))
                 val backgroundColor =
                     if (configuredBackgroundColor.isEmpty()) {
                         if (hasIntegratedBackground) {
-                            targetFile.readOpaqueCornerColor()
+                            rasterized.image.opaqueCornerColor()
                                 ?: analysis.recommendedBackgroundColor
                         } else {
                             analysis.recommendedBackgroundColor
@@ -217,16 +217,20 @@ abstract class GenerateIconPackTask : DefaultTask() {
         return sourceFile
     }
 
+    private data class RasterizedIcon(
+        val image: java.awt.image.BufferedImage,
+    )
+
     private fun rasterizeSvg(
         sourceFile: File,
-        targetFile: File,
-    ) {
+        rasterSize: Int,
+    ): RasterizedIcon {
         val output = ByteArrayOutputStream()
         try {
             val transcoder =
                 PNGTranscoder().apply {
-                    addTranscodingHint(SVGAbstractTranscoder.KEY_WIDTH, IconRasterSize.toFloat())
-                    addTranscodingHint(SVGAbstractTranscoder.KEY_HEIGHT, IconRasterSize.toFloat())
+                    addTranscodingHint(SVGAbstractTranscoder.KEY_WIDTH, rasterSize.toFloat())
+                    addTranscodingHint(SVGAbstractTranscoder.KEY_HEIGHT, rasterSize.toFloat())
                     addTranscodingHint(SVGAbstractTranscoder.KEY_EXECUTE_ONLOAD, false)
                     addTranscodingHint(SVGAbstractTranscoder.KEY_ALLOW_EXTERNAL_RESOURCES, false)
                 }
@@ -250,7 +254,62 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 "IconPack Source \"${sourceFile.name}\" produced an invalid PNG.",
             )
         }
-        targetFile.writeBytes(png)
+        val image =
+            try {
+                ImageIO.read(ByteArrayInputStream(png))
+            } catch (error: Exception) {
+                throw GradleException(
+                    "Unable to decode rasterized icon \"${sourceFile.name}\".",
+                    error,
+                )
+            } ?: throw GradleException(
+                "Rasterized icon \"${sourceFile.name}\" is not a readable image.",
+            )
+        return RasterizedIcon(image)
+    }
+
+    private fun encodeWebP(
+        image: java.awt.image.BufferedImage,
+        quality: Float,
+        sourceFile: File,
+    ): ByteArray {
+        val width = image.width
+        val height = image.height
+        val argb = IntArray(width * height)
+        image.getRGB(0, 0, width, height, argb, 0, width)
+        val rgba = ByteArray(width * height * 4)
+        for (pixelIndex in argb.indices) {
+            val pixel = argb[pixelIndex]
+            val byteOffset = pixelIndex * 4
+            rgba[byteOffset] = (pixel ushr RedChannelShift and ColorChannelMask).toByte()
+            rgba[byteOffset + 1] = (pixel ushr GreenChannelShift and ColorChannelMask).toByte()
+            rgba[byteOffset + 2] = (pixel and ColorChannelMask).toByte()
+            rgba[byteOffset + 3] = (pixel ushr AlphaChannelShift and ColorChannelMask).toByte()
+        }
+        val webp =
+            try {
+                val options =
+                    com.luciad.imageio.webp.WebPEncoderOptions().apply {
+                        setLossless(false)
+                        setCompressionQuality(quality)
+                        setMethod(4)
+                    }
+                com.luciad.imageio.webp.WebPBridge.encodeRgba(options, rgba, width, height, width * 4)
+            } catch (error: Throwable) {
+                throw GradleException(
+                    "Unable to encode WebP icon \"${sourceFile.name}\".",
+                    error,
+                )
+            }
+        if (webp.size < MinWebPBytes ||
+            !webp.startsWith(RiffSignature, 0) ||
+            !webp.startsWith(WebpSignature, 8)
+        ) {
+            throw GradleException(
+                "IconPack Source \"${sourceFile.name}\" produced an invalid WebP file.",
+            )
+        }
+        return webp
     }
 
     private fun analyzeSvg(sourceFile: File): SvgAnalysis {
@@ -563,19 +622,13 @@ ${aliases.prependIndent("        ")}
             .take(12)
             .joinToString(separator = "") { byte -> "%02x".format(byte) }
 
-    private fun File.readOpaqueCornerColor(): String? {
-        val image =
-            try {
-                ImageIO.read(this)
-            } catch (error: Exception) {
-                throw GradleException("Unable to inspect generated icon raster \"$name\".", error)
-            } ?: throw GradleException("Generated icon raster \"$name\" is not a readable image.")
+    private fun java.awt.image.BufferedImage.opaqueCornerColor(): String? {
         val corners =
             intArrayOf(
-                image.getRGB(0, 0),
-                image.getRGB(image.width - 1, 0),
-                image.getRGB(0, image.height - 1),
-                image.getRGB(image.width - 1, image.height - 1),
+                getRGB(0, 0),
+                getRGB(width - 1, 0),
+                getRGB(0, height - 1),
+                getRGB(width - 1, height - 1),
             )
         if (corners.any { color -> color ushr AlphaChannelShift != OpaqueAlpha }) {
             return null
@@ -655,6 +708,10 @@ ${aliases.prependIndent("        ")}
         const val ComplexArtworkPathThreshold = 32
         const val ComplexArtworkColorThreshold = 4
         const val IconRasterSize = 1024
+        const val SlimIconRasterSize = 432
+        const val BundledIconWebpQuality = 0.92f
+        const val SlimIconWebpQuality = 0.86f
+        const val MinWebPBytes = 512
         const val ViewBoxValueCount = 4
         const val FullCanvasCoordinateCount = 8
         const val FullCanvasToleranceRatio = 0.01
@@ -685,5 +742,26 @@ ${aliases.prependIndent("        ")}
                 0x1A,
                 0x0A,
             )
+        val RiffSignature =
+            byteArrayOf(
+                0x52, // R
+                0x49, // I
+                0x46, // F
+                0x46, // F
+            )
+        val WebpSignature =
+            byteArrayOf(
+                0x57, // W
+                0x45, // E
+                0x42, // B
+                0x50, // P
+            )
+        private fun ByteArray.startsWith(
+            signature: ByteArray,
+            offset: Int,
+        ): Boolean {
+            if (size < offset + signature.size) return false
+            return signature.indices.all { index -> this[offset + index] == signature[index] }
+        }
     }
 }

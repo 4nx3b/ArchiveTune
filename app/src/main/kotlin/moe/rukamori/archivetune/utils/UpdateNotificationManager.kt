@@ -196,14 +196,6 @@ object UpdateNotificationManager {
                 UpdateChannel.CANARY -> Updater.getLatestCanaryDownloadUrl()
                 UpdateChannel.STABLE -> Updater.getLatestDownloadUrl()
             }
-        val downloadIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
-        val downloadPendingIntent =
-            PendingIntent.getActivity(
-                context,
-                1,
-                downloadIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
 
         val notification =
             NotificationCompat
@@ -214,11 +206,29 @@ object UpdateNotificationManager {
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(openAppPendingIntent)
                 .setAutoCancel(true)
-                .addAction(
-                    R.drawable.download,
-                    context.getString(R.string.download),
-                    downloadPendingIntent,
-                ).build()
+                .apply {
+                    if (AppUpdateService.isSupported() && downloadUrl.isNotBlank()) {
+                        addAction(
+                            R.drawable.download,
+                            context.getString(R.string.update),
+                            AppUpdateService.startPendingIntent(context, downloadUrl, newVersion),
+                        )
+                    } else {
+                        val downloadIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                        val downloadPendingIntent =
+                            PendingIntent.getActivity(
+                                context,
+                                1,
+                                downloadIntent,
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                            )
+                        addAction(
+                            R.drawable.download,
+                            context.getString(R.string.download),
+                            downloadPendingIntent,
+                        )
+                    }
+                }.build()
 
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)

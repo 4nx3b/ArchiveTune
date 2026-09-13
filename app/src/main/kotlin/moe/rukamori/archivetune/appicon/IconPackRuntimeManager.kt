@@ -39,7 +39,7 @@ object IconPackRuntimeManager {
     private const val ZIP_ENTRY_PREFIX = "icon_pack/"
     private const val CATALOG_ENTRY = "icon_pack/catalog.json"
     private const val DRAWABLES_ENTRY_PREFIX = "icon_pack/drawables/"
-    private const val MIN_PNG_BYTES = 1024
+    private const val MIN_ICON_BYTES = 512
     private const val BUFFER = 64 * 1024
 
     sealed interface InstallState {
@@ -86,7 +86,7 @@ object IconPackRuntimeManager {
     fun iconFile(
         context: Context,
         drawableResourceName: String,
-    ): File = File(drawablesDirectory(context), "$drawableResourceName.png")
+    ): File = File(drawablesDirectory(context), "$drawableResourceName.webp")
 
     fun isBundled(): Boolean = BuildConfig.ICON_PACK_BUNDLED
 
@@ -183,7 +183,7 @@ object IconPackRuntimeManager {
                     version = VERSION,
                     iconCount =
                         drawablesDirectory(context)
-                            .listFiles { f -> f.isFile && f.name.endsWith(".png") }
+                            .listFiles { f -> f.isFile && (f.name.endsWith(".png") || f.name.endsWith(".webp")) }
                             ?.size ?: 0,
                 )
             } else if (lastFailure != null) {
@@ -244,7 +244,7 @@ object IconPackRuntimeManager {
                 }
             }
             Timber.tag(TAG).d("Icon pack download finished: %d bytes read", read)
-            if (read < MIN_PNG_BYTES) {
+            if (read < MIN_ICON_BYTES) {
                 partial.delete()
                 throw IllegalStateException("Icon pack download too small")
             }
@@ -283,7 +283,8 @@ object IconPackRuntimeManager {
                         sawCatalog = true
                     }
 
-                    name.startsWith(DRAWABLES_ENTRY_PREFIX) && name.endsWith(".png") -> {
+                    name.startsWith(DRAWABLES_ENTRY_PREFIX) &&
+                        (name.endsWith(".png") || name.endsWith(".webp")) -> {
                         val out = File(drawables, name.removePrefix(DRAWABLES_ENTRY_PREFIX))
                         if (out.canonicalPath.startsWith(drawables.canonicalPath)) {
                             out.outputStream().use { zip.copyTo(it) }
