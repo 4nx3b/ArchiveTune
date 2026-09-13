@@ -43,11 +43,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +62,8 @@ import moe.rukamori.archivetune.playback.SleepTimer
 import moe.rukamori.archivetune.utils.makeTimeString
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun AppleMusicSleepTimerSheet(
@@ -166,12 +166,10 @@ fun AppleMusicSleepTimerSheet(
                 }
             }
 
-            // Section dividers, same visible 30% ink as the songs overflow
-            // menu rows (this sheet is hosted by the liquid-glass popup, where
-            // plain outlineVariant reads as no divider at all).
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 10.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
+                thickness = 0.5.dp,
             )
 
             val presets =
@@ -231,8 +229,9 @@ fun AppleMusicSleepTimerSheet(
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 10.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
+                thickness = 0.5.dp,
             )
 
             val sliderValue = sliderMinutes.coerceIn(0f, 120f)

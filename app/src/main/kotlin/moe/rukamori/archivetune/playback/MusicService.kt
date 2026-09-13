@@ -29,7 +29,6 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -130,7 +129,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -152,7 +150,6 @@ import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
-import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoLoadMoreKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -343,7 +340,6 @@ import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.enumPreference
-import moe.rukamori.archivetune.utils.preference
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.telegram.TelegramDataSource
@@ -380,6 +376,7 @@ import kotlin.math.ceil
 import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.plus
 
 private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
 
@@ -409,7 +406,6 @@ class MusicService :
     @Inject
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
-    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
     @Volatile
     var musicHapticsEngine: SpatialFlowHapticEngine? = null
         private set
@@ -481,11 +477,6 @@ class MusicService :
         this,
         PlayerStreamClientKey,
         PlayerStreamClient.ANDROID_VR,
-    )
-    private val autoChoosePlaybackClient by preference(
-        this,
-        AutoChoosePlaybackClientKey,
-        true,
     )
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
@@ -678,7 +669,6 @@ class MusicService :
     private val crossfadeGeneration = AtomicLong(0)
     private var lyricsPreloadManager: LyricsPreloadManager? = null
 
-    /** Background job that resolves + caches upcoming songs (Preload songs setting). */
     private var songPreloadJob: Job? = null
 
     private val _playerFlow = MutableStateFlow<Player?>(null)
@@ -861,9 +851,6 @@ class MusicService :
                 }
             }
         }
-
-    private var lastDiscordUpdateTime = 0L
-
     private var scrobbleManager: moe.rukamori.archivetune.utils.ScrobbleManager? = null
 
     private lateinit var widgetUpdater: MusicServiceWidgetUpdater
@@ -1212,11 +1199,6 @@ class MusicService :
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
-        // Music haptics (SpatialFlow port): the engine is owned by the service
-        // and fed by [HapticsPcmProcessor] from the audio processor chain of
-        // every player this service builds. It reacts to the haptics_enabled /
-        // vibration_strength preferences on its own, so no further wiring is
-        // needed here.
         musicHapticsEngine = SpatialFlowHapticEngine(this)
 
         try {
@@ -1332,10 +1314,6 @@ class MusicService :
                     removeMusicVideoItems()
                 }
             }
-        // Turning "allow age-restricted songs" off also stops playing
-        // explicit-tagged songs: the live queue drops them immediately (the
-        // current item included — removing it advances playback to the next
-        // allowed track), and every newly built queue filters them upstream.
         dataStore.data
             .map { preferences -> preferences[AllowAgeRestrictedKey] ?: false }
             .distinctUntilChanged()
@@ -1344,8 +1322,6 @@ class MusicService :
                     scope.launch(SilentHandler) { removeExplicitItems() }
                 }
             }
-        // Preload songs: react the moment the slider moves so the upcoming
-        // window (re)populates without waiting for the next track change.
         dataStore.data
             .map { preferences -> preferences[PreloadSongsCountKey] ?: 0 }
             .distinctUntilChanged()
@@ -2231,9 +2207,6 @@ class MusicService :
             database.getBlockedArtistIds().toSet()
         }
 
-    // The age-restricted toggle also gates explicit tracks: while age-restricted
-    // songs are disallowed, explicit-tagged songs count as hidden content too,
-    // for both freshly built queues and the live queue below.
     private suspend fun shouldHideExplicitTracks(): Boolean =
         dataStore.get(HideExplicitKey, false) ||
             !dataStore.get(AllowAgeRestrictedKey, false)
@@ -3175,9 +3148,6 @@ class MusicService :
 
             rebindAudioEffectSession(localPlayer.audioSessionId)
 
-            // The cast switch replaced the player object — rebind the
-            // SponsorBlock monitor to the new instance (attach detaches
-            // any previous player first).
             sponsorBlockPlaybackController.attach(player, scope)
 
             val promotedItem = incomingPlayer.getMediaItemAt(targetIndex)
@@ -6658,10 +6628,6 @@ class MusicService :
                 syncUtils.likeSong(song)
 
                 if (!song.isLocal && dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-                    // Source-scoped request id ("ytm:<id>", …) — identical to
-                    // what the download menus queue. The old plain-id request
-                    // created a SECOND download entry the menus could not see
-                    // (and could not cancel) next to the source-scoped one.
                     val downloadId = downloadUtil.currentSourceDownloadTarget(song.id).key
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
@@ -7469,8 +7435,6 @@ class MusicService :
             lyricsPreloadManager?.onSongChanged(currentIndex, queue)
         }
 
-        // Preload songs (playback setting): refresh the upcoming-window
-        // preload whenever the playing item moves.
         updateSongPreload()
 
         val joined = togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
@@ -8568,23 +8532,10 @@ class MusicService :
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Preload songs (playback setting): resolve + cache the next N songs so
-    // they start without a network round-trip.
-    // -----------------------------------------------------------------------
-
-    /** 64 KiB write buffer for the preload fetches. */
     private val preloadSongsBufferBytes = 64 * 1024
 
-    /** 5 MiB cache fragments, mirroring the download prewarm's parameters. */
     private val preloadSongsFragmentBytes = 5L * 1024 * 1024
 
-    /**
-     * Refreshes the upcoming-song preload window. Cheap: re-reads the
-     * setting snapshot, cancels any in-flight preload and (when enabled and
-     * the player is active) starts a new sequential background pass over
-     * the next N queue items.
-     */
     private fun updateSongPreload() {
         songPreloadJob?.cancel()
         songPreloadJob = null
@@ -8593,12 +8544,6 @@ class MusicService :
         }
         val preloadCount = dataStore.get(PreloadSongsCountKey, 0)
         if (preloadCount <= 0) return
-        // Media3 players are single-threaded. Snapshot the upcoming window on
-        // the application thread (this runs from player callbacks and the main
-        // coroutine scope) and hand the immutable list to the IO coroutine:
-        // reading player state from Dispatchers.IO throws
-        // IllegalStateException, which SilentHandler would swallow, so
-        // preloading silently never happened.
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex < 0) return
         val upcoming = player.mediaItems.drop(currentIndex + 1).take(preloadCount)
@@ -8617,22 +8562,12 @@ class MusicService :
         }
     }
 
-    /**
-     * Resolves one upcoming item's stream and fetches it fully into
-     * [playerCache] under the item's media id — exactly the key the
-     * playback [CacheDataSource] reads — so the track starts instantly.
-     * Skips anything that does not go through the resolver (local files,
-     * Telegram, direct URLs) or is already cached.
-     */
     private suspend fun preloadPlaybackStream(item: MediaItem): Boolean =
         withContext(Dispatchers.IO) {
             val mediaId = item.mediaId.trim()
             if (mediaId.isBlank()) return@withContext false
             val localConfiguration = item.localConfiguration ?: return@withContext false
             val uri = localConfiguration.uri
-            // Resolver-driven items use the bare media id as their URI; every
-            // other scheme (content/file/telegram/deezer/https) is served by
-            // its own data source and gains nothing from this preloader.
             if (uri.scheme != null) return@withContext false
 
             val cachedSpans = runCatching { playerCache.getCachedSpans(mediaId) }.getOrNull().orEmpty()
@@ -8658,13 +8593,6 @@ class MusicService :
             fetchFullStreamIntoPlayerCache(resolvedUri.toString(), mediaId)
         }
 
-    /**
-     * Full-file fetch into [playerCache] with the same sink parameters the
-     * download prewarm uses, plus the content-length metadata `CacheUtil`
-     * records — without it the playback resolver cannot recognize the
-     * fully-cached song and still does a network round-trip. Partial fetches
-     * are kept: the playback cache data source tops up missing ranges live.
-     */
     private suspend fun fetchFullStreamIntoPlayerCache(
         url: String,
         cacheKey: String,
@@ -8711,8 +8639,6 @@ class MusicService :
                     } finally {
                         runCatching { cacheSink.close() }
                     }
-                    // Record the real length so the next-song resolver treats
-                    // this item as fully cached (mirrors CacheUtil metadata).
                     val fetchComplete = contentLength <= 0 || bytesWritten == contentLength
                     if (bytesWritten > 0L && fetchComplete) {
                         runCatching {
@@ -9008,18 +8934,6 @@ class MusicService :
             evictDirectStreamCache(mediaId)
 
             contentLengthCache.remove(mediaId)
-            // Source switch purges PLAYBACK state only (playerCache spans +
-            // resolvers + content-length metadata) so the next prepare
-            // re-resolves from the new source. The DOWNLOAD cache is
-            // deliberately NOT touched: it holds per-source OFFLINE COPIES
-            // ("qobuz:<id>", "ytm:<id>", ...) that must coexist — wiping it
-            // here destroyed the previous source's completed download, so the
-            // export-downloads page collapsed back to a single entry after a
-            // source change (user report: qobuz download "overwritten" when
-            // switching to another source). A download for another source is
-            // never served for playback of this source (the resolver only
-            // short-circuits on the request's own source-scoped key), so
-            // leaving those bytes in place is safe for playback too.
             runCatching { playerCache.removeResource(mediaId) }
             val ytmKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId
             runCatching { playerCache.removeResource(ytmKey) }
@@ -9095,17 +9009,6 @@ class MusicService :
             return null
         }
         runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
-        // Direct Qobuz track playback: when the user picks a specific Qobuz
-        // track from the "Play from" source-search popup, a per-song Qobuz
-        // trackId override is persisted in SongSourceQobuzTrackIdKey. We
-        // detect that here so we can force the chain to [QOBUZ] and bypass
-        // the metadata match gate — the user explicitly chose this track.
-        // The mediaId is NOT changed (it stays as the song's existing YouTube
-        // id), so the song is not registered as a duplicate in the playback
-        // history.
-        //
-        // IMPORTANT: read directly from dataStore.data.first() instead of the
-        // cached dataStore.get() — see buildSourceQuery for the rationale.
         val qobuzTrackIdRaw = runCatching {
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
@@ -9126,18 +9029,8 @@ class MusicService :
 
         val now = System.currentTimeMillis()
         if (isDirectPick) {
-            // A direct pick (user chose a specific Qobuz track from the source
-            // search popup) always resolves fresh — drop any previously cached
-            // direct streams for this song first, mirroring the legacy behavior.
             evictDirectStreamCache(mediaId)
         } else {
-            // Per-source cache identities: every resolved direct stream is stored
-            // under its own source-scoped key ("<source>:<mediaId>"), so streams
-            // resolved from different providers coexist instead of evicting each
-            // other. Lookups walk the chain in the user's priority order (or the
-            // per-song override) and use the first fresh hit — reordering the
-            // download/source priority changes which cached stream is served
-            // without re-resolving or losing the other sources' cached streams.
             val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
             val probeOrder =
                 when (override) {
@@ -9149,8 +9042,6 @@ class MusicService :
                 val cacheKey = sourceCacheKey(source, mediaId)
                 val cached = directStreamCache[cacheKey] ?: continue
                 if (cached.expiresAtMs <= now) {
-                    // Stale entry for this source — drop it so the resolver
-                    // refreshes it; other sources' entries stay untouched.
                     directStreamCache.remove(cacheKey, cached)
                     continue
                 }
@@ -10026,19 +9917,12 @@ class MusicService :
             else -> "${source.name.lowercase()}:$mediaId"
         }
 
-    /**
-     * Removes every per-source direct-stream cache entry for [mediaId]. The
-     * directStreamCache is keyed by source-scoped identities ("<source>:<mediaId>")
-     * so streams from different providers coexist; eviction therefore has to
-     * sweep all of them.
-     */
     private fun evictDirectStreamCache(mediaId: String) {
         AudioSourceType.entries.forEach { source ->
             directStreamCache.remove(sourceCacheKey(source, mediaId))
         }
     }
 
-    /** True when ANY source still holds a fresh (unexpired) cached stream for [mediaId]. */
     private fun hasFreshDirectStream(mediaId: String): Boolean {
         val now = System.currentTimeMillis()
         return AudioSourceType.entries.any { source ->
@@ -10046,12 +9930,6 @@ class MusicService :
         }
     }
 
-    /**
-     * Candidate DataSpec cache keys for a song, in the user's audio-source
-     * priority order first (the source pinned by the current reorder wins when
-     * several providers have cached bytes for this song), with the legacy plain
-     * mediaId key (YouTube, the fallback) always probed last.
-     */
     private fun cachedDataSpecCandidateKeys(mediaId: String): List<String> =
         sourceResolutionChain().map { sourceCacheKey(it, mediaId) } +
             (DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId) +
@@ -10075,8 +9953,6 @@ class MusicService :
             return dataSpec
         }
         val mediaId = dataSpec.key ?: return dataSpec
-        // ResolvingDataSource runs on Media3's loader thread. Headless restores
-        // must see the configured auth/proxy/region just like foreground playback.
         runBlocking { moe.rukamori.archivetune.App.startupReadiness.awaitReady() }
         val lowDataModeActive = isLowDataModeActive()
         val storedFormat =
@@ -10544,47 +10420,6 @@ class MusicService :
 
         return (cursor - position).coerceAtLeast(0L)
     }
-
-    private fun getContinuousCachedLength(
-        mediaId: String,
-        position: Long,
-        requestedLength: Long,
-        includePlayerCache: Boolean = true,
-    ): Long {
-        val targetEnd = position.saturatingAdd(requestedLength)
-        var cursor = position
-
-        val candidateKeys = cachedDataSpecCandidateKeys(mediaId)
-        val playerCacheSpans =
-            if (includePlayerCache) {
-                candidateKeys.flatMap { key ->
-                    runCatching { playerCache.getCachedSpans(key).toList() }.getOrNull().orEmpty()
-                }
-            } else {
-                emptyList()
-            }
-        val spans =
-            (
-                candidateKeys.flatMap { key ->
-                    runCatching { downloadCache.getCachedSpans(key).toList() }.getOrNull().orEmpty()
-                } + playerCacheSpans
-            ).asSequence()
-                .filter { span -> span.position.saturatingAdd(span.length) > position }
-                .sortedBy { span -> span.position }
-                .toList()
-
-        for (span in spans) {
-            if (span.position > cursor) break
-            val spanEnd = span.position.saturatingAdd(span.length)
-            if (spanEnd > cursor) {
-                cursor = minOf(spanEnd, targetEnd)
-                if (cursor >= targetEnd) break
-            }
-        }
-
-        return (cursor - position).coerceAtLeast(0L)
-    }
-
     private fun Long.saturatingAdd(value: Long): Long {
         if (value <= 0L) return this
         val result = this + value
@@ -10610,15 +10445,6 @@ class MusicService :
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram"
     }
-
-    private fun deviceSupportsMimeType(mimeType: String): Boolean =
-        runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
-
     private fun createMediaSourceFactory() =
         DefaultMediaSourceFactory(
             createDataSourceFactory(),
@@ -10927,10 +10753,6 @@ class MusicService :
                             150.toShort(),
                         ),
                         SonicAudioProcessor(),
-                        // SpatialFlow-style PCM tap: analyzes the decoded audio
-                        // for the music-haptics engine and passes samples
-                        // through untouched. A fresh instance per sink — an
-                        // AudioProcessor may only belong to one chain.
                         HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                     ),
                 ).build()

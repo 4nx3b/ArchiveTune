@@ -9,13 +9,13 @@ package moe.rukamori.archivetune.ui.screens.library
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.constants.PlaylistTagsFilterKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.TagEntity
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.runtime.getValue
 
 @Composable
 internal fun rememberPlaylistTagFilterState(database: MusicDatabase): Pair<Set<String>, (Set<String>) -> Unit> {

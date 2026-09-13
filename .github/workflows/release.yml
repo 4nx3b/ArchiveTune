@@ -543,109 +543,37 @@ jobs:
         with:
           path: downloaded_artifacts/
 
-      - name: Resolve changelog range
-        id: changelog_range
-        shell: bash
-        run: |
-          LAST_TAG="$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || true)"
-          if [ -n "$LAST_TAG" ]; then
-            FROM_REF="$LAST_TAG"
-          else
-            FROM_REF="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
-          fi
-
-          echo "from_ref=$FROM_REF" >> "$GITHUB_OUTPUT"
-          echo "to_ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Build Changelog
-        id: build_changelog
-        uses: mikepenz/release-changelog-builder-action@v6
-        with:
-          mode: "COMMIT"
-          fromTag: ${{ steps.changelog_range.outputs.from_ref }}
-          toTag: ${{ steps.changelog_range.outputs.to_ref }}
-          configurationJson: |
-            {
-              "template": "# Changelog\n\n#{{CHANGELOG}}\n\n<details>\n<summary>Other changes</summary>\n\n#{{UNCATEGORIZED}}\n</details>\n",
-              "pr_template": "- #{{TITLE}} — by @#{{AUTHOR}}",
-              "categories": [
-                { "title": "## Features", "labels": ["feat", "feature"] },
-                { "title": "## Fixes", "labels": ["fix", "bug"] },
-                { "title": "## Performance", "labels": ["perf"] },
-                { "title": "## Refactors", "labels": ["refactor"] },
-                { "title": "## Documentation", "labels": ["docs"] },
-                { "title": "## Build / CI", "labels": ["build", "ci"] }
-              ],
-              "label_extractor": [
-                {
-                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?:\\s+.*$",
-                  "on_property": "title",
-                  "target": "$1"
-                }
-              ]
-            }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create Release
-        # Prefer a PAT (needed upstream so the release triggers downstream workflows), but fall
-        # back to the built-in GITHUB_TOKEN so forks without a RELEASE_PAT secret can still publish.
-        #
-        # The release body is the auto-generated changelog ONLY — no hardcoded "What's new"
-        # section. The maintainer edits the release body manually via the GitHub Releases
-        # "Edit release" UI after the workflow runs, typing the user-facing highlights there.
-        # The in-app updater surfaces `release.body` verbatim to the user, so whatever the
-        # maintainer types is what users see in the update popup. This avoids the bug where
-        # every stable update popup showed stale "Qobuz & Tidal integration" text long after
-        # those features shipped.
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-gms-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-gms-mobile-universal-release/*")
 
-          # Release notes are ONLY the generated changelog.
-          #
-          # This used to start with a hardcoded "What's new 🎵" block in a *quoted* heredoc
-          # (<<'NOTES'). Quoting means no expansion, so those four bullets were written out
-          # byte-identical on every single release. They described one specific past build --
-          # "Fixed app icon on home screen", "Smoother animations" -- and then kept advertising
-          # those same changes on every release afterwards, while pushing the real per-release
-          # list further down the page. That is why every changelog looked the same; the
-          # generator below was always working correctly.
-          #
-          # Anything newsworthy belongs in a commit subject, where build_changelog picks it up and
-          # files it under Features/Fixes/Performance automatically.
-          #
-          # QUOTED heredoc + unique delimiter: GitHub substitutes the changelog
-          # output expression into the script BEFORE bash parses it, so quoting
-          # costs nothing — while an UNQUOTED delimiter made bash expand the
-          # changelog text itself, executing every backticked identifier in a
-          # commit subject (…: command not found) and killing the release step
-          # the first time the commit range contained them.
-          cat > release_notes.md <<'ARCHIVETUNE_RELEASE_NOTES_EOF'
-          ${{ steps.build_changelog.outputs.changelog }}
-          ARCHIVETUNE_RELEASE_NOTES_EOF
+          VERSION="${{ needs.check-version.outputs.new_version }}"
+          TAG="v${VERSION}"
 
-          # With the static block gone the changelog is the only content, so an empty generator
-          # result (bad tag range, nothing categorised) would publish blank release notes.
-          # Fall back to a compare link instead of shipping an empty body.
-          if [ -z "$(tr -d '[:space:]' < release_notes.md)" ]; then
-            PREV_TAG="${{ steps.changelog_range.outputs.from_ref }}"
-            {
-              echo "# Changelog"
-              echo
-              echo "No categorised commits were found for this range."
-              if [ -n "$PREV_TAG" ]; then
-                echo
-                echo "Full diff: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ needs.check-version.outputs.new_version }}"
-              fi
-            } > release_notes.md
-          fi
+          # GitHub rejects release bodies over 125,000 characters, and the
+          # auto-generated commit changelog for 15.0 blew past that limit
+          # (HTTP 422 "body is too long"). The release page now carries a short
+          # summary plus a link to changelogs.md at the release tag instead of
+          # the full per-commit changelog; the in-app updater shows this body
+          # verbatim.
+          cat > release_notes.md <<EOF
+          # ArchiveTune ${VERSION}
 
-          gh release create "v${{ needs.check-version.outputs.new_version }}" \
+          The biggest update since the first stable release: new music sources,
+          new player styles, a Liquid Glass redesign, AI-powered lyrics, and
+          hundreds of fixes.
+
+          **Full changelog:** https://github.com/${{ github.repository }}/blob/${TAG}/changelogs.md
+
+          **All changes since v14:** https://github.com/${{ github.repository }}/compare/v14.0.5362...${TAG}
+          EOF
+
+          gh release create "$TAG" \
             --target "${{ github.sha }}" \
-            --title "${{ needs.check-version.outputs.new_version }}" \
+            --title "${VERSION}" \
             --notes-file release_notes.md \
             "$MOBILE_UNIVERSAL_APK" \
             $OTHER_APKS

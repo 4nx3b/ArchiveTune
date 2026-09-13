@@ -72,7 +72,6 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +80,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -147,6 +145,8 @@ import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private enum class LyricsTranslationSource {
     AI_TRANSLATION,
@@ -837,12 +837,9 @@ fun LyricsMenu(
                             )
 
                             if (index < menuItems.size - 1) {
-                                // Same visible hairline as the songs overflow
-                                // menu rows: 30% ink at the default 1dp thickness
-                                // (the old 0.5dp @ 12% was a ghost line on the
-                                // glass popup — "popups don't have dividers").
                                 HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.3f),
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    thickness = 0.5.dp,
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
                             }
@@ -1766,12 +1763,6 @@ fun AnchoredLyricsOverflowMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     backdrop: PlatformBackdrop? = null,
 
-    /**
-     * Full-screen scrim behind the popup. Defaults to the classic dim-black;
-     * callers whose lyrics surface has its own tinted backdrop (SpatialFlow)
-     * pass the surface colour so the scrim dims in the same hue instead of
-     * flashing pure black over it.
-     */
     scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
 
@@ -1909,12 +1900,6 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleX = scale
                         this.scaleY = scale
 
-                        // The popup grows out of the anchor icon itself: the
-                        // scale pivot tracks the icon's horizontal centre
-                        // mapped into popup space. The fixed (1f, …) pivot
-                        // made left-edge icons (the SpatialFlow lyrics header)
-                        // animate the popup in from its far corner — "it opens
-                        // from a different direction".
                         val popupWidthPx = 220.dp.toPx()
                         val horizontalMarginPx = 16.dp.toPx()
                         val popupLeftPx =
@@ -1933,22 +1918,11 @@ fun AnchoredLyricsOverflowMenu(
                     }
 
                     .then(
-                        if (frostedBlurModifier != null) {
-                            // Liquid glass is the surface: the live frosted
-                            // backdrop plus a whisper of tint for contrast.
-                            // (An opaque 0.55-alpha black used to be painted
-                            // ON TOP of the glass, burying it — the popup
-                            // looked like plain translucent black.)
-                            frostedBlurModifier.then(
-                                Modifier.background(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.10f),
-                                ),
-                            )
-                        } else {
-                            Modifier.background(Color.Black.copy(alpha = 0.65f * alpha))
-                        },
+                        frostedBlurModifier
+                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
                     )
 
+                    .background(Color.Black.copy(alpha = 0.55f))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

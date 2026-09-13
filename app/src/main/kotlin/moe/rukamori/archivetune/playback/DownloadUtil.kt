@@ -114,8 +114,6 @@ internal class DownloadSnapshotState<T> {
     }
 
     fun remove(id: String) = synchronized(lock) {
-        // Keep a tombstone until the initial cursor closes, so a removed item
-        // cannot be resurrected by the older database snapshot.
         if (!initialized) changedBeforeSnapshot += id
         values.value = values.value - id
     }
@@ -156,7 +154,6 @@ class DownloadUtil
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
 
-        /** Request ids that have already consumed their one automatic retry. */
         private val autoRetryCounts = ConcurrentHashMap<String, Int>()
 
         private val downloadExecutor = Executors.newFixedThreadPool(DEFAULT_MAX_PARALLEL_DOWNLOADS)
@@ -244,14 +241,6 @@ class DownloadUtil
         private val okHttpDataSourceFactory =
             PRDownloaderDataSource.Factory(context)
 
-        /**
-         * Per-song source identity used when picking which source a download
-         * resolves from — mirrors the playback resolver: a song pinned via the
-         * source switcher (per-song override) and/or with a direct catalog
-         * mapping (Qobuz track id / Qobuz-backup video id chosen from the
-         * source picker) resolves from THAT source instead of re-running the
-         * metadata search that already failed for it.
-         */
         private data class SongSourcePreferences(
             val overrideSource: AudioSourceType?,
             val directQobuzTrackId: String?,
@@ -278,18 +267,6 @@ class DownloadUtil
                     runCatching { DownloadSource.valueOf(source.name) }.getOrNull()
             }
 
-        /**
-         * The source chain a download resolves from, in priority order:
-         * 1. the song's per-song override (if the user pinned a source for this
-         *    specific song via the player's source switcher);
-         * 2. the user's download-source priority order, up to (excluding)
-         *    YOUTUBE_MUSIC — YOUTUBE_MUSIC is the terminal entry, exactly like
-         *    the playback chain (`takeWhile { it != YOUTUBE }`): sources placed
-         *    BELOW YouTube Music in the priority list are not probed, and when
-         *    YouTube Music is at the top the download goes straight to the
-         *    YouTube stream instead of silently skipping to a lower-priority
-         *    source.
-         */
         private fun downloadSourceChain(songPrefs: SongSourcePreferences): List<DownloadSource> {
             val chainSources =
                 downloadSourceOrder
@@ -305,16 +282,6 @@ class DownloadUtil
             }
         }
 
-        /** The concrete download target for a song RIGHT NOW: the source the
-         * next download request resolves from, its source-scoped cache/index
-         * key, and the legacy plain ids that older builds may have stored the
-         * same logical download under. A per-song source pin (the player's
-         * source switcher) wins outright — including a YOUTUBE pin, which maps
-         * to the YouTube Music target — otherwise the first entry of the
-         * download-source priority order wins (YouTube Music when it sits at
-         * the top). The state flows and menus key off this so "Download" vs
-         * "Remove download" reflects the CURRENT source, and switching the
-         * source back re-detects an already-downloaded version. */
         data class DownloadTarget(
             val source: DownloadSource,
             val key: String,
@@ -340,18 +307,11 @@ class DownloadUtil
             return DownloadTarget(source, key, legacyIds)
         }
 
-        /** Download index ids to probe for the current source's download
-         * state: the target key first, then any legacy ids. */
         fun currentSourceDownloadIds(mediaId: String): List<String> {
             val target = currentSourceDownloadTarget(mediaId)
             return (listOf(target.key) + target.legacyIds).distinct()
         }
 
-        /** Clears stale spans for the CURRENT download target only (plus the
-         * legacy plain twin for a YouTube target) from both caches — other
-         * sources' completed downloads are intentionally preserved so a song
-         * can hold one offline copy per source. Used right before a fresh
-         * download request is queued. */
         fun clearCurrentTargetCacheSpans(mediaId: String) {
             val target = currentSourceDownloadTarget(mediaId)
             val keys = (listOf(target.key) + target.legacyIds).distinct()
@@ -361,13 +321,6 @@ class DownloadUtil
             }
         }
 
-        /**
-         * Removes every cached representation of [mediaId] — the plain key
-         * (YouTube) and all source-scoped keys — from BOTH caches. Used when a
-         * download is retried/removed so stale spans from a previous
-         * download-source setting never leak into the next download or the
-         * export-downloads page.
-         */
         fun removeSongCacheEntries(mediaId: String) {
             val keys = buildList {
                 add(mediaId)
@@ -379,15 +332,6 @@ class DownloadUtil
             }
         }
 
-        /**
-         * Failure-path purge for a single download REQUEST: clears only the
-         * request's own cache key from both caches (partial spans of a failed
-         * fetch must not poison the next attempt via the resolver's
-         * completeness short-circuit), plus the legacy plain/"ytm:" twin pair
-         * so a failed legacy entry never lingers beside its scoped twin.
-         * Other sources' completed offline copies of the same song are
-         * intentionally preserved — one offline copy per source.
-         */
         private fun removeDownloadCacheEntriesForRequest(requestId: String) {
             val keys = buildSet {
                 add(requestId)
@@ -426,11 +370,6 @@ class DownloadUtil
                             .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE),
                     ),
             ) { dataSpec ->
-                // Media3 invokes resolvers on its download worker, including
-                // resumed downloads that never pass through the activity.
-                // Bounded wait: a hung app-initialisation stage must not park
-                // the download worker (and every queued download behind it) at
-                // "Downloading 0%" forever.
                 runBlocking {
                     kotlinx.coroutines.withTimeoutOrNull(STARTUP_READINESS_WAIT_MS) {
                         moe.rukamori.archivetune.App.startupReadiness.awaitReady()
@@ -441,14 +380,6 @@ class DownloadUtil
 
                 val songSourcePrefs = readSongSourcePreferences(mediaId)
 
-                // The download request itself carries the target source's
-                // identity ("ytm:<id>", "qobuz:<id>", …, or a legacy plain id).
-                // NEVER fall back to the plain mediaId PLAYBACK cache here: the
-                // player writes whatever itag it chose (often WebM/Opus) under
-                // that key, and serving a download from it produced unexportable
-                // opus bytes that then showed as "skipped (legacy WebM/Opus)".
-                // Only the prewarm-fetched spans under the request's own key
-                // (or a fully-cached legacy plain download) short-circuit.
                 val shortCircuitKeys = listOf(requestKey)
                 for (key in shortCircuitKeys) {
                     val expectedForKey =
@@ -471,9 +402,6 @@ class DownloadUtil
 
                 val targetSource = DownloadSourceConfig.downloadSourceForCacheKey(requestKey)
 
-                // A source-scoped request resolves from THAT source directly —
-                // the priority order has already spoken when the request was
-                // created (DownloadTarget), so no chain probing is needed.
                 if (targetSource != null && targetSource != DownloadSource.YOUTUBE_MUSIC) {
                     val song = database.getSongByIdBlocking(mediaId)
                     if (song != null) {
@@ -518,10 +446,6 @@ class DownloadUtil
                     }
                 }
 
-                // Legacy plain-key requests keep the chain-probing behavior for
-                // pre-refactor resumed downloads: probe the per-source disk
-                // caches in the user's download-source PRIORITY order (the chain
-                // honors the per-song override first and stops at YOUTUBE_MUSIC).
                 if (requestKey == mediaId) {
                     val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
                     for (source in downloadSourceChain(songSourcePrefs)) {
@@ -543,10 +467,6 @@ class DownloadUtil
                     }
                 }
 
-                // YouTube stream for the request — either a "ytm:" download
-                // target or a legacy plain request. preferM4A defaults to true
-                // so downloads always fetch an AAC/MP4 container when the
-                // extractor offers one, keeping exports jaudiotagger-readable.
                 val lowDataMode = context.isLowDataModeActive()
                 val requestedAudioQuality = resolveDownloadAudioQuality(lowDataMode)
                 val streamCacheKey = buildSongUrlCacheKey(mediaId, requestedAudioQuality)
@@ -560,12 +480,6 @@ class DownloadUtil
                     }?.let {
                         return@Factory dataSpec.buildUpon().setKey(requestKey).setUri(it.url.toUri()).build()
                     }
-                // Bounded resolution: the 5-client download chain (SimpMusic →
-                // Echo → native fallbacks) can spend minutes on a failing
-                // network while the DownloadManager worker sits blocked in
-                // "Downloading 0%" — the reported "infinite loading". The
-                // timeout fires at the coroutine suspension points inside the
-                // chain's network awaits, cutting the whole attempt short.
                 val playbackData =
                     try {
                         runBlocking(Dispatchers.IO) {
@@ -649,40 +563,13 @@ class DownloadUtil
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 val failedMediaId = DownloadSourceConfig.downloadIdToSongId(download.request.id)
                                 songUrlCache.keys.removeIf { it.startsWith("$failedMediaId:") }
-                                // Per-source failure purge: only THIS request's
-                                // own cache key (plus the legacy plain/ytm twin
-                                // pair) is cleared. The previous behavior called
-                                // removeSongCacheEntries(failedMediaId), which
-                                // wiped EVERY source's offline copy of the song
-                                // — a failed YouTube download destroyed the
-                                // completed Qobuz download, which is exactly the
-                                // "old download gets overwritten, only a single
-                                // entry remains" report.
                                 removeDownloadCacheEntriesForRequest(download.request.id)
 
-                                // One automatic retry per request: the failure
-                                // purged the cached stream URL (and its partial
-                                // spans), so the retry resolves a FRESH stream
-                                // URL instead of blindly re-fetching the expired
-                                // one — this is what recovers the transient
-                                // 403/expired-URL and stall failures without the
-                                // user having to notice and tap again. Bounded
-                                // to a single attempt so a permanently broken
-                                // stream surfaces as a normal failure.
-                                // MutableMap.merge declares a nullable return
-                                // (removal semantics); Int::plus never removes,
-                                // so null can only mean "no count yet" -> 1.
                                 val retryCount =
                                     autoRetryCounts.merge(download.request.id, 1, Int::plus) ?: 1
                                 if (retryCount <= 1) {
                                     downloadScope.launch {
                                         delay(DOWNLOAD_AUTO_RETRY_DELAY_MS)
-                                        // Re-adding the same request restarts the
-                                        // failed download: the data source factory
-                                        // re-resolves the stream URL at open time
-                                        // (songUrlCache was purged above), so the
-                                        // retry fetches a fresh URL. Same idiom as
-                                        // DownloadRepository's resume path.
                                         runCatching { downloadManager.addDownload(download.request) }
                                     }
                                 }
@@ -699,11 +586,6 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
-                            // Per-source removal: removing the Qobuz entry must
-                            // NOT wipe the YouTube entry's bytes. Only the
-                            // removed request's own cache key goes; a legacy
-                            // plain entry additionally clears its "ytm:" twin so
-                            // the two never linger as duplicate YouTube rows.
                             val removedKey = download.request.id
                             runCatching { downloadCache.removeResource(removedKey) }
                             runCatching { playerCache.removeResource(removedKey) }
@@ -750,12 +632,6 @@ class DownloadUtil
             }
         }
 
-        /**
-         * Source-aware download state for a song: the CURRENT source's entry
-         * (per-song pin first, else the download priority order's top) wins;
-         * when the current source has no entry, any OTHER source's completed
-         * copy still counts as "downloaded" for row-level indicators.
-         */
         fun getDownload(songId: String): Flow<Download?> =
             downloads.map { map ->
                 currentSourceDownloadIds(songId).firstNotNullOfOrNull { map[it] }
@@ -768,16 +644,6 @@ class DownloadUtil
 
         suspend fun prewarmSongForDownload(mediaId: String): String? {
             moe.rukamori.archivetune.App.startupReadiness.awaitReady()
-            // Refresh the community Source Pool accounts (Qobuz/Tidal subscriber
-            // tokens) before resolving — the pool refresh is throttled to once
-            // per 30 min inside PoolAccountManager.refresh(), so this is a cheap
-            // no-op on the hot path. Doing it here (instead of only at app start)
-            // means newly-contributed accounts become available to downloads
-            // without an app restart, and avoids the "downloads always fall back
-            // to YouTube .webm" failure mode when the pool cache has been evicted
-            // by the OS or never loaded on this cold start. Bounded with a
-            // timeout so a hung pool endpoint can never stall the whole prewarm
-            // (and with it the visible start of the download) indefinitely.
             if (PoolAccountManager.isEnabled) {
                 runCatching {
                     kotlinx.coroutines.withTimeout(POOL_REFRESH_TIMEOUT_MS) {
@@ -789,14 +655,6 @@ class DownloadUtil
             val songSourcePrefs = readSongSourcePreferences(mediaId)
             val target = currentSourceDownloadTarget(mediaId)
 
-            // "Already downloaded" probes look at the DOWNLOAD cache only —
-            // the playerCache's plain mediaId spans are PLAYBACK data (whatever
-            // itag the player picked), not a download, and must never satisfy a
-            // download request. Probe the current target first, then the other
-            // sources in the user's priority order (the chain honors the
-            // per-song override first and stops at YOUTUBE_MUSIC), then the
-            // "ytm:" twin and a legacy plain YouTube download, so a re-download
-            // never re-fetches bytes the app already has under any identity.
             val priorityProbeKeys =
                 (
                     listOf(target.key) +
@@ -813,8 +671,6 @@ class DownloadUtil
                         return key
                     }
                 }
-                // Stale partial prewarm fetches under this key would poison the
-                // resolver's completeness check — clear them.
                 val partialPlayerSpans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (partialPlayerSpans.isNotEmpty()) {
                     val expected = expectedDownloadLengthFor(key, mediaId)
@@ -877,16 +733,6 @@ class DownloadUtil
                 }
             }
 
-            // YouTube Music targets: do NOT prewarm-fetch here. The menu's
-            // download flow awaits this method before enqueueing the
-            // DownloadRequest, so a full-file OkHttp prewarm fetch of a
-            // (frequently throttled) googlevideo URL held the download
-            // invisible for minutes — the reported "YouTube songs infinite
-            // loading". The DownloadManager download itself resolves and
-            // fetches the stream with its own bounded timeouts and visible
-            // progress, so enqueueing immediately is both faster and more
-            // robust. Non-YouTube sources keep the prewarm: their CDN fetches
-            // are fast and let the download short-circuit from the cache.
             if (target.source == DownloadSource.YOUTUBE_MUSIC) {
                 return null
             }
@@ -905,9 +751,6 @@ class DownloadUtil
                 }
             }.getOrNull() ?: return null
             persistPlaybackMetadata(mediaId, playbackData)
-            // YouTube downloads live under the "ytm:" key so they stay distinct
-            // from (and are never served from) the playback cache's plain
-            // mediaId spans.
             val ytDownloadKey = DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + mediaId
             val fetched = runCatching {
                 fetchStreamIntoPlayerCache(
@@ -920,8 +763,6 @@ class DownloadUtil
             return if (fetched) ytDownloadKey else null
         }
 
-        /** Best-effort expected byte length for a download cache key: the
-         * cache's own content metadata first, then the DB format entity. */
         private fun expectedDownloadLengthFor(
             key: String,
             mediaId: String,
@@ -1522,23 +1363,12 @@ class DownloadUtil
 
             private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 12
 
-            /** Hard ceiling on the YouTube stream-resolution chain inside the
-             * download resolver/prewarm. 120 s covers the 5-client fallback
-             * sequence on a normal network while keeping a pathological
-             * network state from parking the download worker in a
-             * "Downloading 0%" forever (the "infinite loading" report). */
             internal const val YT_DOWNLOAD_RESOLVE_TIMEOUT_MS = 120_000L
 
-            /** Bound for the download resolver's wait on app-startup readiness. */
             internal const val STARTUP_READINESS_WAIT_MS = 10_000L
 
-            /** Delay before the single automatic retry of a failed download. */
             internal const val DOWNLOAD_AUTO_RETRY_DELAY_MS = 4_000L
 
-            /** Ceiling on the Source Pool account refresh inside the prewarm
-             * path — it runs before the download request is even enqueued, so
-             * an unresponsive pool endpoint must not delay the visible start
-             * of a download by more than a few seconds. */
             internal const val POOL_REFRESH_TIMEOUT_MS = 10_000L
 
             private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 96

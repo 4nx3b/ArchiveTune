@@ -52,7 +52,6 @@ import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
-import moe.rukamori.archivetune.extensions.div
 import moe.rukamori.archivetune.extensions.zipInputStream
 import moe.rukamori.archivetune.googledrive.GoogleDriveClient
 import moe.rukamori.archivetune.googledrive.GoogleDriveSyncSettings
@@ -74,6 +73,7 @@ import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
+import moe.rukamori.archivetune.extensions.div
 
 data class BackupRestoreProgressUi(
     val title: String,
@@ -710,9 +710,6 @@ class BackupRestoreViewModel
                                                 StatsBackup.decode(zip.readBytes().toString(Charsets.UTF_8))
                                             }.getOrNull()
                                         if (payload != null) {
-                                            // The library category was not restored, so the live
-                                            // database is untouched here — fold the stats snapshot
-                                            // (Settings → Stats page data) into it.
                                             mergeStatsIntoDatabase(database, payload)
                                         }
                                     }

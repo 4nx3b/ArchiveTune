@@ -82,12 +82,9 @@ data class AppIconUiModel(
     val isDefault: Boolean,
 )
 
-/** Whether the runtime icon pack needs a download before icons can be listed. */
 enum class IconPackDownloadUi {
-    /** Bundled build — the pack ships inside the APK. */
     NOT_NEEDED,
 
-    /** Slim build and the pack has not been downloaded yet. */
     NEEDED,
 
     DOWNLOADING,
@@ -138,7 +135,6 @@ class IconViewModel
             load()
         }
 
-        /** Downloads the runtime icon pack (slim builds) and reloads the catalog. */
         fun downloadPack() {
             if (downloadJob?.isActive == true) return
             if (IconPackRuntimeManager.isBundled()) return

@@ -2027,3 +2027,87 @@ Stage Summary:
   API 33-34 crash fixed), canvas freeze fix, v15 bump, README credits,
   deterministic icon-pack release. CI monitored; release dispatch pending
   green.
+
+---
+Task ID: 39
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 8-item batch — divider recipe restoration, lyrics overflow popup
+back to main-branch visuals, spatialflow quality pill pinning, lyrics
+first-open lag fix, AI romanisation cache persistence, canvas extreme lag
+mitigation, full-codebase comment/dead-code/import cleanup, and the 15.0
+release changelog mechanism (changelogs.md + short release body after the
+HTTP 422 "body is too long" failure).
+
+Work Log:
+- Dividers: lyrics overflow popup (main branch reference) recipe applied to
+  every glass popup divider — 12% ink (plain outlineVariant resolves to
+  12% inside the glass color scheme), 0.5dp thickness, symmetric 16dp
+  horizontal inset so the hairline floats in the middle instead of running
+  edge-to-edge. MenuSectionDivider + NewMenuContent + 13 menu files +
+  SpotifyPlaylistMenu + AppleMusicSleepTimerSheet + the two SpatialFlow
+  popups. Scripts: /home/z/my-project/scripts/divider_recipe_v2.py.
+- Lyrics overflow popup: AnchoredLyricsOverflowMenu restored to main's exact
+  surface recipe (frosted backdrop + black@55% overlay, black@65% fallback)
+  and its row dividers back to white@12%/0.5dp. The pivot-anchored scale
+  origin and the SpatialFlow scrimColor parameter stay (behavioral fixes
+  from earlier reports).
+- Quality pill: WavySliderWithLabels' time row converted from
+  Arrangement.SpaceBetween to a Box with CenterStart/Center/CenterEnd
+  alignment (V8 pattern) — the codec pill is pinned dead-center regardless
+  of label width/appearance; was shifting whenever the format flow emitted.
+- Lyrics first-open lag: the overlay's layerBackdrop(popupBackdrop) — which
+  re-records the ENTIRE lyrics overlay into a GraphicsLayer on every draw —
+  is now gated on showLyricsMenu; the double-render ran permanently even
+  with the popup closed. AM player keeps its own (its content is static).
+- Canvas extreme lag: (1) the frosted twin is confined to the frost region
+  (bottom band from the sharp stage's 0.62 fade-start) instead of the full
+  player height — ~2.6x less blur/upscale/compositing for pixels the sharp
+  stage paints over; (2) WavyMusicSlider's phase animation now steps at
+  ~30fps (wave is a 2.2s/rotation crawl — visually identical, half the
+  invalidation rate of the 60fps Animatable loop).
+- AI romanisation cache: AiLyricsRomanization now persists its cache to
+  filesDir/ai_romanization_cache.json (atomic tmp+rename, 1.5s debounce,
+  256-entry LRU; was 32-entry arbitrary-eviction in-memory only — app
+  restart lost everything and re-called the provider). Successful-but-empty
+  results are negative-cached (the re-request flicker). Failures (null)
+  stay uncached so retries remain possible. attach() hooked in App.onCreate
+  via initializeDiskBackedComponents. Translation persistence verified
+  DB-backed (replaceLyricsIfAbsentOrNotFound never overwrites
+  AI_TRANSLATION rows).
+- Codebase cleanup: (1) kotlin_comment_strip.py — full Kotlin lexer
+  (strings/raw strings/nested templates/char literals, nested block
+  comments, greedy """"-run raw-string closing per Kotlin's lexer rule)
+  removed all comments from 149 files (~200k chars) while preserving
+  GPL/copyright headers (ArchiveTune + Metrolist variants); (2)
+  kotlin_unused_imports.py removed 392 unused imports with
+  operator-convention names permanently excluded; (3)
+  kotlin_restore_operator_imports.py RE-ADDED 367 getValue/setValue/div
+  imports across 211 files after the first cleaner version wrongly removed
+  them (by-delegate usage is invisible to a text search) — this was caught
+  by the local compile (5,702 cascading errors, all resolved); (4)
+  kotlin_dead_private.py removed 24 genuinely dead private declarations
+  (statement-end scanning with string-awareness; guards for
+  serialVersionUID reflection, @Preview/@Test tooling entry points, and
+  paren-context constructor properties). Two surgery bugs (class
+  primary-constructor over-eat in AppleMusicVirtualStream, expression-body
+  truncation from a depth-reset in statement_end) were found via compile +
+  brace-balance verification and repaired by restoring the files and
+  re-running the fixed scripts; final string-aware balance check shows zero
+  real damage (all remaining non-zero readings match committed versions).
+- Release: changelogs.md created at the repo root (user's Appearance/
+  Features/Fixes list merged with the PR-researched items, deduplicated,
+  one line each). release.yml's create-release step now writes a short
+  body (summary + blob/<tag>/changelogs.md link + compare link) instead of
+  the auto-generated commit changelog that exceeded GitHub's 125,000-char
+  release body limit (HTTP 422, the failed 15.0 release dispatch);
+  mikepenz/release-changelog-builder step removed. Local compile of the app
+  module cannot complete inside the 10-minute tool budget on this 2-core
+  box (KSP up-to-date; compile task needs 10-15 min solo) — CI validates.
+
+Stage Summary:
+- dev carries: main-exact lyrics popup + dim centered dividers everywhere,
+  pinned quality pill, popup-gated lyrics glass sampling, frost-region
+  canvas twin + 30fps wave, disk-persisted negative-caching AI romanisation
+  cache, comment-free codebase with 24 fewer dead declarations and 368 net
+  fewer imports, changelogs.md + 422-proof release notes. Push pending
+  final CI compile validation.

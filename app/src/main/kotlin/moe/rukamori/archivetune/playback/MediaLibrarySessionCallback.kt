@@ -40,7 +40,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideExplicitKey
@@ -79,6 +78,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.math.min
+import kotlinx.coroutines.plus
 
 class MediaLibrarySessionCallback
     @Inject
@@ -2111,9 +2111,6 @@ class MediaLibrarySessionCallback
         )
 
         private fun downloadedSongs(): Flow<List<Song>> {
-            // Download index ids are source-scoped ("ytm:<id>", "qobuz:<id>",
-            // ... or legacy plain "<id>") — normalize to raw song ids so DB
-            // lookups keep matching while every source's copy still counts.
             val updateTimeBySongId =
                 downloadUtil.downloads.value
                     .filterValues { it.state == Download.STATE_COMPLETED }

@@ -54,7 +54,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -62,7 +61,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import android.graphics.Bitmap
 import android.os.Build
@@ -133,6 +131,8 @@ import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 class NavigationBarBackdrop(
     val layer: GraphicsLayer,
@@ -268,10 +268,6 @@ fun FloatingNavigationToolbar(
     val itemColors =
         when {
             canLiquidGlass -> {
-                // Liquid-glass legibility follows the theme: night keeps the
-                // white-on-glass look, day switches to onSurface tones — the
-                // glass bar renders as a light frosted surface in light mode,
-                // where white icons and labels are invisible.
                 val glassIsNight = isSystemInDarkTheme()
                 val glassSelectedColor =
                     if (glassIsNight) Color.White else MaterialTheme.colorScheme.onSurface
@@ -772,13 +768,6 @@ fun FloatingNavigationToolbar(
                                 } else {
                                     {
                                         if (canLiquidGlass) {
-                                            // Night-mode legibility: the lens
-                                            // specular on the glass can wash out
-                                            // plain white labels. A soft text
-                                            // shadow (night only, liquid-glass
-                                            // nav bar only) keeps them readable
-                                            // over any backdrop without touching
-                                            // the glass look itself.
                                             val nightGlassLabelStyle =
                                                 if (isSystemInDarkTheme()) {
                                                     LocalTextStyle.current.copy(
@@ -883,9 +872,6 @@ fun FloatingNavigationToolbar(
                                     val progress = dragAnim.pressProgress
 
                                     val tintColor = if (isDark) Color.Black else Color.White
-                                    // Night mode keeps a deeper tint so the lens
-                                    // specular cannot wash the white icon/label
-                                    // out (day mode keeps the airy 0.1 veil).
                                     val restAlpha = if (isDark) 0.28f else 0.1f
                                     drawRect(
                                         color = tintColor,
@@ -918,10 +904,6 @@ fun FloatingNavigationToolbar(
                     contentAlignment = Alignment.Center,
                 ) {
                     val displayScreen = items[displayIndex]
-                    // Day mode: the pill is a light glass lens over a light
-                    // bar, so the selected icon/label switch from the night
-                    // white to onSurface — white content is invisible in
-                    // light mode. Night keeps white + the shadow unchanged.
                     val pillContentColor =
                         if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
                     Column(

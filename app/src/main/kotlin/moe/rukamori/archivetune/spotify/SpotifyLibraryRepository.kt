@@ -323,11 +323,6 @@ class SpotifyLibraryRepository
                 tracks
             }
 
-        /**
-         * Every artist the user follows, paged out. Backs the Library's Artists section on the
-         * Spotify source — the same shape [likedSongs] has, and for the same reason: the Library
-         * shows one list, not one page of one.
-         */
         suspend fun libraryArtists(): List<SpotifyArtist> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
@@ -336,17 +331,12 @@ class SpotifyLibraryRepository
                 }
             }
 
-        /**
-         * The user's play history, most recent first. Not paged: Spotify caps this endpoint at the
-         * last 50 plays and offers no way further back, so [collectPages] would spin on one page.
-         */
         suspend fun recentlyPlayed(): List<SpotifyPlayHistory> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
                 spotifyCallWithTokenRetry { Spotify.recentlyPlayed().getOrThrow() }.items
             }
 
-        /** Every album the user has saved. Backs the Library's Albums section on the Spotify source. */
         suspend fun libraryAlbums(): List<SpotifyAlbum> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
@@ -355,11 +345,6 @@ class SpotifyLibraryRepository
                 }
             }
 
-        /**
-         * Drains a paged Spotify endpoint. Stops on an empty page, on reaching the reported total,
-         * or on a short page — the last of those matters because `total` is not always accurate on
-         * the libraryV3 responses, and without it the loop would spin on the final page.
-         */
         private suspend fun <T> collectPages(page: suspend (limit: Int, offset: Int) -> SpotifyPaging<T>): List<T> {
             val all = ArrayList<T>()
             var offset = 0

@@ -313,10 +313,6 @@ class LyricsMenuViewModel
                             "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +
                                 "provider=${prefs[AiProviderKey]} model=${prefs[AiSelectedModelKey]}",
                         )
-                        // Translation ALWAYS runs on the main (first) AI provider —
-                        // the separate romanisation provider never translates. When
-                        // that provider is off, the main one does both translation
-                        // and romanisation (see AiLyricsRomanization.rememberSettings).
                         val translatedLyrics =
                             AiLyricsTranslator().translate(
                                 config =

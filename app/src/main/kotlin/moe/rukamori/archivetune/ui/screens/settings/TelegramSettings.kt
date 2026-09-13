@@ -28,11 +28,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +59,8 @@ import moe.rukamori.archivetune.ui.screens.TELEGRAM_BROWSE_ROUTE
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,9 +80,6 @@ fun TelegramSettings(
 
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    // Runtime-extension prompt: in slim builds the Telegram engine (TDLib)
-    // is not bundled — the user has to download it once. The text and the
-    // download pill disappear as soon as the extension is present.
     var needsEngineDownload by remember { mutableStateOf(TdLibNativeLibrary.needsDownload(context)) }
     var engineDownloadProgress by remember { mutableStateOf<Float?>(null) }
     var engineDownloadError by remember { mutableStateOf<String?>(null) }

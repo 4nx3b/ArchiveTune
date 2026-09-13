@@ -41,7 +41,6 @@ class TelegramMediaIdTest {
 
     @Test
     fun decodesLegacyV1Ids() {
-        // TDLib-era ids: chat + message survive, TDLib-local file ids are ignored
         val id = TelegramMediaId.decode("telegram://track/-1001234567890/52428800/4711/AgADBQADr6cxGw")
         assertEquals(-1001234567890L, id?.chatId)
         assertEquals(52428800L, id?.messageId)

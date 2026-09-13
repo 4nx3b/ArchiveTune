@@ -722,15 +722,7 @@ object Spotify {
             )
         }
 
-    // ── Library Albums (GQL: libraryV3 with Albums filter) ─────────────
 
-    /**
-     * The user's saved albums, straight from the same libraryV3 query [myArtists] uses — only the
-     * filter differs. Written out rather than folded into one parameterised helper because the two
-     * responses shape their item wrappers differently: an artist carries `profile.name` and an
-     * avatar image, an album carries a name, its artists and cover art, and the union of both
-     * inside one mapper reads worse than the duplication.
-     */
     suspend fun myAlbums(
         limit: Int = 50,
         offset: Int = 0,
@@ -811,7 +803,6 @@ object Spotify {
             )
         }
 
-    // ── Playlist detail (GQL: fetchPlaylist) ────────────────────────────
 
     suspend fun playlist(playlistId: String): Result<SpotifyPlaylist> =
         runCatching {
@@ -1085,16 +1076,7 @@ object Spotify {
             }
         }
 
-    // ── Recently played (REST — no GQL equivalent) ──────────────────────
 
-    /**
-     * The user's play history, most recent first. Spotify caps this at the last 50 plays and
-     * pages it by cursor rather than offset, so there is no `offset` here and no way to reach
-     * further back — the endpoint simply does not offer it.
-     *
-     * `failFastOn429` for the same reason [topTracks] uses it: this is a nice-to-have panel, and
-     * a rate-limited retry storm is worse than an empty one.
-     */
     suspend fun recentlyPlayed(limit: Int = 50): Result<SpotifyPaging<SpotifyPlayHistory>> =
         runCatching {
             authenticatedGet("me/player/recently-played", failFastOn429 = true) {
@@ -1102,7 +1084,6 @@ object Spotify {
             }
         }
 
-    // ── Top Artists (REST fallback — no GQL equivalent) ─────────────────
 
     suspend fun topArtists(
         timeRange: String = "medium_term",
@@ -1132,7 +1113,6 @@ object Spotify {
             }
         }
 
-    // ── Search (GQL: searchDesktop) ────────────────���────────────────────
 
     suspend fun search(
         query: String,
@@ -1524,9 +1504,6 @@ object Spotify {
                 parseHomeItem(itemElem.jsonObject)
             }
 
-        // Named, and counted against what came in: a section that arrives with tiles and leaves
-        // with fewer says exactly which wrapper was thrown away, which is the only way to find a
-        // tile that never appears. Spotify renames these periodically.
         if (items.size != itemElements.size) {
             val seen =
                 itemElements.mapNotNull {
@@ -1554,16 +1531,10 @@ object Spotify {
         val data = content.obj("data") ?: return null
 
         return when (wrapper) {
-            // PseudoPlaylist is how Spotify ships the tiles that are not really playlists — DJ,
-            // Liked Songs, daylist. Same uri/name/images shape as a playlist, so it parses the
-            // same way; whether the app can DO anything with one is decided at the tap, not here.
-            // Dropping them meant those tiles silently never appeared at all.
             "PlaylistResponseWrapper", "PseudoPlaylistResponseWrapper" -> parseHomePlaylist(data)
             "AlbumResponseWrapper" -> parseHomeAlbum(data)
             "ArtistResponseWrapper" -> parseHomeArtist(data)
             else -> {
-                // Logged rather than dropped in silence: a tile that vanishes leaves no trace to
-                // debug from, and Spotify has renamed these wrappers before.
                 log("D", "parseHomeItem: unhandled content __typename='$wrapper'")
                 null
             }

@@ -15,15 +15,6 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
-/**
- * Portable snapshot of the listening-stats data behind the Settings → Stats page.
- *
- * The stats page aggregates the Room `event` table (listening history) together
- * with `song.totalPlayTime`. A LIBRARY backup already carries the whole database
- * file, so this payload is only emitted when the user *excludes* the library —
- * that way every backup file contains the stats info, while a full backup never
- * duplicates it.
- */
 @Serializable
 data class StatsBackupPayload(
     val version: Int = STATS_BACKUP_VERSION,
@@ -33,7 +24,6 @@ data class StatsBackupPayload(
 @Serializable
 data class StatsEventBackup(
     val songId: String,
-    /** Epoch milliseconds in UTC — the same encoding the Room converter uses. */
     val timestamp: Long,
     val playTime: Long,
 )
@@ -71,22 +61,6 @@ object StatsBackup {
         runCatching { statsJson.decodeFromString(StatsBackupPayload.serializer(), text) }.getOrNull()
 }
 
-/**
- * Merges a [StatsBackupPayload] into the live database. Used when a backup that
- * did NOT include the library (settings-only / account-only) is restored: the
- * database is otherwise untouched, so the stats data riding along in the backup
- * file is folded in here.
- *
- * Merge semantics:
- * - Events whose song is not present locally are skipped (the `event` table has
- *   a foreign key to `song`).
- * - Events already present locally (same song/timestamp/playTime) are skipped,
- *   making repeated restores of the same file idempotent.
- * - Newly inserted events bump the affected songs' `totalPlayTime` by the sum
- *   of the inserted play times, mirroring how live playback accounting works.
- *
- * Returns the number of events inserted.
- */
 suspend fun mergeStatsIntoDatabase(
     database: MusicDatabase,
     payload: StatsBackupPayload,

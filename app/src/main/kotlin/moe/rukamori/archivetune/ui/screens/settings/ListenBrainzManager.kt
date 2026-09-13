@@ -23,9 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ListenBrainzManager {
     private val logTag = "ListenBrainzManager"
     private val started = AtomicBoolean(false)
-    private var scope: CoroutineScope? = null
-    private var job: Job? = null
-    private var lifecycleObserver: Any? = null
     private val httpClient =
         OkHttpClient
             .Builder()

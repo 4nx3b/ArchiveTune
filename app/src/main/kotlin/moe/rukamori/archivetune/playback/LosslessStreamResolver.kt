@@ -203,12 +203,6 @@ object LosslessStreamResolver {
             addAll(discoveredInstances)
         }.toList()
         if (mergedInstances.isEmpty()) {
-            // The account path was disabled (accountFirst=false) or produced
-            // nothing, and no public/private instance is configured. Failing
-            // fast here keeps the resolver from throwing
-            // TidalAudioResolutionException("TIDAL playback has no configured
-            // instance") on every resolve — that surfaced as a noisy
-            // stack-trace warning in the download chain for each song.
             Timber.tag("LosslessResolver").d(
                 "Tidal skip: no instances configured (account path disabled or exhausted)",
             )

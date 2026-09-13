@@ -24,7 +24,6 @@ package moe.rukamori.archivetune.telegram
 const val TELEGRAM_MEDIA_ID_SCHEME = "telegram"
 
 private const val PREFIX = "$TELEGRAM_MEDIA_ID_SCHEME://track/"
-private const val V2_MARKER = "v2"
 private const val V2_PREFIX = "${PREFIX}v2/"
 
 data class TelegramMediaId(
@@ -61,7 +60,6 @@ data class TelegramMediaId(
                 }
 
                 mediaId.startsWith(PREFIX) -> {
-                    // v1: [chatId, messageId, tdlibFileId?, uniqueId?]
                     val segments = mediaId.removePrefix(PREFIX).split('/')
                     if (segments.size < 2) return null
                     val chatId = segments[0].toLongOrNull() ?: return null

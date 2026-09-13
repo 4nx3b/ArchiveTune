@@ -64,7 +64,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -73,7 +72,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -156,6 +154,8 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private const val LYRIC_SYNC_LEAD_MS = 120L
 private const val LRC_LEAD_MS = LYRIC_SYNC_LEAD_MS
@@ -589,13 +589,6 @@ fun LyricsEnhanced(
             val rawPlayerPosition = player.currentPosition.coerceAtLeast(0L)
             if (lastRawPositionMs - rawPlayerPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 positionResetCounter += 1
-                // Reset the index synchronously with the wrap detection. A
-                // separate LaunchedEffect(positionResetCounter) reset fires one
-                // recomposition AFTER this loop has already recomputed the
-                // post-wrap index and would clobber it back to -1, forcing an
-                // extra null→index scroll cycle and (combined with the loop's
-                // cached-index guard) briefly leaving the freshly-current line
-                // unhighlighted right after a restart.
                 currentLineIndexState.intValue = -1
             }
             lastRawPositionMs = rawPlayerPosition
@@ -1758,4 +1751,3 @@ private fun buildLineSyncedLrcLine(
         end = end,
     )
 }
-

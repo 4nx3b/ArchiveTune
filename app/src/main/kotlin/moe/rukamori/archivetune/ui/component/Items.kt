@@ -59,12 +59,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -141,6 +139,8 @@ import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 const val ActiveBoxAlpha = 0.6f
 
@@ -1481,10 +1481,6 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
-    // When false, the thumbnail's play overlays (song OverlayPlayButton +
-    // album AlbumPlayButton) are suppressed — used by selection-mode grids
-    // (e.g. NewReleaseScreen's edit mode) where the play affordance would
-    // fight the selection checkbox and mislead as a playable control.
     showPlayOverlay: Boolean = true,
 ) {
     val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)

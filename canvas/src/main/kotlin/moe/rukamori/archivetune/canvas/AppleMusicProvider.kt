@@ -40,10 +40,7 @@ import java.util.concurrent.ConcurrentHashMap
 object AppleMusicProvider {
 
     private const val LOG_TAG = "AppleMusicCanvas"
-
-    private const val LOG_LEVEL_VERBOSE = 2
     private const val LOG_LEVEL_DEBUG = 3
-    private const val LOG_LEVEL_INFO = 4
     private const val LOG_LEVEL_WARN = 5
     private const val LOG_LEVEL_ERROR = 6
 
@@ -297,7 +294,6 @@ object AppleMusicProvider {
         return expMatch.groupValues[1].toLongOrNull() ?: 0L
     }
 
-    /** Decodes the `iss` claim of a JWT without verifying the signature. */
     private fun decodeJwtIssuer(jwt: String): String? {
         val payload = decodeJwtPayload(jwt) ?: return null
         return """"iss"\s*:\s*"([^"]+)"""".toRegex().find(payload)?.groupValues?.get(1)
@@ -313,7 +309,6 @@ object AppleMusicProvider {
         }.getOrNull()
     }
 
-    // ── Networking ───────────────────────────────────────────────────────────────────
 
     private val json =
         Json {
@@ -342,7 +337,6 @@ object AppleMusicProvider {
         }
     }
 
-    // ── Cache ────────────────────────────────────────────────────────────────────────
 
     private data class CacheEntry(
         val value: CanvasArtwork?,
@@ -356,7 +350,6 @@ object AppleMusicProvider {
         vararg parts: String,
     ): String = "$prefix|" + parts.joinToString("|") { it.trim().lowercase(Locale.ROOT) }
 
-    // ── Public API ───────────────────────────────────────────────────────────────────
 
     suspend fun getByAlbumArtist(
         album: String,
@@ -400,13 +393,6 @@ object AppleMusicProvider {
         return result
     }
 
-    /**
-     * Health check for the Apple Music canvas path (Settings → Playback →
-     * Artwork → Canvas Check): performs the REAL AMP catalog search the
-     * playback path performs (token → storefront → `/search?types=songs`) and
-     * reports whether the API answered, plus whether the probe song actually
-     * carries editorial-video (canvas) motion artwork.
-     */
     suspend fun diagnose(
         song: String,
         artist: String,
@@ -478,18 +464,13 @@ object AppleMusicProvider {
         }
     }
 
-    // ── Core Logic ───────────────────────────────────────────────────────────────────
 
-    /**
-     * Searches via AMP API and tries to fetch motion artwork.
-     * This is faster than iTunes search + AMP lookup.
-     */
     private suspend fun searchAndFetchMotion(
         term: String,
         artist: String,
         album: String?,
         storefront: String,
-        type: String, // "albums" or "songs"
+        type: String,
         forceRefresh: Boolean = false,
     ): CanvasArtwork? {
         return runCatching {
@@ -515,7 +496,6 @@ object AppleMusicProvider {
                     if (forceRefresh) header("Cache-Control", "no-cache")
                 }
             if (response.status == HttpStatusCode.Unauthorized) {
-                // Token likely expired between refresh and use — force-refresh and retry once.
                 Log.w("AMP search returned 401 — force-refreshing token and retrying once")
                 token = refreshToken() ?: token
                 response =
@@ -574,7 +554,6 @@ object AppleMusicProvider {
 
                 Log.d("trying resolve for $targetAlbumId (from $itemType)")
 
-                // Check for immediate motion in search result
                 val ev = attributes["editorialVideo"]?.jsonObject
                 if (ev != null) {
                     val videoUrls = extractEditorialVideoUrls(ev)
@@ -595,7 +574,6 @@ object AppleMusicProvider {
                     }
                 }
 
-                // Full lookup with metadata preservation
                 val fetched =
                     fetchMotionArtwork(
                         albumId = targetAlbumId,
@@ -707,12 +685,7 @@ object AppleMusicProvider {
         }.getOrNull()
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────────
 
-    /**
-     * Scores and filters a single search result item.
-     * Returns null if the item should be excluded from consideration.
-     */
     private fun scoreAndFilterItem(
         obj: JsonObject,
         term: String,
@@ -755,7 +728,6 @@ object AppleMusicProvider {
                 else -> -10
             }
 
-        // Special editions handling (Deluxe, Expanded, etc.)
         val editionWords = listOf("deluxe", "expanded", "remastered", "remix", "version", "edit", "mix", "bonus")
         for (word in editionWords) {
             val inTerm = term.contains(word, ignoreCase = true)
@@ -768,7 +740,6 @@ object AppleMusicProvider {
                 }
         }
 
-        // Album matching — very strong signal
         if (!album.isNullOrBlank() && resultCollectionName.isNotBlank()) {
             val albumMatch = resultCollectionName.equals(album, ignoreCase = true)
             val albumFuzzy =
@@ -786,10 +757,6 @@ object AppleMusicProvider {
         return score to obj
     }
 
-    /**
-     * Resolves the Apple Music album ID from a search result item.
-     * Handles both song and album result types, with URL-parsing as a last resort.
-     */
     private fun resolveAlbumId(
         obj: JsonObject,
         attributes: JsonObject,
@@ -813,8 +780,6 @@ object AppleMusicProvider {
                 ?.contentOrNull
                 ?: attributes["collectionId"]?.jsonPrimitive?.contentOrNull
 
-        // Fallback: parse album ID from the track URL
-        // URL format: https://music.apple.com/region/album/name/ID?i=songId
         if (albumId == null) {
             val url = attributes["url"]?.jsonPrimitive?.contentOrNull
             if (url != null) {

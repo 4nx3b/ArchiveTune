@@ -94,15 +94,6 @@ public fun MediaDetailHero(
     canvasVisible: Boolean = true,
     useBlurredPlayButton: Boolean = false,
 ) {
-    // The Apple Music Experience swaps every one of these headers at once. Seven screens call
-    // MediaDetailHero — playlists local and online, albums, top/auto/cache playlists, Spotify
-    // playlists — so the switch belongs here rather than repeated at each of them, and a screen
-    // added later gets it for free.
-    //
-    // The artwork backdrop is what goes: the iOS-style header is a large left-aligned title over
-    // the plain page surface with pink accent pills, so the thumbnail, canvas video, description
-    // and metadata block below it have nowhere to sit and are deliberately dropped rather than
-    // wedged in.
     if (rememberAppleMusicExperience()) {
         AppleMusicPlaylistHero(
             sectionLabel = null,
@@ -681,22 +672,11 @@ private enum class MediaDetailActionLayoutId {
     ToggleAdd,
 }
 
-/**
- * True when the Apple Music Experience is on.
- *
- * A read helper rather than the raw preference so the call sites — this file today, the Appearance
- * toggle, anything that grows one later — cannot disagree about the key or the default.
- */
 @Composable
 fun rememberAppleMusicExperience(): Boolean {
     val (enabled) = rememberPreference(AppleMusicExperienceKey, defaultValue = false)
     return enabled
 }
 
-/**
- * The colour [MediaDetailHero] hands to its `additionalPrimaryActions` slot under the Apple Music
- * Experience. The normal hero derives one from the artwork backdrop it is drawn over; the iOS
- * header has no backdrop, so the actions take the same pink accent as the pills beside them.
- */
 @Composable
 private fun heroActionAccent(): Color = AppleMusicStyleAccentColor

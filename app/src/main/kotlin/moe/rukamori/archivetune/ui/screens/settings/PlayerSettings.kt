@@ -40,13 +40,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -122,6 +120,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -161,8 +161,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (enableVideoPlayback, onEnableVideoPlaybackChange) =
         rememberPreference(
             EnableVideoPlaybackKey,
-            // Fork default ON (restored 2026-09-08 — the vossgraves port flipped
-            // this to false, silently disabling music-video playback).
             defaultValue = true,
         )
     val (enablePipMode, onEnablePipModeChange) =
@@ -238,9 +236,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = false,
         )
 
-    // Moved from Appearance → Album page (user request): the album page's
-    // looping canvas is a playback artwork concern, so it lives with the
-    // other canvas/artwork switches under Playback → Artwork.
     val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
         rememberPreference(
             AlbumCanvasEnabledKey,
@@ -1054,11 +1049,6 @@ internal fun ArtworkProviderOrderDialog(
     }
 }
 
-/**
- * "Preload songs" playback setting: how many upcoming songs are resolved
- * and cached ahead of playback (0 = off, max 10). Dialog-slider shape
- * matches the existing history-duration / crossfade preferences.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PreloadSongsPreference(

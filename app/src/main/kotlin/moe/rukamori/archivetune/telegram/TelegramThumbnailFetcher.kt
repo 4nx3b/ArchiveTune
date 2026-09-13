@@ -38,10 +38,6 @@ import java.util.concurrent.TimeUnit
 private const val TELEGRAM_ART_SCHEME = "tgart"
 private const val TELEGRAM_ART_TRACK_AUTHORITY = "track"
 
-/**
- * Artwork model for a Telegram track. Addressed by chat + message so the
- * document thumbnail can be fetched through TDLib on demand.
- */
 fun telegramArtworkModel(
     chatId: Long,
     messageId: Long,

@@ -61,10 +61,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -112,7 +110,6 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import me.saket.squiggles.SquigglySlider
-import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
@@ -137,7 +134,6 @@ import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.fadingEdge
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -146,13 +142,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalContentColor
@@ -163,7 +154,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Outline
@@ -183,6 +173,8 @@ import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import kotlin.math.abs
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private const val PlayerBackgroundMaxBlurRadius = 64f
 private const val ExplicitBadgeInlineId = "explicitBadge"
@@ -2072,7 +2064,6 @@ private fun V9PortraitContent(
         ) {
             Spacer(Modifier.height(if (compactHeight) 8.dp else 14.dp))
 
-            // TOP HEADER BAR
             V9Header(
                 textColor = textBackgroundColor,
                 containerColor = textButtonColor.copy(alpha = 0.16f),
@@ -2084,7 +2075,6 @@ private fun V9PortraitContent(
 
             Spacer(Modifier.height(headerGap))
 
-            // ALBUM COVER (Large 1:1 squircle)
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -2104,7 +2094,6 @@ private fun V9PortraitContent(
 
             Spacer(Modifier.height(headerGap))
 
-            // METADATA (Title & Artist on left, Heart button on right)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2144,7 +2133,6 @@ private fun V9PortraitContent(
 
                 Spacer(Modifier.width(16.dp))
 
-                // Heart / Like Action Button (replaces lyrics button)
                 IconButton(
                     onClick = onToggleLike,
                     modifier = Modifier.size(48.dp)
@@ -2160,7 +2148,6 @@ private fun V9PortraitContent(
 
             Spacer(Modifier.height(headerGap))
 
-            // PLAYBACK PROGRESS WAVY SLIDER
             val (smoothProgressFraction, displayedPosition) = rememberSmoothProgress(
                 isPlayingProvider = { isPlaying },
                 currentPositionProvider = { sliderPosition ?: position },
@@ -2215,7 +2202,6 @@ private fun V9PortraitContent(
 
             Spacer(Modifier.height(if (compactHeight) 16.dp else 24.dp))
 
-            // TRANSPORT CONTROLS (Material Extended animated weight style, placed at the bottom)
             val motionScheme = remember { MotionScheme.standard() }
             val controlSpatialSpec = remember { motionScheme.fastSpatialSpec<Float>() }
             V9AnimatedPlaybackControls(
@@ -2620,7 +2606,6 @@ private fun V9PlaybackProgress(
         }
     }
 }
-
 
 @Composable
 private fun V9BottomToggleRow(
@@ -3270,15 +3255,11 @@ fun V10PlayerContent(
     val liked = currentSong?.song?.liked == true
     val onToggleLike = playerConnection::toggleLike
 
-    // The two-tone contract: field + accent, nothing else.
-    // textBackgroundColor = accent (text/icon color), textButtonColor = field (fill color)
     val accent = textBackgroundColor
     val field = textButtonColor
 
-    // ========== MAIN LAYOUT (EditorialNowPlayingView) ==========
     Column(modifier = modifier.fillMaxSize()) {
 
-        // ========== TOP BAR (No statusBarsPadding to give breathing space/hide status bar) ==========
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3357,7 +3338,6 @@ fun V10PlayerContent(
             }
         }
 
-        // ========== DIE-CUT ART ==========
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3378,7 +3358,6 @@ fun V10PlayerContent(
             )
         }
 
-        // ========== HEADLINE ==========
         val title = mediaMetadata.title
         val headlineBase = when {
             title.length <= 12 -> MaterialTheme.typography.displayLarge
@@ -3444,13 +3423,11 @@ fun V10PlayerContent(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ========== CONTROL CLUSTER (asymmetric bento) ==========
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
         ) {
-            // Row 1: word pill + next circle
             val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
             Row(
                 modifier = Modifier
@@ -3510,7 +3487,6 @@ fun V10PlayerContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Row 2: previous circle + progress line with times
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -3596,7 +3572,6 @@ fun V10PlayerContent(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // ========== TOGGLE ROW (V9 INDIVIDUAL BUTTONS STYLE) ==========
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3612,7 +3587,6 @@ fun V10PlayerContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Like Button
                 V10ToggleButton(
                     checked = liked,
                     onClick = onToggleLike,
@@ -3622,7 +3596,6 @@ fun V10PlayerContent(
                     contentDescription = "Like"
                 )
 
-                // Add to Playlist Button
                 V10ToggleButton(
                     checked = false,
                     onClick = onAddToPlaylistClick,
@@ -3641,8 +3614,6 @@ fun V10PlayerContent(
         )
     }
 }
-
-// ========== HELPERS ==========
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -3713,8 +3684,7 @@ private fun EditorialDieCutArt(
         val (enableHapticFeedback) = rememberPreference(moe.rukamori.archivetune.constants.EnableHapticFeedbackKey, true)
         val coroutineScope = rememberCoroutineScope()
 
-        // Visual feedback variables
-        var skipIndicator by remember { mutableStateOf<String?>(null) } // "prev", "next", or "play_pause"
+        var skipIndicator by remember { mutableStateOf<String?>(null) }
         val skipIndicatorAlpha = remember { Animatable(0f) }
 
         Box(
@@ -3896,4 +3866,3 @@ internal fun formatEditorialTime(durationMs: Long): String {
     val seconds = totalSeconds % 60
     return String.format("%d:%02d", minutes, seconds)
 }
-
