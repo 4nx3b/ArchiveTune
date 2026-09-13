@@ -324,21 +324,27 @@ fun SpatialFlowPlayerContent(
     // ---- Canvas gating (Apple Music recipe) --------------------------------
     //
     // The canvas layers (frosted twin + sharp stage) STAY in composition while
-    // lyrics are open; they are only faded out and then stopped (texture
-    // surface dropped + ExoPlayer paused — no decode, no compositing). Removing
-    // them from composition — the old `!lyricsModeEnabled` term on canvasActive —
-    // disposed the players, so leaving the lyrics restarted the canvas from
-    // frame zero; pausing instead keeps the position exact on resume.
+    // lyrics are open; rendering stops in two steps. Playback freezes the
+    // instant lyrics open — the decoder and both TextureView composites quit
+    // immediately (the canvas kept decoding behind the opaque lyrics overlay
+    // for the whole fade window — "the lyrics lag for the first few seconds",
+    // fine after close/reopen once everything was warm) — while the surfaces
+    // keep the frozen last frame for the circular reveal, then drop after the
+    // fade window. Closing lyrics resumes playback + surfaces immediately; the
+    // ExoPlayers are never disposed while lyrics are open, so the canvas
+    // resumes from the exact paused position.
     val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
-    var canvasVisibleForLyrics by remember { mutableStateOf(true) }
+    var canvasPlayingForLyrics by remember { mutableStateOf(true) }
+    var canvasSurfacesForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsModeEnabled) {
         if (lyricsModeEnabled) {
-            // Let the fade finish before the render work stops.
-            canvasVisibleForLyrics = true
+            canvasPlayingForLyrics = false
+            canvasSurfacesForLyrics = true
             delay(SfLyricsBackdropMorphMs.toLong())
-            canvasVisibleForLyrics = false
+            canvasSurfacesForLyrics = false
         } else {
-            canvasVisibleForLyrics = true
+            canvasPlayingForLyrics = true
+            canvasSurfacesForLyrics = true
         }
     }
     val lyricsBackdropProgress by animateFloatAsState(
@@ -397,8 +403,8 @@ fun SpatialFlowPlayerContent(
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasVisibleForLyrics,
-                    visible = canvasVisibleForLyrics,
+                    isPlaying = isPlaying && canvasPlayingForLyrics,
+                    visible = canvasSurfacesForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                     maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
                     modifier =
@@ -451,8 +457,8 @@ fun SpatialFlowPlayerContent(
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && canvasVisibleForLyrics,
-                    visible = canvasVisibleForLyrics,
+                    isPlaying = isPlaying && canvasPlayingForLyrics,
+                    visible = canvasSurfacesForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                     modifier = Modifier.matchParentSize(),
                 )
