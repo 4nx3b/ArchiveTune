@@ -2111,3 +2111,31 @@ Stage Summary:
   cache, comment-free codebase with 24 fewer dead declarations and 368 net
   fewer imports, changelogs.md + 422-proof release notes. Push pending
   final CI compile validation.
+
+---
+Task ID: 40
+Agent: Super Z (main agent, session web-e130fa90)
+Task: CI validation round + 15.0 stable release dispatch and verification.
+
+Work Log:
+- Commit 426775e92 pushed to dev: PR #219 opened. First CI round caught one
+  break my local compile could not reach (app module needs >10 min on this
+  2-core box): the unused-import sweep removed Mockito's backticked
+  `import org.mockito.Mockito.`when`` from PlayerConnectionTest — \b word
+  boundaries never match a backtick after whitespace, so the usage search
+  found nothing. Import restored (fcc639645); cleaner patched to search
+  backticked names literally. The main-sources compile itself passed CI on
+  the FIRST round (Build APKs success on 426775e92) — all cleanup surgery
+  (comments/imports/dead code, 292 files) is compile-clean.
+- PR #219 merged after green PR/nightly/APK checks. The user's own
+  pre-merge release dispatch (34752022123, old main code) was cancelled —
+  it would have re-hit the 422 — and the release workflow re-dispatched on
+  the merged main (4f16c760).
+- v15.0.6371 published: 7 APK assets, stable (not draft/prerelease).
+  Release body verified as the short summary + blob/v15.0.6371/changelogs.md
+  link + v14.0.5362 compare link — the 125k-char 422 failure is gone.
+  changelogs.md resolves at the tag (200).
+
+Stage Summary:
+- 15.0 stable is out with the changelog-file release flow; dev and main are
+  in sync at 4f16c760; all 8 user items for this batch are complete.
