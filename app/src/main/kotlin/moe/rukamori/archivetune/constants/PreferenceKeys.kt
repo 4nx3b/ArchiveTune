@@ -1109,8 +1109,6 @@ val TidalArtworkFallbackEnabledKey = booleanPreferencesKey("tidalArtworkFallback
 val TidalAnimatedCoversEnabledKey = booleanPreferencesKey("tidalAnimatedCoversEnabled")
 val TidalAccountNameKey = stringPreferencesKey("tidal_account_name")
 
-val PoolApiKeyKey = stringPreferencesKey("poolApiKey")
-
 
 // Newline-separated list of user-configured HiFi/QQDL instance base URLs. Empty = use defaults.
 val TidalInstancesKey = stringPreferencesKey("tidalInstances")
