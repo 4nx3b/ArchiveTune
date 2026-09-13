@@ -27,12 +27,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
@@ -73,6 +71,8 @@ import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.firstOrNull
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun AddToPlaylistDialogOnline(
@@ -141,8 +141,6 @@ fun AddToPlaylistDialogOnline(
                 val failCount = AtomicInteger(0)
                 val failedSongs = mutableListOf<String>()
 
-                // YouTube Music ids of the songs that actually landed in the
-                // local playlist — what the auto-sync below pushes remotely.
                 val succeededIds = java.util.Collections.synchronizedList(mutableListOf<String>())
 
                 val semaphore = Semaphore(5)
@@ -230,13 +228,6 @@ fun AddToPlaylistDialogOnline(
                     Timber.e(it, "Import failed")
                 }
 
-                // Auto-sync (2026-09-12): importing a playlist finishes into a
-                // local playlist that used to sit there until the user opened
-                // the playlist menu and pressed Sync. Now the import itself
-                // pushes it: a remote playlist gets an incremental sync (which
-                // uploads the just-added songs), and a local-only playlist gets
-                // its YouTube counterpart created and linked, exactly like the
-                // cross-service import dialog does.
                 if (targetPlaylist != null && succeededIds.isNotEmpty()) {
                     runCatching {
                         val preferences = context.dataStore.data.firstOrNull()

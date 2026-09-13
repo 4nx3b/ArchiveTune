@@ -25,14 +25,11 @@ import java.util.zip.GZIPInputStream
 object TdLibNativeLibrary {
     private const val TAG = "TdLibNative"
 
-    /** TDLight build the digests below were computed from (tdlight-team/tdlight). */
     const val VERSION = "tdlight-2b51b33"
 
     private const val LIB_NAME = "tdjni"
     private const val FILE_NAME = "libtdjni.so"
 
-    // SHA-256 of the decompressed libtdjni.so per ABI, published in the
-    // release's libtdjni-digests.txt asset next to the .so.gz downloads.
     private val DIGESTS =
         mapOf(
             "arm64-v8a" to "29e0ffb1e99ef30f1ae6db1a9ffc76e4bb82f6a888f91999596de237d17ea110",
@@ -44,7 +41,6 @@ object TdLibNativeLibrary {
     @Volatile
     private var loaded = false
 
-    /** Last load-blocking failure detail, surfaced through TdEngine.lastStartError. */
     @Volatile
     var lastLoadError: String? = null
         private set
@@ -92,13 +88,6 @@ object TdLibNativeLibrary {
 
         TdStartTrace.step(context, "digest-ok", "${file.length()} bytes")
 
-        // The tdlight library's JNI_OnLoad resolves its whole Java surface
-        // through JNI lookups (tl_jni_object.cpp: FindClass/GetFieldID/
-        // GetMethodID/RegisterNatives), and ANY miss calls env->FatalError —
-        // an uncatachable process abort DURING System.load, with no Java
-        // stack trace and no TDLib fatal note. Re-doing the identical
-        // lookups from Kotlin first turns that whole crash class into a
-        // readable start failure instead of a dead app.
         preflightJniSurface()?.let { problem ->
             lastLoadError = "JNI surface check failed: $problem"
             Timber.tag(TAG).e("Refusing to load %s: %s", file.name, problem)
@@ -127,13 +116,6 @@ object TdLibNativeLibrary {
         return loadSucceeded
     }
 
-    /**
-     * Performs every Java lookup tdlight's JNI_OnLoad and early fetch code
-     * performs natively, from Kotlin. Returns null when the surface is
-     * intact (safe to System.load), or a compact description of the first
-     * problems found (must NOT load: the same lookup aborts the process
-     * through env->FatalError inside System.load).
-     */
     private fun preflightJniSurface(): String? {
         val problems = mutableListOf<String>()
 
@@ -164,7 +146,6 @@ object TdLibNativeLibrary {
             }
         }
 
-        // --- register_native (td_jni.cpp): version check + native methods ---
         val tdApi = lookupClass("org.drinkless.tdlib.TdApi")
         lookupField(tdApi, "GIT_COMMIT_HASH")
         val client = lookupClass("org.drinkless.tdlib.Client")
@@ -194,8 +175,6 @@ object TdLibNativeLibrary {
             lookupClass("org.drinkless.tdlib.Client\$LogMessageHandler"),
         )
 
-        // --- TdApi.Object / TdApi.Function native toString + toJsonString,
-        // and the getConstructor method ID init_vars caches. ---
         val objectClass = lookupClass("org.drinkless.tdlib.TdApi\$Object")
         lookupNative(objectClass, "toString")
         lookupNative(objectClass, "toJsonString")
@@ -206,25 +185,16 @@ object TdLibNativeLibrary {
         runCatching { functionClass.getMethod("getConstructor") }
             .onFailure { problems += "TdApi\$Function.getConstructor is missing" }
 
-        // --- init_vars' array classes (FindClass of "[L...;"). ---
         lookupClass("[Lorg.drinkless.tdlib.TdApi\$KeyboardButton;")
         lookupClass("[Lorg.drinkless.tdlib.TdApi\$InlineKeyboardButton;")
         lookupClass("[Lorg.drinkless.tdlib.TdApi\$PageBlockTableCell;")
 
-        // --- the first two RPCs the engine sends: their Java fields are
-        // fetched natively through GetFieldID (generated td_api_jni code). ---
         lookupField(lookupClass("org.drinkless.tdlib.TdApi\$SetLogVerbosityLevel"), "newVerbosityLevel")
         lookupField(lookupClass("org.drinkless.tdlib.TdApi\$GetOption"), "name")
 
         return if (problems.isEmpty()) null else problems.take(4).joinToString("; ").take(300)
     }
 
-    /**
-     * Downloads the gzip-compressed libtdjni.so for this device's ABI,
-     * decompresses it, verifies the SHA-256 of the *decompressed* bytes and
-     * atomically moves it into place. [onProgress] reports 0..1 against the
-     * compressed transfer size.
-     */
     suspend fun download(
         context: Context,
         onProgress: (Float) -> Unit = {},
@@ -316,7 +286,6 @@ object TdLibNativeLibrary {
             ensureLoaded(context)
         }
 
-    /** Deletes libtdjni.so copies from other engine versions. */
     private fun cleanupStaleVersions(context: Context) {
         val dir = target(context).parentFile ?: return
         val prefix = "$VERSION-"

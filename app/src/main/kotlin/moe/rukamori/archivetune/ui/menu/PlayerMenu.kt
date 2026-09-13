@@ -57,14 +57,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -150,6 +148,8 @@ import kotlin.math.round
 import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
 import moe.rukamori.archivetune.ui.component.MenuSectionDivider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun PlayerMenu(
@@ -177,18 +177,11 @@ fun PlayerMenu(
     val coroutineScope = rememberCoroutineScope()
 
     val downloadUtil = LocalDownloadUtil.current
-    // Per-song source pin, read BEFORE the download state so the ids list can
-    // key on it: switching the song's source re-evaluates which offline copy
-    // the menu row reflects (previously remembered on mediaId alone, so the
-    // row kept pointing at the previous source's download entry).
     val (songSourceRaw, onSongSourceChange) = rememberPreference(SongSourceOverrideKey, "")
     val currentSongSource =
         remember(songSourceRaw, mediaMetadata.id) {
             SongSourceOverride.get(songSourceRaw.ifBlank { null }, mediaMetadata.id)
         }
-    // Per-source download state — "Download" vs "Remove download" tracks the
-    // CURRENT source (per-song pin first, else the download priority order's
-    // top entry), so switching a song's source re-evaluates the offline copy.
     val downloadStateIds =
         remember(mediaMetadata.id, currentSongSource) {
             downloadUtil.currentSourceDownloadIds(mediaMetadata.id)
@@ -356,10 +349,6 @@ fun PlayerMenu(
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
                 playerConnection.service.setSongSourceOverride(mediaMetadata.id, source)
                 showSourceDialog = false
-                // Close the whole overflow popup too — the user has just
-                // made their pick; leaving the menu open with a now-stale
-                // per-source download row only invites a second tap that
-                // would act on outdated source state.
                 onDismiss()
             },
             onPlaySong = { song ->
@@ -398,8 +387,6 @@ fun PlayerMenu(
                             )
                     }
                     showSourceDialog = false
-                    // Same as onSelect: the source decision is complete, so
-                    // the overflow popup closes with the dialog.
                     onDismiss()
                 }
             },
@@ -853,8 +840,9 @@ fun PlayerMenu(
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
                     ListItem(
                         headlineContent = {
@@ -921,8 +909,9 @@ fun PlayerMenu(
 
                         if (splitArtists.isNotEmpty() && mediaMetadata.album != null) {
                             HorizontalDivider(
-                                modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -1024,19 +1013,10 @@ fun PlayerMenu(
                                         }
 
                                         coroutineScope.launch {
-                                            // Clear stale spans for the CURRENT target
-                                            // source only — other sources' completed
-                                            // downloads coexist as their own offline
-                                            // copies (one entry per source in the
-                                            // export/offline pages).
                                             downloadUtil.clearCurrentTargetCacheSpans(mediaMetadata.id)
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(mediaMetadata.id)
                                             }
-                                            // The request id + cache key carry the
-                                            // target source's identity ("ytm:<id>",
-                                            // "qobuz:<id>", ...) so the download lands
-                                            // in its own per-source slot.
                                             val downloadId = downloadUtil
                                                 .currentSourceDownloadTarget(mediaMetadata.id).key
                                             val downloadRequest =
@@ -1059,8 +1039,9 @@ fun PlayerMenu(
                     }
                     if (externalDownloaderEnabled) {
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.open_with_downloader)) },
@@ -1129,8 +1110,9 @@ fun PlayerMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -1158,8 +1140,9 @@ fun PlayerMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -1194,8 +1177,9 @@ fun PlayerMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -1217,8 +1201,9 @@ fun PlayerMenu(
 
                     if (isQueueTrigger != true) {
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
@@ -1236,8 +1221,9 @@ fun PlayerMenu(
                             )
 
                             HorizontalDivider(
-                                modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -1254,8 +1240,9 @@ fun PlayerMenu(
                         )
 
                         HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -1443,8 +1430,9 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                 }
 
                 HorizontalDivider(
-                    modifier = Modifier.padding(start = 56.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    thickness = 0.5.dp,
                 )
 
                 Row(
@@ -1721,11 +1709,6 @@ private data class SourceSearchResult(
     val songItem: SongItem?,
 )
 
-/**
- * One source pill for the play-from search. Same shape, corner and colors as [ChipsRow] so the
- * row reads as the app's chip language, plus a small spinner on the trailing edge while that
- * source's search is in flight — the per-source loading indicator.
- */
 @Composable
 private fun SourceSearchPill(
     label: String,
@@ -1762,10 +1745,6 @@ private fun SourceSearchPill(
     )
 }
 
-/**
- * Runs ONE source's search against [query]. Every call is self-contained so the dialog can fire
- * all sources at once and let each land independently.
- */
 private suspend fun searchOneSource(
     source: AudioSourceType,
     query: String,
@@ -1944,10 +1923,6 @@ private fun SongSourceDialog(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
 
-    // Per-source results and per-source loading flags. Every searchable source runs its own
-    // search in parallel as soon as there is a query, and each source's results land the moment
-    // that source answers. Switching the source pill NEVER re-triggers a search: the pills only
-    // filter what is displayed, so results survive any number of pill changes.
     var resultsBySource by remember {
         mutableStateOf<Map<AudioSourceType, List<SourceSearchResult>>>(emptyMap())
     }
@@ -1987,8 +1962,6 @@ private fun SongSourceDialog(
             loadingSources = emptySet()
             return@LaunchedEffect
         }
-        // Debounce typing; every source then searches the same query at once, each landing in
-        // resultsBySource as it answers so partial results show without waiting for stragglers.
         delay(350L)
         val query = searchQuery
         loadingSources = searchableSources.toSet()
@@ -2017,7 +1990,6 @@ private fun SongSourceDialog(
         }
     }
 
-    // The displayed set: the pill filters these lists client-side only.
     val results =
         remember(resultsBySource, sourceFilter, searchableSources) {
             searchableSources
@@ -2048,8 +2020,6 @@ private fun SongSourceDialog(
                 IconButton(
                     onClick = {
                         if (!searchMode) {
-                            // Entering search mode with the song's name already in the bar: the
-                            // point of the search is finding THIS track on another service.
                             searchQuery = initialQuery
                             sourceFilter = null
                             searchMode = true

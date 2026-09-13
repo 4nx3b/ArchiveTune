@@ -46,7 +46,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +99,7 @@ import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import dev.chrisbanes.haze.materials.HazeMaterials
+import androidx.compose.runtime.getValue
 
 val HomeFeedGutter = 10.dp
 
@@ -770,10 +770,6 @@ fun ScreenHeaderHaze(
 ) {
     if (!enabled) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-    // The frosted progressive-blur header strip is a glass effect: with the
-    // liquid glass toggle off it must not render either, so no glass remains
-    // anywhere in the app. (The plain colour scrim stays available to callers
-    // that layer their own header background on top of the content.)
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     if (!liquidGlassEnabled) return
     HomeTopFadeBlur(

@@ -29,10 +29,8 @@ internal object TgStrippedJpeg {
 
     fun isStripped(bytes: ByteArray): Boolean = bytes.size >= 3 && bytes[0] == 0x01.toByte()
 
-    /** Reconstruct a displayable JPEG, or null when the input is not a stripped thumbnail. */
     fun reconstruct(bytes: ByteArray?): ByteArray? {
         if (bytes == null || bytes.size < 3 || bytes[0] != 0x01.toByte()) return null
-        // header[0..163] (164) + height + header[165] + width + header[167..] + body + EOI
         val bodySize = bytes.size - 3
         val out = ByteArray(HEADER.size + bodySize + FOOTER.size)
         System.arraycopy(HEADER, 0, out, 0, 164)

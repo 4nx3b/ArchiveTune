@@ -33,7 +33,6 @@ import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.utils.reportException
-import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
 import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedItem
 import moe.rukamori.archivetune.spotify.models.SpotifyHomeFeedSection
@@ -83,9 +82,6 @@ sealed interface SpotifyHomeAction {
         val tracks: List<SpotifyTrack>,
         val title: String,
     ) : SpotifyHomeAction
-    // Identity plus the words the catalogue search needs, rather than a whole Spotify model. The
-    // callers hold four different shapes for the same album (feed item, recent item, search
-    // result), and every one of them was rebuilding a SpotifyAlbum just to be taken apart again.
     data class AlbumClick(val id: String, val name: String, val artist: String?) : SpotifyHomeAction
     data class ArtistClick(val id: String, val name: String) : SpotifyHomeAction
 }
@@ -255,11 +251,6 @@ class SpotifyHomeViewModel @Inject constructor(
 
                 homeResult.onSuccess { feed ->
                     feed.sections.forEach { raw ->
-                        // Recognised by the section URI alone. It used to also match the title
-                        // against "Jump back in", "Recently" and five Russian phrases — which meant
-                        // the shelf was only ever recognised in two of the forty-odd languages the
-                        // app ships, and Spotify returns titles in the account's language. The URI
-                        // is the same string whatever the user reads.
                         if (raw.sectionUri.contains("recent", ignoreCase = true)) {
                             recentItems = raw.items.mapNotNull { item ->
                                 when (item) {
@@ -312,11 +303,6 @@ class SpotifyHomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * A feed shelf, kept whole. Every item stays, in the order Spotify sent it, carrying its own
-     * kind — so a shelf mixing albums with playlists renders both and each tile opens its own
-     * thing. The previous version kept only the majority kind and dropped the rest.
-     */
     private fun convertHomeSection(feedSection: SpotifyHomeFeedSection): SpotifyHomeSection? {
         val title = feedSection.title ?: return null
         if (feedSection.items.isEmpty()) return null

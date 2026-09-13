@@ -74,11 +74,9 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -151,6 +149,8 @@ import moe.rukamori.archivetune.viewmodels.RemoteHistoryUiState
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import dev.chrisbanes.haze.hazeSource
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Composable
 fun HistoryScreen(
@@ -1546,17 +1546,8 @@ private fun filterRemoteSections(
 
 private const val HISTORY_LOAD_MORE_THRESHOLD = 12
 
-/** The pill's own name, and the line under the header that says what the source actually holds. */
 private fun HistorySource.titleResId(): Int =
     when (this) {
         HistorySource.LOCAL -> R.string.local_history
         HistorySource.REMOTE -> R.string.remote_history
     }
-
-private fun HistorySource.summaryResId(): Int =
-    when (this) {
-        HistorySource.LOCAL -> R.string.history_local_summary
-        HistorySource.REMOTE -> R.string.history_remote_summary
-    }
-
-

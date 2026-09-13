@@ -7,22 +7,25 @@
 
 package moe.rukamori.archivetune.lyrics
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.ai.AiLyricsRomanizer
 import moe.rukamori.archivetune.ai.AiServiceConfig
 import moe.rukamori.archivetune.constants.AiApiKeyKey
@@ -43,12 +46,19 @@ import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import org.json.JSONObject
 import timber.log.Timber
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import androidx.compose.runtime.getValue
 
 object AiLyricsRomanization {
     private const val TAG = "AiRomanization"
+
+    private const val CacheFileName = "ai_romanization_cache.json"
+    private const val MaxCachedTracks = 256
+    private const val SaveDebounceMs = 1_500L
 
     enum class RequestStatus {
 
@@ -79,14 +89,6 @@ object AiLyricsRomanization {
 
         val active: Boolean get() = enabled && config.canCallApi
 
-        /**
-         * Identity of the provider this run of romanisation belongs to. Every
-         * cached / in-flight / published result is keyed by it so a romanisation
-         * produced by one provider is never served while another provider owns
-         * the feature — e.g. results from the main provider must not reappear
-         * after the user switches to the dedicated romanisation provider, and
-         * vice versa.
-         */
         val configKey: String
             get() = "${config.provider}|${config.apiKey}|${config.customEndpoint}|${config.model}"
 
@@ -109,8 +111,9 @@ object AiLyricsRomanization {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val romanizer = AiLyricsRomanizer()
-    private val inFlight = ConcurrentHashMap<String, Deferred<List<String?>>>()
-    private val cache = ConcurrentHashMap<String, Map<String, String>>()
+    private val inFlight = ConcurrentHashMap<String, Deferred<List<String?>?>>()
+
+    private val cache = LinkedHashMap<String, Map<String, String>>(64, 0.75f, true)
 
     private val _results = MutableStateFlow<Result?>(null)
     private val nonceCounter = AtomicLong(0L)
@@ -128,6 +131,72 @@ object AiLyricsRomanization {
 
     val running: StateFlow<Boolean> = _running.asStateFlow()
 
+    @Volatile
+    private var cacheFile: File? = null
+
+    private var saveJob: Job? = null
+
+    fun attach(context: Context) {
+        if (cacheFile != null) return
+        val file = File(context.filesDir, CacheFileName)
+        cacheFile = file
+        scope.launch {
+            val persisted = runCatching { readCacheFile(file) }.getOrNull()
+            if (persisted != null) {
+                synchronized(cache) {
+                    cache.putAll(persisted)
+                    trimCacheLocked()
+                }
+                Timber.tag(TAG).d("restored %d romanisation cache entries", persisted.size)
+            }
+        }
+    }
+
+    private fun readCacheFile(file: File): Map<String, Map<String, String>> {
+        if (!file.exists()) return emptyMap()
+        val root = JSONObject(file.readText())
+        val out = LinkedHashMap<String, Map<String, String>>(root.length())
+        for (key in root.keys()) {
+            val byLine = root.optJSONObject(key) ?: continue
+            val lines = LinkedHashMap<String, String>(byLine.length())
+            for (lineKey in byLine.keys()) {
+                val value = byLine.optString(lineKey, "")
+                if (value.isNotEmpty()) lines[lineKey] = value
+            }
+            out[key] = lines
+        }
+        return out
+    }
+
+    private suspend fun persistCache() {
+        val file = cacheFile ?: return
+        val snapshot = synchronized(cache) {
+            trimCacheLocked()
+            LinkedHashMap(cache)
+        }
+        runCatching {
+            val root = JSONObject()
+            for ((requestKey, byLine) in snapshot) {
+                root.put(requestKey, JSONObject(byLine as Map<*, *>))
+            }
+            val tmp = File(file.parentFile, "$CacheFileName.tmp")
+            tmp.writeText(root.toString())
+            if (!tmp.renameTo(file)) {
+                file.delete()
+                tmp.renameTo(file)
+            }
+        }.onFailure { Timber.tag(TAG).w(it, "failed to persist romanisation cache") }
+    }
+
+    private fun schedulePersist() {
+        if (cacheFile == null) return
+        saveJob?.cancel()
+        saveJob = scope.launch {
+            delay(SaveDebounceMs)
+            persistCache()
+        }
+    }
+
     @Composable
     fun rememberSettings(): Settings {
         val (enabled) = rememberPreference(AiRomanizeLyricsKey, defaultValue = false)
@@ -140,12 +209,6 @@ object AiLyricsRomanization {
         val (selectedModel) = rememberPreference(AiSelectedModelKey, defaultValue = "")
         val (customModel) = rememberPreference(AiCustomModelKey, defaultValue = "")
 
-        // Separate-provider override, the user's exact rule:
-        // - Separate provider ON (toggle on + a dedicated provider selected):
-        //   ONLY that provider ever romanises — the main provider is never
-        //   used for romanisation in this state; it only does translation.
-        // - Separate provider OFF (toggle off, or provider left at "None"):
-        //   the main provider does BOTH romanisation and translation.
         val (separateProviderEnabled) = rememberPreference(AiRomanizeSeparateProviderKey, defaultValue = false)
         val romanizeProvider by rememberEnumPreference(AiRomanizeProviderKey, AiProvider.NONE)
         val (romanizeApiKey) = rememberPreference(AiRomanizeApiKeyKey, defaultValue = "")
@@ -198,9 +261,7 @@ object AiLyricsRomanization {
         lines: List<String>,
         settings: Settings,
     ): List<String?> {
-        // Provider-scoped lookup: a cached romanisation only ever resolves for
-        // the provider that produced it (see Settings.configKey).
-        val byLine = cache[fullKey(sessionKey, settings)] ?: return emptyList()
+        val byLine = synchronized(cache) { cache[fullKey(sessionKey, settings)] } ?: return emptyList()
         return lines.map { byLine[it.trim()] }
     }
 
@@ -228,14 +289,9 @@ object AiLyricsRomanization {
         if (!settings.active) return RequestStatus.SETTINGS_DISABLED
         if (lines.isEmpty()) return RequestStatus.NO_LYRICS
 
-        // The romanisation identity of a request is its lyrics PLUS the
-        // provider that will run it. Without the provider half, a cached or
-        // in-flight result from the main provider kept answering after the
-        // user switched to the dedicated romanisation provider (and vice
-        // versa) — romanisation visibly "still ran" on the wrong provider.
         val requestKey = fullKey(sessionKey, settings)
 
-        cache[requestKey]?.let { cached ->
+        synchronized(cache) { cache[requestKey] }?.let { cached ->
             publish(requestKey, cached)
             return RequestStatus.ALREADY_CACHED
         }
@@ -258,34 +314,36 @@ object AiLyricsRomanization {
                     throw e
                 } catch (t: Throwable) {
                     Timber.tag(TAG).w(t, "AI romanisation failed for %s", sessionKey)
-                    emptyList()
+                    null
                 } finally {
                     _running.value = false
                 }
             }
         inFlight[requestKey] = job
         scope.async {
-            val result = runCatching { job.await() }.getOrDefault(emptyList())
+            val result = runCatching { job.await() }.getOrNull()
             inFlight.remove(requestKey)
+            if (result == null) return@async
 
             val byLine = LinkedHashMap<String, String>(result.size)
             lines.forEachIndexed { index, line ->
                 val romanized = result.getOrNull(index)?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEachIndexed
                 byLine.putIfAbsent(line.trim(), romanized)
             }
-            if (byLine.isNotEmpty()) {
+            synchronized(cache) {
                 cache[requestKey] = byLine
-                trimCache(requestKey)
+                trimCacheLocked()
+            }
+            schedulePersist()
+            if (byLine.isNotEmpty()) {
                 publish(requestKey, byLine)
             } else {
-
                 _requestOutcomes.tryEmit(RequestStatus.EMPTY_RESULT)
             }
         }
         return RequestStatus.STARTED
     }
 
-    /** Lyrics content key + provider identity (see Settings.configKey). */
     private fun fullKey(
         sessionKey: String,
         settings: Settings,
@@ -299,11 +357,10 @@ object AiLyricsRomanization {
         _results.value = Result(sessionKey = requestKey, byLine = byLine)
     }
 
-    private fun trimCache(keep: String) {
-        if (cache.size <= MaxCachedTracks) return
-
-        cache.keys.firstOrNull { it != keep }?.let { cache.remove(it) }
+    private fun trimCacheLocked() {
+        while (cache.size > MaxCachedTracks) {
+            val eldest = cache.keys.firstOrNull() ?: break
+            cache.remove(eldest)
+        }
     }
-
-    private const val MaxCachedTracks = 32
 }

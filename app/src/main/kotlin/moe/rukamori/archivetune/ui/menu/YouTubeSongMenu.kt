@@ -33,12 +33,10 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,6 +90,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.toggleSpeedDialPin
 import java.time.LocalDateTime
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -108,11 +108,6 @@ fun YouTubeSongMenu(
     val blockedSongIds by database.blockedSongIds().collectAsStateWithLifecycle(initialValue = emptyList())
     val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
     val downloadUtil = LocalDownloadUtil.current
-    // Per-source download state: the menu reflects the CURRENT source's
-    // offline copy (per-song source pin first, else the top of the download
-    // priority order), so switching a song's source flips "Download" back on
-    // until that source's own copy exists — and back to "Remove download"
-    // once the user returns to a source they already downloaded from.
     val downloadStateIds = remember(song.id) { downloadUtil.currentSourceDownloadIds(song.id) }
     val downloadsMap by downloadUtil.downloads.collectAsStateWithLifecycle()
     val download = downloadStateIds.firstNotNullOfOrNull { downloadsMap[it] }
@@ -244,7 +239,7 @@ fun YouTubeSongMenu(
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
-    val dividerModifier = Modifier.padding(start = 56.dp)
+    val dividerModifier = Modifier.padding(horizontal = 16.dp)
     val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
     val addToQueueText = stringResource(R.string.add_to_queue)
@@ -334,9 +329,6 @@ fun YouTubeSongMenu(
                     onClick = {
                         when (download?.state) {
                             Download.STATE_COMPLETED, Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                                // Remove by the ACTUAL entry id (source-scoped or
-                                // legacy plain) so only the current source's copy
-                                // is removed; other sources' downloads survive.
                                 download?.let { dl ->
                                     DownloadService.sendRemoveDownload(
                                         context,
@@ -353,17 +345,10 @@ fun YouTubeSongMenu(
                                     insert(song.toMediaMetadata())
                                 }
                                 coroutineScope.launch {
-                                    // Clear stale spans for the CURRENT target
-                                    // source only — other sources' completed
-                                    // downloads are kept so each source can hold
-                                    // its own offline copy of the song.
                                     downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                     runCatching {
                                         downloadUtil.prewarmSongForDownload(song.id)
                                     }
-                                    // The request id + cache key carry the target
-                                    // source's identity, so the download lands in
-                                    // its own per-source slot.
                                     val downloadId = downloadUtil
                                         .currentSourceDownloadTarget(song.id).key
                                     val downloadRequest =
@@ -451,7 +436,8 @@ fun YouTubeSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -472,7 +458,8 @@ fun YouTubeSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -589,8 +576,9 @@ fun YouTubeSongMenu(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -711,9 +699,6 @@ fun YouTubeSongMenu(
                                         }
 
                                         coroutineScope.launch {
-                                            // Clear stale spans for the CURRENT
-                                            // target source only; other sources'
-                                            // completed downloads are kept.
                                             downloadUtil.clearCurrentTargetCacheSpans(song.id)
                                             runCatching {
                                                 downloadUtil.prewarmSongForDownload(song.id)
@@ -742,7 +727,8 @@ fun YouTubeSongMenu(
                     if (externalDownloaderEnabled) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -823,7 +809,8 @@ fun YouTubeSongMenu(
                         if (splitArtists.isNotEmpty() && song.album != null) {
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
 
@@ -965,8 +952,9 @@ fun YouTubeSongMenu(
                     )
 
                     HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(

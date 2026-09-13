@@ -50,7 +50,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +89,7 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.runtime.getValue
 
 @androidx.compose.runtime.Immutable
 data class SpotifyHomeMetrics(
@@ -120,13 +120,6 @@ fun rememberSpotifyHomeMetrics(): SpotifyHomeMetrics =
     }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
-/**
- * Opens a Spotify playlist tile, or hands the DJ off to Spotify.
- *
- * The DJ arrives shaped like a playlist and is not one — see [isSpotifyDj]. Navigating to it gave
- * an empty playlist page, which read as the tile being broken; Spotify's own app is the only place
- * it can actually play.
- */
 @Composable
 private fun rememberOpenSpotifyPlaylist(navController: NavController): (String) -> Unit {
     val context = LocalContext.current
@@ -312,10 +305,6 @@ fun SpotifyHomeScreen(
                                         )
                                     }
                                     is SpotifyHomeSection.Cards -> {
-                                        // Render with the app's own shelf rows, one per item
-                                        // kind, in the order the kinds first appear — same tiles,
-                                        // sizes and dimensions the YouTube home shelves use, so
-                                        // the Spotify page reads as part of the same UI.
                                         val kindOrder = remember(section.items) {
                             section.items.map { it::class }.distinct()
                         }

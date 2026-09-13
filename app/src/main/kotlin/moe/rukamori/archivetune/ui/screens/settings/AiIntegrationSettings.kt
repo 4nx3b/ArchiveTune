@@ -73,12 +73,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -147,6 +145,8 @@ import dev.chrisbanes.haze.hazeSource
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AiIntegrationSettingsViewModel
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private enum class TestApiVisualState { Idle, Testing, Success, Failed }
 
@@ -663,8 +663,6 @@ fun AiIntegrationSettings(
                     checked = aiRomanizeLyrics,
                     onCheckedChange = onAiRomanizeLyricsChange,
 
-                    // Either the main provider or a configured separate
-                    // romanisation provider is enough to enable the feature.
                     isEnabled =
                         hasApiConfiguration || (
                             romanizeSeparateProvider &&
@@ -682,8 +680,6 @@ fun AiIntegrationSettings(
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
                     checked = autoAiRomanizeLyrics,
                     onCheckedChange = onAutoAiRomanizeLyricsChange,
-                    // Either the main provider or a configured separate
-                    // romanisation provider is enough to enable the feature.
                     isEnabled =
                         hasApiConfiguration || (
                             romanizeSeparateProvider &&
@@ -794,8 +790,6 @@ fun AiIntegrationSettings(
                     selectedModel = romanizeSelectedModel,
                     availableModels = romanizeAvailableModels,
                     isFetching = romanizeActionState.isFetchingModels,
-                    // DeepL is translation-only and has no model list; every
-                    // chat provider (incl. OpenRouter and Mistral) can fetch.
                     isEnabled = romanizeProvider != AiProvider.DEEPL,
                     canFetch = romanizeApiKey.isNotBlank() && !romanizeActionState.isFetchingModels,
                     onModelSelected = {
@@ -1065,7 +1059,6 @@ fun AiIntegrationSettings(
     )
     }
 }
-
 
 @Composable
 private fun ApiKeyDialog(

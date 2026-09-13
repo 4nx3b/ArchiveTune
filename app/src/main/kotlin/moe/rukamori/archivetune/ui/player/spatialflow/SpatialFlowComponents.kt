@@ -5,18 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style — shared UI components.
- *
- * Ports of SpatialFlow's PlayerUiComponents.kt
- * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0): the marquee with alpha-faded
- * edges, the artwork-surface color derivation, the split like/dislike chip, the
- * pill chip (with download progress fill), the wavy slider with time labels,
- * and the lyrics metadata footer. Dimensions, typography, spacing and colors
- * are SpatialFlow's own — only the R drawable references and the song model
- * were adapted to ArchiveTune.
- */
-
 package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.graphics.Bitmap
@@ -46,12 +34,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -89,6 +75,8 @@ import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.basicMarqueeWithFadedEdges(
@@ -154,9 +142,6 @@ internal fun deriveArtworkSurfaceColor(
 @Composable
 internal fun SpatialFlowBlurredBackdrop(
     artUrl: String?,
-    // When the canvas owns the player, the Apple Music canvas scrim
-    // (0.25/0.40/0.65 black) replaces this backdrop's own gradient — stacking
-    // the two made the frosted dock darker than the AM reference.
     withScrim: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -339,10 +324,6 @@ internal fun PillChip(
             contentColor.copy(alpha = if (isDark) 0.08f else 0.06f)
         }
 
-    // Only the pill's background reacts to selection — the icon/label tint
-    // stays constant (user request 2026-09-12: "the text in the pills
-    // shouldn't change their colors when they're enabled, only the
-    // background of the pill should change").
     val tintColor = contentColor.copy(alpha = 0.8f)
     val progressColor = accentColor.copy(alpha = if (isDark) 0.35f else 0.25f)
 
@@ -448,18 +429,17 @@ internal fun WavySliderWithLabels(
             waveLength = 48.dp,
         )
 
-        Row(
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = formatDuration(displayPos),
                 style = MaterialTheme.typography.labelSmall,
                 color = contentSecondary,
+                modifier = Modifier.align(Alignment.CenterStart),
             )
 
             if (currentFormat != null) {
@@ -470,6 +450,7 @@ internal fun WavySliderWithLabels(
                 Row(
                     modifier =
                         Modifier
+                            .align(Alignment.Center)
                             .clip(RoundedCornerShape(6.dp))
                             .background(contentColor.copy(alpha = if (isDark) 0.10f else 0.08f))
                             .padding(horizontal = 8.dp, vertical = 3.dp),
@@ -495,6 +476,7 @@ internal fun WavySliderWithLabels(
                 text = formatDuration(duration),
                 style = MaterialTheme.typography.labelSmall,
                 color = contentSecondary,
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }

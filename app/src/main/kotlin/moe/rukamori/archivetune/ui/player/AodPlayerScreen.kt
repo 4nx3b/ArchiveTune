@@ -35,10 +35,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,6 +101,8 @@ import moe.rukamori.archivetune.ui.utils.toComposeShape
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val White70 = Color.White.copy(alpha = 0.70f)
 private val White65 = Color.White.copy(alpha = 0.65f)

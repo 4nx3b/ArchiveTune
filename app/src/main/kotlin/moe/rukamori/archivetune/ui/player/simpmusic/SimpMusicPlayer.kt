@@ -5,41 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SimpMusic player style.
- *
- * The layout is SimpMusic's default now-playing screen — its `NowPlayingContentSpotify`
- * (https://github.com/maxrave-dev/SimpMusic, GPL-3.0). The thing that makes it that screen, and
- * which the first version of this file missed entirely, is that IT SCROLLS: the artwork, info row,
- * scrubber and transport are one screen-height hero, and below the fold sit three cards — lyrics,
- * artist, and track info. Scroll past the hero and a compact toolbar sticks to the top.
- *
- * The hero's vertical rhythm is measured, not guessed. SimpMusic computes
- *
- *     gap = (screenHeight - topBarHeight - artworkHeight - infoLayoutHeight - 30dp) / 2
- *
- * and spends that gap twice: once above the artwork, once below it, where the current lyric line
- * lives. That is why the artwork sits slightly high with the controls gathered under it rather than
- * floating in the middle of an empty screen. The first version here used a `weight(1f)` artwork and
- * a bottom-anchored control stack, which centred the sleeve in ALL the leftover space and left the
- * dead band the screenshot shows.
- *
- * REWRITTEN, not transliterated. SimpMusic is Compose Multiplatform and this screen is one
- * ~1,700-line composable carrying its own state model (NowPlayingScreenData, ControlState, TimeLine,
- * GenericCastState) and re-running Palette on every adjacent pager page. None of that survives:
- *
- *  - it reads ArchiveTune's PlayerConnection directly, so there is no second state model to keep in
- *    sync with the engine;
- *  - the palette comes from the shared rememberMeshPalette, which caches across every caller, so
- *    swiping a queue back and forth re-extracts nothing;
- *  - the playhead is read through a provider inside draw/derived scopes, so a position tick
- *    repaints instead of recomposing the screen;
- *  - it is split into small composables, so a change to one row does not invalidate the rest.
- *
- * Belongs exclusively to this style, per the self-containment rule; what it shares is the app's
- * playback substrate (the one PlayerConnection, queue, like state and lyrics), deliberately.
- */
-
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.activity.compose.BackHandler
@@ -101,12 +66,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -158,6 +121,8 @@ import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import java.util.Locale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val Backdrop = Color(0xFF121212)
 
@@ -363,14 +328,6 @@ fun SimpMusicPlayerContent(
                     playerConnection = playerConnection,
                     containerColor = startColor,
 
-                    // Suspend the card's Enhanced-lyrics renderer while the
-                    // fullscreen lyrics sheet is showing: the sheet renders its
-                    // own LyricsEnhanced on top, and the hidden card instance
-                    // kept a second karaoke view (frame loop + per-line text
-                    // fill + scroll) running underneath the sheet — the
-                    // "enhanced lyrics animation lag" in the SimpMusic style.
-                    // The card keeps its 300dp box so the page stays
-                    // scrollable.
                     renderLyrics = hasScrolled && !lyricsFullscreenOpen,
                     onShowLyrics = { lyricsFullscreenOpen = true },
                     modifier = Modifier.padding(top = 10.dp),
@@ -726,14 +683,6 @@ private fun SimpMusicTrackInfoRow(
     }
 }
 
-/**
- * The scrubber and the two timestamps.
- *
- * SimpMusic's slider, not the stock one: a 5dp track and an 8dp square thumb. The default M3
- * Slider draws a tall pill thumb with a gap either side of it, which is the fat white bar the
- * screenshot showed. Both labels are elapsed and TOTAL, zero-padded — the right-hand one is not a
- * negative remaining count.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SimpMusicProgressRow(
@@ -1039,12 +988,7 @@ private fun SimpMusicLyricsCard(
                         .smoothFadingEdge(vertical = 36.dp),
             ) {
                 if (!renderLyrics) {
-                    // Deliberately empty, and deliberately still 300dp: the height is what keeps
-                    // the page scrollable so `renderLyrics` can ever become true.
                 } else {
-                    // Always the Enhanced renderer: the style's own Classic
-                    // lyrics mode was removed (2026-09-12) and Enhanced is the
-                    // default everywhere.
                     LyricsEnhanced(
                         sliderPositionProvider = lyricsPositionProvider,
                         lyricsSyncOffset = 0,

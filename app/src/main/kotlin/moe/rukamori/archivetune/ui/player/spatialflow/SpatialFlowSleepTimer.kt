@@ -5,18 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style — the sleep-timer bottom sheet.
- *
- * A port of SpatialFlow's SleepTimerBottomSheet
- * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0, ui/player/SleepTimerBottomSheet.kt):
- * the status card, the 1-5h hour slider, the end-of-track toggle, the connected
- * Cancel / Custom buttons and the time-picker dialog. Dimensions, shapes and
- * behaviour are SpatialFlow's own. END_OF_QUEUE is dropped — ArchiveTune's
- * SleepTimer supports a countdown or end-of-song only; the modes map 1:1 onto
- * [SpatialFlowSleepTimerMode].
- */
-
 package moe.rukamori.archivetune.ui.player.spatialflow
 
 import androidx.compose.animation.AnimatedVisibility
@@ -62,12 +50,10 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -80,6 +66,8 @@ import androidx.compose.ui.unit.sp
 import moe.rukamori.archivetune.R
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -292,9 +280,9 @@ fun SpatialFlowSleepTimerSheet(
                             )
 
                             HorizontalDivider(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
-                                thickness = 1.dp,
-                                modifier = Modifier.padding(start = 72.dp, end = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                         }
                     }

@@ -61,7 +61,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +96,7 @@ import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.getValue
 
 @Composable
 fun LogcatScreen(

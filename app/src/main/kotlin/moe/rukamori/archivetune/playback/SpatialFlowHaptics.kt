@@ -7,26 +7,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * Music haptics engine — the SpatialFlow port.
- *
- * A direct port of SpatialFlow's PlayerHapticManager
- * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0, util/PlayerHapticManager.kt):
- * Apple-Music-style beat-driven haptics with a cross-OEM device profile table,
- * adaptive amplitude normalization, continuous bass motor state machine and
- * kick/snare transient detection. Everything — the envelope constants, the
- * OEM profile values, the filter histories, the BPM tracker — is SpatialFlow's
- * own, unchanged.
- *
- * Band energies are fed exactly the way SpatialFlow feeds its own engine: a
- * pass-through [HapticsPcmProcessor] taps the decoded PCM inside Media3's
- * audio processor chain (see MusicService's audio sink) and splits it into the
- * four crossover bands. That pipeline reads the actual decoded audio — local
- * or streamed — and needs no runtime permission (the earlier Visualizer-based
- * tap required RECORD_AUDIO, which is why music haptics silently failed for
- * users who denied the microphone permission; SpatialFlow itself never uses
- * the microphone for this).
- */
 
 package moe.rukamori.archivetune.playback
 
@@ -782,12 +762,6 @@ class SpatialFlowHapticEngine(context: Context) {
 }
 
 
-/**
- * Small static accessor for the engine's persisted state, so the settings UI
- * and the player chip can read/toggle without instantiating a full engine
- * (the live engine instance owned by [MusicService] reacts through its
- * SharedPreferences listener).
- */
 object MusicHapticsSettings {
     private const val PREFS_NAME = "AppSettings"
     private const val KEY_ENABLED = "haptics_enabled"

@@ -53,7 +53,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -93,6 +92,7 @@ import moe.rukamori.archivetune.viewmodels.PoTokenState
 import moe.rukamori.archivetune.viewmodels.PoTokenViewModel
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
 
 const val PO_TOKEN_ROUTE = "settings/po_token"
 

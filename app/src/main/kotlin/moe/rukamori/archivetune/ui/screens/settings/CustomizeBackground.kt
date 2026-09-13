@@ -55,7 +55,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -87,6 +86,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.runtime.getValue
 
 private const val DEFAULT_BLUR = 0f
 private const val DEFAULT_CONTRAST = 1f

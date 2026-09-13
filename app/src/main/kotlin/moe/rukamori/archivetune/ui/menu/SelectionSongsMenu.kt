@@ -32,13 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -73,6 +71,8 @@ import moe.rukamori.archivetune.ui.component.MenuSectionDivider
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import java.time.LocalDateTime
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
@@ -216,7 +216,7 @@ fun SelectionSongMenu(
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-    val dividerModifier = Modifier.padding(start = 56.dp)
+    val dividerModifier = Modifier.padding(horizontal = 16.dp)
 
     LazyColumn(
         userScrollEnabled = true,
@@ -325,7 +325,8 @@ fun SelectionSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -389,7 +390,8 @@ fun SelectionSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -766,7 +768,7 @@ fun SelectionMediaMetadataMenu(
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-    val dividerModifier = Modifier.padding(start = 56.dp)
+    val dividerModifier = Modifier.padding(horizontal = 16.dp)
 
     LazyColumn(
         userScrollEnabled = true,
@@ -882,7 +884,8 @@ fun SelectionMediaMetadataMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -921,7 +924,8 @@ fun SelectionMediaMetadataMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -944,7 +948,8 @@ fun SelectionMediaMetadataMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(

@@ -32,11 +32,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -63,6 +61,8 @@ import androidx.datastore.preferences.core.edit
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private fun looksLikeJwt(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"))
 

@@ -45,12 +45,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -115,6 +113,8 @@ import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
 import kotlin.math.abs
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private data class ThumbnailPage(
     val slotKey: String,
@@ -393,10 +393,6 @@ fun Thumbnail(
                                 playerDesignStyle != PlayerDesignStyle.V7 &&
                                 item.mediaId.isNotBlank() &&
                                 item.mediaId == currentMediaItem?.mediaId &&
-                                // A track marked as a music video always plays its
-                                // YouTube video — the canvas (even a freshly cached
-                                // one for the same media id) must never stand in
-                                // for the video.
                                 item.metadata?.isMusicVideo != true
                         val shouldFetchCanvas = shouldUseCanvas && !lowDataModeActive
                         var canvasArtwork by remember(item.mediaId) { mutableStateOf<CanvasArtwork?>(null) }
@@ -532,10 +528,6 @@ fun Thumbnail(
                                         )
                                     }
                                 } else {
-                                    // Synced lyrics used to replace the artwork here, with the
-                                    // player's own scrubber and transport still around them —
-                                    // lyrics wearing the player as a frame. The lyrics page is the
-                                    // lyrics surface now, for every style; the artwork stays put.
                                     val primaryCanvasUrl = canvasArtwork?.animated
                                     val fallbackCanvasUrl = canvasArtwork?.videoUrl
 
@@ -730,11 +722,6 @@ private fun ThumbnailBgBlurApi30(
         )
     }
 }
-
-/*
- * Copyright (C) OuterTune Project
- * Custom SnapLayoutInfoProvider idea belongs to OuterTune
- */
 
 @ExperimentalFoundationApi
 fun SnapLayoutInfoProvider(

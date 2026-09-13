@@ -38,11 +38,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -95,6 +93,8 @@ import moe.rukamori.archivetune.utils.toggleSpeedDialPin
 import timber.log.Timber
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Immutable
 private data class PlaylistSyncProgressUi(
@@ -517,7 +517,7 @@ public fun PlaylistMenu(
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-    val dividerModifier = Modifier.padding(start = 56.dp)
+    val dividerModifier = Modifier.padding(horizontal = 16.dp)
     val startRadioText = stringResource(R.string.start_radio)
     val playText = stringResource(R.string.play)
     val shuffleText = stringResource(R.string.shuffle)
@@ -662,7 +662,8 @@ public fun PlaylistMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -686,7 +687,8 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -707,7 +709,8 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -741,7 +744,8 @@ public fun PlaylistMenu(
                     if (editable && autoPlaylist != true) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -762,7 +766,8 @@ public fun PlaylistMenu(
                         onChangeCover?.let { changeCover ->
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
 
                             ListItem(
@@ -783,7 +788,8 @@ public fun PlaylistMenu(
                         onRemoveCover?.let { removeCover ->
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
 
                             ListItem(
@@ -805,7 +811,8 @@ public fun PlaylistMenu(
                     if (autoPlaylist != true && downloadPlaylist != true) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
 
                         ListItem(
@@ -936,7 +943,8 @@ public fun PlaylistMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                thickness = 0.5.dp,
                             )
                         }
                         ListItem(
@@ -963,7 +971,8 @@ public fun PlaylistMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            thickness = 0.5.dp,
                         )
                     }
 
@@ -986,7 +995,8 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(
@@ -1024,7 +1034,8 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        thickness = 0.5.dp,
                     )
 
                     ListItem(

@@ -25,13 +25,6 @@ data class SpotifyTrack(
     val popularity: Int? = null,
 )
 
-/**
- * One entry of Spotify's play history: the track, and when it was played.
- *
- * `played_at` is left as the raw ISO-8601 string the API returns rather than parsed here — the
- * models module has no date types of its own, and the only consumer wants it for grouping, which
- * it can do on the date prefix.
- */
 @Serializable
 data class SpotifyPlayHistory(
     val track: SpotifyTrack? = null,

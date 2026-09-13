@@ -44,20 +44,12 @@ class PlaylistCoverRepository
             playlist: PlaylistEntity,
             uri: Uri,
         ) = withContext(Dispatchers.IO) {
-            // Custom covers must ALWAYS persist. The old behaviour stored the
-            // SAF content:// URI and relied on a persistable read grant — a
-            // grant some pickers never offer (SecurityException, cover update
-            // fails outright) and others can revoke across boots/reboots (the
-            // cover silently stops resolving). Copying the picked image into
-            // app-private storage removes the whole permission class: the app
-            // owns the file forever.
             val copiedCoverUri = runCatching { copyCoverIntoAppStorage(playlist.id, uri) }.getOrNull()
             if (copiedCoverUri != null) {
                 releaseReadPermission(uri)
                 val previous = updateThumbnail(playlist.id, copiedCoverUri.toString())
                 releasePreviousCoverResources(previous)
             } else {
-                // Fallback: the pre-copy behaviour (persistable content URI).
                 persistReadPermission(uri)
                 try {
                     val previous = updateThumbnail(playlist.id, uri.toString())
@@ -132,8 +124,6 @@ class PlaylistCoverRepository
             return current
         }
 
-        /** Releases whatever the previous cover referenced: SAF grants for
-         *  content:// covers and the copied file for managed file covers. */
         private fun releasePreviousCoverResources(previous: PlaylistEntity) {
             previous.thumbnailUrl
                 ?.let(Uri::parse)
@@ -145,11 +135,6 @@ class PlaylistCoverRepository
                 }
         }
 
-        /**
-         * Decodes, square-crops and compresses the picked cover exactly like
-         * the remote upload path, then stores it under
-         * filesDir/playlist_covers/ so it survives without any SAF grant.
-         */
         private fun copyCoverIntoAppStorage(
             playlistId: String,
             uri: Uri,
@@ -163,8 +148,6 @@ class PlaylistCoverRepository
             return Uri.fromFile(target)
         }
 
-        /** Deletes a cover file this repository previously copied into
-         *  app storage (anything under filesDir/playlist_covers). */
         private fun deleteManagedCoverFile(uri: Uri) {
             if (uri.scheme != "file") return
             val path = uri.path ?: return

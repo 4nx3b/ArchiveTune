@@ -75,7 +75,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -124,6 +123,7 @@ import moe.rukamori.archivetune.ui.screens.rememberGlassScreenHeader
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.liquidGlassContentColor
+import androidx.compose.runtime.getValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

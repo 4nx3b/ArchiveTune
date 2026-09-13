@@ -47,12 +47,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
@@ -88,14 +86,9 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
-/**
- * One row PER (song, source) offline copy: a song downloaded from both Qobuz
- * and YouTube Music shows two entries, each labeled with and exporting its
- * own source's bytes. The row's identity IS the download cache key —
- * "ytm:<id>" / "qobuz:<id>" / ... or a legacy plain "<id>" (pre-refactor
- * YouTube download, also labeled YouTube Music).
- */
 private data class DownloadedSongRow(
     val songId: String,
     val cacheKey: String,
@@ -110,8 +103,6 @@ private data class DownloadedSongRow(
             cacheKey.startsWith(DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX)
 }
 
-/** 1 MiB copy buffers — the previous default 8 KiB chunks made 30–70 MiB
- * FLAC exports crawl through SAF's streaming layer. */
 private const val EXPORT_COPY_BUFFER_BYTES = 1024 * 1024
 
 private fun sourceLabelResFor(cacheKey: String): Int =
@@ -162,16 +153,12 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
         withContext(Dispatchers.IO) {
             val cache = downloadUtil.downloadCache
 
-            // The user's download-source priority decides which source's
-            // cached spans win when several exist for the same song.
             val storedOrder = runCatching {
                 runBlocking { context.dataStore.data.first()[DownloadSourceOrderKey] }
             }.getOrNull()
             val order = DownloadSourceConfig.parseOrder(storedOrder)
             sourceOrder = order
 
-            // One row per cache key with spans — the same song appears once
-            // per source it was downloaded from, each labeled accordingly.
             val rows =
                 cache.keys
                     .mapNotNull { key ->
@@ -234,9 +221,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             )
                         val tempDir = java.io.File(context.cacheDir, "export_tmp").apply { mkdirs() }
                         loop@ for (row in toExport) {
-                            // Each row IS a specific source's copy — resolve its
-                            // own key directly, no priority fallback (a fallback
-                            // would silently export a different source's bytes).
                             val spans = runCatching { cache.getCachedSpans(row.cacheKey) }.getOrNull()
 
                             if (spans.isNullOrEmpty()) { failed++; continue@loop }
@@ -249,11 +233,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 continue@loop
                             }
 
-
-                            // Export with the extension the bytes actually have —
-                            // the old `if (isYouTubeSource) "mp3"` override
-                            // mislabeled m4a (itag 140) downloads as .mp3, which
-                            // jaudiotagger and most players then fail to open.
                             val exportExt = detectedExt
                             val mime = extensionToMimeType(exportExt)
                             val safeTitle =
@@ -261,8 +240,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                     .ifBlank { "audio_${row.songId}" }
 
-                            // Distinct temp name per (song, source) so two rows of
-                            // the same song never write each other's temp file.
                             val tempFile = java.io.File(tempDir, "${row.songId}_${row.cacheKey.hashCode()}.$detectedExt")
                             try {
                                 runCatching {
@@ -352,9 +329,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     val cache = downloadUtil.downloadCache
                     val playerCache = downloadUtil.playerCache
                     for (row in toDelete) {
-                        // Per-source delete: only this row's cache key (plus the
-                        // legacy plain twin for YouTube rows) and its download
-                        // index entry go; other sources' copies survive.
                         var removed = false
                         val keys =
                             listOf(row.cacheKey) + if (row.cacheKey == row.songId) {
@@ -374,7 +348,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                         toDelete.forEach { row ->
                             downloadUtil.downloadManager.removeDownload(row.cacheKey)
                             if (row.cacheKey == row.songId) {
-                                // legacy plain entry: also drop any "ytm:" twin entry
                                 downloadUtil.downloadManager.removeDownload(
                                     DownloadSourceConfig.YOUTUBE_MUSIC_CACHE_KEY_PREFIX + row.songId,
                                 )
@@ -479,11 +452,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             Modifier
                                 .fillMaxWidth()
                                 .windowInsetsPadding(
-                                    // Include the Bottom side so the selection bar
-                                    // (count + export/delete buttons) pads above the
-                                    // miniplayer and the gesture bar — previously the
-                                    // Horizontal-only inset let the miniplayer overlap
-                                    // and half-hide these controls.
                                     LocalPlayerAwareWindowInsets.current.only(
                                         WindowInsetsSides.Horizontal +
                                             WindowInsetsSides.Bottom,
@@ -706,9 +674,6 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                // Source badge: makes the per-source identity of
-                                // each offline copy explicit (e.g. the same song
-                                // downloaded from both Qobuz and YouTube Music).
                                 Text(
                                     text = stringResource(row.sourceLabelRes),
                                     style = MaterialTheme.typography.labelSmall,

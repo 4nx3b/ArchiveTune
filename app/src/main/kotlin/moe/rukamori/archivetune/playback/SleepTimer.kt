@@ -7,9 +7,7 @@
 
 package moe.rukamori.archivetune.playback
 
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +15,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.minutes
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 class SleepTimer(
     private val scope: CoroutineScope,

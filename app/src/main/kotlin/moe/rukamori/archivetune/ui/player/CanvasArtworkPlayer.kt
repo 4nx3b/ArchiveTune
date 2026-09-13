@@ -14,11 +14,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,24 +49,12 @@ import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.util.Locale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
-/**
- * Whether the player bottom sheet that hosts this canvas is on screen (above
- * its collapsed bound). Provided by [BottomSheetPlayer]; hosts outside the
- * player sheet (e.g. MediaDetailHero on the album page) see the default
- * `true` and are governed by their own screen lifecycle.
- *
- * Canvas playback is pure visuals, and the player sheet keeps its content
- * alive while minimised (`keepContentAlive` — the subtree stays composed at
- * alpha 0, translated off screen). Without this gate a playing canvas keeps
- * a video decoder and a TextureView composite running at full frame rate
- * behind the mini player for as long as the music plays, which janks the
- * whole app. Canvas decode pauses the moment the sheet settles at/below the
- * collapsed bound and resumes as soon as it lifts past it.
- */
 val LocalPlayerSheetVisible = staticCompositionLocalOf { true }
 
 @Composable
@@ -81,15 +67,6 @@ fun CanvasArtworkPlayer(
 
     visible: Boolean = true,
 
-    /**
-     * Caps the decoded video to this edge length in pixels at the track-
-     * selection level (only picks among the stream's available variants, so
-     * single-variant progressive sources are unaffected). Intended for the
-     * blurred backdrop renders: their surface is a fraction of the footprint
-     * behind a heavy blur, so anything above ~480px is invisible — the
-     * backdrop decoder should not pay full-resolution decode cost for pixels
-     * the blur throws away.
-     */
     maxVideoEdgePx: Int? = null,
 
     onPlaybackAvailabilityChange: ((available: Boolean) -> Unit)? = null,
@@ -107,10 +84,6 @@ fun CanvasArtworkPlayer(
     var isVideoReady by remember(initial) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(initial) { mutableStateOf(false) }
 
-    // Gate on sheet visibility: an invisible canvas is paused AND its surface
-    // is dropped from composition (see contentVisible below), so neither the
-    // decoder nor the TextureView does any work while the player is
-    // minimised.
     val sheetVisible = LocalPlayerSheetVisible.current
     val playbackActive = isPlaying && sheetVisible
     val contentVisible = visible && sheetVisible
@@ -179,14 +152,6 @@ fun CanvasArtworkPlayer(
         remember(context) {
             DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         }
-    // One ExoPlayer per call site for the composable's whole lifetime — the
-    // player is deliberately NOT keyed on the canvas URL. TrackSelector.init
-    // throws IllegalStateException when a selector is initialized twice, so
-    // rebuilding the player while reusing a remembered selector crashes the
-    // moment the URL changes (next/previous track). The selector and the
-    // load control are created inside the same remember block as the player
-    // to guarantee a 1:1 lifetime, and URL changes are applied to the
-    // retained player by the currentUrl LaunchedEffect below (setMediaItem).
     val exoPlayer =
         remember(mediaSourceFactory, renderersFactory, maxVideoEdgePx) {
             val trackSelector =
@@ -373,10 +338,6 @@ fun CanvasArtworkPlayer(
         exoPlayer.stop()
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
-        // shouldPlay, not the raw isPlaying: this effect also runs on URL
-        // changes (next/previous track), which can happen while the sheet is
-        // minimised — the raw flag would spin the decoder back up behind the
-        // mini player.
         exoPlayer.setCanvasPlayback(shouldPlay)
     }
 

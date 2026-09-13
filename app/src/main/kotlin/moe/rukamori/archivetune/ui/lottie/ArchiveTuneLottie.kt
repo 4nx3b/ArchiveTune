@@ -9,7 +9,6 @@ package moe.rukamori.archivetune.ui.lottie
 
 import androidx.annotation.RawRes
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,6 +24,7 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 import com.airbnb.lottie.compose.rememberLottieDynamicProperties
 import com.airbnb.lottie.compose.rememberLottieDynamicProperty
 import moe.rukamori.archivetune.R
+import androidx.compose.runtime.getValue
 
 @Composable
 fun rememberArchiveTuneLottieComposition(

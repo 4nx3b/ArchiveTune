@@ -5,25 +5,6 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SimpMusic's queue page — a port of its ModalBottomSheet.kt QueueBottomSheet
- * (https://github.com/maxrave-dev/SimpMusic, GPL-3.0) over ArchiveTune's queue.
- *
- * The original's shape: a full-height dark sheet with no drag handle, a
- * CenterAlignedTopAppBar (KeyboardArrowDown collapse icon, "NOW PLAYING" over
- * the marquee'd playlist name), a "Now Playing" section with the current song,
- * then a "Queue" section listing every entry as a SongFullWidthItems row —
- * 48dp artwork in a 4dp rounded square (a 48dp index cell where there is no
- * art), titleSmall title, bodySmall artist, and a per-item more menu whose
- * actions are Move up / Move down / Remove.
- *
- * What is deliberately different: the original reorders by long-press-drag
- * (rememberDragDropState) and its per-item menu only carries up/down/delete —
- * here the same three actions come from the menu and a plain tap plays the
- * entry, both against the app's one PlayerConnection queue. Its endless-queue
- * switch has no ArchiveTune counterpart, so it is omitted rather than stubbed.
- */
-
 package moe.rukamori.archivetune.ui.player.simpmusic
 
 import androidx.compose.foundation.background
@@ -59,10 +40,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +61,8 @@ import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.utils.highRes
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val SheetSurface = Color(0xFF202020)
 

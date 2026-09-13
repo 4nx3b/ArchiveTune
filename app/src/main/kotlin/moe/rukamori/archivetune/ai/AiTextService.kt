@@ -244,8 +244,6 @@ object AiTextService {
             }
 
             AiProvider.MISTRAL -> {
-                // Mistral's chat API is OpenAI-compatible, so it can serve
-                // completions (romanisation, tests) as well as translations.
                 completeOpenAiCompatible(
                     endpoint = MistralEndpoint,
                     apiKey = config.apiKey,

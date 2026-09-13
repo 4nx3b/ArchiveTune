@@ -31,10 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +68,8 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.theme.rememberArchiveTuneLyricsFontFamily
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @Stable
 private data class LyricsShareColors(

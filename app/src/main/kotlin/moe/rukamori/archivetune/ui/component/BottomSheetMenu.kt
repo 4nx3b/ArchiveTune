@@ -37,10 +37,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 val LocalMenuState = compositionLocalOf { MenuState() }
 
@@ -163,11 +163,6 @@ fun BottomSheetMenu(
         if (dark) {
             Color(0x8C1C1C1E)
         } else {
-            // Light mode must stay a *glass* tint: the blurred, vibrancy-
-            // boosted backdrop behind it is what carries the look, and a
-            // near-opaque tint here (as before, 0.82) flattened the popup
-            // into a solid panel. 0.42 keeps dark-ink content legible over
-            // arbitrary backdrops while the blur clearly reads through.
             MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f)
         }
 
@@ -211,12 +206,6 @@ fun BottomSheetMenu(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
 
-    // 0.40 of the screen: the compact popup height the user expects. Menus
-    // taller than the cap SCROLL instead of growing the popup — NewMenuContainer
-    // (SpotifyPlaylistMenu) has verticalScroll, and PlayerMenu and friends embed
-    // their own LazyColumns — so no bottom rows get cut off here (the earlier
-    // 0.40 -> 0.55 bump made every tall menu suddenly eat 15% more screen —
-    // "it got taller all of a sudden").
     val maxPopupHeight = configuration.screenHeightDp.dp * 0.40f
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 

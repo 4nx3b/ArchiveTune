@@ -51,12 +51,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,7 +73,6 @@ import moe.rukamori.archivetune.constants.AppleMusicExperienceKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
-import moe.rukamori.archivetune.constants.ChipSortTypeKey
 import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.CustomFontNameKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
@@ -91,7 +88,6 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
-import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
@@ -107,7 +103,6 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -139,6 +134,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -167,10 +164,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             PlayerDesignStyleKey,
             defaultValue = PlayerDesignStyle.V4,
         )
-    // No value read needed here anymore: the Appearance row is gone (2026-09-08),
-    // so the only writer left is the style picker below, and the reader that
-    // matters is MediaDetailHero's rememberAppleMusicExperience(). The setter is
-    // kept so leaving the Apple Music style can end the experience.
     val (_, onAppleMusicExperienceChange) =
         rememberPreference(
             AppleMusicExperienceKey,
@@ -194,11 +187,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             HidePlayerThumbnailKey,
             defaultValue = false,
         )
-    // The ArchiveTune Canvas artwork toggle lives in Player Settings → Artwork.
     val (thumbnailCornerRadius, onThumbnailCornerRadiusChange) =
         rememberPreference(
             key = ThumbnailCornerRadiusKey,
-            defaultValue = 16f, // default dp
+            defaultValue = 16f,
         )
     val (cropThumbnailToSquare, onCropThumbnailToSquareChange) =
         rememberPreference(
@@ -254,7 +246,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (blurRadius, onBlurRadiusChange) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
     val (backdropEnabled, onBackdropEnabledChange) = rememberPreference(BackdropEnabledKey, defaultValue = true)
-    // The album-page canvas toggle moved to Player Settings → Artwork.
     val (backdropBlurAmount, onBackdropBlurAmountChange) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (fontPreference, onFontPreferenceChange) =
         rememberEnumPreference(
@@ -337,11 +328,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         }
     val availableLyricsBackgroundStyles =
         remember {
-            // MOVING_BLUR uses Modifier.blur on Android 12+ (hardware-accelerated)
-            // and falls back to a CPU pre-blurred bitmap (ImageBlurUtils.blur via
-            // inline produceState, PR #924 approach) on pre-S devices. The drift
-            // animation is applied via Modifier.offset on the pre-blurred bitmap,
-            // so it doesn't require per-frame blurs and works on all SDK levels.
             buildList {
                 add(LyricsBackgroundStyle.DEFAULT)
                 add(LyricsBackgroundStyle.FOLLOW_THEME)
@@ -364,16 +350,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
             else -> true
         }
-    // The lyrics background only feeds the standalone lyrics page's backdrop.
-    // The BitChord, Apple Music, TikTok, SimpMusic and SpatialFlow styles own
-    // their lyrics surfaces outright — BitChord's panel sits on its
-    // mesh-gradient backdrop, Apple Music's inline pane on its
-    // artwork-tinted gradient, TikTok opens the shared full-screen lyrics
-    // page, SimpMusic renders its own fullscreen sheet over its palette wash
-    // and SpatialFlow's circular-reveal overlay carries the moving-blur
-    // backdrop — so the setting does nothing for them and reads as broken.
-    // Disabled (with a note) rather than hidden so the row keeps its search
-    // anchor and its position in the list (user request 2026-09-01).
     val isLyricsBackgroundStyleAvailable =
         playerDesignStyle != PlayerDesignStyle.BITCHORD &&
             playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC &&
@@ -479,9 +455,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     }
 
-    // Header haze (2026-09-04): the scrolling content is the haze
-    // source; the transparent pill header zone blurs whatever
-    // scrolls under it.
     val headerHaze = rememberScreenHeaderHaze()
     val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
@@ -533,7 +506,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
                 .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .hazeSource(headerHaze)
@@ -544,9 +516,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("dynamic_theme"),
                 title = stringResource(R.string.theme),
             ) {
-                // Liquid glass used to sit in its own PreferenceGroup, also titled "Theme", so the
-                // screen opened with a Theme header, one switch, and a second Theme header. Same
-                // group, same order, one header.
                 item {
                     Column(modifier = positions.modifierFor("liquid_glass_effects")) {
                         SwitchPreference(
@@ -700,13 +669,10 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 Slider(
                                     value = uiScale,
                                     onValueChange = { v ->
-                                        // Round to the nearest 1% so the displayed value and the
-                                        // stored value stay in sync (otherwise dragging produces
-                                        // long-tail floats like 0.92371 that look messy in backups).
                                         onUiScaleChange((v * 100f).roundToInt() / 100f)
                                     },
                                     valueRange = 0.85f..1.30f,
-                                    steps = 44, // 45 discrete positions = 1% increments
+                                    steps = 44,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                                 Text(
@@ -742,10 +708,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     }
                 }
 
-                // The album backdrop and its blur slider do not apply under the
-                // Apple Music style (that style owns its own backdrop material),
-                // so the rows are hidden while it is selected — the preference
-                // code stays intact for the other styles.
                 if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
                     item {
                         SwitchPreference(
@@ -831,15 +793,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("disable_blur"),
                 title = stringResource(R.string.player),
             ) {
-                // The Apple Music experience row is gone from the UI (user request
-                // 2026-09-08): it was already hidden while APPLE_MUSIC was selected,
-                // and it is now removed for every other player style as well — the
-                // style picker is the single entry point into the Apple Music look,
-                // and a switch that hijacks a deliberately chosen other style back
-                // into Apple Music's has no business sitting under it. The
-                // preference and its plumbing stay intact: MediaDetailHero still
-                // swaps to the iOS header while the key is on, and leaving the
-                // Apple Music style (below) is what turns it off.
                 item {
                     Column(modifier = positions.modifierFor("player_design_style")) {
                         EnumListPreference(
@@ -848,10 +801,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             selectedValue = playerDesignStyle,
                             onValueSelected = { style ->
                                 onPlayerDesignStyleChange(style)
-                                // With the experience row gone no switch remains to turn
-                                // the iOS detail headers off, so deliberately leaving the
-                                // Apple Music style ends the experience instead of
-                                // stranding it on over another player style.
                                 if (style != PlayerDesignStyle.APPLE_MUSIC) {
                                     onAppleMusicExperienceChange(false)
                                 }
@@ -879,16 +828,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
-
-                // The SimpMusic-lyrics switch is gone (2026-09-12): the style
-                // always renders the shared Enhanced (word-synced) lyrics —
-                // its own Classic renderer and the LyricsMode.SIMPMUSIC entry
-                // were removed with it.
-
-                // The Apple Music animated-artwork row is removed from the UI
-                // (user request): the style's own behavior decides when the
-                // animated artwork plays. The preference and its plumbing stay
-                // intact — only the row is gone.
 
                 item {
                     SwitchPreference(
@@ -976,9 +915,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
-                        // Pre-Android 12 disclaimer: the moving-blur background relies on per-frame
-                        // Modifier.blur (RenderEffect, API 31+). On pre-S the fallback renders a
-                        // single pre-blurred bitmap with no drift animation, so the blur is static.
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
                             lyricsBackground == LyricsBackgroundStyle.MOVING_BLUR
                         ) {
@@ -1008,11 +944,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.gradient), null) },
                             selectedValue = miniPlayerBackground,
                             onValueSelected = { newStyle ->
-                                // Guard the LIQUID_GLASS style: only commit it when the master
-                                // Liquid Glass toggle is on AND we're on Android 12+. Otherwise
-                                // silently downgrade to THEME so the picker still closes but no
-                                // unsupported state is persisted. The user sees the warning below
-                                // telling them why their selection didn't apply.
                                 val canUseLiquidGlass =
                                     liquidGlassEnabled &&
                                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -1036,9 +967,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
-                        // Pre-Android 12 warning: frosted mini player uses RenderEffect (API 31+).
-                        // On pre-S the FROSTED style is silently downgraded to THEME — surface a
-                        // warning so users on older devices know why their selection isn't applying.
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
                             miniPlayerBackground == MiniPlayerBackgroundStyle.FROSTED
                         ) {
@@ -1049,11 +977,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
                             )
                         }
-                        // Liquid Glass mini player requires the master Liquid Glass toggle
-                        // (Appearance → Liquid Glass effects) AND Android 12+. If the user
-                        // somehow has LIQUID_GLASS selected but the master toggle is off (e.g.
-                        // they turned the master off after selecting LIQUID_GLASS), surface a
-                        // hint that the master toggle needs to be on for the style to apply.
                         if (miniPlayerBackground == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
                             (!liquidGlassEnabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
                         ) {
@@ -1143,12 +1066,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            // The album-page group is gone — its only row (canvas in albums page)
-            // moved to Player Settings → Artwork.
-
-            // The settings that decide what the Home tab shows were scattered through
-            // "Misc" between tablet mode, the scrollbar toggle and the library chips. They are
-            // one decision — which home you get — so they read as one group.
             PreferenceGroup(
                 modifier = positions.modifierFor("home_screen"),
                 title = stringResource(R.string.home),
@@ -1200,8 +1117,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
-                        // Both keys on the one row: this page used to carry two identical entries
-                        // for the same sub-page, one per key. One row, both aliases.
                         modifier = positions.modifierFor("navigation_bar_settings", "navigation_bar_style"),
                         title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
                         description = stringResource(R.string.navigation_bar_settings_subtitle),
@@ -1221,11 +1136,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                     )
                 }
 
-                // "Change default library chip" preference removed per user
-                // request (2026-08-28): "remove change default library chip".
-                // The ChipSortTypeKey and LibraryFilter enum stay defined
-                // (LibraryFilter is used elsewhere for the actual chip
-                // rendering), but the user-facing settings entry is gone.
             }
 
             PreferenceGroup(
@@ -1242,9 +1152,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
             }
         }
-    
-        // Header haze overlay — later sibling of the scrolling
-        // content so it draws on top of it, under the pill header.
+
         ScreenHeaderHaze(
             hazeState = headerHaze,
             systemBarsTopPadding = systemBarsTopPadding,

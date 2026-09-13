@@ -75,13 +75,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,6 +121,8 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 import moe.rukamori.archivetune.ui.component.KeepStatusBarHiddenInDialog
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private enum class SeedRole {
     PRIMARY,
@@ -702,7 +702,6 @@ object ThemePalettes {
             neutral = Color(0xFFFF5F1F),
         )
 
-
     val Synthwave =
         ThemePalette(
             id = "synthwave",
@@ -793,8 +792,6 @@ object ThemePalettes {
             neutral = Color(0xFF00FF7F),
         )
 
-
-
     val allPalettes: List<ThemePalette> =
         listOf(
             Default,
@@ -864,15 +861,6 @@ object ThemePalettes {
             Aurora,
         )
 
-    /**
-     * Palettes that were removed for being pixel-identical to another entry, mapped to the one
-     * that stayed.
-     *
-     * Cyberpunk was Magenta Pop, Candy was Hot Pink and Rainbow was YouTube Red — same colour in
-     * all four roles, so the picker showed the same dot twice and picking either gave the same
-     * theme. The selection is stored by id, so without this a user sitting on one of the three
-     * would silently drop back to the default theme on the next launch.
-     */
     private val RetiredPaletteIds =
         mapOf(
             "cyberpunk" to "magenta_pop",

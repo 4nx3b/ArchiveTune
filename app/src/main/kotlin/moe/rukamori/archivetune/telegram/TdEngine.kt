@@ -56,7 +56,6 @@ internal object TdEngine {
     internal var flow: TelegramFlow? = null
         private set
 
-    /** Last start failure detail, surfaced through TelegramAuthState.RuntimeFailed. */
     @Volatile
     var lastStartError: String? = null
         private set
@@ -64,40 +63,20 @@ internal object TdEngine {
     val isRunning: Boolean
         get() = flow != null
 
-    // -----------------------------------------------------------------------
-    // Native crash black box
-    // -----------------------------------------------------------------------
 
     private fun crashNoteFile(context: Context): File =
         File(File(context.applicationContext.filesDir, "tdlib-native"), "last-crash.txt")
 
-    /**
-     * The fatal log line TDLib emitted right before it aborted the process
-     * on a previous run, or null. Written by [installFatalLogRecorder]; a
-     * native abort is uncatchable in Kotlin, so this file is the only
-     * surviving witness of *why* the engine died.
-     */
     fun readPersistedCrashNote(context: Context): String? =
         runCatching {
             val file = crashNoteFile(context)
             if (file.isFile) file.readText().trim().take(600) else null
         }.getOrNull()
 
-    /** Called once an engine start completed and reached its first auth state. */
     fun clearPersistedCrashNote(context: Context) {
         runCatching { crashNoteFile(context).delete() }
     }
 
-    /**
-     * TDLib routes its own fatal errors (the last message it logs before
-     * CHECK-failing and killing the process) through the log-message
-     * callback: "If 0, then TDLib will crash as soon as the callback
-     * returns." Persisting that message turns an opaque hard crash into a
-     * readable reason surfaced on the next engine start.
-     *
-     * Must be installed before any other TDLib call; no TDLib method may be
-     * called from the callback itself (file write + Timber only).
-     */
     private fun installFatalLogRecorder(context: Context) {
         val noteFile = crashNoteFile(context)
         Client.setLogMessageHandler(
@@ -116,11 +95,6 @@ internal object TdEngine {
         )
     }
 
-    /**
-     * Channel-backed [TelegramFlow.ResultHandlerFlow]: TDLib pushes updates
-     * into an unlimited channel; the single collector turns them into a
-     * cold Flow. No conflation, no drops.
-     */
     private class ChannelResultHandler(
         private val channel: Channel<TdApi.Object>,
     ) : TelegramFlow.ResultHandlerFlow, Flow<TdApi.Object> {
@@ -137,13 +111,6 @@ internal object TdEngine {
 
     private val updateChannel = Channel<TdApi.Object>(Channel.UNLIMITED)
 
-    /**
-     * Boots the native library and the TDLib client. Returns false (and
-     * records [lastStartError]) when the native library is unavailable or
-     * the client cannot be created — never throws, so app boot and the
-     * login screen can treat a failed engine start as a recoverable state
-     * instead of a crash.
-     */
     fun start(context: Context): Boolean {
         if (started.get()) return true
         synchronized(this) {
@@ -158,9 +125,6 @@ internal object TdEngine {
                 return false
             }
 
-            // Installed before ANY other native call: a native abort is
-            // uncatchable in Kotlin, and TDLib's fatal log line is the only
-            // witness of why it died.
             runCatching { installFatalLogRecorder(appContext) }
                 .onFailure {
                     Timber.tag(TAG).w(it, "Installing the TDLib log recorder failed")
@@ -168,11 +132,6 @@ internal object TdEngine {
                 }
             TdStartTrace.step(appContext, "log-recorder-ok")
 
-            // First real JNI round-trip (verbosity + full registration): a
-            // failure here means the downloaded library could not be bound
-            // to the Java interface — surface the actual exception (e.g. an
-            // UnsatisfiedLinkError naming the exact dlopen/namespace
-            // problem) instead of swallowing it.
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
                 .onFailure { failure ->
                     Timber.tag(TAG).e(failure, "The TDLib native interface failed to come up")
@@ -220,10 +179,6 @@ internal object TdEngine {
         }
     }
 
-    /**
-     * Drops the engine so the next [start] creates a fresh TDLib client
-     * (used after authorization closes, and for offline local sign-out).
-     */
     fun reset() {
         synchronized(this) {
             started.set(false)
@@ -231,10 +186,6 @@ internal object TdEngine {
         }
     }
 
-    /**
-     * td-ktx-backed RPC channel. Every Telegram call in the app funnels
-     * through here so the transport is uniformly td-ktx's coroutine bridge.
-     */
     suspend inline fun <reified T : TdApi.Object> send(function: TdApi.Function<T>): T {
         val current = flow ?: throw IOException("Telegram engine is not running")
         return try {

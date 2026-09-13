@@ -31,12 +31,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,6 +99,8 @@ import java.net.SocketTimeoutException
 import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private const val VideoSyncIgnoreToleranceMs = 60L
 
@@ -143,13 +143,6 @@ data class VideoStreamInfo(
     val selectedHeight: Int? = null,
 )
 
-/**
- * Shared OkHttp client for the silent video artwork player. One process-wide
- * instance: the previous per-`rememberVideoArtworkState` allocation leaked a
- * fresh connection pool + dispatcher executor every time the video state was
- * rebuilt (player-style switches, quality changes, navigation) — the players
- * were released, but the clients only died with their idle threads.
- */
 private val VideoStreamHttpClient by lazy {
     OkHttpClient
         .Builder()
@@ -208,21 +201,9 @@ class VideoArtworkState internal constructor(
     var bufferingStartedAtMs: Long by mutableLongStateOf(0L)
         internal set
 
-    /** Consecutive watchdog recoveries while stuck in BUFFERING; reset once
-     * the player renders/turns READY. Bounded recovery, then artwork
-     * fallback — a post-seek stall must never look like "never loads". */
     var bufferingRecoveries: Int by mutableStateOf(0)
         internal set
 
-    /**
-     * The video's intrinsic width/height ratio (e.g. 16/9 for a landscape video), reported
-     * by ExoPlayer once the first frame's size is known. Null until then — callers fall back
-     * to 16/9. Reset to null whenever a new stream is loaded so a stale ratio from a previous
-     * video never sizes the surface of the next one.
-     *
-     * Used by the TikTok player style to lay the inline video out at its ORIGINAL dimensions
-     * (letterboxed, never stretched) instead of cropping a 16:9 video into a portrait slot.
-     */
     var videoAspectRatio: Float? by mutableStateOf(null)
         internal set
 
@@ -309,13 +290,6 @@ fun rememberVideoArtworkState(
     onLoadingStateChange: (Boolean) -> Unit,
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
-    /**
-     * True while the MAIN audio player is buffering. The video surface must
-     * not run ahead of silent audio: while the main player re-buffers, the
-     * video is paused so both sides of the A/V pair start (and recover)
-     * together in every player style — previously a fast-loading video played
-     * mutely while the audio was still buffering, then jumped via re-anchor.
-     */
     isMainAudioBuffering: Boolean = false,
 ): VideoArtworkState {
     val context = LocalContext.current
@@ -535,8 +509,6 @@ fun rememberVideoArtworkState(
         state.isVideoReady = false
         state.hasPlaybackFailed = false
         state.currentCaptionText = null
-        // A new stream may have a different intrinsic size — drop the stale ratio until
-        // onVideoSizeChanged reports the new one.
         state.videoAspectRatio = null
 
         val lowercaseUrl = url.lowercase(Locale.ROOT)
@@ -589,11 +561,6 @@ fun rememberVideoArtworkState(
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
 
-            // The video is still resolving/buffering: hold the main audio as
-            // well — including when the main player just turned READY mid-hold
-            // (new-song start race where the audio would begin playing over a
-            // still-black video surface). The hold releases with the first
-            // rendered frame, which schedules the audio's resume.
             if (isPlaying) {
                 resumeAudioAfterVideoReady = true
                 updatedOnRequestPauseMain()
@@ -605,13 +572,9 @@ fun rememberVideoArtworkState(
             exoPlayer.pause()
         } else if (state.isResyncing) {
 
-            // A resync owns the pause-load-resume cycle; playing here would
-            // race the pending first-frame resume.
             exoPlayer.pause()
         } else if (updatedIsMainAudioBuffering) {
 
-            // Main audio is buffering — freeze the video on its current frame
-            // instead of advancing silently ahead of the audio.
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
@@ -730,12 +693,6 @@ fun rememberVideoArtworkState(
             if (state.bufferingStartedAtMs > 0L) {
                 val bufferingForMs = SystemClock.elapsedRealtime() - state.bufferingStartedAtMs
                 if (bufferingForMs > VideoStuckBufferingTimeoutMs) {
-                    // A stall (typically right after a seek: the target range's
-                    // request hangs or the renderer never re-renders) must not
-                    // outlive the user's patience. Re-anchor to wherever the
-                    // main audio actually is and re-prepare; after two failed
-                    // recoveries give up on video and let the audio continue
-                    // (artwork fallback) instead of spinning forever.
                     state.bufferingRecoveries = state.bufferingRecoveries + 1
                     if (state.bufferingRecoveries >= 3) {
                         Timber
@@ -800,11 +757,6 @@ fun rememberVideoArtworkState(
                     if (frozenCycles >= VideoFrozenRendererCycles) {
                         frozenKicks++
                         if (frozenKicks >= 2) {
-                            // The renderer did not recover from a pause+play
-                            // kick — hard re-anchor to the audio position and
-                            // re-prepare so the stall (common right after a
-                            // seek) ends in seconds instead of "video never
-                            // loads while the audio keeps going".
                             Timber
                                 .tag(VideoPlaybackLogTag)
                                 .w(
@@ -928,10 +880,6 @@ fun rememberVideoArtworkState(
                     state.currentCaptionText = text
                 }
 
-                // The intrinsic video dimensions arrive with the first frame. Recording the
-                // ratio lets inline surfaces (TikTok player style) size themselves to the
-                // video's true aspect so it is letterboxed at original proportions rather
-                // than zoom-cropped or stretched. Guarded against degenerate decode sizes.
                 override fun onVideoSizeChanged(videoSize: VideoSize) {
                     val width = videoSize.width
                     val height = videoSize.height
@@ -1003,11 +951,6 @@ fun rememberVideoArtworkState(
                             if (resumeMainAudio) {
                                 SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
                             } else {
-                                // No audio resume is scheduled — no hold was
-                                // ever armed for this stream. Parking the video
-                                // for the extra settle delay here would start it
-                                // VideoLoadResumeDelayMs BEHIND the already-
-                                // playing audio, so resume it immediately instead.
                                 SystemClock.elapsedRealtime()
                             }
                         Timber
@@ -1309,18 +1252,6 @@ private fun List<PlayerResponse.StreamingData.Format>?.withUsableHeight(): List<
         h != null && h > 0
     }
 
-/**
- * Resolve the video stream through SimpMusic's extractor — the same machinery the
- * audio path uses (see YTPlayerUtils.playerResponseForPlaybackOnce, where it runs
- * ahead of the per-client innertube chain). The extractor performs a WEB_REMIX
- * player request and splices NewPipe-harvested stream URLs into the response by
- * itag, so the video formats carry working URLs even when the direct innertube
- * URLs are bot-blocked or 403'd — the failure mode where audio keeps playing
- * through the SimpMusic-resolved stream while the video surface never mounts and
- * the player sits on the artwork fallback (the reported "still zoomed-in
- * thumbnail"). Never throws; returns null on any failure or timeout so the
- * caller falls back to the per-client innertube chain.
- */
 private suspend fun resolveVideoStreamUrlViaSimpMusic(
     videoId: String,
     preferredHeight: Int?,
@@ -1355,10 +1286,6 @@ private suspend fun resolveVideoStreamUrlViaSimpMusic(
         return null
     }
 
-    // Only URL-bearing formats are usable here: a spliced format carries the
-    // NewPipe-harvested URL directly, while an unspliced one keeps the original
-    // (possibly signature-ciphered) URL that only the innertube chain's
-    // NewPipeUtils.getStreamUrl can decode — leave those to the fallback.
     val format =
         pickVideoFormat(response, preferredHeight)?.takeIf { !it.url.isNullOrBlank() }
     if (format == null) {
@@ -1403,14 +1330,6 @@ private suspend fun resolveVideoStreamUrl(
     preferredHeight: Int?,
 ): VideoStreamInfo? {
 
-    // SimpMusic resolver first — the same machinery the audio path trusts
-    // (YTPlayerUtils.playerResponseForPlaybackOnce). It runs a WEB_REMIX player
-    // request and splices NewPipe-harvested URLs into the response by itag, so
-    // video formats come back with working URLs even when the direct innertube
-    // URLs are bot-blocked or 403'd — the failure mode that leaves the video
-    // surface stuck on the artwork fallback (a zoomed still) while audio keeps
-    // playing through the SimpMusic-resolved stream. Returns null on any
-    // failure so the per-client innertube chain below remains the fallback.
     resolveVideoStreamUrlViaSimpMusic(videoId, preferredHeight)?.let { return it }
 
     val authState = YouTube.currentPlaybackAuthState()

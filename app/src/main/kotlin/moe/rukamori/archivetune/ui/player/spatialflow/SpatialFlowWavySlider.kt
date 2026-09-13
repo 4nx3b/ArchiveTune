@@ -5,24 +5,10 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-/*
- * SpatialFlow player style — WavyMusicSlider.
- *
- * A direct port of SpatialFlow's WavyMusicSlider
- * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0, ui/player/WavyMusicSlider.kt):
- * a highly optimized custom Bezier-curve wavy slider. The active track is a
- * sinusoidal wave whose amplitude flattens out during user scrub operations to
- * aid tracking precision; the thumb morphs between a circle and a capsule while
- * pressed. All metrics, color parameters, springs and the phase-shift animation
- * are SpatialFlow's own.
- */
-
 package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.annotation.SuppressLint
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -41,9 +27,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
@@ -70,6 +57,9 @@ import androidx.compose.ui.unit.max
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import androidx.compose.runtime.getValue
+
+private val WavePhaseStepNanos = 33_333_333L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("UnusedBoxWithConstraintsScope")
@@ -115,22 +105,28 @@ fun WavyMusicSlider(
         label = "WaveAmplitudeAnim",
     )
 
-    val phaseShiftAnim = remember { Animatable(0f) }
-    val phaseShift = phaseShiftAnim.value
+    val phaseShiftState = remember { mutableFloatStateOf(0f) }
+    val phaseShift = phaseShiftState.floatValue
 
     LaunchedEffect(shouldShowWave, waveAnimationDuration) {
         if (shouldShowWave && waveAnimationDuration > 0) {
             val fullRotation = (2 * PI).toFloat()
+            var lastStepNanos = 0L
             while (shouldShowWave) {
-                val start =
-                    (phaseShiftAnim.value % fullRotation).let {
-                        if (it < 0f) it + fullRotation else it
+                withFrameNanos { frameTimeNanos ->
+                    if (lastStepNanos == 0L) {
+                        lastStepNanos = frameTimeNanos
+                    } else {
+                        val elapsedNanos = frameTimeNanos - lastStepNanos
+                        if (elapsedNanos >= WavePhaseStepNanos) {
+                            val advance =
+                                fullRotation * (elapsedNanos / 1_000_000f / waveAnimationDuration)
+                            phaseShiftState.floatValue =
+                                (phaseShiftState.floatValue + advance) % fullRotation
+                            lastStepNanos = frameTimeNanos
+                        }
                     }
-                phaseShiftAnim.snapTo(start)
-                phaseShiftAnim.animateTo(
-                    targetValue = start + fullRotation,
-                    animationSpec = tween(durationMillis = waveAnimationDuration, easing = LinearEasing),
-                )
+                }
             }
         }
     }
