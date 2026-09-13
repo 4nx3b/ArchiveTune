@@ -134,6 +134,17 @@ styles, a Liquid Glass redesign, AI-powered lyrics, and hundreds of fixes.
 - SpatialFlow queue reordering works (optimistic drag with commit on release)
 - SpatialFlow time row: the quality pill is pinned to the centre between the
   timestamps instead of drifting with label widths
+- SpatialFlow light mode: text reads over every surface — on-canvas text is
+  white (the canvas always renders behind a dark scrim, so light mode no
+  longer paints near-black text over it), the no-canvas blurred backdrop
+  uses a white scrim in light theme instead of the black one that sank dark
+  artworks into an unreadable wash, and the player follows the app's
+  dark-mode setting (ON/OFF/AUTO) instead of the raw system state
+- SpatialFlow artwork layout: with no canvas playing, the thumbnail and the
+  control stack pin to the bottom of the player exactly where the bottom
+  controls sit while the canvas plays — no more floating mid-screen or
+  jumping when the canvas resolves (the fixed top-offset calculation is
+  removed)
 - Default and SpatialFlow players: the three-dot song overflow menu sits next
   to the "Now Playing" header, top right, opening the full song menu
 - BitChord canvas actually plays now (the canvas resolver used to clear the

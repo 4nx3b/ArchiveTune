@@ -1943,6 +1943,7 @@ fun BottomSheetPlayer(
                             positionProvider = { position },
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                             modifier =
@@ -2433,6 +2434,7 @@ fun BottomSheetPlayer(
                             positionProvider = { position },
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            appIsDark = useDarkTheme,
                             onSeek = onSliderValueChange,
                             onSeekFinished = onSliderValueChangeFinished,
                             modifier =

@@ -2318,3 +2318,57 @@ Stage Summary:
 - dev: spatialflow overflow icon + unglassed solid-sheet redesign +
   comprehensive changelogs.md, one commit ready to push.
 - Glass-mode floating popups untouched by design (all deltas gated).
+
+---
+Task ID: 44
+Agent: Super Z (main agent, session web-e130fa90)
+Task: spatialflow light-mode font colours + no-canvas layout pinning
+(reference screenshots 20260913-214546/214746), changelogs.md update,
+delete old stable release + Claude branch, new stable release with the
+exact version number 15.0 and changelogs.md attached; builds monitored
+max 7 minutes then proceed
+
+Work Log:
+- Screenshot forensics (VLM + pixel row-profile on both uploads):
+  214746 = canvas playing (controls bottom-pinned, white text on the
+  scrimmed canvas — the reference position); 214546 = queue drawer open.
+  Both dark-mode, so the light-mode font bug was deduced from code.
+- Light-mode font root cause #1: SpatialFlowPlayerContent derived
+  contentColor/contentSecondary/accent/brushes from raw
+  isSystemInDarkTheme() while the canvas stack always paints the dark
+  SfCanvasScrimBrush behind the content — light mode rendered near-black
+  text (#1C1B1F) over the darkened canvas. Introduced surfaceIsDark =
+  appIsDark || canvasAvailable and switched every on-surface derivation
+  (text, secondary, dynamic accent, background + lyrics brushes, chip/
+  slider/button alphas, play-button icon) to it; the queue drawer keeps
+  the real app theme (its own surface).
+- Light-mode font root cause #2: with no canvas the blurred artwork
+  backdrop always got a BLACK scrim — over a dark artwork the light
+  surface sank into an unreadable dark wash under light-mode dark text.
+  SpatialFlowBlurredBackdrop scrim is now theme-aware (white gradient in
+  light theme, black kept for dark), isDark param added.
+- Theme-source root cause #3: the player used isSystemInDarkTheme() but
+  the app has a DarkMode ON/OFF/AUTO preference — BottomSheetPlayer
+  already resolves useDarkTheme; new appIsDark parameter now passes it
+  into SpatialFlowPlayerContent from both call sites.
+- Layout: the !canvasAvailable branch used a fixed
+  topOffset-(statusBar+68) spacer, leaving the artwork + controls
+  floating mid-screen and jumping when the canvas resolved. Both
+  branches now share Spacer(weight(1f)) so the thumbnail and the bottom
+  controls sit exactly where they sit while the canvas plays;
+  topOffset/minTopOffset/screenHeight dead calc removed.
+- changelogs.md: two new fix bullets (light-mode surfaces + artwork
+  layout pinning); all previous rounds were already covered by the task
+  43 sweep, verified against commits 593598f59/5d6cdd959/1502a6c9d.
+- Version: baseVersionName 15.0.0 -> 15.0 and release.yml
+  NEW_VERSION=${MAJOR_MINOR} (was ${MAJOR_MINOR}.${COMMIT_COUNT}) so the
+  stable release carries the exact version number 15.0; versionCode
+  still = commit count (strictly increasing upgrade path).
+- Release flow: commit pushed to dev (PR #220 absorbs it), PR merged to
+  main, v15.0.6371 release + tag deleted, claude/* branch deleted,
+  release.yml dispatched on main -> v15.0 with changelogs.md asset.
+
+Stage Summary:
+- dev: light-mode-correct + layout-pinned spatialflow player, exact-15.0
+  release plumbing, updated changelog; CI green before merge.
+- Glass-mode floating popups remain untouched (no menu component edits).

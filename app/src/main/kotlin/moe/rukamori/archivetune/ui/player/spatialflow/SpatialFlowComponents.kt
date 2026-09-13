@@ -16,6 +16,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,6 +144,7 @@ internal fun deriveArtworkSurfaceColor(
 internal fun SpatialFlowBlurredBackdrop(
     artUrl: String?,
     withScrim: Boolean = true,
+    isDark: Boolean = isSystemInDarkTheme(),
     modifier: Modifier = Modifier,
 ) {
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
@@ -205,17 +207,28 @@ internal fun SpatialFlowBlurredBackdrop(
         }
 
         if (withScrim) {
+            // Theme-aware scrim: in light theme the gradient must be white.
+            // A black scrim over a dark artwork would sink the light-theme
+            // surface (and its near-black text) into an unreadable dark wash.
+            val scrimBrush =
+                if (isDark) {
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.18f),
+                        0.55f to Color.Black.copy(alpha = 0.32f),
+                        1f to Color.Black.copy(alpha = 0.60f),
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.30f),
+                        0.55f to Color.White.copy(alpha = 0.55f),
+                        1f to Color.White.copy(alpha = 0.82f),
+                    )
+                }
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.18f),
-                                0.55f to Color.Black.copy(alpha = 0.32f),
-                                1f to Color.Black.copy(alpha = 0.60f),
-                            ),
-                        ),
+                        .background(scrimBrush),
             )
         }
     }
