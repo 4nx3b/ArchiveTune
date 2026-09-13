@@ -97,14 +97,17 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.ui.AspectRatioFrameLayout
+import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
@@ -142,12 +145,37 @@ private const val SfCanvasBackdropOverscan = 1.10f
 private val SfCanvasBackdropBlurRadius = 72.dp
 private const val SfCanvasBackdropMaxVideoEdgePx = 480
 
-// Where the sharp full-bleed canvas starts dissolving into the frosted
-// continuation (fractions of the player height). The reference keeps the
-// video sharp down to ~60-65% (the song-title level) and blends the last
-// stretch; the control dock sits in the frosted area below.
-private const val SfSharpCanvasFadeStart = 0.50f
-private const val SfSharpCanvasFadeEnd = 0.65f
+// Apple Music's exact canvas scrim (AppleMusicPlayer.kt's backdropScrimBrush
+// canvas branch): black at 25% / 40% / 65% down the player. This replaces the
+// old five-stop "frost tint" — the reported "liquid blur is too bright" —
+// with the colors the Apple Music player style itself uses. Shared with the
+// lyrics overlay's moving-blur backdrop (same AM colors behind the lyrics).
+internal val SfCanvasScrimBrush =
+    Brush.verticalGradient(
+        0f to Color.Black.copy(alpha = 0.25f),
+        0.5f to Color.Black.copy(alpha = 0.40f),
+        1f to Color.Black.copy(alpha = 0.65f),
+    )
+
+// Apple Music's exact sharp-stage fade (AppleMusicSharpArtwork's fadeBottom
+// artworkFadeBrush): the sharp video stays crisp for the top 62% of the stage
+// and dissolves into the frosted continuation over the last 38%, so the
+// canvas ends around the song-title text instead of running behind the whole
+// control dock.
+private val SfSharpStageFadeBrush =
+    Brush.verticalGradient(
+        0.62f to Color.Black,
+        1f to Color.Transparent,
+    )
+
+// Lyrics backdrop morph — Apple Music's AmLyricsBackdropMorphMs. When lyrics
+// open, the canvas layers fade out over this duration and rendering is then
+// fully stopped (texture surface dropped + ExoPlayer paused — no decode, no
+// composition). Closing lyrics makes the canvas visible again immediately;
+// because the CanvasArtworkPlayer composables (and their ExoPlayers) are
+// never disposed while lyrics are open, the video resumes from the EXACT
+// position it was paused at.
+private const val SfLyricsBackdropMorphMs = 650
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -293,34 +321,67 @@ fun SpatialFlowPlayerContent(
     // which is why it silently failed when the mic permission was denied).
     var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
+    // ---- Canvas gating (Apple Music recipe) --------------------------------
+    //
+    // The canvas layers (frosted twin + sharp stage) STAY in composition while
+    // lyrics are open; they are only faded out and then stopped (texture
+    // surface dropped + ExoPlayer paused — no decode, no compositing). Removing
+    // them from composition — the old `!lyricsModeEnabled` term on canvasActive —
+    // disposed the players, so leaving the lyrics restarted the canvas from
+    // frame zero; pausing instead keeps the position exact on resume.
+    val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+    var canvasVisibleForLyrics by remember { mutableStateOf(true) }
+    LaunchedEffect(lyricsModeEnabled) {
+        if (lyricsModeEnabled) {
+            // Let the fade finish before the render work stops.
+            canvasVisibleForLyrics = true
+            delay(SfLyricsBackdropMorphMs.toLong())
+            canvasVisibleForLyrics = false
+        } else {
+            canvasVisibleForLyrics = true
+        }
+    }
+    val lyricsBackdropProgress by animateFloatAsState(
+        targetValue = if (lyricsModeEnabled) 1f else 0f,
+        animationSpec = tween(durationMillis = SfLyricsBackdropMorphMs, easing = FastOutSlowInEasing),
+        label = "SfLyricsCanvasFade",
+    )
+
+    // Sharp-stage bound: the stage's bottom edge tracks the song-title row's
+    // top edge (measured from the content Column below) so the sharp canvas
+    // always ends around the title text — the same structural split the Apple
+    // Music style gets from its artwork-box / controls-column layout.
+    val density = LocalDensity.current
+    var playerRootTopY by remember { mutableStateOf(0f) }
+    var titleTopInRootY by remember { mutableStateOf<Float?>(null) }
+    val sharpStageHeight: Dp? =
+        titleTopInRootY?.let { top ->
+            with(density) { (top - playerRootTopY).coerceAtLeast(0f).toDp() }
+        }
+
     Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(backgroundBrush),
+                .background(backgroundBrush)
+                .onGloballyPositioned { playerRootTopY = it.positionInRoot().y },
     ) {
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
+            // When the canvas owns the player the AM scrim (below) replaces
+            // this backdrop's own gradient — stacking both made the frosted
+            // dock darker than the Apple Music reference.
+            withScrim = !canvasAvailable,
             modifier = Modifier.matchParentSize(),
         )
 
-        // Full-bleed canvas — the SpatialFlow canvas reference look: when a
-        // canvas (Apple Music / Spotify Canvaz loop) is available the video
-        // owns the whole screen (RESIZE_MODE_ZOOM, edge to edge). Per the
-        // reference, the sharp video plays ABOVE the player controls while a
-        // FROSTED continuation of the same canvas (blurred twin + tint) sits
-        // behind the lower-third control dock, and the sharp stage dissolves
-        // into that frost through a gradient fade instead of a hard edge —
-        // "seamlessly blending both canvas and the player controls". The
-        // static blurred backdrop stays beneath as the buffering state; the
-        // old bounded-in-artwork-slot canvas is gone.
-        val canvasActive = !lyricsModeEnabled && (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
-        if (canvasActive) {
-            // 1) Frosted twin: the SAME canvas, low-res decoded, laid out at
-            // 1/6 of the player with a 72/6 = 12dp blur on the small surface,
-            // upscaled back through the scaling layer (Apple Music's cheap
-            // blurred-canvas-backdrop recipe — the blur never processes more
-            // than a sixth of the pixels).
+        if (canvasAvailable) {
+            // 1) Frosted twin (Apple Music's cheap blurred-canvas backdrop):
+            // the SAME canvas, decoded at 1/6 scale with a 72/6 = 12dp blur on
+            // the small surface, upscaled 6x (+10% overscan). It runs the FULL
+            // height of the player so the same canvas keeps playing, blurred,
+            // behind the bottom controls — and fades out + stops rendering
+            // while the lyrics overlay is up.
             Box(
                 modifier =
                     Modifier
@@ -329,13 +390,15 @@ fun SpatialFlowPlayerContent(
                             val scale = SfCanvasBackdropOverscan * SfCanvasBackdropUpscale
                             scaleX = scale
                             scaleY = scale
+                            alpha = 1f - lyricsBackdropProgress
                         },
                 contentAlignment = Alignment.Center,
             ) {
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
+                    isPlaying = isPlaying && canvasVisibleForLyrics,
+                    visible = canvasVisibleForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                     maxVideoEdgePx = SfCanvasBackdropMaxVideoEdgePx,
                     modifier =
@@ -346,54 +409,54 @@ fun SpatialFlowPlayerContent(
                 )
             }
 
-            // 2) Sharp stage: full-bleed video whose bottom dissolves into the
-            // frosted twin via a DstIn fade over the last stretch before the
-            // control dock (the reference's "gradually blurs and darkens"
-            // transition band).
+            // 2) Apple Music's exact canvas scrim: black at 0.25 / 0.40 / 0.65
+            // down the player — the colors the Apple Music player style itself
+            // paints over its blurred canvas backdrop (the old five-stop
+            // "frost tint" read as "the liquid blur is too bright").
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .background(SfCanvasScrimBrush),
+            )
+
+            // 3) Sharp stage: the crisp canvas plays edge to edge from the top
+            // of the player down to the song-title row, then dissolves into the
+            // frosted twin through Apple Music's exact 0.62→1.0 DstIn fade —
+            // the same fadeBottom the Apple Music style applies to its sharp
+            // artwork, giving the seamless canvas→frost→controls blend. Like
+            // AM's layer order the scrim sits UNDER the sharp video.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (sharpStageHeight != null) {
+                                Modifier.height(sharpStageHeight)
+                            } else {
+                                // Pre-measurement default: Apple Music's
+                                // sharpArtworkHeight = 0.55 * player height.
+                                Modifier.fillMaxHeight(0.55f)
+                            },
+                        )
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            alpha = 1f - lyricsBackdropProgress
+                        }
                         .drawWithContent {
                             drawContent()
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        SfSharpCanvasFadeStart to Color.Black,
-                                        SfSharpCanvasFadeEnd to Color.Transparent,
-                                    ),
-                                blendMode = BlendMode.DstIn,
-                            )
+                            drawRect(brush = SfSharpStageFadeBrush, blendMode = BlendMode.DstIn)
                         },
             ) {
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
+                    isPlaying = isPlaying && canvasVisibleForLyrics,
+                    visible = canvasVisibleForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                     modifier = Modifier.matchParentSize(),
                 )
             }
-
-            // 3) Frost tint: near-transparent over the sharp video, deepening
-            // through the fade band into the dark legibility glass of the
-            // control dock — the tint layer that turns the blurred twin into
-            // a frosted panel behind the controls.
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.16f),
-                                SfSharpCanvasFadeStart to Color.Black.copy(alpha = 0.16f),
-                                SfSharpCanvasFadeEnd to Color.Black.copy(alpha = 0.32f),
-                                0.85f to Color.Black.copy(alpha = 0.52f),
-                                1f to Color.Black.copy(alpha = 0.72f),
-                            ),
-                        ),
-            )
         }
 
         MaterialTheme(typography = SpatialFlowTypography) {
@@ -458,16 +521,17 @@ fun SpatialFlowPlayerContent(
                     Spacer(modifier = Modifier.size(48.dp))
                 }
 
-                if (canvasActive) {
-                    // Canvas reference layout: the video is the whole screen,
-                    // so the metadata/controls stack is pushed to the lower
+                if (canvasAvailable) {
+                    // Canvas layout: the sharp video owns the area above the
+                    // title row (see the sharp stage behind this Column), so
+                    // the metadata/controls stack is pushed to the lower
                     // third — no artwork slot, no top offset.
                     Spacer(modifier = Modifier.weight(1f))
                 } else {
                     Spacer(modifier = Modifier.height(topOffset - (statusBarTopDp + 68.dp)))
                 }
 
-                if (!canvasActive) {
+                if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
                         mediaMetadata = mediaMetadata,
                         queueWindows = queueWindows,
@@ -492,7 +556,10 @@ fun SpatialFlowPlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 4.dp)
+                            // Feeds the sharp stage's height bound: the canvas
+                            // ends where the song title begins.
+                            .onGloballyPositioned { titleTopInRootY = it.positionInRoot().y },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(
@@ -505,7 +572,7 @@ fun SpatialFlowPlayerContent(
                             // artwork layout keeps the repo's own
                             // headlineMediumEmphasized + bodyMedium pair.
                             style =
-                                if (canvasActive) {
+                                if (canvasAvailable) {
                                     MaterialTheme.typography.displayMedium
                                 } else {
                                     MaterialTheme.typography.headlineMediumEmphasized
@@ -515,10 +582,10 @@ fun SpatialFlowPlayerContent(
                             maxLines = 1,
                             modifier = Modifier.basicMarqueeWithFadedEdges(),
                         )
-                        Spacer(modifier = Modifier.height(if (canvasActive) 6.dp else 4.dp))
+                        Spacer(modifier = Modifier.height(if (canvasAvailable) 6.dp else 4.dp))
                         Text(
                             text = mediaMetadata.artists.joinToString { it.name },
-                            style = if (canvasActive) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                            style = if (canvasAvailable) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
                             color = contentSecondary,
                             maxLines = 1,
                             modifier =
@@ -941,7 +1008,7 @@ fun SpatialFlowPlayerContent(
                     currentPositionProvider = positionProvider,
                     contentReady = lyricsContentReady,
                     backgroundBrush = lyricsBackgroundBrush,
-                    movingBlurColors = palette.colors,
+                    artUrl = artUrl,
                     revealProgressProvider = { lyricsRevealProgress },
                     revealCenterProvider = { lyricsButtonCenterInRoot },
                     contentColor = contentColor,

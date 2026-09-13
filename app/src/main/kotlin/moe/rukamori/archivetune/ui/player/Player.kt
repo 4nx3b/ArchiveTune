@@ -1401,7 +1401,13 @@ fun BottomSheetPlayer(
                 (
                     playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC ||
                         playerDesignStyle == PlayerDesignStyle.V9 ||
-                        playerDesignStyle == PlayerDesignStyle.SPATIALFLOW
+                        playerDesignStyle == PlayerDesignStyle.SPATIALFLOW ||
+                        // BitChord composes CanvasArtworkPlayer in both its hero
+                        // slot and its artwork card, but was never registered
+                        // here — the resolver force-cleared artworkCanvas to
+                        // null for the style, so "any kind of canvas doesn't
+                        // play in bitchord".
+                        playerDesignStyle == PlayerDesignStyle.BITCHORD
                 ) &&
                 !aodModeEnabled &&
                 !trackIsMusicVideo

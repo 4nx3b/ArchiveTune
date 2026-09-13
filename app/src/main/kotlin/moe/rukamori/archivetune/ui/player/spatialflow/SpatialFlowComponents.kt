@@ -154,6 +154,10 @@ internal fun deriveArtworkSurfaceColor(
 @Composable
 internal fun SpatialFlowBlurredBackdrop(
     artUrl: String?,
+    // When the canvas owns the player, the Apple Music canvas scrim
+    // (0.25/0.40/0.65 black) replaces this backdrop's own gradient — stacking
+    // the two made the frosted dock darker than the AM reference.
+    withScrim: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
@@ -215,18 +219,20 @@ internal fun SpatialFlowBlurredBackdrop(
             }
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.18f),
-                            0.55f to Color.Black.copy(alpha = 0.32f),
-                            1f to Color.Black.copy(alpha = 0.60f),
+        if (withScrim) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.18f),
+                                0.55f to Color.Black.copy(alpha = 0.32f),
+                                1f to Color.Black.copy(alpha = 0.60f),
+                            ),
                         ),
-                    ),
-        )
+            )
+        }
     }
 }
 

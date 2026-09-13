@@ -24,6 +24,7 @@ package moe.rukamori.archivetune.ui.player.spatialflow
 
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -39,11 +40,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +54,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -69,6 +73,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,23 +84,40 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clipToBounds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.graphics.Bitmap
+import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Size as CoilSize
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.LyricsMode
@@ -115,7 +137,9 @@ import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
-import moe.rukamori.archivetune.ui.player.MovingBlurBackground
+import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
+import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
+import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
@@ -179,7 +203,7 @@ internal fun SpatialFlowLyricsOverlay(
     currentPositionProvider: () -> Long,
     contentReady: Boolean,
     backgroundBrush: Brush,
-    movingBlurColors: List<Color> = emptyList(),
+    artUrl: String? = null,
     revealProgressProvider: () -> Float,
     revealCenterProvider: () -> Offset?,
     contentColor: Color,
@@ -325,13 +349,14 @@ internal fun SpatialFlowLyricsOverlay(
                     }
                 },
         ) {
-        // The SpatialFlow lyrics backdrop is the moving-blur artwork
-        // background (same renderer the standalone lyrics page uses for
-        // MOVING_BLUR) — on by default for this style. The solid
-        // backgroundBrush beneath it is the reveal/crop base colour.
-        MovingBlurBackground(
-            mediaMetadata = currentSong,
-            gradientColors = movingBlurColors,
+        // The lyrics backdrop is Apple Music's exact moving-blur recipe: the
+        // artwork at 64dp blur, slowly drifting and scaling up as the overlay
+        // settles in, with AM's scrim colors (0.25/0.40/0.65 black) over it.
+        // The previous palette-gradient + vibrancy renderer read as "the
+        // liquid blur is too bright". The solid backgroundBrush beneath stays
+        // the reveal/crop base colour and the no-artwork fallback.
+        SpatialFlowLyricsMovingBlur(
+            artUrl = artUrl,
             modifier = Modifier.matchParentSize(),
         )
 
@@ -912,6 +937,153 @@ private fun SpatialFlowInterludeItem(
             color = accentColor.copy(alpha = if (isActive) 0.75f else 0.18f),
             trackColor = accentColor.copy(alpha = 0.06f),
             amplitude = { p -> (0.6f + p) },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lyrics moving-blur backdrop — Apple Music's exact recipe
+// ---------------------------------------------------------------------------
+// The AM player's lyrics backdrop: the artwork image sized to the drift
+// footprint, blurred 64dp (AmBackdropBlurRadius), slowly wandering
+// (blurWander — the "moving" part) and scaling from the rest scale (1.2,
+// AmCoverBlurScale) up to the lyrics drift scale (2.4, AmLyricsBlurDriftScale)
+// as the overlay settles in, with AM's canvas scrim colors over it. The
+// previous renderer (MovingBlurBackground) boosted saturation 1.6x and laid a
+// bright palette gradient over the artwork — the reported "liquid blur is too
+// bright". Pre-S devices render a pre-blurred bitmap instead (Modifier.blur is
+// a no-op below S), same as AM's preBlurredBitmap path.
+private const val SfLyricsBlurRestScale = 1.2f
+private const val SfLyricsBlurDriftScale = 2.4f
+private val SfLyricsBlurRadius = 64.dp
+
+@Composable
+private fun SpatialFlowLyricsMovingBlur(
+    artUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    val context = LocalContext.current
+    val imageLoader = context.imageLoader
+    val blurWander = rememberBlurWanderDrift(active = !isPreS)
+    val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
+
+    // AM's lyricsBackdropProgress equivalent: 0 → 1 as the overlay appears,
+    // driving the rest → drift scale morph and ramping the wander in.
+    // animateFloatAsState would snap straight to 1f on the first composition
+    // (its initial value IS the first target), so this uses an Animatable
+    // launched on appearance instead.
+    val morph = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        morph.animateTo(1f, animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing))
+    }
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .clipToBounds(),
+    ) {
+        val driftFootprint =
+            remember(maxWidth, maxHeight) {
+                blurBackdropFootprint(
+                    width = maxWidth,
+                    height = maxHeight,
+                    restScale = SfLyricsBlurRestScale,
+                    driftScale = SfLyricsBlurDriftScale,
+                )
+            }
+
+        if (artUrl != null) {
+            if (isPreS) {
+                val preBlurredBitmap by produceState<Bitmap?>(null, artUrl) {
+                    value =
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                val request =
+                                    ImageRequest
+                                        .Builder(context)
+                                        .data(artUrl)
+                                        .allowHardware(false)
+                                        .memoryCacheKey("$artUrl#sflyricsblur")
+                                        .diskCacheKey("$artUrl#sflyricsblur")
+                                        .size(CoilSize(720, 720))
+                                        .build()
+                                val result = imageLoader.execute(request)
+                                if (result is SuccessResult) {
+                                    val bitmap =
+                                        result.image
+                                            .toBitmap()
+                                            .copy(Bitmap.Config.ARGB_8888, true)
+                                    val density = context.resources.displayMetrics.density
+                                    ImageBlurUtils.blur(bitmap, SfLyricsBlurRadius.value * density)
+                                } else {
+                                    null
+                                }
+                            }.getOrNull()
+                        }
+                }
+                preBlurredBitmap?.let { bmp ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .requiredSize(driftFootprint)
+                                    .graphicsLayer {
+                                        val scale =
+                                            SfLyricsBlurRestScale +
+                                                (SfLyricsBlurDriftScale - SfLyricsBlurRestScale) * morph.value
+                                        scaleX = scale
+                                        scaleY = scale
+                                    },
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        // Offline-artwork request builder for parity with the
+                        // player's other backdrops (raw strings render empty
+                        // for offline-only tracks).
+                        model = rememberOfflineArtworkImageRequest(artUrl),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .requiredSize(driftFootprint)
+                                .graphicsLayer {
+                                    val scale =
+                                        SfLyricsBlurRestScale +
+                                            (SfLyricsBlurDriftScale - SfLyricsBlurRestScale) * morph.value
+                                    scaleX = scale
+                                    scaleY = scale
+                                    translationX =
+                                        blurWander.xDp.floatValue * driftDpToPx * morph.value
+                                    translationY =
+                                        blurWander.yDp.floatValue * driftDpToPx * morph.value
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                }
+                                .blur(SfLyricsBlurRadius),
+                    )
+                }
+            }
+        }
+
+        // Apple Music's exact scrim colors over the blurred artwork.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(SfCanvasScrimBrush),
         )
     }
 }
