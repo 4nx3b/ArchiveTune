@@ -2258,3 +2258,63 @@ Stage Summary:
 - dev carries the four fixes; canary CI + PR dev→main + new stable
   release to follow (old v15.0.6371 stable and the Claude branch get
   deleted, changelogs.md attached to the new release).
+
+---
+Task ID: 43
+Agent: Super Z (main agent, session web-e130fa90)
+Task: spatialflow NOW-PLAYING three-dot overflow icon (still missing after
+task 42 — that round only wired the DEFAULT player), full redesign of the
+unglassed floating popup (still looked broken), comprehensive changelogs.md
+sweep, PR dev→main, delete old stable release + Claude branch, new stable
+release with changelogs.md attached
+
+Work Log:
+- Task 42 gap analysis: commit 5d6cdd959 added the overflow icon to
+  Player.kt's default Thumbnail only — SpatialFlowPlayer.kt's header right
+  side was still Spacer(48.dp). VLM analysis of both uploaded screenshots
+  confirmed: shot 2 (spatialflow now-playing) has no icon next to NOW
+  PLAYING; shot 1 (home song popup, glass off) shows the grey-on-grey
+  card-in-card stack (pixel samples: near-black header #060709 on #1C1C1E
+  card, warm dynamic-color tiles (50,40,38), grey #3A3A3C@0.92 section).
+- SpatialFlow overflow: new spatialflow_ic_more_vert.xml (960-viewport
+  Material Symbols glyph, same family as spatialflow_ic_keyboard_arrow_down,
+  fill #e3e3e3); the header's right Spacer replaced with an IconButton
+  (28dp icon, contentColor@0.8, mirroring the collapse button) opening the
+  full PlayerMenu through menuState + bottomSheetPageState (ShowMediaInfo
+  for details), exact BitChordPlayer wiring.
+- Unglassed popup redesign ("solid sheet", glass path byte-identical —
+  every change is gated on glassModifier == null / LocalGlassMenuContent):
+  * BottomSheetMenu: fallback surface is now ONE elevated theme surface
+    (surfaceContainerHigh, follows dynamic color) instead of flat
+    #1C1C1E; hairline outlineVariant@0.5 edge; 32x4dp centred drag-handle
+    pill above the content (solid-mode signature cue).
+  * MuzoSongMenuHeader: flat on the sheet (transparent) in solid mode —
+    the old surfaceContainerLow card drew a near-black rectangle inside
+    the popup.
+  * MenuSurfaceSection: transparent in solid mode (was #3A3A3C@0.92 grey
+    card banding on the sheet); glass keeps its transparent section.
+  * NewActionButton: solid mode renders outlined tiles — transparent fill
+    + 1dp outlineVariant@0.8 border + 16dp corners (glass keeps the
+    translucent squareShape ghost tiles).
+- changelogs.md: comprehensive sweep per user request — every change/fix/
+  removal from all rounds now represented, deduplicated: extended player
+  styles (upstream V9/V10), music haptics PCM tap, TikTok robustness, AI
+  parallel batches + provider-scoped romanisation cache, canvas
+  independence + BitChord canvas gate, frost-region canvas twin, shared
+  HTTP client, start-timeout removal, bounded downloads, lyrics
+  active-line freeze, spatialflow lyrics perf/canvas freeze/AM-exact
+  layering, quality pill pinned, full-row dividers, compact glass cap +
+  glass dividers, main-exact lyrics popup, 96% smaller icon pack, font
+  specimens, Weblate merge, stats backup detail, About links; replaced
+  the superseded unglassed-popup bullet with the solid-sheet redesign and
+  extended the overflow-menu bullet to cover SpatialFlow; dead-code bullet
+  quantified; compare link retargeted to main (v15.0 tag never existed).
+- Release flow (to follow the push): PR #220 already open dev→main and
+  absorbs the new commits; old stable release v15.0.6371 + tag deleted;
+  claude/archivetune-pi-backup-continue-ka9fso branch deleted; release.yml
+  dispatched on main → new stable release with changelogs.md asset.
+
+Stage Summary:
+- dev: spatialflow overflow icon + unglassed solid-sheet redesign +
+  comprehensive changelogs.md, one commit ready to push.
+- Glass-mode floating popups untouched by design (all deltas gated).

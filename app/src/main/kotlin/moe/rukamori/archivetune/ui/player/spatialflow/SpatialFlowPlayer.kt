@@ -107,6 +107,8 @@ import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
 import androidx.navigation.NavController
@@ -460,7 +462,30 @@ fun SpatialFlowPlayerContent(
                         color = contentSecondary,
                     )
 
-                    Spacer(modifier = Modifier.size(48.dp))
+                    IconButton(
+                        onClick = {
+                            menuState.show {
+                                PlayerMenu(
+                                    mediaMetadata = mediaMetadata,
+                                    navController = navController,
+                                    playerBottomSheetState = state,
+                                    onShowDetailsDialog = {
+                                        bottomSheetPageState.show {
+                                            ShowMediaInfo(mediaMetadata.id)
+                                        }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.spatialflow_ic_more_vert),
+                            contentDescription = "More",
+                            tint = contentColor.copy(alpha = 0.8f),
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
                 }
 
                 if (canvasAvailable) {

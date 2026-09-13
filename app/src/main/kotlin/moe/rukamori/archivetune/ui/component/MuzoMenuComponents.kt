@@ -57,9 +57,16 @@ fun MuzoSongMenuHeader(
     artist: String?,
     modifier: Modifier = Modifier,
 ) {
+    // On glass the scheme maps surfaceContainerLow to transparent, so this
+    // Surface is already invisible there — unchanged. In solid mode the app
+    // scheme's surfaceContainerLow drew a near-black card ON the elevated
+    // sheet (a darker rectangle floating inside the popup); the header now
+    // flattens straight onto the sheet surface like a standard bottom-sheet
+    // header: artwork + title + artist, no nested card.
+    val onGlassPopup = LocalGlassMenuContent.current
     Surface(
         shape = RoundedCornerShape(MuzoMenuHeaderCardCorner),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = if (onGlassPopup) MaterialTheme.colorScheme.surfaceContainerLow else Color.Transparent,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
