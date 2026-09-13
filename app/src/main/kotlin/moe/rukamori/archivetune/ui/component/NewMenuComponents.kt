@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,17 +57,41 @@ fun NewActionButton(
     backgroundColor: Color = Color.Unspecified,
     contentColor: Color = Color.Unspecified,
 ) {
-    val containerColor = if (backgroundColor.isSpecified) backgroundColor else MaterialTheme.colorScheme.surfaceContainerHigh
+    val onGlassPopup = LocalGlassMenuContent.current
+
+    // Glass mode: the translucent "ghost" tile over the blur — unchanged.
+    // Solid mode (liquid glass off / no backdrop): outlined tile — transparent
+    // fill with a hairline border so the single elevated sheet surface shows
+    // through and the grid reads as one deliberate flat design instead of
+    // tonal cards stacking greys on the sheet.
+    val containerColor =
+        when {
+            backgroundColor.isSpecified -> backgroundColor
+            onGlassPopup -> MaterialTheme.colorScheme.surfaceContainerHigh
+            else -> Color.Transparent
+        }
     val actionContentColor = if (contentColor.isSpecified) contentColor else MaterialTheme.colorScheme.onSurfaceVariant
+    val tileShape = if (onGlassPopup) ButtonDefaults.squareShape else RoundedCornerShape(16.dp)
 
     FilledTonalButton(
         onClick = onClick,
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 96.dp),
+                .heightIn(min = 96.dp)
+                .then(
+                    if (onGlassPopup) {
+                        Modifier
+                    } else {
+                        Modifier.border(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f),
+                            tileShape,
+                        )
+                    },
+                ),
         enabled = enabled,
-        shape = ButtonDefaults.squareShape,
+        shape = tileShape,
         colors =
             ButtonDefaults.filledTonalButtonColors(
                 containerColor = containerColor,
@@ -236,18 +260,14 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val sectionColor =
-        if (dark) {
-            Color(0xFF3A3A3C).copy(alpha = 0.92f)
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f)
-        }
-    val onGlassPopup = LocalGlassMenuContent.current
+    // Sections are flat in both modes now. On glass they were already
+    // transparent (the blur shows through); in solid mode the old
+    // 0.92-alpha grey card stacked a second neutral on the elevated sheet
+    // and banding-diffed against it — grouping now comes from the hairline
+    // dividers between the flat list items instead of a nested card.
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (onGlassPopup) Color.Transparent else sectionColor,
+        color = Color.Transparent,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)
