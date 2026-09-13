@@ -414,6 +414,8 @@ fun SpatialFlowPlayerContent(
 
                 val lyricsContentReady = lyricsRevealProgress > 0.8f
 
+                val keepMainContentComposed = !lyricsModeEnabled || lyricsRevealProgress < 1f
+                if (keepMainContentComposed) {
                 Column(
                     modifier =
                         Modifier
@@ -902,6 +904,7 @@ fun SpatialFlowPlayerContent(
                                 .graphicsLayer { rotationZ = 180f },
                     )
                 }
+                }
             }
 
             if (lyricsRevealProgress > 0f) {
@@ -927,12 +930,7 @@ fun SpatialFlowPlayerContent(
             SlidingQueueDrawer(
                 isQueueExpanded = queueExpanded,
                 onQueueExpandedChange = { queueExpanded = it },
-                queue =
-                    queueWindows.mapNotNull { window ->
-                        (window.mediaItem?.metadata as? MediaMetadata)?.let { metadata ->
-                            metadata to window.firstPeriodIndex
-                        }
-                    },
+                queueWindows = queueWindows,
                 currentSongIndex = currentWindowIndex,
                 isShuffleEnabled = shuffleModeEnabled,
                 repeatMode = repeatMode,
