@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -70,6 +72,7 @@ import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
+import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
@@ -209,6 +212,10 @@ internal fun PlaybackSourceSections(
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (qobuzBackupEnabled, onQobuzBackupEnabledChange) = rememberPreference(QobuzBackupEnabledKey, false)
+    val (qobuzBackupEndpoints, onQobuzBackupEndpointsChange) =
+        rememberPreference(QobuzBackupEndpointsKey, "")
+    var showQobuzBackupEndpointsDialog by rememberSaveable { mutableStateOf(false) }
+    var qobuzBackupEndpointsDraft by rememberSaveable { mutableStateOf("") }
     val (appleMusicQuality, onAppleMusicQualityChange) =
         rememberEnumPreference(AppleMusicQualityKey, AppleMusicQuality.LOSSLESS)
 
@@ -526,7 +533,69 @@ internal fun PlaybackSourceSections(
         }
 
         item {
+            PreferenceEntry(
+                modifier = positions.modifierFor("qobuz_backup_endpoints"),
+                title = { Text(stringResource(R.string.qobuz_backup_endpoints)) },
+                description = stringResource(R.string.qobuz_backup_endpoints_desc),
+                icon = { Icon(painterResource(R.drawable.link), null) },
+                onClick = {
+                    qobuzBackupEndpointsDraft = qobuzBackupEndpoints
+                    showQobuzBackupEndpointsDialog = true
+                },
+            )
+        }
+
+        item {
             SourceCheckRow(source = AudioSourceType.QOBUZ_BACKUP)
+        }
+    }
+
+    if (showQobuzBackupEndpointsDialog) {
+        DefaultDialog(
+            onDismiss = { showQobuzBackupEndpointsDialog = false },
+            icon = { Icon(painterResource(R.drawable.link), null) },
+            title = { Text(stringResource(R.string.qobuz_backup_endpoints)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        onQobuzBackupEndpointsChange(
+                            qobuzBackupEndpointsDraft
+                                .split('\n')
+                                .map { it.trim().trimEnd('/') }
+                                .filter { it.startsWith("http") }
+                                .distinct()
+                                .joinToString("\n"),
+                        )
+                        showQobuzBackupEndpointsDialog = false
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
+                TextButton(
+                    onClick = { showQobuzBackupEndpointsDialog = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = qobuzBackupEndpointsDraft,
+                    onValueChange = { qobuzBackupEndpointsDraft = it },
+                    label = { Text(stringResource(R.string.qobuz_backup_endpoints_hint)) },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.qobuz_backup_endpoints_help),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 

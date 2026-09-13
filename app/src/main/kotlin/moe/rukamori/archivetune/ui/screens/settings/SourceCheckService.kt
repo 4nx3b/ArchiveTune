@@ -8,12 +8,16 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.applemusic.AppleMusicAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -45,7 +49,7 @@ object SourceCheckService {
             when (source) {
                 AudioSourceType.TIDAL -> checkTidal(context)
                 AudioSourceType.QOBUZ -> checkQobuz(context)
-                AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup()
+                AudioSourceType.QOBUZ_BACKUP -> checkQobuzBackup(context)
                 AudioSourceType.DEEZER -> checkDeezer(context)
                 AudioSourceType.APPLE -> checkAppleMusic()
                 AudioSourceType.JIOSAAVN -> checkJioSaavn()
@@ -155,9 +159,49 @@ object SourceCheckService {
         )
     }
 
-    private fun checkQobuzBackup(): SourceCheckResult {
+    private suspend fun checkQobuzBackup(context: Context): SourceCheckResult {
+        // Read the user's mirror list straight from preferences so the check
+        // reflects what playback will use even before the first resolve.
+        runCatching {
+            val stored = context.dataStore.data.first()[QobuzBackupEndpointsKey].orEmpty()
+            QobuzBackupProvider.configuredEndpoints =
+                stored.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        }
+        // The resolver walks an endpoint chain (user-configured mirrors first,
+        // the shipped default last). Probe each one so the report says WHICH
+        // endpoint is down instead of a generic "backup not working".
+        val endpoints = QobuzBackupProvider.endpointList()
+        val reports = mutableListOf<String>()
+        var anyHealthy = false
 
-        val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
+        for (base in endpoints) {
+            val result = probeQobuzBackupEndpoint(base)
+            if (result.healthy) {
+                anyHealthy = true
+                reports.add("OK  $base — ${result.summary}")
+                break
+            }
+            reports.add("DOWN  $base — ${result.summary}")
+        }
+
+        return if (anyHealthy) {
+            SourceCheckResult(healthy = true, summary = reports.joinToString("\n"))
+        } else {
+            SourceCheckResult(
+                healthy = false,
+                summary = reports.joinToString("\n") +
+                    "\nNo live backup endpoint. The shipped community mirror " +
+                    "(mlc-ytify.kouzu.in) went dark in September 2026 — add a live " +
+                    "mirror of the same API under Settings → Sources → Qobuz backup → " +
+                    "Backup resolver endpoints (one URL per line). Dead endpoints are " +
+                    "skipped for 10 minutes after 3 failures, so a down mirror does not " +
+                    "slow down playback.",
+            )
+        }
+    }
+
+    private fun probeQobuzBackupEndpoint(base: String): SourceCheckResult {
+        val resolverUrl = "$base/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
                 .url(resolverUrl)
@@ -170,22 +214,21 @@ object SourceCheckService {
                 if (!resolverResponse.isSuccessful) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "Qobuz backup resolver returned HTTP ${resolverResponse.code}. " +
-                            "The backup server may be down or rate-limiting your IP.",
+                        summary = "resolver returned HTTP ${resolverResponse.code}.",
                     )
                 }
                 val body = resolverResponse.body?.string().orEmpty()
                 if (body.isBlank()) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "Qobuz backup resolver returned an empty body.",
+                        summary = "resolver returned an empty body.",
                     )
                 }
                 val root = runCatching { JSONObject(body) }.getOrNull()
                 if (root == null) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "Qobuz backup resolver returned a non-JSON response.",
+                        summary = "resolver returned a non-JSON response.",
                     )
                 }
 
@@ -194,7 +237,7 @@ object SourceCheckService {
                 if (losslessUrl == null && lossyUrl == null) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "Qobuz backup resolver returned a JSON envelope with no stream URL.",
+                        summary = "resolver returned a JSON envelope with no stream URL.",
                     )
                 }
 
@@ -204,26 +247,23 @@ object SourceCheckService {
                     losslessProbe?.ok == true ->
                         SourceCheckResult(
                             healthy = true,
-                            summary = "Qobuz backup is reachable and served a lossless stream " +
-                                "(${losslessProbe.contentType}${losslessProbe.sizeSuffix()}). " +
-                                "Qobuz backup is READY.",
+                            summary = "reachable and served a lossless stream " +
+                                "(${losslessProbe.contentType}${losslessProbe.sizeSuffix()}).",
                         )
 
                     lossyProbe?.ok == true ->
                         SourceCheckResult(
                             healthy = true,
-                            summary = "Qobuz backup is reachable but only the lossy mirror served audio " +
-                                "(${lossyProbe.contentType}). The backup server has no lossless copy of the " +
-                                "probe track yet — lossless will still be used for tracks that have one.",
+                            summary = "reachable but only the lossy mirror served audio " +
+                                "(${lossyProbe.contentType}). No lossless copy of the probe track yet.",
                         )
 
                     else -> {
                         val failed = losslessProbe ?: lossyProbe
                         SourceCheckResult(
                             healthy = false,
-                            summary = "Qobuz backup resolver returned a stream URL but the CDN served " +
-                                "${failed?.describeFailure() ?: "no response"}. The backup server may be " +
-                                "rebuilding its cache — try again in a few minutes.",
+                            summary = "resolver returned a stream URL but the CDN served " +
+                                "${failed?.describeFailure() ?: "no response"}.",
                         )
                     }
                 }
@@ -231,7 +271,7 @@ object SourceCheckService {
         }.getOrElse { e ->
             SourceCheckResult(
                 healthy = false,
-                summary = "Failed to reach Qobuz backup: ${e.message ?: e.javaClass.simpleName}",
+                summary = "failed to reach endpoint: ${e.message ?: e.javaClass.simpleName}",
             )
         }
     }

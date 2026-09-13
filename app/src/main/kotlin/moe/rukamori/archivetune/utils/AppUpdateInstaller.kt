@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.utils
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
@@ -53,6 +54,28 @@ object AppUpdateInstaller {
                     followRedirects(true)
                 }
             }
+        }
+    }
+
+    suspend fun download(
+        context: Context,
+        url: String,
+        onProgress: (Progress) -> Unit,
+    ): Result<File> {
+        if (BuildConfig.DISTRIBUTION != "gms") {
+            return Result.failure(IllegalStateException("In-app updates are only available for GMS builds"))
+        }
+
+        return try {
+            Result.success(
+                withContext(Dispatchers.IO) {
+                    downloadApk(context.applicationContext, url, onProgress)
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Result.failure(e)
         }
     }
 
@@ -199,7 +222,7 @@ object AppUpdateInstaller {
         return apkFile
     }
 
-    private fun installApk(
+    fun installApk(
         context: Context,
         apkFile: File,
     ) {
@@ -217,10 +240,34 @@ object AppUpdateInstaller {
         context.startActivity(intent)
     }
 
+    fun installPendingIntent(
+        context: Context,
+        apkFile: File,
+    ): PendingIntent {
+        val uri =
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.FileProvider",
+                apkFile,
+            )
+        val intent =
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, ApkMimeType)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return PendingIntent.getActivity(
+            context,
+            INSTALL_PROMPT_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private const val UpdateDirectoryName = "app_update"
     private const val DownloadFileName = "archive-tune-update.download"
     private const val ApkFileName = "archive-tune-update.apk"
     private const val ApkMimeType = "application/vnd.android.package-archive"
     private const val STREAM_BUFFER_SIZE = 256 * 1024
     private const val PROGRESS_UPDATE_INTERVAL_MS = 200L
+    private const val INSTALL_PROMPT_REQUEST_CODE = 4242
 }

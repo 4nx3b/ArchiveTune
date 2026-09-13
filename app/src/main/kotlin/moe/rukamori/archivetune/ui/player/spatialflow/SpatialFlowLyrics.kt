@@ -25,7 +25,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -57,14 +56,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.asImageBitmap
@@ -89,7 +86,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.graphics.Bitmap
-import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -122,7 +118,6 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
 import moe.rukamori.archivetune.ui.player.blurBackdropFootprint
 import moe.rukamori.archivetune.ui.player.rememberBlurWanderDrift
-import moe.rukamori.archivetune.ui.player.rememberOfflineArtworkImageRequest
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import androidx.compose.runtime.getValue
@@ -506,7 +501,6 @@ internal fun SpatialFlowLyricsOverlay(
         }
 
         if (showLyricsMenu) {
-            val scrimBase = (backgroundBrush as? SolidColor)?.value ?: Color.Black
             AnchoredLyricsOverflowMenu(
                 iconBoundsInRoot = moreIconBounds,
                 lyricsProvider = { currentLyricsEntity },
@@ -515,7 +509,6 @@ internal fun SpatialFlowLyricsOverlay(
                 onLyricsSyncOffsetChange = {},
                 onDismiss = { showLyricsMenu = false },
                 backdrop = popupBackdrop,
-                scrimColor = scrimBase.copy(alpha = 0.45f),
             )
         }
     }
@@ -699,11 +692,20 @@ private fun SpatialFlowLyricLineItem(
                                 .fillMaxWidth()
                                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                                 .drawWithCache {
+                                    val layout = baseTextLayout.value
+                                    val textLength = layout?.layoutInput?.text?.length ?: 0
+                                    val charPaths =
+                                        if (layout != null && textLength > 0) {
+                                            List(textLength) { charIndex ->
+                                                layout.getPathForRange(charIndex, charIndex + 1)
+                                            }
+                                        } else {
+                                            null
+                                        }
                                     onDrawWithContent {
-                                        val layout = baseTextLayout.value
                                         drawContent()
-                                        if (layout != null) {
-                                            eraseFutureText(layout, spans, smoothedPos.toLong())
+                                        if (layout != null && charPaths != null) {
+                                            eraseFutureText(layout, charPaths, spans, smoothedPos.toLong())
                                         }
                                     }
                                 },
@@ -734,10 +736,11 @@ private fun SpatialFlowLyricLineItem(
 
 private fun DrawScope.eraseFutureText(
     layout: androidx.compose.ui.text.TextLayoutResult,
+    charPaths: List<androidx.compose.ui.graphics.Path>,
     spans: List<WordCharSpan>,
     pos: Long,
 ) {
-    val textLength = layout.layoutInput.text.length
+    val textLength = charPaths.size
     for (charIndex in 0 until textLength) {
         val controllingSpan = findControllingSpan(charIndex, spans)
         val charProgress =
@@ -751,11 +754,11 @@ private fun DrawScope.eraseFutureText(
 
         } else if (charProgress < 0.01f) {
 
-            val path = layout.getPathForRange(charIndex, charIndex + 1)
+            val path = charPaths[charIndex]
             drawPath(path, color = Color.Black, blendMode = BlendMode.DstOut)
         } else {
 
-            val path = layout.getPathForRange(charIndex, charIndex + 1)
+            val path = charPaths[charIndex]
             val box = layout.getBoundingBox(charIndex)
 
             val gradientWidth = box.width * 1.5f
@@ -905,15 +908,70 @@ private const val SfLyricsBlurRestScale = 1.2f
 private const val SfLyricsBlurDriftScale = 2.4f
 private val SfLyricsBlurRadius = 64.dp
 
+/**
+ * LRU for the pre-blurred lyrics backdrop bitmaps. [SpatialFlowPlayerContent]
+ * pre-warms this cache the moment a song's artwork is known, so the very
+ * first frame of the lyrics overlay already composes against a ready bitmap
+ * instead of flashing the opaque palette fill while the async blur lands
+ * (the "solid color for a split second" the reveal used to show).
+ */
+internal object SfLyricsBlurBitmapCache {
+    private const val MAX_ENTRIES = 4
+
+    private val cache = object : LinkedHashMap<String, Bitmap>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean = size > MAX_ENTRIES
+    }
+
+    fun get(url: String): Bitmap? = synchronized(cache) { cache[url] }
+
+    fun put(url: String, bitmap: Bitmap) {
+        synchronized(cache) { cache[url] = bitmap }
+    }
+}
+
+internal suspend fun loadSfLyricsBlurredBitmap(
+    context: android.content.Context,
+    artUrl: String,
+): Bitmap? {
+    SfLyricsBlurBitmapCache.get(artUrl)?.let { return it }
+    val bitmap =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request =
+                    ImageRequest
+                        .Builder(context)
+                        .data(artUrl)
+                        .allowHardware(false)
+                        .memoryCacheKey("$artUrl#sflyricsblur")
+                        .diskCacheKey("$artUrl#sflyricsblur")
+                        .size(CoilSize(720, 720))
+                        .build()
+                val result = context.imageLoader.execute(request)
+                if (result is SuccessResult) {
+                    val raw =
+                        result.image
+                            .toBitmap()
+                            .copy(Bitmap.Config.ARGB_8888, true)
+                    val density = context.resources.displayMetrics.density
+                    ImageBlurUtils.blur(raw, SfLyricsBlurRadius.value * density)
+                } else {
+                    null
+                }
+            }.getOrNull()
+        }
+    if (bitmap != null) {
+        SfLyricsBlurBitmapCache.put(artUrl, bitmap)
+    }
+    return bitmap
+}
+
 @Composable
 private fun SpatialFlowLyricsMovingBlur(
     artUrl: String?,
     modifier: Modifier = Modifier,
 ) {
-    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val context = LocalContext.current
-    val imageLoader = context.imageLoader
-    val blurWander = rememberBlurWanderDrift(active = !isPreS)
+    val blurWander = rememberBlurWanderDrift(active = true)
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val morph = remember { Animatable(0f) }
@@ -938,63 +996,23 @@ private fun SpatialFlowLyricsMovingBlur(
             }
 
         if (artUrl != null) {
-            if (isPreS) {
-                val preBlurredBitmap by produceState<Bitmap?>(null, artUrl) {
-                    value =
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                val request =
-                                    ImageRequest
-                                        .Builder(context)
-                                        .data(artUrl)
-                                        .allowHardware(false)
-                                        .memoryCacheKey("$artUrl#sflyricsblur")
-                                        .diskCacheKey("$artUrl#sflyricsblur")
-                                        .size(CoilSize(720, 720))
-                                        .build()
-                                val result = imageLoader.execute(request)
-                                if (result is SuccessResult) {
-                                    val bitmap =
-                                        result.image
-                                            .toBitmap()
-                                            .copy(Bitmap.Config.ARGB_8888, true)
-                                    val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, SfLyricsBlurRadius.value * density)
-                                } else {
-                                    null
-                                }
-                            }.getOrNull()
-                        }
+            // Synchronous cache read first: a pre-warmed bitmap composes on the
+            // overlay's FIRST frame, so the reveal never shows the flat fill.
+            var preBlurredBitmap by remember(artUrl) {
+                mutableStateOf(SfLyricsBlurBitmapCache.get(artUrl))
+            }
+            LaunchedEffect(artUrl) {
+                if (preBlurredBitmap == null) {
+                    preBlurredBitmap = loadSfLyricsBlurredBitmap(context, artUrl)
                 }
-                preBlurredBitmap?.let { bmp ->
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier =
-                                Modifier
-                                    .requiredSize(driftFootprint)
-                                    .graphicsLayer {
-                                        val scale =
-                                            SfLyricsBlurRestScale +
-                                                (SfLyricsBlurDriftScale - SfLyricsBlurRestScale) * morph.value
-                                        scaleX = scale
-                                        scaleY = scale
-                                    },
-                        )
-                    }
-                }
-            } else {
+            }
+            preBlurredBitmap?.let { bmp ->
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AsyncImage(
-                        model = rememberOfflineArtworkImageRequest(artUrl),
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier =
@@ -1006,13 +1024,9 @@ private fun SpatialFlowLyricsMovingBlur(
                                             (SfLyricsBlurDriftScale - SfLyricsBlurRestScale) * morph.value
                                     scaleX = scale
                                     scaleY = scale
-                                    translationX =
-                                        blurWander.xDp.floatValue * driftDpToPx * morph.value
-                                    translationY =
-                                        blurWander.yDp.floatValue * driftDpToPx * morph.value
-                                    compositingStrategy = CompositingStrategy.Offscreen
-                                }
-                                .blur(SfLyricsBlurRadius),
+                                    translationX = blurWander.xDp.floatValue * driftDpToPx * morph.value
+                                    translationY = blurWander.yDp.floatValue * driftDpToPx * morph.value
+                                },
                     )
                 }
             }

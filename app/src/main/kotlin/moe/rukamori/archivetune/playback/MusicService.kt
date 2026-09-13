@@ -88,7 +88,6 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -214,6 +213,7 @@ import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
+import moe.rukamori.archivetune.constants.QobuzBackupEndpointsKey
 import moe.rukamori.archivetune.constants.QobuzInstancesKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
@@ -9606,6 +9606,18 @@ class MusicService :
 
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
 
+        // Refresh the user-configured resolver endpoints (Settings → Sources
+        // → Qobuz backup) so a mirror swap takes effect on the next song
+        // without a service restart.
+        QobuzBackupProvider.configuredEndpoints =
+            runCatching {
+                dataStore
+                    .get(QobuzBackupEndpointsKey, "")
+                    .split('\n')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+            }.getOrDefault(emptyList())
+
         val ytId = (query.directQobuzBackupVideoId ?: query.mediaId).trim()
         val resolved =
             runCatching {
@@ -10745,13 +10757,6 @@ class MusicService :
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessorChain(
                     DefaultAudioSink.DefaultAudioProcessorChain(
-                        SilenceSkippingAudioProcessor(
-                            1_500_000L,
-                            0.35f,
-                            500_000L,
-                            10,
-                            150.toShort(),
-                        ),
                         SonicAudioProcessor(),
                         HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                     ),

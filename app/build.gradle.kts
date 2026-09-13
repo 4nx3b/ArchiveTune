@@ -43,7 +43,7 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-val baseVersionName = "15.0.0"
+val baseVersionName = "15.0"
 val baseVersionCode = 1500
 
 val discordApplicationId =
@@ -147,8 +147,8 @@ android {
                 ?: "https://github.com/4nx3B/ArchiveTune/releases/download/tdlight-2b51b33"}\"",
         )
 
-        val slimIconPacks = (project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: false
-        buildConfigField("boolean", "ICON_PACK_BUNDLED", "${!slimIconPacks}")
+        val slimIconPacks = (project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true
+        buildConfigField("boolean", "ICON_PACK_BUNDLED", "true")
         buildConfigField(
             "String",
             "ICON_PACK_BASE_URL",
@@ -520,7 +520,7 @@ androidComponents {
                 svgDirectory.set(rootProject.layout.projectDirectory.dir("IconPack/svg"))
                 applicationId.set(variant.applicationId)
                 targetActivityClassName.set("moe.rukamori.archivetune.MainActivity")
-                slimMode.set((project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: false)
+                slimMode.set((project.findProperty("slimIconPacks") as String?)?.toBoolean() ?: true)
                 excludedIconIds.set(
                     listOf(
                         "539452",

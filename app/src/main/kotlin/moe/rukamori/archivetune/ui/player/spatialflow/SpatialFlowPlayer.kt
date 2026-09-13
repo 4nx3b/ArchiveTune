@@ -107,6 +107,8 @@ import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
+import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
 import androidx.navigation.NavController
@@ -154,6 +156,7 @@ fun SpatialFlowPlayerContent(
     positionProvider: () -> Long,
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
+    appIsDark: Boolean = isSystemInDarkTheme(),
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
     modifier: Modifier = Modifier,
@@ -161,9 +164,19 @@ fun SpatialFlowPlayerContent(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    val isDark = isSystemInDarkTheme()
-    val contentColor = if (isDark) Color.White else Color(0xFF1C1B1F)
-    val contentSecondary = if (isDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1B1F).copy(alpha = 0.6f)
+    // Follow the app's resolved theme (DarkMode ON/OFF/AUTO), not just the raw
+    // system state, so the player never renders light-mode colours inside a
+    // dark app or vice versa.
+    val isDark = appIsDark
+    // The canvas stack always renders behind the dark SfCanvasScrimBrush, so
+    // once a canvas is available the surface behaves like a dark theme even
+    // when the app theme is light: light mode must not paint near-black
+    // text over the darkened canvas. The queue drawer overlays it and keeps
+    // deriving its own palette from the real app theme.
+    val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+    val surfaceIsDark = isDark || canvasAvailable
+    val contentColor = if (surfaceIsDark) Color.White else Color(0xFF1C1B1F)
+    val contentSecondary = if (surfaceIsDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1B1F).copy(alpha = 0.6f)
 
     val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
@@ -182,15 +195,25 @@ fun SpatialFlowPlayerContent(
     val palette = rememberMeshPalette(artUrl)
     val playerBackgroundColor = palette.colors.firstOrNull() ?: Color(0xFF202022)
 
+    // Pre-warm the lyrics blur bitmap the moment the artwork is known: the
+    // full-screen lyrics overlay reads the cache synchronously on its first
+    // frame, so opening lyrics never flashes the opaque palette fill while
+    // an async blur would have been landing.
+    LaunchedEffect(artUrl) {
+        if (artUrl != null && SfLyricsBlurBitmapCache.get(artUrl) == null) {
+            loadSfLyricsBlurredBitmap(context, artUrl)
+        }
+    }
+
     val dynamicAccentColor =
-        remember(playerBackgroundColor, isDark) {
+        remember(playerBackgroundColor, surfaceIsDark) {
             val hsl = FloatArray(3)
             androidx.core.graphics.ColorUtils.colorToHSL(playerBackgroundColor.toArgb(), hsl)
             if (hsl[1] < 0.08f) {
 
-                if (isDark) Color.White else Color(0xFF1C1B1F)
+                if (surfaceIsDark) Color.White else Color(0xFF1C1B1F)
             } else {
-                if (isDark) {
+                if (surfaceIsDark) {
                     playerBackgroundColor
                 } else {
                     hsl[2] = hsl[2].coerceAtMost(0.45f)
@@ -201,11 +224,11 @@ fun SpatialFlowPlayerContent(
         }
 
     val backgroundBrush =
-        remember(playerBackgroundColor, isDark) {
+        remember(playerBackgroundColor, surfaceIsDark) {
             val finalColor =
                 deriveArtworkSurfaceColor(
                     sourceColor = playerBackgroundColor,
-                    isDark = isDark,
+                    isDark = surfaceIsDark,
                     darkLightness = 0.155f,
                     lightLightness = 0.835f,
                     darkSaturationRange = 0.32f..0.54f,
@@ -215,11 +238,11 @@ fun SpatialFlowPlayerContent(
         }
 
     val lyricsBackgroundBrush =
-        remember(playerBackgroundColor, isDark) {
+        remember(playerBackgroundColor, surfaceIsDark) {
             val finalColor =
                 deriveArtworkSurfaceColor(
                     sourceColor = playerBackgroundColor,
-                    isDark = isDark,
+                    isDark = surfaceIsDark,
                     darkLightness = 0.145f,
                     lightLightness = 0.825f,
                     darkSaturationRange = 0.32f..0.54f,
@@ -274,7 +297,6 @@ fun SpatialFlowPlayerContent(
 
     var hapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
 
-    val canvasAvailable = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
     var canvasPlayingForLyrics by remember { mutableStateOf(true) }
     var canvasSurfacesForLyrics by remember { mutableStateOf(true) }
     LaunchedEffect(lyricsModeEnabled) {
@@ -312,6 +334,7 @@ fun SpatialFlowPlayerContent(
         SpatialFlowBlurredBackdrop(
             artUrl = artUrl,
             withScrim = !canvasAvailable,
+            isDark = isDark,
             modifier = Modifier.matchParentSize(),
         )
 
@@ -398,12 +421,9 @@ fun SpatialFlowPlayerContent(
         MaterialTheme(typography = SpatialFlowTypography) {
                 val configuration = LocalConfiguration.current
                 val screenWidth = configuration.screenWidthDp.dp
-                val screenHeight = configuration.screenHeightDp.dp
                 val albumArtSize = screenWidth * 0.9f
 
                 val statusBarTopDp = LocalStableSystemBarsTopPadding.current
-                val minTopOffset = statusBarTopDp + 68.dp
-                val topOffset = ((screenHeight - albumArtSize) / 2f - 220.dp).coerceAtLeast(minTopOffset)
 
                 var lyricsButtonCenterInRoot by remember { mutableStateOf<Offset?>(null) }
                 val lyricsRevealProgress by animateFloatAsState(
@@ -414,6 +434,8 @@ fun SpatialFlowPlayerContent(
 
                 val lyricsContentReady = lyricsRevealProgress > 0.8f
 
+                val keepMainContentComposed = !lyricsModeEnabled || lyricsRevealProgress < 1f
+                if (keepMainContentComposed) {
                 Column(
                     modifier =
                         Modifier
@@ -448,14 +470,39 @@ fun SpatialFlowPlayerContent(
                         color = contentSecondary,
                     )
 
-                    Spacer(modifier = Modifier.size(48.dp))
+                    IconButton(
+                        onClick = {
+                            menuState.show {
+                                PlayerMenu(
+                                    mediaMetadata = mediaMetadata,
+                                    navController = navController,
+                                    playerBottomSheetState = state,
+                                    onShowDetailsDialog = {
+                                        bottomSheetPageState.show {
+                                            ShowMediaInfo(mediaMetadata.id)
+                                        }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.spatialflow_ic_more_vert),
+                            contentDescription = "More",
+                            tint = contentColor.copy(alpha = 0.8f),
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
                 }
 
-                if (canvasAvailable) {
-                    Spacer(modifier = Modifier.weight(1f))
-                } else {
-                    Spacer(modifier = Modifier.height(topOffset - (statusBarTopDp + 68.dp)))
-                }
+                // Both layouts pin the control stack to the bottom of the
+                // player: the artwork branch used a fixed top offset that left
+                // the thumbnail and controls floating mid-screen, so they
+                // jumped when the canvas resolved. A single weighted spacer
+                // keeps the bottom controls exactly where they sit while the
+                // canvas plays.
+                Spacer(modifier = Modifier.weight(1f))
 
                 if (!canvasAvailable) {
                     SpatialFlowArtworkPager(
@@ -555,7 +602,7 @@ fun SpatialFlowPlayerContent(
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
-                        isDark = isDark,
+                        isDark = surfaceIsDark,
                     )
 
                     PillChip(
@@ -570,7 +617,7 @@ fun SpatialFlowPlayerContent(
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
-                        isDark = isDark,
+                        isDark = surfaceIsDark,
                     )
 
                     PillChip(
@@ -580,7 +627,7 @@ fun SpatialFlowPlayerContent(
                         onClick = { lyricsModeEnabled = true },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
-                        isDark = isDark,
+                        isDark = surfaceIsDark,
                         modifier =
                             Modifier.onGloballyPositioned { coordinates ->
                                 val position = coordinates.positionInRoot()
@@ -609,7 +656,7 @@ fun SpatialFlowPlayerContent(
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
-                        isDark = isDark,
+                        isDark = surfaceIsDark,
                     )
 
                     val realDownloaded = download?.state == Download.STATE_COMPLETED
@@ -682,7 +729,7 @@ fun SpatialFlowPlayerContent(
                         },
                         contentColor = contentColor,
                         accentColor = dynamicAccentColor,
-                        isDark = isDark,
+                        isDark = surfaceIsDark,
                     )
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -701,7 +748,7 @@ fun SpatialFlowPlayerContent(
                     dynamicAccentColor = dynamicAccentColor,
                     contentColor = contentColor,
                     contentSecondary = contentSecondary,
-                    isDark = isDark,
+                    isDark = surfaceIsDark,
                     currentFormat = currentFormat,
                 )
 
@@ -743,7 +790,7 @@ fun SpatialFlowPlayerContent(
                                 shape = RoundedCornerShape(cornerRadius),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor = contentColor.copy(alpha = if (isDark) 0.08f else 0.06f),
+                                        containerColor = contentColor.copy(alpha = if (surfaceIsDark) 0.08f else 0.06f),
                                         contentColor = contentColor,
                                     ),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
@@ -796,7 +843,7 @@ fun SpatialFlowPlayerContent(
                                 colors =
                                     ButtonDefaults.buttonColors(
                                         containerColor = dynamicAccentColor,
-                                        contentColor = if (isDark) Color(0xFF1C1B1F) else Color.White,
+                                        contentColor = if (surfaceIsDark) Color(0xFF1C1B1F) else Color.White,
                                     ),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                             ) {
@@ -847,7 +894,7 @@ fun SpatialFlowPlayerContent(
                                 shape = RoundedCornerShape(cornerRadius),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor = contentColor.copy(alpha = if (isDark) 0.08f else 0.06f),
+                                        containerColor = contentColor.copy(alpha = if (surfaceIsDark) 0.08f else 0.06f),
                                         contentColor = contentColor,
                                     ),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
@@ -902,6 +949,7 @@ fun SpatialFlowPlayerContent(
                                 .graphicsLayer { rotationZ = 180f },
                     )
                 }
+                }
             }
 
             if (lyricsRevealProgress > 0f) {
@@ -927,12 +975,7 @@ fun SpatialFlowPlayerContent(
             SlidingQueueDrawer(
                 isQueueExpanded = queueExpanded,
                 onQueueExpandedChange = { queueExpanded = it },
-                queue =
-                    queueWindows.mapNotNull { window ->
-                        (window.mediaItem?.metadata as? MediaMetadata)?.let { metadata ->
-                            metadata to window.firstPeriodIndex
-                        }
-                    },
+                queueWindows = queueWindows,
                 currentSongIndex = currentWindowIndex,
                 isShuffleEnabled = shuffleModeEnabled,
                 repeatMode = repeatMode,
