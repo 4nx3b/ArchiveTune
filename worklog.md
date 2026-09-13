@@ -1908,3 +1908,64 @@ Stage Summary:
 - All 5 items implemented on dev @ 148c1d486; icons, spatialflow canvas
   dock, lyrics overlay visuals/glass, lyrics perf, bitchord strip, and the
   playlist menu all fixed. CI result to be verified in the monitor loop.
+
+---
+Task ID: 37
+Agent: Super Z (main agent, session web-e130fa90)
+Task: 3-item follow-up batch — bitchord canvas dead, spatialflow
+AM-exact canvas/lyrics-blend overhaul (canvas ends at title, canvas stops
+for lyrics + exact-position resume, moving blur behind lyrics, AM scrim
+colors, popup anchor), dividers for every liquid-glass popup.
+
+Work Log:
+- BitChord canvas root cause: PlayerDesignStyle.BITCHORD was never in the
+  shouldUseArtworkCanvas allow-list (Player.kt), so the resolver
+  force-cleared artworkCanvas for the style and the CanvasArtworkPlayer
+  slots added in task 35's batch were dead code. Style registered (1c23ecc24
+  wired the UI + params; only the gate was missing).
+- SpatialFlow canvas now follows Apple Music's exact recipe:
+  (1) frosted twin canvas runs the FULL player height behind the controls
+  (same 1/6-scale + 12dp blur + 6x upscale + 480px decode cap as AM);
+  (2) AM's exact scrim (black 0.25/0.40/0.65) replaces the old five-stop
+  frost tint ("the liquid blur is too bright") and SpatialFlowBlurredBackdrop
+  drops its own gradient when the canvas is up so the two no longer stack;
+  (3) the sharp stage plays edge-to-edge from the top down to the song-title
+  row (height measured from the title Row's onGloballyPositioned), dissolving
+  into the frost via AM's 0.62->1.0 DstIn fadeBottom — the canvas ends around
+  the title text like AM's artwork-box/controls-column split.
+- Lyrics open: the canvas layers now STAY in composition and are only faded
+  (650ms, AM's morph duration) then STOPPED (visible=false drops the texture
+  surface, isPlaying=false pauses the ExoPlayers — no decode, no compositing).
+  Exit: visible=true immediately; because the players are never disposed, the
+  video resumes from the EXACT paused position (the old `!lyricsModeEnabled`
+  term disposed them, so exit restarted from frame zero).
+- Lyrics background: MovingBlurBackground (1.6x vibrancy + palette gradient =
+  "too bright") replaced by the AM-exact drifting backdrop: artwork at
+  footprint(rest 1.2 / drift 2.4), 64dp blur, blurWander drift, scale morph
+  via Animatable 0->1 on appear (reviewer catch: animateFloatAsState would
+  snap straight to 1f), AM scrim colors on top, pre-S pre-blurred bitmap
+  path + centering box + rememberOfflineArtworkImageRequest (reviewer nits).
+- Lyrics overflow popup: the scale animation's transformOrigin now tracks the
+  anchor icon's horizontal centre mapped into popup space (was fixed (1f,..),
+  so the SpatialFlow left-edge icon made the popup grow in from its far
+  corner — "it opens from a different direction"). AM/TikTok right-edge icons
+  keep their ~1f pivot via the same formula.
+- Dividers everywhere the glass popups lost them: every plain-outlineVariant
+  divider across PlayerMenu/PlaylistMenu/SongMenu/YouTube*Menu/AlbumMenu/
+  ArtistMenu/SelectionSongsMenu + MenuSectionDivider + NewMenuContent bumped
+  to the songs-overflow recipe (outlineVariant.copy(alpha = 0.3f), 56dp start
+  inset preserved; bare HorizontalDivider() calls converted); the anchored
+  lyrics popup rows 0.5dp white@12% ghost -> 1dp white@30%; SpotifyPlaylistMenu
+  gained row dividers between its 3 NewMenuItems; AppleMusicSleepTimerSheet
+  gained section dividers (header/chips/slider). Scripts:
+  /home/z/my-project/scripts/divider_rollout.py.
+- Independent review agent over the full diff: no compile errors; 2 logic
+  defects + 1 nit fixed before push (morph animation dead, pre-S top-start
+  crop, offline artwork request).
+
+Stage Summary:
+- 3 user items done on dev: bitchord canvas plays (both ArchiveTune + Spotify
+  canvas flows), spatialflow is AM-exact (title-bounded sharp stage, frosted
+  full-height twin, AM scrim colors, canvas pause/exact-resume, drifting
+  64dp-blur lyrics backdrop, icon-anchored popup), and every liquid-glass
+  popup now shows the songs-menu hairlines. CI to be monitored.

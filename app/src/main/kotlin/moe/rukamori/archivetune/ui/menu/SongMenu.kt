@@ -947,7 +947,7 @@ fun SongMenu(
                         if (event != null) {
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -1003,7 +1003,7 @@ fun SongMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -1032,7 +1032,7 @@ fun SongMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -1165,7 +1165,7 @@ fun SongMenu(
                             if (externalDownloaderEnabled) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(start = 56.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                                 )
                                 ListItem(
                                     headlineContent = { Text(text = stringResource(R.string.open_with_downloader)) },
@@ -1244,7 +1244,7 @@ fun SongMenu(
                     if (song.song.albumId != null) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -1266,7 +1266,7 @@ fun SongMenu(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -1368,7 +1368,7 @@ fun SongMenu(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -1421,7 +1421,7 @@ fun SongMenu(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     if (!isLocalSong) {
@@ -1453,7 +1453,7 @@ fun SongMenu(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 

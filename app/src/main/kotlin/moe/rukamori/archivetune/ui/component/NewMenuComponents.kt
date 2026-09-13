@@ -205,7 +205,7 @@ fun NewMenuContent(
         if (actionGrid != null && menuItems != null) {
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 16.dp),
-                color = MaterialTheme.colorScheme.outlineVariant,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
             )
         }
 
@@ -270,6 +270,9 @@ fun MenuSectionDivider(
 ) {
     HorizontalDivider(
         modifier = modifier.padding(start = 56.dp),
-        color = MaterialTheme.colorScheme.outlineVariant,
+        // Same visible ink as the songs overflow menu's row dividers — on the
+        // liquid-glass popups the plain outlineVariant resolves to a 12%
+        // hairline that reads as "no dividers at all".
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
 }

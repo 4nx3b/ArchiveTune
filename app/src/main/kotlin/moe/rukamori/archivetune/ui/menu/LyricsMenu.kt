@@ -837,9 +837,12 @@ fun LyricsMenu(
                             )
 
                             if (index < menuItems.size - 1) {
+                                // Same visible hairline as the songs overflow
+                                // menu rows: 30% ink at the default 1dp thickness
+                                // (the old 0.5dp @ 12% was a ghost line on the
+                                // glass popup — "popups don't have dividers").
                                 HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.12f),
-                                    thickness = 0.5.dp,
+                                    color = Color.White.copy(alpha = 0.3f),
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
                             }
@@ -1906,10 +1909,25 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleX = scale
                         this.scaleY = scale
 
+                        // The popup grows out of the anchor icon itself: the
+                        // scale pivot tracks the icon's horizontal centre
+                        // mapped into popup space. The fixed (1f, …) pivot
+                        // made left-edge icons (the SpatialFlow lyrics header)
+                        // animate the popup in from its far corner — "it opens
+                        // from a different direction".
+                        val popupWidthPx = 220.dp.toPx()
+                        val horizontalMarginPx = 16.dp.toPx()
+                        val popupLeftPx =
+                            (iconBoundsInRoot.right - popupWidthPx)
+                                .coerceAtLeast(horizontalMarginPx)
+                        val iconCenterX = (iconBoundsInRoot.left + iconBoundsInRoot.right) / 2f
+                        val pivotX =
+                            ((iconCenterX - popupLeftPx) / popupWidthPx.coerceAtLeast(1f))
+                                .coerceIn(0.02f, 0.98f)
                         this.transformOrigin =
-                            TransformOrigin(1f, if (opensAboveAnchor()) 1f else 0f)
+                            TransformOrigin(pivotX, if (opensAboveAnchor()) 1f else 0f)
 
-                        this.shadowElevation = with(density) { 16.dp.toPx() }
+                        this.shadowElevation = 16.dp.toPx()
                         this.shape = RoundedCornerShape(16.dp)
                         this.clip = false
                     }
