@@ -18,7 +18,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.constants.PoolApiKeyKey
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -258,8 +257,8 @@ object PoolAccountManager {
                     Timber.tag(TAG).d("No Source Pool URL configured; nothing to refresh")
                 } else {
 
-                    val pastedKey = cached(context, PoolApiKeyKey)?.trim().orEmpty()
-                    var readKey = pastedKey.ifBlank { BuildConfig.SOURCE_PROVIDER_KEY }
+                    // The read key is baked in at build time; there is no on-device override.
+                    val readKey = BuildConfig.SOURCE_PROVIDER_KEY
                     poolApiKey = readKey.ifBlank { null }
 
                     var result = fetchAccounts(context, url, readKey)
@@ -267,24 +266,6 @@ object PoolAccountManager {
                     if (!result.succeeded && result.code == 404 && url == accountsUrl && legacySourcesUrl != null) {
                         Timber.tag(TAG).d("/api/accounts unavailable; falling back to legacy /api/sources")
                         result = fetchAccounts(context, legacySourcesUrl!!, readKey)
-                    }
-
-                    if (!result.succeeded &&
-                        result.code == 401 &&
-                        readKey.isNotBlank() &&
-                        readKey != BuildConfig.SOURCE_PROVIDER_KEY &&
-                        BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()
-                    ) {
-                        Timber.tag(TAG).w("Pasted pool key was rejected (HTTP 401) — clearing it and retrying with the build key")
-                        runCatching {
-                            context.dataStore.edit { it.remove(PoolApiKeyKey) }
-                        }.onFailure { Timber.tag(TAG).w(it, "Failed to clear the stale pool key preference") }
-                        readKey = BuildConfig.SOURCE_PROVIDER_KEY
-                        poolApiKey = readKey
-                        result = fetchAccounts(context, url, readKey)
-                        if (!result.succeeded && result.code == 404 && url == accountsUrl && legacySourcesUrl != null) {
-                            result = fetchAccounts(context, legacySourcesUrl!!, readKey)
-                        }
                     }
 
                     lastFeedError =
@@ -457,12 +438,7 @@ object PoolAccountManager {
 
     private suspend fun cached(context: Context, key: androidx.datastore.preferences.core.Preferences.Key<String>): String? {
         val raw = context.dataStore.getAsync(key)?.takeIf { it.isNotBlank() } ?: return null
-        PoolCacheCrypto.decrypt(raw)?.let { return it }
-
-        if (key == PoolApiKeyKey) {
-            context.dataStore.edit { prefs -> prefs[key] = PoolCacheCrypto.encrypt(raw) }
-        }
-        return raw
+        return PoolCacheCrypto.decrypt(raw) ?: raw
     }
 
     fun report(
