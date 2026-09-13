@@ -8,7 +8,7 @@
  */
 
 /*
- * SpatialFlow player style — the music-haptics engine.
+ * Music haptics engine — the SpatialFlow port.
  *
  * A direct port of SpatialFlow's PlayerHapticManager
  * (github.com/MythicalSHUB/SpatialFlow, GPL-3.0, util/PlayerHapticManager.kt):
@@ -18,21 +18,21 @@
  * OEM profile values, the filter histories, the BPM tracker — is SpatialFlow's
  * own, unchanged.
  *
- * One adaptation: SpatialFlow feeds the engine band energies by tapping the
- * ExoPlayer PCM graph inside its own service. ArchiveTune's playback graph is
- * shared by every player style, so instead the [SpatialFlowMusicHaptics]
- * controller taps the SAME real audio with an android.media.audiofx.Visualizer
- * attached to the active audio session and splits its FFT into the same four
- * bands (sub-bass / bass / mid / high) — real signal, no mock, no changes to
- * the shared player graph.
+ * Band energies are fed exactly the way SpatialFlow feeds its own engine: a
+ * pass-through [HapticsPcmProcessor] taps the decoded PCM inside Media3's
+ * audio processor chain (see MusicService's audio sink) and splits it into the
+ * four crossover bands. That pipeline reads the actual decoded audio — local
+ * or streamed — and needs no runtime permission (the earlier Visualizer-based
+ * tap required RECORD_AUDIO, which is why music haptics silently failed for
+ * users who denied the microphone permission; SpatialFlow itself never uses
+ * the microphone for this).
  */
 
-package moe.rukamori.archivetune.ui.player.spatialflow
+package moe.rukamori.archivetune.playback
 
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
-import android.media.audiofx.Visualizer
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -48,11 +48,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 import kotlin.math.abs
-import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
-import kotlin.math.sqrt
 
 class SpatialFlowHapticEngine(context: Context) {
 
@@ -783,147 +781,45 @@ class SpatialFlowHapticEngine(context: Context) {
     }
 }
 
-class SpatialFlowMusicHaptics(
-    context: Context,
-    val engine: SpatialFlowHapticEngine,
-) {
-    private var visualizer: Visualizer? = null
 
-    fun isEngineEnabled(): Boolean = engine.isHapticsEnabled
+/**
+ * Small static accessor for the engine's persisted state, so the settings UI
+ * and the player chip can read/toggle without instantiating a full engine
+ * (the live engine instance owned by [MusicService] reacts through its
+ * SharedPreferences listener).
+ */
+object MusicHapticsSettings {
+    private const val PREFS_NAME = "AppSettings"
+    private const val KEY_ENABLED = "haptics_enabled"
+    private const val KEY_STRENGTH = "vibration_strength"
 
-    fun setEnabled(enabled: Boolean) {
-        engine.setHapticEnabledPersistent(enabled)
-        if (enabled) {
-            ensureVisualizerAttached()
-        } else {
-            releaseVisualizer()
-        }
+    fun isEnabled(context: Context): Boolean =
+        context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLED, false)
+
+    fun setEnabled(
+        context: Context,
+        enabled: Boolean,
+    ) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
-    fun attachToAudioSession(audioSessionId: Int) {
-        if (audioSessionId == 0) return
-        if (visualizer != null && currentSessionId == audioSessionId) return
-        releaseVisualizer()
-        currentSessionId = audioSessionId
-        try {
-            val viz =
-                Visualizer(audioSessionId).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[0].coerceAtLeast(256)
-                    setDataCaptureListener(
-                        object : Visualizer.OnDataCaptureListener {
-                            override fun onWaveFormDataCapture(
-                                visualizer: Visualizer?,
-                                waveform: ByteArray?,
-                                samplingRate: Int,
-                            ) {
-                            }
+    fun strengthPercent(context: Context): Int =
+        context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getFloat(KEY_STRENGTH, 80f)
+            .toInt()
+            .coerceIn(0, 100)
 
-                            override fun onFftDataCapture(
-                                visualizer: Visualizer?,
-                                fft: ByteArray?,
-                                samplingRate: Int,
-                            ) {
-                                val data = fft ?: return
-                                if (!engine.isHapticsEnabled) return
-                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) return
-                                val bands = computeBandEnergies(data, samplingRate)
-                                engine.processPcmHaptics(
-                                    bands[0],
-                                    bands[1],
-                                    bands[2],
-                                    bands[3],
-                                )
-                            }
-                        },
-                        Math.max(Visualizer.getMaxCaptureRate() / 4, Visualizer.getMaxCaptureRate() / 8),
-                        false,
-                        true,
-                    )
-                    enabled = engine.isHapticsEnabled
-                }
-            visualizer = viz
-        } catch (e: Exception) {
-
-            Log.w("SpatialFlowHaptics", "Visualizer attach failed: ${e.message}")
-        }
-    }
-
-    private var currentSessionId: Int = -1
-
-    private fun ensureVisualizerAttached() {
-        try {
-            visualizer?.enabled = true
-        } catch (_: Exception) {
-        }
-    }
-
-    fun releaseVisualizer() {
-        try {
-            visualizer?.enabled = false
-            visualizer?.release()
-        } catch (_: Exception) {
-        }
-        visualizer = null
-        currentSessionId = -1
-    }
-
-    companion object {
-
-        private fun computeBandEnergies(fft: ByteArray, samplingRate: Int): FloatArray {
-            val n = fft.size / 2
-            val nyquist = samplingRate / 2.0
-            val binHz = nyquist / n
-            var subBass = 0f
-            var bass = 0f
-            var mid = 0f
-            var high = 0f
-            var subCount = 0
-            var bassCount = 0
-            var midCount = 0
-            var highCount = 0
-
-            for (i in 1 until n) {
-                val re = fft[2 * i].toInt()
-                val im = fft[2 * i + 1].toInt()
-                val magnitude = sqrt((re * re + im * im).toFloat()) / 128f
-                val hz = i * binHz
-                when {
-                    hz < 60 -> {
-                        subBass += magnitude
-                        subCount++
-                    }
-
-                    hz < 250 -> {
-                        bass += magnitude
-                        bassCount++
-                    }
-
-                    hz < 2000 -> {
-                        mid += magnitude
-                        midCount++
-                    }
-
-                    hz < 8000 -> {
-                        high += magnitude
-                        highCount++
-                    }
-                }
-            }
-
-            fun norm(sum: Float, count: Int): Float {
-                if (count == 0) return 0f
-
-                val avg = sum / count
-                val db = 20f * log10(avg.coerceAtLeast(1e-4f) * 10f)
-                return (db / 40f).coerceIn(0f, 1f)
-            }
-
-            return floatArrayOf(
-                norm(subBass, subCount),
-                norm(bass, bassCount),
-                norm(mid, midCount),
-                norm(high, highCount),
-            )
-        }
+    fun setStrengthPercent(
+        context: Context,
+        percent: Int,
+    ) {
+        context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(KEY_STRENGTH, percent.coerceIn(0, 100).toFloat())
+            .apply()
     }
 }

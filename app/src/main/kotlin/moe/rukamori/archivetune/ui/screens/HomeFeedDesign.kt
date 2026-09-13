@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.ui.utils.preferredThumbnailRatio
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
@@ -769,6 +770,12 @@ fun ScreenHeaderHaze(
 ) {
     if (!enabled) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    // The frosted progressive-blur header strip is a glass effect: with the
+    // liquid glass toggle off it must not render either, so no glass remains
+    // anywhere in the app. (The plain colour scrim stays available to callers
+    // that layer their own header background on top of the content.)
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    if (!liquidGlassEnabled) return
     HomeTopFadeBlur(
         hazeState = hazeState,
         pageColor = MaterialTheme.colorScheme.surface,

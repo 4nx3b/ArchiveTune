@@ -33,11 +33,7 @@ import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -111,6 +107,7 @@ import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.lyrics.LyricsUtils
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -123,6 +120,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.PlatformBackdrop
+import moe.rukamori.archivetune.ui.component.rememberLiquidGlassEnabled
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.menu.AnchoredLyricsOverflowMenu
@@ -156,8 +154,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
         mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
     }
 
+    // The lyrics overflow popup only gets a live liquid-glass backdrop when
+    // the liquid glass preference is enabled; otherwise it renders with the
+    // regular opaque surface so no glass remains with the toggle off.
     val popupBackdrop: PlatformBackdrop? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (rememberLiquidGlassEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             rememberBackdrop(Color.Transparent)
         } else {
             null
@@ -248,39 +249,11 @@ internal fun SimpMusicFullscreenLyricsSheet(
     val midColor1 by animateColorAsState(color.copy(alpha = 0.95f), tween(1200, easing = FastOutSlowInEasing))
     val midColor2 by animateColorAsState(color.copy(alpha = 0.85f), tween(1200, easing = FastOutSlowInEasing))
     val endColor by animateColorAsState(Color.Black, tween(1200, easing = FastOutSlowInEasing))
-    val gradientTransition = rememberInfiniteTransition(label = "lyricsGradient")
-    val animatedAngle by gradientTransition.animateFloat(
-        initialValue = -45f,
-        targetValue = 45f,
-        animationSpec =
-            infiniteRepeatable(
-
-                animation = tween(durationMillis = 24_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        label = "lyricsGradientAngle",
-    )
-    val animatedOffsetX by gradientTransition.animateFloat(
-        initialValue = -1500f,
-        targetValue = 1500f,
-        animationSpec =
-            infiniteRepeatable(
-
-                animation = tween(durationMillis = 32_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        label = "lyricsGradientOffsetX",
-    )
-    val animatedOffsetY by gradientTransition.animateFloat(
-        initialValue = -1000f,
-        targetValue = 1000f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 32_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-        label = "lyricsGradientOffsetY",
-    )
+    // The gradient is deliberately STATIC (user request 2026-09-12: "the
+    // background shouldn't move behind the lyrics"): the angle/offset drift
+    // animations that used to live here made the backdrop crawl while the
+    // lyrics scrolled. Only the palette colours still transition on song
+    // change (the animateColorAsState values above).
 
     var queueOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -356,13 +329,16 @@ internal fun SimpMusicFullscreenLyricsSheet(
                                     ),
                                 start =
                                     Offset(
-                                        x = animatedOffsetX + (cos(animatedAngle * Math.PI.toFloat() / 180f) * 800f),
-                                        y = animatedOffsetY + (sin(animatedAngle * Math.PI.toFloat() / 180f) * 800f),
+                                        // Fixed diagonal at the animation's
+                                        // centre (offset 0, angle 0) — same
+                                        // composition, frozen in place.
+                                        x = 0f,
+                                        y = 0f,
                                     ),
                                 end =
                                     Offset(
-                                        x = animatedOffsetX + 2500f + (cos((animatedAngle + 180f) * Math.PI.toFloat() / 180f) * 800f),
-                                        y = animatedOffsetY + 2500f + (sin((animatedAngle + 180f) * Math.PI.toFloat() / 180f) * 800f),
+                                        x = 2500f,
+                                        y = 2500f,
                                     ),
                             ),
                         ),
@@ -498,12 +474,15 @@ internal fun SimpMusicFullscreenLyricsSheet(
                             .padding(horizontal = LyricsGutter),
                 ) {
                     if (hasLyrics) {
-
-                        SimpMusicLyrics(
-
+                        // Always the Enhanced renderer (2026-09-12): the style's
+                        // own Classic lyrics mode was removed, so the shared
+                        // word-synced karaoke view is what the fullscreen sheet
+                        // renders.
+                        LyricsEnhanced(
                             sliderPositionProvider = { if (isScrubbing) sliderPosition else null },
                             lyricsSyncOffset = 0,
                             modifier = Modifier.fillMaxSize(),
+                            textColorOverride = Color.White,
                         )
                     } else {
                         Box(

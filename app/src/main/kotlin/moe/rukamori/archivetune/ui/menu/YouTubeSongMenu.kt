@@ -590,7 +590,7 @@ fun YouTubeSongMenu(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -742,7 +742,7 @@ fun YouTubeSongMenu(
                     if (externalDownloaderEnabled) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -823,7 +823,7 @@ fun YouTubeSongMenu(
                         if (splitArtists.isNotEmpty() && song.album != null) {
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -966,7 +966,7 @@ fun YouTubeSongMenu(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(

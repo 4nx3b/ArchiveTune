@@ -8,6 +8,11 @@
 package moe.rukamori.archivetune.ai
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 class AiLyricsRomanizer {
 
@@ -22,8 +27,26 @@ class AiLyricsRomanizer {
 
         val indexed = lines.withIndex().filter { it.value.isNotBlank() }
         val out = arrayOfNulls<String>(lines.size)
-        indexed.chunkedByBudget().forEach { batch ->
-            val romanized = romanizeBatchResilient(config, batch)
+
+        val batches = indexed.chunkedByBudget()
+        // Batches are independent: run up to a few concurrently so a
+        // multi-batch song resolves in one round-trip window instead of
+        // batch1_latency + batch2_latency + ...
+        val batchResults =
+            if (batches.size <= 1) {
+                listOf(romanizeBatchResilient(config, batches.firstOrNull().orEmpty()))
+            } else {
+                coroutineScope {
+                    val gate = Semaphore(MaxConcurrentBatches)
+                    batches.map { batch ->
+                        async {
+                            gate.withPermit { romanizeBatchResilient(config, batch) }
+                        }
+                    }.awaitAll()
+                }
+            }
+        batches.forEachIndexed { batchIndex, batch ->
+            val romanized = batchResults[batchIndex]
             batch.forEachIndexed { position, entry ->
                 val candidate = romanized.getOrNull(position)?.trim()
 
@@ -87,9 +110,13 @@ class AiLyricsRomanizer {
     }
 
     private companion object {
-        const val MaxItemsPerBatch = 80
-        const val MaxCharsPerBatch = 6000
-        const val MaxCachedRomanizations = 8
+        // A typical song (30–60 lines) now fits in ONE request; longer
+        // documents split into a handful of large batches instead of many
+        // small ones.
+        const val MaxItemsPerBatch = 160
+        const val MaxCharsPerBatch = 16000
+        const val MaxConcurrentBatches = 3
+        const val MaxCachedRomanizations = 32
 
         val resultCache =
             object : LinkedHashMap<String, List<String?>>(MaxCachedRomanizations, 0.75f, true) {

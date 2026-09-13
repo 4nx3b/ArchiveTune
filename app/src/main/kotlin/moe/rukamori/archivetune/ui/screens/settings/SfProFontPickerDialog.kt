@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +52,8 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.theme.CustomFontLoader
 import moe.rukamori.archivetune.ui.theme.SfProFontCatalog
+import moe.rukamori.archivetune.ui.theme.SfProFontPreview
+import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 
 @Composable
 fun SfProFontPickerDialog(
@@ -59,6 +62,7 @@ fun SfProFontPickerDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lowDataModeActive = rememberLowDataModeActive()
 
     var catalog by remember { mutableStateOf<List<SfProFontCatalog.FontEntry>?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -182,6 +186,7 @@ fun SfProFontPickerDialog(
                                     entry = entry,
                                     downloading = downloadingName == entry.name,
                                     failed = downloadFailedName == entry.name,
+                                    lowDataMode = lowDataModeActive,
                                     onClick = { downloadAndApply(entry) },
                                 )
                                 HorizontalDivider(
@@ -201,8 +206,33 @@ private fun SfProFontRow(
     entry: SfProFontCatalog.FontEntry,
     downloading: Boolean,
     failed: Boolean,
+    lowDataMode: Boolean,
     onClick: () -> Unit,
 ) {
+    val context = LocalContext.current
+
+    // Live specimen: the real font file is fetched once (cached in cacheDir)
+    // and rendered below the name so the user can see how the font looks
+    // before downloading it. In low-data mode the specimen degrades to the
+    // default family styled with the entry's weight/style.
+    var previewReady by remember(entry.url) {
+        mutableStateOf(SfProFontPreview.isCached(context, entry))
+    }
+    LaunchedEffect(entry.url, lowDataMode) {
+        if (previewReady || lowDataMode || downloading) return@LaunchedEffect
+        val downloaded =
+            runCatching { SfProFontPreview.ensureDownloaded(context, entry) }
+                .getOrDefault(false)
+        previewReady = downloaded
+    }
+    val previewFamily =
+        if (previewReady) {
+            remember(entry.url) { SfProFontPreview.fontFamilyFor(context, entry) }
+        } else {
+            null
+        }
+    val previewSpec = remember(entry.url) { SfProFontPreview.previewSpec(entry) }
+
     Row(
         modifier =
             Modifier
@@ -217,6 +247,17 @@ private fun SfProFontRow(
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "AaBbCcDd 0123456789 ♪",
+                fontFamily = previewFamily,
+                fontWeight = previewSpec.fontWeight,
+                fontStyle = previewSpec.fontStyle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
             )
             val details =
                 buildList {

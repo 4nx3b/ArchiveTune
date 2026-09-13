@@ -42,6 +42,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
@@ -60,10 +62,13 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,12 +103,15 @@ import moe.rukamori.archivetune.ui.screens.rememberScreenHeaderHaze
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import dev.chrisbanes.haze.hazeSource
+import androidx.compose.runtime.saveable.rememberSaveable
 import moe.rukamori.archivetune.viewmodels.AppIconSortOrder
 import moe.rukamori.archivetune.viewmodels.AppIconUiModel
 import moe.rukamori.archivetune.viewmodels.IconScreenEffect
 import moe.rukamori.archivetune.viewmodels.IconScreenState
 import moe.rukamori.archivetune.viewmodels.IconScreenUiModel
+import moe.rukamori.archivetune.viewmodels.IconPackDownloadUi
 import moe.rukamori.archivetune.viewmodels.IconViewModel
+import java.io.File
 import androidx.compose.material3.IconButton as MaterialIconButton
 import androidx.compose.foundation.layout.asPaddingValues
 
@@ -166,6 +174,7 @@ fun IconScreen(
         remember(viewModel) {
             { order: AppIconSortOrder -> viewModel.updateSortOrder(order) }
         }
+    val downloadPack = remember(viewModel) { { viewModel.downloadPack() } }
 
     IconScreenContent(
         state = state,
@@ -178,6 +187,7 @@ fun IconScreen(
         onShowSortMenu = showSortMenu,
         onDismissSortMenu = dismissSortMenu,
         onSortOrderChange = updateSortOrder,
+        onDownloadPack = downloadPack,
     )
 }
 
@@ -193,6 +203,7 @@ private fun IconScreenContent(
     onShowSortMenu: () -> Unit,
     onDismissSortMenu: () -> Unit,
     onSortOrderChange: (AppIconSortOrder) -> Unit,
+    onDownloadPack: () -> Unit,
 ) {
 
     val headerHaze = rememberScreenHeaderHaze()
@@ -281,6 +292,20 @@ private fun IconScreenContent(
             }
 
             is IconScreenState.Success -> {
+                // "Ask me if I want to download the Icon Pack" — once per
+                // not-yet-downloaded pack, every time the screen is opened.
+                if (state.model.packDownload == IconPackDownloadUi.NEEDED) {
+                    var promptDismissed by rememberSaveable { mutableStateOf(false) }
+                    if (!promptDismissed) {
+                        IconPackDownloadDialog(
+                            onDownload = {
+                                promptDismissed = true
+                                onDownloadPack()
+                            },
+                            onDismiss = { promptDismissed = true },
+                        )
+                    }
+                }
                 AppIconList(
                     model = state.model,
                     contentPadding =
@@ -296,6 +321,7 @@ private fun IconScreenContent(
                     onShowSortMenu = onShowSortMenu,
                     onDismissSortMenu = onDismissSortMenu,
                     onSortOrderChange = onSortOrderChange,
+                    onDownloadPack = onDownloadPack,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -323,6 +349,7 @@ private fun AppIconList(
     onShowSortMenu: () -> Unit,
     onDismissSortMenu: () -> Unit,
     onSortOrderChange: (AppIconSortOrder) -> Unit,
+    onDownloadPack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -331,6 +358,25 @@ private fun AppIconList(
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        if (model.packDownload != IconPackDownloadUi.NOT_NEEDED) {
+            item(
+                key = PackDownloadContentKey,
+                contentType = PackDownloadContentType,
+            ) {
+                IconPackDownloadRow(
+                    state = model.packDownload,
+                    percent = model.packDownloadPercent,
+                    indeterminate = model.packDownloadIndeterminate,
+                    error = model.packDownloadError,
+                    onDownload = onDownloadPack,
+                    modifier =
+                        Modifier
+                            .widthIn(max = IconListMaxWidth)
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                )
+            }
+        }
         item(
             key = CurrentIconContentKey,
             contentType = CurrentIconContentType,
@@ -411,7 +457,136 @@ private fun AppIconList(
                 )
             }
         }
+        if (model.iconsAreRuntime) {
+            item(
+                key = RuntimeIconsNoticeKey,
+                contentType = RuntimeIconsNoticeContentType,
+            ) {
+                Text(
+                    text = stringResource(R.string.app_icon_runtime_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier =
+                        Modifier
+                            .widthIn(max = IconListMaxWidth)
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun IconPackDownloadRow(
+    state: IconPackDownloadUi,
+    percent: Int,
+    indeterminate: Boolean,
+    error: String?,
+    onDownload: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedCard(
+        modifier = modifier,
+        colors =
+            CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text =
+                        when (state) {
+                            IconPackDownloadUi.DOWNLOADING ->
+                                stringResource(R.string.icon_pack_downloading, percent)
+
+                            IconPackDownloadUi.FAILED ->
+                                stringResource(R.string.icon_pack_download_failed)
+
+                            else -> stringResource(R.string.icon_pack_download_needed)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color =
+                        if (state == IconPackDownloadUi.FAILED) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                )
+                if (state == IconPackDownloadUi.NEEDED || state == IconPackDownloadUi.FAILED) {
+                    Text(
+                        text = stringResource(R.string.icon_pack_download_needed_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state == IconPackDownloadUi.FAILED && !error.isNullOrBlank()) {
+                    // The concrete installer failure (HTTP code, digest
+                    // mismatch, timeout, …) straight from
+                    // IconPackRuntimeManager.lastInstallFailure() — the row
+                    // used to say only "failed" with no way to see why.
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            if (state == IconPackDownloadUi.DOWNLOADING) {
+                if (indeterminate) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        progress = { percent.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            } else {
+                FilledTonalButton(
+                    onClick = onDownload,
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.download))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IconPackDownloadDialog(
+    onDownload: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.icon_pack_download_title)) },
+        text = { Text(stringResource(R.string.icon_pack_download_desc)) },
+        confirmButton = {
+            TextButton(onClick = onDownload, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(R.string.download))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(R.string.not_now))
+            }
+        },
+    )
 }
 
 @Composable
@@ -884,8 +1059,11 @@ private fun AppIconPreview(
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         tonalElevation = 1.dp,
     ) {
+        val model: Any =
+            icon.previewFilePath?.let { path -> File(path) }
+                ?: icon.previewDrawableResId
         AsyncImage(
-            model = icon.previewDrawableResId,
+            model = model,
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier =
@@ -997,6 +1175,10 @@ private const val IconSearchContentKey = "icon_search"
 private const val IconSearchContentType = "icon_search"
 private const val IconSectionHeaderKey = "icon_section_header"
 private const val IconSectionHeaderContentType = "icon_section_header"
+private const val RuntimeIconsNoticeKey = "runtime_icons_notice"
+private const val RuntimeIconsNoticeContentType = "runtime_icons_notice"
+private const val PackDownloadContentKey = "icon_pack_download"
+private const val PackDownloadContentType = "icon_pack_download"
 private const val CommunityNoticeContentKey = "community_icon_notice"
 private const val CommunityNoticeContentType = "community_icon_notice"
 private const val DefaultLegacyTaskIconSize = 192

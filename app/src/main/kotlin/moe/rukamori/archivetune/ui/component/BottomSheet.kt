@@ -196,8 +196,18 @@ class BottomSheetState(
         value == collapsedBound
     }
 
+    // Tolerance, not exact equality: a drag cancelled mid-slop (system
+    // gesture stealing the pointer, multi-touch, recomposition during the
+    // drag) can leave the Animatable a hair below the upper bound with no
+    // settle scheduled — visually indistinguishable from expanded, but the
+    // exact-equality check read false forever. Every consumer gated on
+    // isExpanded (SimpMusic's full-page verticalScroll is the notable one)
+    // then stopped responding until the sheet was collapsed and re-opened,
+    // and the preUpPostDown nested-scroll latch stopped self-healing because
+    // its reset path also reads isExpanded. `value` is bounded above by
+    // upperBound, so a half-dp tolerance only widens the check.
     val isExpanded by derivedStateOf {
-        value == animatable.upperBound
+        value >= animatable.upperBound!! - 0.5.dp
     }
 
     val isExpandedOrExpanding: Boolean
@@ -221,6 +231,11 @@ class BottomSheetState(
 
     fun expand(animationSpec: AnimationSpec<Dp>) {
         updateAnchor(EXPANDED_ANCHOR)
+        // A freshly expanded sheet must not inherit the last drag's
+        // isTopReached latch: the latch is what routes finger-down deltas into
+        // the sheet drag instead of the content scroll, and a stale one left
+        // the SimpMusic player unresponsive after re-expansion.
+        sheetScrollConnection.resetLatch()
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(animatable.upperBound!!, animationSpec)
         }
@@ -320,61 +335,72 @@ class BottomSheetState(
      * with a full-page `verticalScroll` inside the sheet; everywhere else the drag reaches the
      * sheet's own draggable without passing through here.
      */
-    val preUpPostDownNestedScrollConnection: NestedScrollConnection by lazy {
-        object : NestedScrollConnection {
-            var isTopReached = false
+    private val sheetScrollConnection = PreUpPostDownNestedScrollConnection(this)
 
-            override fun onPreScroll(
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (isExpanded && available.y < 0) {
-                    isTopReached = false
-                }
+    val preUpPostDownNestedScrollConnection: NestedScrollConnection get() = sheetScrollConnection
+}
 
-                return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
-                    dispatchRawDelta(available.y)
-                    available
-                } else {
-                    Offset.Zero
-                }
-            }
+/**
+ * One instance per sheet, deliberately — see the property it backs.
+ */
+private class PreUpPostDownNestedScrollConnection(
+    private val sheet: BottomSheetState,
+) : NestedScrollConnection {
+    var isTopReached = false
 
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (!isTopReached) {
-                    isTopReached = consumed.y == 0f && available.y > 0
-                }
+    fun resetLatch() {
+        isTopReached = false
+    }
 
-                return if (isTopReached && source == NestedScrollSource.UserInput) {
-                    dispatchRawDelta(available.y)
-                    available
-                } else {
-                    Offset.Zero
-                }
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity =
-                if (isTopReached) {
-                    val velocity = -available.y
-                    performFling(velocity, null)
-
-                    available
-                } else {
-                    Velocity.Zero
-                }
-
-            override suspend fun onPostFling(
-                consumed: Velocity,
-                available: Velocity,
-            ): Velocity {
-                isTopReached = false
-                return Velocity.Zero
-            }
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (sheet.isExpanded && available.y < 0) {
+            isTopReached = false
         }
+
+        return if (isTopReached && available.y < 0 && source == NestedScrollSource.UserInput) {
+            sheet.dispatchRawDelta(available.y)
+            available
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (!isTopReached) {
+            isTopReached = consumed.y == 0f && available.y > 0
+        }
+
+        return if (isTopReached && source == NestedScrollSource.UserInput) {
+            sheet.dispatchRawDelta(available.y)
+            available
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity =
+        if (isTopReached) {
+            val velocity = -available.y
+            sheet.performFling(velocity, null)
+
+            available
+        } else {
+            Velocity.Zero
+        }
+
+    override suspend fun onPostFling(
+        consumed: Velocity,
+        available: Velocity,
+    ): Velocity {
+        isTopReached = false
+        return Velocity.Zero
     }
 }
 

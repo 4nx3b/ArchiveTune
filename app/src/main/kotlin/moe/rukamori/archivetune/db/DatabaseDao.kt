@@ -1668,6 +1668,24 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(event: Event): Long
 
+    /** Full snapshot of the listening-event table, used by backup export. */
+    @Query("SELECT * FROM event ORDER BY id ASC")
+    suspend fun allEventsOnce(): List<Event>
+
+    /** Ids of every song row, used to validate stats-merge targets. */
+    @Query("SELECT id FROM song")
+    suspend fun allSongIdsOnce(): List<String>
+
+    /** Bulk event insert for stats restore (IGNORE keeps re-merges idempotent). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEvents(events: List<Event>): List<Long>
+
+    @Query("UPDATE song SET totalPlayTime = totalPlayTime + :delta WHERE id = :songId")
+    suspend fun incrementSongTotalPlayTime(
+        songId: String,
+        delta: Long,
+    )
+
     @Query("UPDATE event SET playTime = :playTime WHERE id = :eventId")
     fun updateEventPlayTime(
         eventId: Long,

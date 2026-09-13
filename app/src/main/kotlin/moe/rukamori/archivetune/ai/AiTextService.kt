@@ -35,6 +35,8 @@ object AiTextService {
     private const val OpenAiModelsEndpoint = "https://api.openai.com/v1/models"
     private const val OpenRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
     private const val OpenRouterModelsEndpoint = "https://openrouter.ai/api/v1/models"
+    private const val MistralEndpoint = "https://api.mistral.ai/v1/chat/completions"
+    private const val MistralModelsEndpoint = "https://api.mistral.ai/v1/models"
     private const val GeminiBaseEndpoint = "https://generativelanguage.googleapis.com/v1beta"
 
     private val clientHolder = AtomicReference<HttpClient>(createClient())
@@ -241,10 +243,22 @@ object AiTextService {
                 )
             }
 
-            AiProvider.DEEPL,
-            AiProvider.MISTRAL,
-            -> {
-                throw AiServiceException("${config.provider.name} is a translation-only provider; use the in-app lyrics translation pipeline for translation calls")
+            AiProvider.MISTRAL -> {
+                // Mistral's chat API is OpenAI-compatible, so it can serve
+                // completions (romanisation, tests) as well as translations.
+                completeOpenAiCompatible(
+                    endpoint = MistralEndpoint,
+                    apiKey = config.apiKey,
+                    model = model,
+                    systemPrompt = systemPrompt,
+                    userPrompt = userPrompt,
+                    temperature = temperature,
+                    maxTokens = maxTokens,
+                )
+            }
+
+            AiProvider.DEEPL -> {
+                throw AiServiceException("DeepL is a translation-only provider; it cannot generate text. Use it for lyrics translation, or pick a chat provider for romanisation")
             }
 
             AiProvider.NONE -> {
@@ -258,9 +272,10 @@ object AiTextService {
         return when (config.provider) {
             AiProvider.CHATGPT -> fetchOpenAiModels(OpenAiModelsEndpoint, config.apiKey)
             AiProvider.OPENROUTER -> fetchOpenAiModels(OpenRouterModelsEndpoint, config.apiKey)
+            AiProvider.MISTRAL -> fetchOpenAiModels(MistralModelsEndpoint, config.apiKey)
             AiProvider.GEMINI -> fetchGeminiModels(config.apiKey)
 
-            AiProvider.DEEPL, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
+            AiProvider.DEEPL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
         }
     }
 

@@ -416,6 +416,7 @@ fun AlbumScreen(
                                                             )
                                                         },
                                                     downloads = downloads,
+                                                    downloadUtil = downloadUtil,
                                                 )
                                                 navController.navigate("auto_playlist/downloaded?tab=progress")
                                             }

@@ -180,6 +180,43 @@ object ComposeToImage {
         return out
     }
 
+    /**
+     * Scales the source to COVER targetWidth x targetHeight (scale = max of
+     * the two axes) and center-crops the overflow — the opposite of
+     * [fitBitmap]'s letterboxing. Used by the share exports that must fill
+     * the device's real screen dimensions with no black bars.
+     */
+    fun coverBitmap(
+        source: Bitmap,
+        targetWidth: Int,
+        targetHeight: Int,
+    ): Bitmap {
+        val safeSource = ensureSoftwareBitmap(source)
+        val outW = targetWidth.coerceAtLeast(1)
+        val outH = targetHeight.coerceAtLeast(1)
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+
+        val scale =
+            maxOf(
+                outW.toFloat() / safeSource.width.coerceAtLeast(1),
+                outH.toFloat() / safeSource.height.coerceAtLeast(1),
+            )
+        val scaledW = (safeSource.width * scale).toInt().coerceAtLeast(1)
+        val scaledH = (safeSource.height * scale).toInt().coerceAtLeast(1)
+        val scaled =
+            if (scaledW != safeSource.width || scaledH != safeSource.height) {
+                ensureSoftwareBitmap(Bitmap.createScaledBitmap(safeSource, scaledW, scaledH, true))
+            } else {
+                safeSource
+            }
+
+        val dx = ((outW - scaled.width) / 2f)
+        val dy = ((outH - scaled.height) / 2f)
+        canvas.drawBitmap(scaled, dx, dy, null)
+        return out
+    }
+
     @RequiresApi(Build.VERSION_CODES.M)
     suspend fun createLyricsImage(
         context: Context,

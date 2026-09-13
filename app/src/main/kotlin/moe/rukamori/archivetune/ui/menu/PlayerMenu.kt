@@ -854,7 +854,7 @@ fun PlayerMenu(
                     )
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
                     ListItem(
                         headlineContent = {
@@ -922,7 +922,7 @@ fun PlayerMenu(
                         if (splitArtists.isNotEmpty() && mediaMetadata.album != null) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -1060,7 +1060,7 @@ fun PlayerMenu(
                     if (externalDownloaderEnabled) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.open_with_downloader)) },
@@ -1130,7 +1130,7 @@ fun PlayerMenu(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -1159,7 +1159,7 @@ fun PlayerMenu(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -1195,7 +1195,7 @@ fun PlayerMenu(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -1218,7 +1218,7 @@ fun PlayerMenu(
                     if (isQueueTrigger != true) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
@@ -1237,7 +1237,7 @@ fun PlayerMenu(
 
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
 
@@ -1255,7 +1255,7 @@ fun PlayerMenu(
 
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -1442,7 +1442,10 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 56.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                )
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),

@@ -837,9 +837,12 @@ fun LyricsMenu(
                             )
 
                             if (index < menuItems.size - 1) {
+                                // Same visible hairline as the songs overflow
+                                // menu rows: 30% ink at the default 1dp thickness
+                                // (the old 0.5dp @ 12% was a ghost line on the
+                                // glass popup — "popups don't have dividers").
                                 HorizontalDivider(
-                                    color = Color.White.copy(alpha = 0.12f),
-                                    thickness = 0.5.dp,
+                                    color = Color.White.copy(alpha = 0.3f),
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                 )
                             }
@@ -1763,6 +1766,13 @@ fun AnchoredLyricsOverflowMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     backdrop: PlatformBackdrop? = null,
 
+    /**
+     * Full-screen scrim behind the popup. Defaults to the classic dim-black;
+     * callers whose lyrics surface has its own tinted backdrop (SpatialFlow)
+     * pass the surface colour so the scrim dims in the same hue instead of
+     * flashing pure black over it.
+     */
+    scrimColor: Color = Color.Black.copy(alpha = 0.45f),
 ) {
 
     var dismissed by remember { mutableStateOf(false) }
@@ -1859,7 +1869,7 @@ fun AnchoredLyricsOverflowMenu(
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { anchorSpaceHeightPx = it.height }
-                .background(Color.Black.copy(alpha = 0.45f * alpha))
+                .background(scrimColor.copy(alpha = scrimColor.alpha * alpha))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1899,20 +1909,46 @@ fun AnchoredLyricsOverflowMenu(
                         this.scaleX = scale
                         this.scaleY = scale
 
+                        // The popup grows out of the anchor icon itself: the
+                        // scale pivot tracks the icon's horizontal centre
+                        // mapped into popup space. The fixed (1f, …) pivot
+                        // made left-edge icons (the SpatialFlow lyrics header)
+                        // animate the popup in from its far corner — "it opens
+                        // from a different direction".
+                        val popupWidthPx = 220.dp.toPx()
+                        val horizontalMarginPx = 16.dp.toPx()
+                        val popupLeftPx =
+                            (iconBoundsInRoot.right - popupWidthPx)
+                                .coerceAtLeast(horizontalMarginPx)
+                        val iconCenterX = (iconBoundsInRoot.left + iconBoundsInRoot.right) / 2f
+                        val pivotX =
+                            ((iconCenterX - popupLeftPx) / popupWidthPx.coerceAtLeast(1f))
+                                .coerceIn(0.02f, 0.98f)
                         this.transformOrigin =
-                            TransformOrigin(1f, if (opensAboveAnchor()) 1f else 0f)
+                            TransformOrigin(pivotX, if (opensAboveAnchor()) 1f else 0f)
 
-                        this.shadowElevation = with(density) { 16.dp.toPx() }
+                        this.shadowElevation = 16.dp.toPx()
                         this.shape = RoundedCornerShape(16.dp)
                         this.clip = false
                     }
 
                     .then(
-                        frostedBlurModifier
-                            ?: Modifier.background(Color.Black.copy(alpha = 0.65f * alpha)),
+                        if (frostedBlurModifier != null) {
+                            // Liquid glass is the surface: the live frosted
+                            // backdrop plus a whisper of tint for contrast.
+                            // (An opaque 0.55-alpha black used to be painted
+                            // ON TOP of the glass, burying it — the popup
+                            // looked like plain translucent black.)
+                            frostedBlurModifier.then(
+                                Modifier.background(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.10f),
+                                ),
+                            )
+                        } else {
+                            Modifier.background(Color.Black.copy(alpha = 0.65f * alpha))
+                        },
                     )
 
-                    .background(Color.Black.copy(alpha = 0.55f))
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

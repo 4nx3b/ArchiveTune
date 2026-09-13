@@ -662,7 +662,7 @@ public fun PlaylistMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -686,7 +686,7 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -707,7 +707,7 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -741,7 +741,7 @@ public fun PlaylistMenu(
                     if (editable && autoPlaylist != true) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -762,7 +762,7 @@ public fun PlaylistMenu(
                         onChangeCover?.let { changeCover ->
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
 
                             ListItem(
@@ -783,7 +783,7 @@ public fun PlaylistMenu(
                         onRemoveCover?.let { removeCover ->
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
 
                             ListItem(
@@ -805,7 +805,7 @@ public fun PlaylistMenu(
                     if (autoPlaylist != true && downloadPlaylist != true) {
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
                         ListItem(
@@ -895,6 +895,7 @@ public fun PlaylistMenu(
                                                     )
                                                 },
                                             downloads = downloadUtil.downloads.value,
+                                            downloadUtil = downloadUtil,
                                         )
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -935,7 +936,7 @@ public fun PlaylistMenu(
 
                             HorizontalDivider(
                                 modifier = dividerModifier,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             )
                         }
                         ListItem(
@@ -962,7 +963,7 @@ public fun PlaylistMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -985,7 +986,7 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -1023,7 +1024,7 @@ public fun PlaylistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(

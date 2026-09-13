@@ -231,6 +231,7 @@ fun SpotifyPlaylistScreen(
                             )
                         },
                     downloads = latestDownloads,
+                    downloadUtil = downloadUtil,
                 )
                 navController.navigate("auto_playlist/downloaded?tab=progress")
             }

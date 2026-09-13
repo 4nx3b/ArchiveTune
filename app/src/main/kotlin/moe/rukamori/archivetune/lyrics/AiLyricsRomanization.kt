@@ -30,8 +30,14 @@ import moe.rukamori.archivetune.constants.AiCustomEndpointKey
 import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeApiKeyKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomEndpointKey
+import moe.rukamori.archivetune.constants.AiRomanizeCustomModelKey
 import moe.rukamori.archivetune.constants.AiRomanizeExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AiRomanizeLyricsKey
+import moe.rukamori.archivetune.constants.AiRomanizeProviderKey
+import moe.rukamori.archivetune.constants.AiRomanizeSelectedModelKey
+import moe.rukamori.archivetune.constants.AiRomanizeSeparateProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.constants.AutoAiRomanizeLyricsKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
@@ -72,6 +78,17 @@ object AiLyricsRomanization {
     ) {
 
         val active: Boolean get() = enabled && config.canCallApi
+
+        /**
+         * Identity of the provider this run of romanisation belongs to. Every
+         * cached / in-flight / published result is keyed by it so a romanisation
+         * produced by one provider is never served while another provider owns
+         * the feature — e.g. results from the main provider must not reappear
+         * after the user switches to the dedicated romanisation provider, and
+         * vice versa.
+         */
+        val configKey: String
+            get() = "${config.provider}|${config.apiKey}|${config.customEndpoint}|${config.model}"
 
         companion object {
             val Disabled =
@@ -123,17 +140,49 @@ object AiLyricsRomanization {
         val (selectedModel) = rememberPreference(AiSelectedModelKey, defaultValue = "")
         val (customModel) = rememberPreference(AiCustomModelKey, defaultValue = "")
 
-        return remember(enabled, auto, excluded, provider, apiKey, customEndpoint, selectedModel, customModel) {
+        // Separate-provider override, the user's exact rule:
+        // - Separate provider ON (toggle on + a dedicated provider selected):
+        //   ONLY that provider ever romanises — the main provider is never
+        //   used for romanisation in this state; it only does translation.
+        // - Separate provider OFF (toggle off, or provider left at "None"):
+        //   the main provider does BOTH romanisation and translation.
+        val (separateProviderEnabled) = rememberPreference(AiRomanizeSeparateProviderKey, defaultValue = false)
+        val romanizeProvider by rememberEnumPreference(AiRomanizeProviderKey, AiProvider.NONE)
+        val (romanizeApiKey) = rememberPreference(AiRomanizeApiKeyKey, defaultValue = "")
+        val (romanizeCustomEndpoint) = rememberPreference(AiRomanizeCustomEndpointKey, defaultValue = "")
+        val (romanizeSelectedModel) = rememberPreference(AiRomanizeSelectedModelKey, defaultValue = "")
+        val (romanizeCustomModel) = rememberPreference(AiRomanizeCustomModelKey, defaultValue = "")
+
+        val useSeparate = separateProviderEnabled && romanizeProvider != AiProvider.NONE
+        val effectiveProvider = if (useSeparate) romanizeProvider else provider
+        val effectiveApiKey = if (useSeparate) romanizeApiKey else apiKey
+        val effectiveCustomEndpoint = if (useSeparate) romanizeCustomEndpoint else customEndpoint
+        val effectiveModel =
+            if (useSeparate) {
+                if (romanizeProvider == AiProvider.CUSTOM) romanizeCustomModel else romanizeSelectedModel
+            } else {
+                if (provider == AiProvider.CUSTOM) customModel else selectedModel
+            }
+
+        return remember(
+            enabled,
+            auto,
+            excluded,
+            effectiveProvider,
+            effectiveApiKey,
+            effectiveCustomEndpoint,
+            effectiveModel,
+        ) {
             Settings(
                 enabled = enabled,
                 auto = auto,
                 excludedLanguages = excluded,
                 config =
                     AiServiceConfig(
-                        provider = provider,
-                        apiKey = apiKey,
-                        customEndpoint = customEndpoint,
-                        model = if (provider == AiProvider.CUSTOM) customModel else selectedModel,
+                        provider = effectiveProvider,
+                        apiKey = effectiveApiKey,
+                        customEndpoint = effectiveCustomEndpoint,
+                        model = effectiveModel,
                     ),
             )
         }
@@ -147,8 +196,11 @@ object AiLyricsRomanization {
     fun linesFor(
         sessionKey: String,
         lines: List<String>,
+        settings: Settings,
     ): List<String?> {
-        val byLine = cache[sessionKey] ?: return emptyList()
+        // Provider-scoped lookup: a cached romanisation only ever resolves for
+        // the provider that produced it (see Settings.configKey).
+        val byLine = cache[fullKey(sessionKey, settings)] ?: return emptyList()
         return lines.map { byLine[it.trim()] }
     }
 
@@ -176,11 +228,18 @@ object AiLyricsRomanization {
         if (!settings.active) return RequestStatus.SETTINGS_DISABLED
         if (lines.isEmpty()) return RequestStatus.NO_LYRICS
 
-        cache[sessionKey]?.let { cached ->
-            publish(sessionKey, cached)
+        // The romanisation identity of a request is its lyrics PLUS the
+        // provider that will run it. Without the provider half, a cached or
+        // in-flight result from the main provider kept answering after the
+        // user switched to the dedicated romanisation provider (and vice
+        // versa) — romanisation visibly "still ran" on the wrong provider.
+        val requestKey = fullKey(sessionKey, settings)
+
+        cache[requestKey]?.let { cached ->
+            publish(requestKey, cached)
             return RequestStatus.ALREADY_CACHED
         }
-        if (inFlight.containsKey(sessionKey)) return RequestStatus.IN_FLIGHT
+        if (inFlight.containsKey(requestKey)) return RequestStatus.IN_FLIGHT
 
         val dominant = LyricsUtils.detectDominantLanguageCode(lines.joinToString("\n"))
         if (dominant != null && LyricsUtils.matchesExcludedLanguage(dominant, settings.excludedLanguages)) {
@@ -204,10 +263,10 @@ object AiLyricsRomanization {
                     _running.value = false
                 }
             }
-        inFlight[sessionKey] = job
+        inFlight[requestKey] = job
         scope.async {
             val result = runCatching { job.await() }.getOrDefault(emptyList())
-            inFlight.remove(sessionKey)
+            inFlight.remove(requestKey)
 
             val byLine = LinkedHashMap<String, String>(result.size)
             lines.forEachIndexed { index, line ->
@@ -215,9 +274,9 @@ object AiLyricsRomanization {
                 byLine.putIfAbsent(line.trim(), romanized)
             }
             if (byLine.isNotEmpty()) {
-                cache[sessionKey] = byLine
-                trimCache(sessionKey)
-                publish(sessionKey, byLine)
+                cache[requestKey] = byLine
+                trimCache(requestKey)
+                publish(requestKey, byLine)
             } else {
 
                 _requestOutcomes.tryEmit(RequestStatus.EMPTY_RESULT)
@@ -226,12 +285,18 @@ object AiLyricsRomanization {
         return RequestStatus.STARTED
     }
 
-    private fun publish(
+    /** Lyrics content key + provider identity (see Settings.configKey). */
+    private fun fullKey(
         sessionKey: String,
+        settings: Settings,
+    ): String = "$sessionKey|${settings.configKey}"
+
+    private fun publish(
+        requestKey: String,
         byLine: Map<String, String>,
     ) {
 
-        _results.value = Result(sessionKey = sessionKey, byLine = byLine)
+        _results.value = Result(sessionKey = requestKey, byLine = byLine)
     }
 
     private fun trimCache(keep: String) {
@@ -240,5 +305,5 @@ object AiLyricsRomanization {
         cache.keys.firstOrNull { it != keep }?.let { cache.remove(it) }
     }
 
-    private const val MaxCachedTracks = 8
+    private const val MaxCachedTracks = 32
 }

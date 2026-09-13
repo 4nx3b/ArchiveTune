@@ -86,7 +86,10 @@ fun ArtistMenu(
         trailingContent = {},
     )
 
-    HorizontalDivider()
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 56.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+    )
 
     Spacer(modifier = Modifier.height(4.dp))
 
@@ -256,7 +259,7 @@ fun ArtistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -289,7 +292,7 @@ fun ArtistMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(

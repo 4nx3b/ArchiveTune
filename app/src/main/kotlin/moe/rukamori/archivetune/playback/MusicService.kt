@@ -409,8 +409,16 @@ class MusicService :
     @Inject
     lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
+    /** Beat-driven music haptics engine (SpatialFlow port), fed from the PCM tap. */
+    @Volatile
+    var musicHapticsEngine: SpatialFlowHapticEngine? = null
+        private set
+
     @Inject
     lateinit var sponsorBlockPlaybackController: moe.rukamori.archivetune.sponsorblock.SponsorBlockPlaybackController
+
+    @Inject
+    lateinit var downloadUtil: DownloadUtil
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -1203,6 +1211,13 @@ class MusicService :
         super.onCreate()
         equalizerPlaybackController.attach(this)
         ensureScopesActive()
+
+        // Music haptics (SpatialFlow port): the engine is owned by the service
+        // and fed by [HapticsPcmProcessor] from the audio processor chain of
+        // every player this service builds. It reacts to the haptics_enabled /
+        // vibration_strength preferences on its own, so no further wiring is
+        // needed here.
+        musicHapticsEngine = SpatialFlowHapticEngine(this)
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -6643,11 +6658,15 @@ class MusicService :
                 syncUtils.likeSong(song)
 
                 if (!song.isLocal && dataStore.get(AutoDownloadOnLikeKey, false) && song.liked) {
-
+                    // Source-scoped request id ("ytm:<id>", …) — identical to
+                    // what the download menus queue. The old plain-id request
+                    // created a SECOND download entry the menus could not see
+                    // (and could not cancel) next to the source-scoped one.
+                    val downloadId = downloadUtil.currentSourceDownloadTarget(song.id).key
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
-                            .Builder(song.id, song.id.toUri())
-                            .setCustomCacheKey(song.id)
+                            .Builder(downloadId, song.id.toUri())
+                            .setCustomCacheKey(downloadId)
                             .setData(song.title.toByteArray())
                             .build()
                     androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
@@ -10908,6 +10927,11 @@ class MusicService :
                             150.toShort(),
                         ),
                         SonicAudioProcessor(),
+                        // SpatialFlow-style PCM tap: analyzes the decoded audio
+                        // for the music-haptics engine and passes samples
+                        // through untouched. A fresh instance per sink — an
+                        // AudioProcessor may only belong to one chain.
+                        HapticsPcmProcessor(engineProvider = { musicHapticsEngine }),
                     ),
                 ).build()
         }
@@ -11330,6 +11354,8 @@ class MusicService :
 
     override fun onDestroy() {
         equalizerPlaybackController.detach(this)
+        musicHapticsEngine?.release()
+        musicHapticsEngine = null
         sponsorBlockPlaybackController.detach()
         discordServiceStopping = true
         requestDiscordSync(

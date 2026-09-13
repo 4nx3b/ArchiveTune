@@ -409,6 +409,7 @@ fun TopPlaylistScreen(
                                                                 )
                                                             },
                                                         downloads = downloads,
+                                                        downloadUtil = downloadUtil,
                                                     )
                                                     navController.navigate("auto_playlist/downloaded?tab=progress")
                                                 }

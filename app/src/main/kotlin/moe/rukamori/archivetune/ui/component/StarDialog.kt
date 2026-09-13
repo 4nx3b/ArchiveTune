@@ -69,7 +69,7 @@ fun StarDialog(
 
             Button(
                 onClick = {
-                    uriHandler.openUri("https://github.com/4nx3b/ArchiveTune")
+                    uriHandler.openUri("https://koiiverse.cloud/donate")
                     onSupport()
                 },
                 modifier = Modifier.fillMaxWidth(),

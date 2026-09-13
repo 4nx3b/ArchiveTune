@@ -8,6 +8,11 @@
 package moe.rukamori.archivetune.ai
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 class AiLyricsTranslator {
     suspend fun translate(
@@ -23,14 +28,41 @@ class AiLyricsTranslator {
         val document = AiLyricsDocumentParser.parse(lyrics)
         if (document.segments.isEmpty()) return lyrics
         val translated = mutableMapOf<Int, String>()
-        document.segments.chunkedByBudget().forEach { batch ->
-            val batchTranslations =
-                translateBatchResilient(
-                    config = config,
-                    targetLanguage = normalizedLanguage,
-                    batch = batch,
-                    formatName = document.formatName,
+
+        val batches = document.segments.chunkedByBudget()
+        // Batches are independent: run up to a few concurrently so a
+        // multi-batch song resolves in one round-trip window instead of
+        // batch1_latency + batch2_latency + ... The rate limiter still
+        // guards each individual provider call.
+        val batchResults =
+            if (batches.size <= 1) {
+                listOf(
+                    translateBatchResilient(
+                        config = config,
+                        targetLanguage = normalizedLanguage,
+                        batch = batches.firstOrNull().orEmpty(),
+                        formatName = document.formatName,
+                    ),
                 )
+            } else {
+                coroutineScope {
+                    val gate = Semaphore(MaxConcurrentBatches)
+                    batches.map { batch ->
+                        async {
+                            gate.withPermit {
+                                translateBatchResilient(
+                                    config = config,
+                                    targetLanguage = normalizedLanguage,
+                                    batch = batch,
+                                    formatName = document.formatName,
+                                )
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+        batches.forEachIndexed { batchIndex, batch ->
+            val batchTranslations = batchResults[batchIndex]
             batch.forEachIndexed { index, segment ->
                 translated[segment.id] = batchTranslations.getOrNull(index) ?: segment.text
             }
@@ -112,9 +144,13 @@ class AiLyricsTranslator {
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
     private companion object {
-        const val MaxItemsPerBatch = 80
-        const val MaxCharsPerBatch = 6000
-        const val MaxCachedTranslations = 8
+        // A typical song (30–60 lines) now fits in ONE request; long word-timed
+        // TTML/QRC documents split into a handful of large batches instead of
+        // many small ones.
+        const val MaxItemsPerBatch = 160
+        const val MaxCharsPerBatch = 16000
+        const val MaxConcurrentBatches = 3
+        const val MaxCachedTranslations = 32
 
         val resultCache =
             object : LinkedHashMap<String, String>(MaxCachedTranslations, 0.75f, true) {

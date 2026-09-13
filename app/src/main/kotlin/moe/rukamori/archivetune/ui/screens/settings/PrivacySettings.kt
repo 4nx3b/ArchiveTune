@@ -14,6 +14,9 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -27,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,7 +59,9 @@ import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.playback.MusicHapticsSettings
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
+import kotlin.math.roundToInt
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -99,6 +105,11 @@ fun PrivacySettings(
             key = EnableHapticFeedbackKey,
             defaultValue = true,
         )
+
+    // Music haptics (SpatialFlow port) — persisted in the engine's own
+    // SharedPreferences; the service-owned engine reacts via its listener.
+    var musicHapticsEnabled by remember { mutableStateOf(MusicHapticsSettings.isEnabled(context)) }
+    var musicHapticsStrength by remember { mutableStateOf(MusicHapticsSettings.strengthPercent(context)) }
     val (lowDataMode, onLowDataModeChange) =
         rememberPreference(
             key = LowDataModeKey,
@@ -320,6 +331,42 @@ fun PrivacySettings(
                         icon = { Icon(painterResource(R.drawable.vibration), null) },
                         checked = enableHapticFeedback,
                         onCheckedChange = onEnableHapticFeedbackChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.music_haptics)) },
+                        description = stringResource(R.string.music_haptics_desc),
+                        icon = { Icon(painterResource(R.drawable.vibration), null) },
+                        checked = musicHapticsEnabled,
+                        onCheckedChange = { next ->
+                            MusicHapticsSettings.setEnabled(context, next)
+                            musicHapticsEnabled = next
+                        },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.music_haptics_strength)) },
+                        description = stringResource(R.string.music_haptics_strength_value, musicHapticsStrength),
+                        icon = { Icon(painterResource(R.drawable.vibration), null) },
+                        isEnabled = musicHapticsEnabled,
+                        content = {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Slider(
+                                value = musicHapticsStrength.toFloat(),
+                                onValueChange = { musicHapticsStrength = it.roundToInt() },
+                                onValueChangeFinished = {
+                                    MusicHapticsSettings.setStrengthPercent(context, musicHapticsStrength)
+                                },
+                                valueRange = 0f..100f,
+                                steps = 19,
+                                enabled = musicHapticsEnabled,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        },
                     )
                 }
 

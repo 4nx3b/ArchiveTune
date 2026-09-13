@@ -281,7 +281,11 @@ Interested in building the project or contributing? ArchiveTune is built on a hi
 ArchiveTune is made possible by the work of many open-source projects and communities:
 
 - **Metrolist** by [Mostafa Alagamy](https://github.com/mostafaalagamy/Metrolist) for the base framework.
-- **SimpMusic** by [maxrave-dev](https://github.com/maxrave-dev/SimpMusic) for the lyrics API provider.
+- **SimpMusic** by [maxrave-dev](https://github.com/maxrave-dev/SimpMusic) for the player style and the lyrics API provider.
+- **SpatialFlow** by [MythicalSHUB](https://github.com/MythicalSHUB/SpatialFlow) for the player style and the music haptics feature.
+- **Vivi Music** by [vivizzz007](https://github.com/vivizzz007/vivi-music) for the Apple Music player morph animations, the JioSaavn integration, and the Listen Together server.
+- **Muzo** by [Shashwat-CODING](https://github.com/Shashwat-CODING/Muzo) for the fonts API, Spotify Canvas, and Qobuz backup, as well as design inspiration.
+- **BitChord** by [kushagrasinghx](https://github.com/kushagrasinghx/BitChord) for the player style.
 - [BetterLyrics](https://better-lyrics.boidu.dev/) for word-by-word lyrics, unison and artwork provider support.
 - [Material Color Utilities](https://github.com/material-foundation/material-color-utilities)
 - [Read You](https://github.com/Ashinch/ReadYou) and [Seal](https://github.com/JunkFood02/Seal) for UI component inspiration.

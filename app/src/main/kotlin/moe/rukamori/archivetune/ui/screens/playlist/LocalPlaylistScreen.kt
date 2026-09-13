@@ -728,6 +728,7 @@ fun LocalPlaylistScreen(
                                                                         )
                                                                     },
                                                                 downloads = downloads,
+                                                                downloadUtil = downloadUtil,
                                                             )
                                                         }
                                                     }
