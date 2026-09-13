@@ -616,9 +616,16 @@ jobs:
           #
           # Anything newsworthy belongs in a commit subject, where build_changelog picks it up and
           # files it under Features/Fixes/Performance automatically.
-          cat > release_notes.md <<EOF
+          #
+          # QUOTED heredoc + unique delimiter: GitHub substitutes the ${{ }}
+          # expression into the script BEFORE bash parses it, so quoting costs
+          # nothing — while an UNQUOTED delimiter made bash expand the
+          # changelog text itself, executing every backticked identifier in a
+          # commit subject (…: command not found) and killing the release step
+          # the first time the commit range contained them.
+          cat > release_notes.md <<'ARCHIVETUNE_RELEASE_NOTES_EOF'
           ${{ steps.build_changelog.outputs.changelog }}
-          EOF
+          ARCHIVETUNE_RELEASE_NOTES_EOF
 
           # With the static block gone the changelog is the only content, so an empty generator
           # result (bad tag range, nothing categorised) would publish blank release notes.
