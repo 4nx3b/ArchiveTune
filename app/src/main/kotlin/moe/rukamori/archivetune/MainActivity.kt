@@ -2522,6 +2522,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             if (shouldShowBlurBackground) {
                                                 if ((isHomeRoute || isSearchRoute || isLibraryRoute) &&
+                                                    liquidGlassEnabled &&
                                                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                                                     !playerBottomSheetState.isExpandedOrExpanding
                                                 ) {

@@ -387,11 +387,15 @@ fun LyricsEnhanced(
     val aiRomanizationResult by AiLyricsRomanization.results.collectAsStateWithLifecycle()
 
     val aiRomanizedLines: List<String?> =
-        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, lyricsEntries) {
+        remember(aiRomanizationResult, aiRomanizationSessionKey, aiRomanizationSettings.active, aiRomanizationSettings.configKey, lyricsEntries) {
             if (!aiRomanizationSettings.active) {
                 emptyList()
             } else {
-                AiLyricsRomanization.linesFor(aiRomanizationSessionKey, lyricsEntries.map { it.text })
+                AiLyricsRomanization.linesFor(
+                    aiRomanizationSessionKey,
+                    lyricsEntries.map { it.text },
+                    aiRomanizationSettings,
+                )
             }
         }
     LaunchedEffect(aiRomanizationSessionKey, lyricsEntries, aiRomanizationSettings) {
@@ -585,6 +589,14 @@ fun LyricsEnhanced(
             val rawPlayerPosition = player.currentPosition.coerceAtLeast(0L)
             if (lastRawPositionMs - rawPlayerPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 positionResetCounter += 1
+                // Reset the index synchronously with the wrap detection. A
+                // separate LaunchedEffect(positionResetCounter) reset fires one
+                // recomposition AFTER this loop has already recomputed the
+                // post-wrap index and would clobber it back to -1, forcing an
+                // extra null→index scroll cycle and (combined with the loop's
+                // cached-index guard) briefly leaving the freshly-current line
+                // unhighlighted right after a restart.
+                currentLineIndexState.intValue = -1
             }
             lastRawPositionMs = rawPlayerPosition
 
@@ -756,12 +768,6 @@ fun LyricsEnhanced(
                 forceNextScroll = false
                 if (isFirstFocus) awaitingFirstFocus = false
             }
-    }
-
-    LaunchedEffect(positionResetCounter) {
-        if (positionResetCounter > 0) {
-            currentLineIndexState.intValue = -1
-        }
     }
 
     BackHandler(enabled = isSelectionModeActive) {

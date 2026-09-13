@@ -325,7 +325,7 @@ fun SelectionSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -389,7 +389,7 @@ fun SelectionSongMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -505,6 +505,7 @@ fun SelectionSongMenu(
                                                 )
                                             },
                                         downloads = downloadUtil.downloads.value,
+                                        downloadUtil = downloadUtil,
                                     )
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -881,7 +882,7 @@ fun SelectionMediaMetadataMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -920,7 +921,7 @@ fun SelectionMediaMetadataMenu(
 
                         HorizontalDivider(
                             modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
                     }
 
@@ -943,7 +944,7 @@ fun SelectionMediaMetadataMenu(
 
                     HorizontalDivider(
                         modifier = dividerModifier,
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
                     ListItem(
@@ -1057,6 +1058,7 @@ fun SelectionMediaMetadataMenu(
                                                 )
                                             },
                                         downloads = downloadUtil.downloads.value,
+                                        downloadUtil = downloadUtil,
                                     )
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),

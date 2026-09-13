@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -165,7 +166,13 @@ fun AppleMusicSleepTimerSheet(
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            // Section dividers, same visible 30% ink as the songs overflow
+            // menu rows (this sheet is hosted by the liquid-glass popup, where
+            // plain outlineVariant reads as no divider at all).
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
 
             val presets =
                 remember {
@@ -223,7 +230,10 @@ fun AppleMusicSleepTimerSheet(
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            )
 
             val sliderValue = sliderMinutes.coerceIn(0f, 120f)
             val sliderEnabled = true

@@ -13,6 +13,8 @@ import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
+import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.playback.ExoDownloadService
 
 @Immutable
@@ -34,6 +36,28 @@ data class HeaderDownloadItem(
     val title: String,
 )
 
+/**
+ * The download entry for a song id as tracked by the download index. Download
+ * requests are keyed by their source-scoped ids ("ytm:<id>", "qobuz:<id>", …,
+ * or the legacy plain id), so a plain song id never matches a map keyed by
+ * request ids — every helper below resolves through
+ * [DownloadSourceConfig.songIdToDownloadIds] instead.
+ */
+private fun Map<String, Download>.forSongId(songId: String): Download? =
+    DownloadSourceConfig.songIdToDownloadIds(songId).firstNotNullOfOrNull { this[it] }
+
+private fun Map<String, Download>.isDownloadingSong(songId: String): Boolean =
+    DownloadSourceConfig.songIdToDownloadIds(songId).any { id ->
+        when (this[id]?.state) {
+            Download.STATE_QUEUED,
+            Download.STATE_DOWNLOADING,
+            Download.STATE_RESTARTING,
+            -> true
+
+            else -> false
+        }
+    }
+
 fun headerDownloadState(
     songIds: List<String>,
     downloads: Map<String, Download>,
@@ -49,7 +73,7 @@ fun headerDownloadState(
     val distinctSongIds = songIds.distinct()
 
     distinctSongIds.forEach { songId ->
-        val download = downloads[songId]
+        val download = downloads.forSongId(songId)
         when (download?.state) {
             Download.STATE_COMPLETED -> {
                 completedCount++
@@ -110,15 +134,20 @@ fun sendAddMissingDownloads(
     context: Context,
     songs: List<HeaderDownloadItem>,
     downloads: Map<String, Download>,
+    downloadUtil: DownloadUtil,
 ) {
     songs
         .distinctBy { it.id }
-        .filter { item -> downloads[item.id]?.state.shouldRequestDownload() }
+        .filter { item -> !downloads.isDownloadingSong(item.id) && downloads.forSongId(item.id)?.state.shouldRequestDownload() }
         .forEach { item ->
+            // Source-scoped request id — the SAME id the single-song download
+            // menus queue. The old plain-id request created a second, invisible
+            // (and uncancellable) download entry beside the source-scoped one.
+            val downloadId = downloadUtil.currentSourceDownloadTarget(item.id).key
             val downloadRequest =
                 DownloadRequest
-                    .Builder(item.id, item.id.toUri())
-                    .setCustomCacheKey(item.id)
+                    .Builder(downloadId, item.id.toUri())
+                    .setCustomCacheKey(downloadId)
                     .setData(item.title.toByteArray())
                     .build()
             DownloadService.sendAddDownload(
@@ -135,12 +164,17 @@ fun sendRemoveDownloads(
     songIds: List<String>,
 ) {
     songIds.distinct().forEach { songId ->
-        DownloadService.sendRemoveDownload(
-            context,
-            ExoDownloadService::class.java,
-            songId,
-            false,
-        )
+        // Remove every source-scoped variant (plus the legacy plain entry):
+        // the header's visible state counts any variant, so removal must clear
+        // them all — sendRemoveDownload is a no-op for ids that do not exist.
+        DownloadSourceConfig.songIdToDownloadIds(songId).forEach { downloadId ->
+            DownloadService.sendRemoveDownload(
+                context,
+                ExoDownloadService::class.java,
+                downloadId,
+                false,
+            )
+        }
     }
 }
 
@@ -151,23 +185,23 @@ fun sendPauseRunningDownloads(
 ) {
     songIds
         .distinct()
-        .filter { songId ->
-            when (downloads[songId]?.state) {
-                Download.STATE_QUEUED,
-                Download.STATE_DOWNLOADING,
-                Download.STATE_RESTARTING,
-                -> true
+        .forEach { songId ->
+            DownloadSourceConfig.songIdToDownloadIds(songId).forEach { downloadId ->
+                when (downloads[downloadId]?.state) {
+                    Download.STATE_QUEUED,
+                    Download.STATE_DOWNLOADING,
+                    Download.STATE_RESTARTING,
+                    -> DownloadService.sendSetStopReason(
+                        context,
+                        ExoDownloadService::class.java,
+                        downloadId,
+                        COLLECTION_PAUSE_STOP_REASON,
+                        false,
+                    )
 
-                else -> false
+                    else -> Unit
+                }
             }
-        }.forEach { songId ->
-            DownloadService.sendSetStopReason(
-                context,
-                ExoDownloadService::class.java,
-                songId,
-                COLLECTION_PAUSE_STOP_REASON,
-                false,
-            )
         }
 }
 
@@ -178,18 +212,21 @@ fun sendResumePausedDownloads(
 ) {
     songIds
         .distinct()
-        .filter { songId ->
-            val download = downloads[songId]
-            download?.state == Download.STATE_STOPPED &&
-                download.stopReason == COLLECTION_PAUSE_STOP_REASON
-        }.forEach { songId ->
-            DownloadService.sendSetStopReason(
-                context,
-                ExoDownloadService::class.java,
-                songId,
-                DOWNLOAD_STOP_REASON_NONE,
-                false,
-            )
+        .forEach { songId ->
+            DownloadSourceConfig.songIdToDownloadIds(songId).forEach { downloadId ->
+                val download = downloads[downloadId]
+                if (download?.state == Download.STATE_STOPPED &&
+                    download.stopReason == COLLECTION_PAUSE_STOP_REASON
+                ) {
+                    DownloadService.sendSetStopReason(
+                        context,
+                        ExoDownloadService::class.java,
+                        downloadId,
+                        DOWNLOAD_STOP_REASON_NONE,
+                        false,
+                    )
+                }
+            }
         }
 }
 

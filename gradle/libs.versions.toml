@@ -6,6 +6,11 @@ kotlin = "2.4.0"
 kotlinMetadata = "2.4.0"
 compose = "1.12.0-beta02"
 lifecycle = "2.11.0"
+# material3: 1.5.0-alpha23 is the newest alpha matching the app's Material3
+# API usage — alpha28+ removes/changes six API surfaces the app relies on
+# (old Slider overload + SliderState.valueRange, ShortNavigationBarItemDefaults
+# text-color params, no-arg menuAnchor(), ExposedDropdownMenu,
+# toggleButtonColors).
 material3 = "1.5.0-alpha23"
 media3 = "1.10.1"
 room = "2.8.4"
@@ -32,7 +37,6 @@ profileinstaller = "1.4.1"
 palette = "1.0.0"
 apacheLang3 = "3.20.0"
 brotli = "0.1.2"
-desugaring = "2.1.5"
 junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
@@ -70,7 +74,7 @@ quickjsKt = "1.0.14"
 markwon = "4.6.2"
 okhttp = "5.4.0"
 accompanist = "1.0.19"
-accompanist-core = "0.4.7"
+accompanist-core = "0.4.6"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"
@@ -168,7 +172,6 @@ brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }
 
 androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
-desugaring = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugaring" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }

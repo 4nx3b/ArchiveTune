@@ -129,6 +129,42 @@ private val RecapPink = Color(0xFFFF8BDE)
 private val RecapLime = Color(0xFFDFFF3E)
 private val RecapInk = Color(0xFF151515)
 
+/**
+ * The device's physical display size in real pixels (including system bars and
+ * cutouts) — the capture target for the recap share so the exported image
+ * matches the phone's original screen dimensions at full resolution.
+ */
+private fun realScreenPixels(context: android.content.Context): Pair<Int, Int> {
+    return runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            val windowManager = context.getSystemService(android.view.WindowManager::class.java)
+            val bounds = windowManager?.maximumWindowMetrics?.bounds
+            if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+                bounds.width() to bounds.height()
+            } else {
+                val metrics = context.resources.displayMetrics
+                metrics.widthPixels to metrics.heightPixels
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val display = (context as? android.app.Activity)?.windowManager?.defaultDisplay
+                ?: runCatching { context.display }.getOrNull()
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            if (display != null) {
+                display.getRealMetrics(metrics)
+                metrics.widthPixels to metrics.heightPixels
+            } else {
+                val fallback = context.resources.displayMetrics
+                fallback.widthPixels to fallback.heightPixels
+            }
+        }
+    }.getOrElse {
+        val metrics = context.resources.displayMetrics
+        metrics.widthPixels to metrics.heightPixels
+    }
+}
+
 private object RecapTokens {
     val SectionRadius = 24.dp
     val ItemRadius = 18.dp
@@ -242,12 +278,21 @@ private fun YearInMusicRecapScreen(
                             } else {
                                 raw
                             }
+
+                        // Export at the device's REAL screen dimensions (full
+                        // pixel resolution, original aspect ratio) instead of a
+                        // hardcoded 1080x1920 letterbox: the fixed target both
+                        // downscaled the capture on tall screens (9:16 vs the
+                        // phone's 20:9) and painted black bars around a card
+                        // that suddenly read "small". coverBitmap fills the
+                        // target edge to edge, so the share is exactly what the
+                        // screen showed, at the display's native resolution.
+                        val (screenW, screenH) = realScreenPixels(context)
                         val fitted =
-                            ComposeToImage.fitBitmap(
+                            ComposeToImage.coverBitmap(
                                 source = cardBitmap,
-                                targetWidth = 1080,
-                                targetHeight = 1920,
-                                backgroundColor = RecapBlack.toArgb(),
+                                targetWidth = screenW,
+                                targetHeight = screenH,
                             )
                         val uri =
                             ComposeToImage.saveBitmapAsFile(

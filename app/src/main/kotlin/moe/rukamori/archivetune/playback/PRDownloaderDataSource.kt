@@ -26,6 +26,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -42,6 +43,9 @@ internal class PRDownloaderDataSource private constructor(
 
     private var activeDownloadId: Int = -1
 
+    /** Request key whose fetch progress is currently published. */
+    private var progressKey: String? = null
+
     private val headClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -55,6 +59,7 @@ internal class PRDownloaderDataSource private constructor(
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
         val url = dataSpec.uri.toString()
+        progressKey = dataSpec.key
 
         var lastError: IOException? = null
         for (attempt in 1..MAX_DOWNLOAD_ATTEMPTS) {
@@ -70,6 +75,13 @@ internal class PRDownloaderDataSource private constructor(
                         Thread.currentThread().interrupt()
                         throw e
                     }
+                }
+            } finally {
+                if (attempt == MAX_DOWNLOAD_ATTEMPTS) {
+                    // The whole-file fetch is over — stop reporting progress for
+                    // this request key so the UI does not keep showing a stale
+                    // percentage after completion/failure.
+                    progressKey?.let(DownloadFetchProgress::clear)
                 }
             }
         }
@@ -134,6 +146,17 @@ internal class PRDownloaderDataSource private constructor(
 
         builder.setOnProgressListener { progress ->
             lastProgressAtMs.set(android.os.SystemClock.elapsedRealtime())
+            // Surface the real fetch progress: Media3's own Download stays at
+            // 0% for this whole-file stage (it only counts bytes it has read
+            // from the temp file), which is what made YouTube downloads look
+            // "stuck on loading" for the entire network fetch.
+            progressKey?.let { key ->
+                DownloadFetchProgress.update(
+                    key = key,
+                    bytes = progress.currentBytes,
+                    total = progress.totalBytes,
+                )
+            }
         }
 
         activeDownloadId = builder.start(object : OnDownloadListener {
@@ -254,6 +277,8 @@ internal class PRDownloaderDataSource private constructor(
             runCatching { PRDownloader.cancel(activeDownloadId) }
             activeDownloadId = -1
         }
+        progressKey?.let(DownloadFetchProgress::clear)
+        progressKey = null
         fileSource?.let { runCatching { it.close() } }
         fileSource = null
         tempFile?.let { runCatching { it.delete() } }
@@ -324,16 +349,59 @@ internal class PRDownloaderDataSource private constructor(
 
     companion object {
         private const val DEFAULT_USER_AGENT = "ArchiveTune"
-        private const val DOWNLOAD_WAIT_TIMEOUT_MINUTES = 12L
+
+        /**
+         * Overall bound for one whole-file PRDownloader fetch. A music stream
+         * is a few MB — anything that cannot fetch it in this window is
+         * throttled or wedged, and parking the download at 0% for longer is
+         * exactly the "infinite download" experience. On failure the
+         * DownloadManager-level auto-retry resolves a fresh stream URL.
+         */
+        private const val DOWNLOAD_WAIT_TIMEOUT_MINUTES = 5L
 
         /** Cancel the fetch when no bytes have arrived for this long. */
-        private const val PROGRESS_STALL_TIMEOUT_MS = 90_000L
+        private const val PROGRESS_STALL_TIMEOUT_MS = 45_000L
 
         /** How often the latch poll re-checks progress staleness. */
         private const val PROGRESS_POLL_SECONDS = 5L
 
-        private const val MAX_DOWNLOAD_ATTEMPTS = 3
+        private const val MAX_DOWNLOAD_ATTEMPTS = 2
 
         private const val RETRY_DELAY_MS = 1_500L
     }
+}
+
+/**
+ * Live whole-file fetch progress reported by [PRDownloaderDataSource], keyed by
+ * the download request's cache key (e.g. "ytm:<id>"). While the PRDownloader
+ * stage buffers the stream to a temp file, Media3's Download object reports 0%
+ * — UIs collect [flow] to show the REAL progress of the network fetch.
+ */
+internal object DownloadFetchProgress {
+    data class Fetch(
+        val bytes: Long,
+        val total: Long,
+        val updatedAtMs: Long,
+    ) {
+        val percent: Int? get() = if (total > 0) ((bytes * 100) / total).coerceIn(0, 100).toInt() else null
+    }
+
+    private val _flow = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Fetch>>(emptyMap())
+    val flow: kotlinx.coroutines.flow.StateFlow<Map<String, Fetch>> = _flow.asStateFlow()
+
+    fun update(
+        key: String,
+        bytes: Long,
+        total: Long,
+    ) {
+        _flow.value = _flow.value + (key to Fetch(bytes, total, android.os.SystemClock.elapsedRealtime()))
+    }
+
+    fun clear(key: String) {
+        if (_flow.value.containsKey(key)) {
+            _flow.value = _flow.value - key
+        }
+    }
+
+    fun get(key: String): Fetch? = _flow.value[key]
 }

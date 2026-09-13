@@ -74,6 +74,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.media3.ui.AspectRatioFrameLayout
+import moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -145,7 +148,6 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
-import moe.rukamori.archivetune.ui.player.simpmusic.SimpMusicLyrics
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.player.LosslessOrStats
@@ -337,6 +339,8 @@ fun BitChordPlayerContent(
     menuState: MenuState,
     bottomSheetPageState: BottomSheetPageState,
     currentFormat: FormatEntity?,
+    canvasPrimaryUrl: String? = null,
+    canvasFallbackUrl: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -616,13 +620,8 @@ fun BitChordPlayerContent(
 
         if (heroHeight > 0.dp) {
             if (heroMode && (p < 0.5f || heroVisible > 0.001f)) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(artUrl)
-                        .size(ART_PX)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                var heroCanvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
@@ -643,7 +642,32 @@ fun BitChordPlayerContent(
                                 blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
                             )
                         },
-                )
+                ) {
+                    // Canvas in the hero slot blends into the controls below
+                    // through the exact same DstIn fade the static artwork uses
+                    // — nothing different, per the style's own recipe.
+                    if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+                        CanvasArtworkPlayer(
+                            primaryUrl = canvasPrimaryUrl,
+                            fallbackUrl = canvasFallbackUrl,
+                            isPlaying = isPlaying,
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                            onPlaybackAvailabilityChange = { heroCanvasShowing = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (!heroCanvasShowing) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(artUrl)
+                                .size(ART_PX)
+                                .build(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
 
             if (heroVisible > 0.01f) {
@@ -877,18 +901,35 @@ fun BitChordPlayerContent(
                                 modifier = Modifier.size(lerp(40.dp, 20.dp, p)),
                             )
                         }
-                        AsyncImage(
+                        var cardCanvasShowing by remember(canvasPrimaryUrl, canvasFallbackUrl) { mutableStateOf(false) }
+                        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+                            // Canvas fills the artwork card exactly like the
+                            // static sleeve does — same clip, same rounded
+                            // corners, same shadow — so it blends with the
+                            // surrounding controls nothing-different.
+                            CanvasArtworkPlayer(
+                                primaryUrl = canvasPrimaryUrl,
+                                fallbackUrl = canvasFallbackUrl,
+                                isPlaying = isPlaying,
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                onPlaybackAvailabilityChange = { cardCanvasShowing = it },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        if (!cardCanvasShowing) {
+                            AsyncImage(
 
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(artUrl)
-                                .size(ART_PX)
-                                .build(),
-                            contentDescription = null,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(artUrl)
+                                    .size(ART_PX)
+                                    .build(),
+                                contentDescription = null,
 
-                            contentScale = ContentScale.Crop,
-                            onState = { artLoaded = it is AsyncImagePainter.State.Success },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                contentScale = ContentScale.Crop,
+                                onState = { artLoaded = it is AsyncImagePainter.State.Success },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
 
                 }
@@ -994,7 +1035,22 @@ fun BitChordPlayerContent(
                             translationY = (1f - p) * 26.dp.toPx()
                         }
 
-                    val lyricsPositionProvider = remember { { null as Long? } }
+                    val latestScrubbing = rememberUpdatedState(scrubbing)
+                    val latestShownFraction = rememberUpdatedState(if (duration > 0) shown / duration else 0f)
+                    val latestDuration = rememberUpdatedState(duration)
+                    val lyricsPositionProvider = remember {
+                        // Feed the seek preview while scrubbing so every lyrics
+                        // renderer (Enhanced karaoke included) tracks the thumb
+                        // instead of the stale player position; null otherwise
+                        // falls back to player.currentPosition.
+                        {
+                            if (latestScrubbing.value) {
+                                (latestShownFraction.value * maxOf(latestDuration.value, 1L)).toLong()
+                            } else {
+                                null
+                            }
+                        }
+                    }
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
                     when (lyricsMode) {
                         LyricsMode.ENHANCED ->
@@ -1012,14 +1068,6 @@ fun BitChordPlayerContent(
                                 modifier = panelModifier,
                                 textColorOverride = Color.White,
                                 spotifyStyle = true,
-                            )
-
-                        LyricsMode.SIMPMUSIC ->
-                            SimpMusicLyrics(
-                                sliderPositionProvider = lyricsPositionProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = panelModifier,
-                                textColorOverride = Color.White,
                             )
 
                         LyricsMode.V2 ->
@@ -1077,35 +1125,43 @@ fun BitChordPlayerContent(
 
                     .offset(y = 6.dp),
             ) {
-                if (!lyrics.isNullOrEmpty()) {
-                    CurrentLyricLine(
-                        lines = lyrics,
-                        trackKey = mediaMetadata.id,
-                        positionMs = lyricsPosition,
-                        isPlaying = isPlaying,
-                        durationMs = duration,
+                // The one-line strip is the collapsed-state teaser for the
+                // lyrics page. When the lyrics page is open it kept rendering
+                // above the progress bar (task report: "one line lyrics
+                // shouldn't display over the progress bar when I open lyrics
+                // page") — the page already shows the full lyrics, so the
+                // strip steps aside entirely.
+                if (!lyricsOpen) {
+                    if (!lyrics.isNullOrEmpty()) {
+                        CurrentLyricLine(
+                            lines = lyrics,
+                            trackKey = mediaMetadata.id,
+                            positionMs = lyricsPosition,
+                            isPlaying = isPlaying,
+                            durationMs = duration,
 
-                        onClick = {
-                            queueOpen = false
-                            lyricsOpen = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        synced = lyricsSynced,
-                    )
-                } else if (lyricsUnavailable) {
-                    LyricsUnavailableLine(
-                        trackKey = mediaMetadata.id,
-                        modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                queueOpen = false
+                                lyricsOpen = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            synced = lyricsSynced,
+                        )
+                    } else if (lyricsUnavailable) {
+                        LyricsUnavailableLine(
+                            trackKey = mediaMetadata.id,
+                            modifier = Modifier.fillMaxWidth(),
 
-                        onClick = { lyricsOpen = true },
-                    )
-                } else {
-                    LyricsLoadingLine(
-                        trackKey = mediaMetadata.id,
-                        modifier = Modifier.fillMaxWidth(),
+                            onClick = { lyricsOpen = true },
+                        )
+                    } else {
+                        LyricsLoadingLine(
+                            trackKey = mediaMetadata.id,
+                            modifier = Modifier.fillMaxWidth(),
 
-                        onClick = { lyricsOpen = true },
-                    )
+                            onClick = { lyricsOpen = true },
+                        )
+                    }
                 }
             }
             ThinSlider(

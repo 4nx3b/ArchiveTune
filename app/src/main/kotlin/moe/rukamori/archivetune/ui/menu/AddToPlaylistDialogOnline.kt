@@ -50,8 +50,11 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
+import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.innertube.YouTube
@@ -62,10 +65,14 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.ListItem
 import moe.rukamori.archivetune.ui.component.PlaylistListItem
+import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
+import moe.rukamori.archivetune.utils.dataStore
 import timber.log.Timber
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.firstOrNull
 
 @Composable
 fun AddToPlaylistDialogOnline(
@@ -80,6 +87,8 @@ fun AddToPlaylistDialogOnline(
 ) {
     val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val syncUtils = LocalSyncUtils.current
     var allPlaylists by remember { mutableStateOf(emptyList<Playlist>()) }
     val playlists = remember(allPlaylists) { playlistsForAddToPlaylist(allPlaylists).asReversed() }
 
@@ -132,6 +141,10 @@ fun AddToPlaylistDialogOnline(
                 val failCount = AtomicInteger(0)
                 val failedSongs = mutableListOf<String>()
 
+                // YouTube Music ids of the songs that actually landed in the
+                // local playlist — what the auto-sync below pushes remotely.
+                val succeededIds = java.util.Collections.synchronizedList(mutableListOf<String>())
+
                 val semaphore = Semaphore(5)
 
                 val tasks =
@@ -175,6 +188,9 @@ fun AddToPlaylistDialogOnline(
                                                             update(entity.toggleLike())
                                                         }
                                                     }
+                                                    synchronized(succeededIds) {
+                                                        succeededIds.addAll(ids)
+                                                    }
                                                     success = true
                                                 } catch (e: Exception) {
                                                     Timber.e(e, "Error inserting/adding song")
@@ -212,6 +228,63 @@ fun AddToPlaylistDialogOnline(
 
                 runCatching { tasks.awaitAll() }.onFailure {
                     Timber.e(it, "Import failed")
+                }
+
+                // Auto-sync (2026-09-12): importing a playlist finishes into a
+                // local playlist that used to sit there until the user opened
+                // the playlist menu and pressed Sync. Now the import itself
+                // pushes it: a remote playlist gets an incremental sync (which
+                // uploads the just-added songs), and a local-only playlist gets
+                // its YouTube counterpart created and linked, exactly like the
+                // cross-service import dialog does.
+                if (targetPlaylist != null && succeededIds.isNotEmpty()) {
+                    runCatching {
+                        val preferences = context.dataStore.data.firstOrNull()
+                        val isSignedIn = preferences != null &&
+                            hasYouTubeLoginCookie(preferences[InnerTubeCookieKey].orEmpty())
+                        val isYtSyncEnabled = preferences == null || (preferences[YtmSyncKey] ?: true)
+                        if (isSignedIn && isYtSyncEnabled) {
+                            val livePlaylist = database.playlist(targetPlaylist.id).firstOrNull() ?: targetPlaylist
+                            val remoteBrowseId = livePlaylist.playlist.browseId
+                            if (!remoteBrowseId.isNullOrBlank()) {
+                                withContext(Dispatchers.Main) {
+                                    onStatusChange("Syncing playlist to YouTube Music...")
+                                }
+                                syncUtils.syncPlaylistNow(remoteBrowseId, livePlaylist.id)
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    onStatusChange("Creating remote playlist...")
+                                }
+                                YouTube.createPlaylist(livePlaylist.playlist.name, succeededIds.toList())
+                                    .onSuccess { createdBrowseId ->
+                                        if (createdBrowseId.isNotBlank()) {
+                                            val toUpdate = database.playlist(livePlaylist.id).firstOrNull()
+                                            if (toUpdate != null) {
+                                                database.query {
+                                                    update(
+                                                        toUpdate.playlist.copy(
+                                                            browseId = createdBrowseId,
+                                                            isEditable = true,
+                                                            bookmarkedAt = toUpdate.playlist.bookmarkedAt ?: LocalDateTime.now(),
+                                                            lastUpdateTime = LocalDateTime.now(),
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }.onFailure { error ->
+                                        Timber.w(
+                                            error,
+                                            "Remote YT Music playlist creation after import failed; " +
+                                                "playlist remains local-only.",
+                                        )
+                                    }
+                            }
+                        }
+                    }.onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        Timber.w(error, "Post-import playlist sync failed; playlist remains local-only.")
+                    }
                 }
 
                 withContext(Dispatchers.Main) {
