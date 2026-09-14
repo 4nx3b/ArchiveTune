@@ -2044,16 +2044,6 @@ private fun V9PortraitContent(
                     )
                 }
 
-                NumberedPlayerInlineLyrics(
-                    visible = lyricsOpen,
-                    onClose = onCloseLyrics,
-                    sliderPositionProvider = { sliderPosition },
-                    lyricsSyncOffset = lyricsSyncOffset,
-                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    mediaMetadata = mediaMetadata,
-                    textColor = textBackgroundColor,
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
 
             Spacer(Modifier.height(headerGap))
@@ -2268,16 +2258,6 @@ private fun V9LandscapeContent(
                     )
                 }
 
-                NumberedPlayerInlineLyrics(
-                    visible = lyricsOpen,
-                    onClose = onCloseLyrics,
-                    sliderPositionProvider = { sliderPosition },
-                    lyricsSyncOffset = lyricsSyncOffset,
-                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    mediaMetadata = mediaMetadata,
-                    textColor = textBackgroundColor,
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
 
             Column(
@@ -3365,16 +3345,6 @@ fun V10PlayerContent(
                 )
             }
 
-            NumberedPlayerInlineLyrics(
-                visible = lyricsOpen,
-                onClose = onCloseLyrics,
-                sliderPositionProvider = { sliderPosition },
-                lyricsSyncOffset = lyricsSyncOffset,
-                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                mediaMetadata = mediaMetadata,
-                textColor = accent,
-                modifier = Modifier.fillMaxSize(),
-            )
         }
 
         val title = mediaMetadata.title

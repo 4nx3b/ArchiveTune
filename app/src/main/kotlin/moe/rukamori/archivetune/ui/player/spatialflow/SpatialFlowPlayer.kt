@@ -116,6 +116,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.MenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.ui.player.rememberMeshPalette
 import moe.rukamori.archivetune.ui.utils.highRes
 import androidx.navigation.NavController
@@ -179,12 +180,6 @@ fun SpatialFlowPlayerContent(
     // pill, falling back to the sleeve when it fails or while lyrics are open.
     val videoState = LocalVideoArtworkState.current
     val videoPlaybackFailed = LocalVideoPlaybackFailed.current
-    val videoShowing =
-        videoState != null &&
-            mediaMetadata.isMusicVideo &&
-            !mediaMetadata.id.isLocalMediaId() &&
-            !lyricsModeEnabled &&
-            !videoPlaybackFailed
     val surfaceIsDark = isDark || canvasAvailable
     val contentColor = if (surfaceIsDark) Color.White else Color(0xFF1C1B1F)
     val contentSecondary = if (surfaceIsDark) Color.White.copy(alpha = 0.6f) else Color(0xFF1C1B1F).copy(alpha = 0.6f)
@@ -259,6 +254,12 @@ fun SpatialFlowPlayerContent(
         }
 
     var lyricsModeEnabled by rememberSaveable(mediaMetadata.id) { mutableStateOf(false) }
+    val videoShowing =
+        videoState != null &&
+            mediaMetadata.isMusicVideo &&
+            !mediaMetadata.id.isLocalMediaId() &&
+            !lyricsModeEnabled &&
+            !videoPlaybackFailed
     val syncedLyrics =
         remember(currentLyricsEntity?.lyrics) {
             val text = currentLyricsEntity?.lyrics
